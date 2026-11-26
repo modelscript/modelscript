@@ -16,21 +16,102 @@ export interface AlmExternalLineInfo {
   priority?: string | undefined;
 }
 
+function isWs(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
+}
+
+function isIdentChar(ch: string): boolean {
+  const c = ch.charCodeAt(0);
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95;
+}
+
+function readQuotedAttr(attrs: string, key: string): string | undefined {
+  const needle = `${key}="`;
+  let searchFrom = 0;
+  while (searchFrom < attrs.length) {
+    const idx = attrs.indexOf(needle, searchFrom);
+    if (idx === -1) return undefined;
+    if (idx > 0 && isIdentChar(attrs[idx - 1]!)) {
+      searchFrom = idx + needle.length;
+      continue;
+    }
+    const valStart = idx + needle.length;
+    const valEnd = attrs.indexOf('"', valStart);
+    if (valEnd === -1) return undefined;
+    return attrs.slice(valStart, valEnd);
+  }
+  return undefined;
+}
+
+function readQuotedField(line: string, fieldName: string): string | undefined {
+  let searchFrom = 0;
+  while (searchFrom < line.length) {
+    const idx = line.indexOf(fieldName, searchFrom);
+    if (idx === -1) return undefined;
+    const beforeOk = idx === 0 || !isIdentChar(line[idx - 1]!);
+    const afterIdx = idx + fieldName.length;
+    const afterOk = afterIdx >= line.length || !isIdentChar(line[afterIdx]!);
+    if (!beforeOk || !afterOk) {
+      searchFrom = afterIdx;
+      continue;
+    }
+    let p = afterIdx;
+    while (p < line.length && isWs(line[p]!)) p++;
+    if (p < line.length && line[p] === ":") {
+      let prevEnd = idx;
+      while (prevEnd > 0 && isWs(line[prevEnd - 1]!)) prevEnd--;
+      const attrLen = "attribute".length;
+      const hasAttrPrefix =
+        prevEnd < idx &&
+        prevEnd >= attrLen &&
+        line.slice(prevEnd - attrLen, prevEnd) === "attribute" &&
+        (prevEnd - attrLen === 0 || !isIdentChar(line[prevEnd - attrLen - 1]!));
+      if (!hasAttrPrefix) {
+        searchFrom = afterIdx;
+        continue;
+      }
+      p++;
+      while (p < line.length && isWs(line[p]!)) p++;
+      if (!line.startsWith("String", p)) {
+        searchFrom = afterIdx;
+        continue;
+      }
+      p += "String".length;
+      while (p < line.length && isWs(line[p]!)) p++;
+    }
+    if (p < line.length && line[p] === "=") {
+      p++;
+      while (p < line.length && isWs(line[p]!)) p++;
+      if (p < line.length && line[p] === '"') {
+        const valEnd = line.indexOf('"', p + 1);
+        if (valEnd !== -1) {
+          return line.slice(p + 1, valEnd);
+        }
+      }
+    }
+    searchFrom = afterIdx;
+  }
+  return undefined;
+}
+
 function parseExternalHeaderLine(line: string): AlmExternalLineInfo | null {
-  const match = /\/\/\s*@external\s+(.+)$/.exec(line);
-  if (!match) return null;
-  const attrs = match[1]!;
-  const read = (k: string): string | undefined => {
-    const m = new RegExp(`${k}="([^"]*)"`).exec(attrs);
-    return m ? m[1] : undefined;
-  };
-  const id = read("id");
+  const slashIdx = line.indexOf("//");
+  if (slashIdx === -1) return null;
+  let p = slashIdx + 2;
+  while (p < line.length && isWs(line[p]!)) p++;
+  if (!line.startsWith("@external", p)) return null;
+  p += "@external".length;
+  if (p >= line.length || !isWs(line[p]!)) return null;
+  while (p < line.length && isWs(line[p]!)) p++;
+  if (p >= line.length) return null;
+  const attrs = line.slice(p);
+  const id = readQuotedAttr(attrs, "id");
   if (!id) return null;
   return {
     id,
-    uri: read("uri"),
-    webUrl: read("webUrl"),
-    rev: read("rev"),
+    uri: readQuotedAttr(attrs, "uri"),
+    webUrl: readQuotedAttr(attrs, "webUrl"),
+    rev: readQuotedAttr(attrs, "rev"),
   };
 }
 
@@ -49,12 +130,12 @@ export function getAlmExternalHover(docText: string, lineIndex: number): Hover |
   for (let i = lineIndex; i < Math.min(lines.length, lineIndex + 10); i++) {
     const l = lines[i]!;
     if (!info.status) {
-      const sm = /(?:attribute\s+status\s*:\s*String\s*=|\bstatus\s*=)\s*"([^"]*)"/.exec(l);
-      if (sm) info.status = sm[1];
+      const status = readQuotedField(l, "status");
+      if (status !== undefined) info.status = status;
     }
     if (!info.priority) {
-      const pm = /(?:attribute\s+priority\s*:\s*String\s*=|\bpriority\s*=)\s*"([^"]*)"/.exec(l);
-      if (pm) info.priority = pm[1];
+      const priority = readQuotedField(l, "priority");
+      if (priority !== undefined) info.priority = priority;
     }
   }
 

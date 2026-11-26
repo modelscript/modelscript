@@ -592,6 +592,14 @@ await yargs(rawArgs)
   )
   .command(
     lazy(
+      "search <query>",
+      "Search packages in the Ansatz / ModelScript Package Registry",
+      () => import("./commands/search.js"),
+      "Search",
+    ),
+  )
+  .command(
+    lazy(
       "remote <subcommand>",
       "Manage protocol/API ALM remotes (DOORS Next, Jama, Codebeamer, Polarion, Jira) in modelscript.yaml",
       () => import("./commands/remote.js"),
@@ -1331,6 +1339,46 @@ await yargs(rawArgs)
       "Run advanced algorithm kernels (spectral, vector-fit, mor, fault-tree, ctmc, gr1, cbf-qp, nash, rcpsp, stn, max-flow, partition, topopt, lvs, fba, gibbs, ray-optics, dose)",
       () => import("./commands/algo.js"),
       "AlgoCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "dataset <action> [paths..]",
+      "Compile engineering corpora into m_init-bucketed 4-column Relational Zonotope shards or inspect shards",
+      () => import("./commands/ml-training.js"),
+      "DatasetCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "memory <action> [query]",
+      "Query or inspect the federated/local DiskANN NVMe Vector Memory API",
+      () => import("./commands/ml-training.js"),
+      "MemoryCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "train-llm <action> [target]",
+      "Run Dynamic-m LoRA smoke training, Formal Eval CI promotion gate, or export PyTorch/Slurm HPC bundles",
+      () => import("./commands/ml-training.js"),
+      "TrainLlmCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "model <action> [target]",
+      "List, inspect, or formally promote models in the ModelScript Model Registry",
+      () => import("./commands/ml-training.js"),
+      "ModelCommand",
+    ),
+  )
+  .command(
+    lazy(
+      "runs <action> [runUid]",
+      "List or inspect live Dynamic-m training runs and telemetry time-series",
+      () => import("./commands/ml-training.js"),
+      "RunsCommand",
     ),
   )
   .strictCommands()

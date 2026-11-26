@@ -2729,7 +2729,7 @@ export function renderPscadSvg(
   }
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="${vbW}" height="${vbH}" style="background-color: ${bgColor};">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="100%" height="100%" style="background-color: ${bgColor};">
   <defs>
     <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
       <circle cx="1" cy="1" r="1" fill="${gridDotColor}" />

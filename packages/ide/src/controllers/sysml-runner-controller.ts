@@ -13,32 +13,281 @@ import {
 } from "@modelscript/sdk";
 import {
   coerceSysmlAttributes,
+  collectCstLeaves,
   evaluateSysmlDefinition,
+  findMatchingBraceLeaf,
+  isSysmlIdentLeaf,
+  offsetToLineColumn,
   parseSysmlDefinitions,
+  parseSysmlSource,
+  type CstLeaf,
   type SysmlDefinitionBlock,
+  type SysmlDefinitionKind,
 } from "@modelscript/sysml2";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { getNonce } from "../utils/nonce.js";
 
-const DEF_PATTERN = /^\s*(verification\s+def|requirement\s+def|action\s+def|analysis\s+def)\s+([A-Za-z_][A-Za-z0-9_]*)/;
+interface LspRangeLike {
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+}
+
+interface LspDocumentSymbolLike {
+  name: string;
+  detail?: string | undefined;
+  range?: LspRangeLike | undefined;
+  selectionRange?: LspRangeLike | undefined;
+  location?: { range: LspRangeLike } | undefined;
+  children?: LspDocumentSymbolLike[] | undefined;
+}
+
+interface SysmlDefinitionLocation {
+  kind: SysmlDefinitionKind;
+  name: string;
+  startOffset: number;
+  nameEndOffset: number;
+  bodyStartOffset: number;
+  bodyEndOffset: number;
+}
+
+const RUNNABLE_DEF_FIRST_KEYWORDS = new Set(["action", "analysis", "requirement", "verification"]);
+const RUNNABLE_DEF_KINDS: readonly SysmlDefinitionKind[] = [
+  "verification def",
+  "requirement def",
+  "action def",
+  "analysis def",
+];
+
+function findSysmlDefinitionLocations(source: string): SysmlDefinitionLocation[] {
+  const leaves = collectCstLeaves(parseSysmlSource(source));
+  const locations: SysmlDefinitionLocation[] = [];
+  for (let i = 0; i + 3 < leaves.length; i++) {
+    const firstKw = leaves[i]!.text;
+    if (!RUNNABLE_DEF_FIRST_KEYWORDS.has(firstKw) || leaves[i + 1]!.text !== "def") continue;
+    const nameLeaf = leaves[i + 2]!;
+    if (!isSysmlIdentLeaf(nameLeaf.text)) continue;
+
+    let openIdx = i + 3;
+    if (leaves[openIdx]?.text === ":>") {
+      openIdx++;
+      while (openIdx < leaves.length && leaves[openIdx]!.text !== "{" && leaves[openIdx]!.text !== ";") {
+        openIdx++;
+      }
+    }
+    if (openIdx >= leaves.length || leaves[openIdx]!.text !== "{") continue;
+    const closeIdx = findMatchingBraceLeaf(leaves, openIdx);
+    if (closeIdx < 0) continue;
+
+    locations.push({
+      kind: `${firstKw} def` as SysmlDefinitionKind,
+      name: nameLeaf.text,
+      startOffset: leaves[i]!.start,
+      nameEndOffset: nameLeaf.end,
+      bodyStartOffset: leaves[openIdx]!.start,
+      bodyEndOffset: leaves[closeIdx]!.end,
+    });
+    i = closeIdx;
+  }
+  return locations;
+}
+
+function getSymbolRange(sym: LspDocumentSymbolLike): LspRangeLike | undefined {
+  return sym.selectionRange ?? sym.range ?? sym.location?.range;
+}
+
+function findSymbolInTree(
+  symbols: readonly LspDocumentSymbolLike[] | undefined,
+  targetName: string,
+): LspDocumentSymbolLike | undefined {
+  if (!symbols) return undefined;
+  for (const sym of symbols) {
+    if (sym.name === targetName) return sym;
+    const nested = findSymbolInTree(sym.children, targetName);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+function collectLspRunnableDefinitions(
+  symbols: readonly LspDocumentSymbolLike[] | undefined,
+  document: vscode.TextDocument,
+  out: Array<{ kind: string; name: string; range: vscode.Range }>,
+): void {
+  if (!symbols) return;
+  for (const sym of symbols) {
+    const symRange = getSymbolRange(sym);
+    if (symRange) {
+      const detailLower = (sym.detail ?? "").toLowerCase();
+      let matchedKind: string | undefined = RUNNABLE_DEF_KINDS.find((k) => detailLower.includes(k));
+      if (!matchedKind && symRange.start.line >= 0 && symRange.start.line < document.lineCount) {
+        const lineText = document.lineAt(symRange.start.line).text.trimStart();
+        const tokens = lineText.split(/\s+/);
+        const kwIdx = tokens[0] === "abstract" ? 1 : 0;
+        const firstKw = tokens[kwIdx];
+        if (firstKw && RUNNABLE_DEF_FIRST_KEYWORDS.has(firstKw) && tokens[kwIdx + 1] === "def") {
+          matchedKind = `${firstKw} def`;
+        }
+      }
+      if (matchedKind) {
+        out.push({
+          kind: matchedKind,
+          name: sym.name,
+          range: new vscode.Range(
+            symRange.start.line,
+            symRange.start.character,
+            symRange.end.line,
+            symRange.end.character,
+          ),
+        });
+      }
+    }
+    if (sym.children && sym.children.length > 0) {
+      collectLspRunnableDefinitions(sym.children, document, out);
+    }
+  }
+}
+
+async function fetchDocumentSymbols(
+  client: LanguageClient | undefined,
+  uri: string,
+): Promise<LspDocumentSymbolLike[] | undefined> {
+  if (!client) return undefined;
+  try {
+    const res = await client.sendRequest<LspDocumentSymbolLike[]>("textDocument/documentSymbol", {
+      textDocument: { uri },
+    });
+    return Array.isArray(res) ? res : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function findAttributeValueSpanInLeaves(
+  leaves: readonly CstLeaf[],
+  attrName: string,
+  minOffset = 0,
+  maxOffset = Number.POSITIVE_INFINITY,
+): { start: number; end: number } | undefined {
+  for (let i = 0; i + 1 < leaves.length; i++) {
+    const leaf = leaves[i]!;
+    if (leaf.start < minOffset) continue;
+    if (leaf.start > maxOffset) break;
+    if (leaf.text !== "attribute" || leaves[i + 1]!.text !== attrName) continue;
+
+    let scan = i + 2;
+    if (leaves[scan]?.text === ":") {
+      scan++;
+      while (
+        scan < leaves.length &&
+        leaves[scan]!.start <= maxOffset &&
+        leaves[scan]!.text !== "=" &&
+        leaves[scan]!.text !== ":=" &&
+        leaves[scan]!.text !== ";" &&
+        leaves[scan]!.text !== "{"
+      ) {
+        scan++;
+      }
+    }
+    if (scan < leaves.length && (leaves[scan]!.text === "=" || leaves[scan]!.text === ":=")) {
+      let semi = scan + 1;
+      while (semi < leaves.length && leaves[semi]!.start <= maxOffset && leaves[semi]!.text !== ";") {
+        semi++;
+      }
+      if (semi < leaves.length && semi > scan + 1) {
+        return { start: leaves[scan + 1]!.start, end: leaves[semi - 1]!.end };
+      }
+    }
+  }
+  return undefined;
+}
+
+function findAttributeValueSpanInSlice(
+  text: string,
+  rangeStart: number,
+  rangeEnd: number,
+): { start: number; end: number } | undefined {
+  const slice = text.slice(rangeStart, rangeEnd);
+  let eqIdx = slice.indexOf(":=");
+  let opLen = 2;
+  if (eqIdx < 0) {
+    eqIdx = slice.indexOf("=");
+    opLen = 1;
+  }
+  if (eqIdx < 0) return undefined;
+  let valStart = eqIdx + opLen;
+  while (valStart < slice.length && (slice[valStart] === " " || slice[valStart] === "\t")) {
+    valStart++;
+  }
+  const semiIdx = slice.indexOf(";", valStart);
+  let valEnd = semiIdx >= 0 ? semiIdx : slice.length;
+  while (valEnd > valStart && (slice[valEnd - 1] === " " || slice[valEnd - 1] === "\t" || slice[valEnd - 1] === "\r")) {
+    valEnd--;
+  }
+  if (valEnd <= valStart) return undefined;
+  return { start: rangeStart + valStart, end: rangeStart + valEnd };
+}
 
 class SysmlDefinitionCodeLensProvider implements vscode.CodeLensProvider {
-  provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
+  constructor(private readonly _client?: LanguageClient) {}
+
+  async provideCodeLenses(document: vscode.TextDocument): Promise<vscode.CodeLens[]> {
+    const source = document.getText();
+    const pkg = parseSysmlDefinitions(source);
+    const locations = findSysmlDefinitionLocations(source);
+    const locByName = new Map<string, SysmlDefinitionLocation>();
+    for (const loc of locations) {
+      if (!locByName.has(loc.name)) {
+        locByName.set(loc.name, loc);
+      }
+    }
+
     const lenses: vscode.CodeLens[] = [];
-    for (let i = 0; i < document.lineCount; i++) {
-      const line = document.lineAt(i);
-      const match = DEF_PATTERN.exec(line.text);
-      if (!match) continue;
-      const defKind = match[1] ?? "definition";
-      const defName = match[2] ?? "unnamed";
-      const range = new vscode.Range(i, 0, i, line.text.length);
+    if (pkg.definitions.length > 0) {
+      let lspSymbols: LspDocumentSymbolLike[] | undefined;
+      for (const def of pkg.definitions) {
+        const loc = locByName.get(def.name);
+        let range: vscode.Range | undefined;
+        if (loc) {
+          const startPos = document.positionAt(loc.startOffset);
+          const line = document.lineAt(startPos.line);
+          range = new vscode.Range(startPos.line, 0, startPos.line, line.text.length);
+        } else {
+          lspSymbols ??= await fetchDocumentSymbols(this._client, document.uri.toString());
+          const sym = findSymbolInTree(lspSymbols, def.name);
+          const symRange = sym ? getSymbolRange(sym) : undefined;
+          if (symRange) {
+            range = new vscode.Range(
+              symRange.start.line,
+              symRange.start.character,
+              symRange.end.line,
+              symRange.end.character,
+            );
+          }
+        }
+        if (!range) continue;
+        lenses.push(
+          new vscode.CodeLens(range, {
+            title: `$(play) Run & Visualize (${def.name})`,
+            tooltip: `Compile/evaluate SysML v2 ${def.kind} '${def.name}' in-browser`,
+            command: "modelscript.runSysmlDefinition",
+            arguments: [document.uri.toString(), def.name],
+          }),
+        );
+      }
+      return lenses;
+    }
+
+    const lspSymbols = await fetchDocumentSymbols(this._client, document.uri.toString());
+    const lspDefs: Array<{ kind: string; name: string; range: vscode.Range }> = [];
+    collectLspRunnableDefinitions(lspSymbols, document, lspDefs);
+    for (const def of lspDefs) {
       lenses.push(
-        new vscode.CodeLens(range, {
-          title: `$(play) Run & Visualize (${defName})`,
-          tooltip: `Compile/evaluate SysML v2 ${defKind} '${defName}' in-browser`,
+        new vscode.CodeLens(def.range, {
+          title: `$(play) Run & Visualize (${def.name})`,
+          tooltip: `Compile/evaluate SysML v2 ${def.kind} '${def.name}' in-browser`,
           command: "modelscript.runSysmlDefinition",
-          arguments: [document.uri.toString(), defName],
+          arguments: [document.uri.toString(), def.name],
         }),
       );
     }
@@ -627,11 +876,21 @@ function buildVisualizerHtml(defName: string, result: KernelResult, numericInput
 </html>`;
 }
 
-function findDefinitionLine(source: string, defName: string): number {
-  const lines = source.split(/\r?\n/);
-  const re = new RegExp(`\\b(?:verification|requirement|action|analysis)\\s+def\\s+${defName}\\b`);
-  for (let i = 0; i < lines.length; i++) {
-    if (re.test(lines[i] ?? "")) return i;
+function findDefinitionLine(
+  source: string,
+  defName: string,
+  locations?: readonly SysmlDefinitionLocation[],
+  lspSymbols?: readonly LspDocumentSymbolLike[],
+): number {
+  const locs = locations ?? findSysmlDefinitionLocations(source);
+  const match = locs.find((loc) => loc.name === defName);
+  if (match) {
+    return offsetToLineColumn(source, match.startOffset).line;
+  }
+  const sym = findSymbolInTree(lspSymbols, defName);
+  const symRange = sym ? getSymbolRange(sym) : undefined;
+  if (symRange) {
+    return symRange.start.line;
   }
   return 0;
 }
@@ -643,7 +902,10 @@ export function registerSysmlRunnerCommands(
   const ascDiagnostics = vscode.languages.createDiagnosticCollection("modelscript-assemblyscript");
   const sysmlSelector: vscode.DocumentSelector = [{ language: "sysml2" }, { pattern: "**/*.sysml" }];
 
-  const lensDisp = vscode.languages.registerCodeLensProvider(sysmlSelector, new SysmlDefinitionCodeLensProvider());
+  const lensDisp = vscode.languages.registerCodeLensProvider(
+    sysmlSelector,
+    new SysmlDefinitionCodeLensProvider(client),
+  );
   const defDisp = vscode.languages.registerDefinitionProvider(sysmlSelector, new SysmlWasmDefinitionProvider());
 
   // Native VS Code TestController for SysML v2 verification/requirement/action definitions
@@ -658,9 +920,11 @@ export function registerSysmlRunnerCommands(
         testController.items.delete(fileId);
         return;
       }
+      const locations = findSysmlDefinitionLocations(source);
+      const lspSymbols = locations.length === 0 ? await fetchDocumentSymbols(client, fileId) : undefined;
       const fileItem = testController.createTestItem(fileId, vscode.workspace.asRelativePath(uri, false), uri);
       for (const def of pkg.definitions) {
-        const line = findDefinitionLine(source, def.name);
+        const line = findDefinitionLine(source, def.name, locations, lspSymbols);
         const child = testController.createTestItem(`${fileId}#${def.name}`, def.name, uri);
         child.range = new vscode.Range(line, 0, line, 80);
         fileItem.children.add(child);
@@ -805,14 +1069,34 @@ export function registerSysmlRunnerCommands(
           const edit = new vscode.WorkspaceEdit();
           let updatedCount = 0;
 
+          const leaves = collectCstLeaves(parseSysmlSource(text));
+          const defLoc =
+            leaves.length > 0
+              ? findSysmlDefinitionLocations(text).find((loc) => loc.name === targetDef.name)
+              : undefined;
+          const lspSymbols = leaves.length === 0 ? await fetchDocumentSymbols(client, targetUri.toString()) : undefined;
+          const defSym = findSymbolInTree(lspSymbols, targetDef.name);
+
           for (const [k, v] of Object.entries(msg.parameters)) {
-            const attrRe = new RegExp(`(\\battribute\\s+${k}\\s*(?::[^=]+)?=\\s*)([^;]+)(;)`);
-            const m = attrRe.exec(text);
-            if (!m || m.index === undefined) continue;
-            const valStart = m.index + (m[1]?.length ?? 0);
-            const valEnd = valStart + (m[2]?.length ?? 0);
+            let span: { start: number; end: number } | undefined;
+            if (leaves.length > 0) {
+              span =
+                (defLoc
+                  ? findAttributeValueSpanInLeaves(leaves, k, defLoc.bodyStartOffset, defLoc.bodyEndOffset)
+                  : undefined) ?? findAttributeValueSpanInLeaves(leaves, k);
+            } else if (lspSymbols) {
+              const attrSym = findSymbolInTree(defSym?.children, k) ?? findSymbolInTree(lspSymbols, k);
+              const symRange = attrSym?.range ?? attrSym?.location?.range;
+              if (symRange) {
+                const startOff = doc.offsetAt(new vscode.Position(symRange.start.line, symRange.start.character));
+                const endOff = doc.offsetAt(new vscode.Position(symRange.end.line, symRange.end.character));
+                span = findAttributeValueSpanInSlice(text, startOff, endOff);
+              }
+            }
+
+            if (!span) continue;
             const formatted = typeof v === "string" ? `"${v}"` : String(v);
-            edit.replace(targetUri, new vscode.Range(doc.positionAt(valStart), doc.positionAt(valEnd)), formatted, {
+            edit.replace(targetUri, new vscode.Range(doc.positionAt(span.start), doc.positionAt(span.end)), formatted, {
               label: `Update ${k} = ${formatted}`,
               needsConfirmation: true,
             });

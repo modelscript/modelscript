@@ -2,12 +2,14 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelSvgStage,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import {
@@ -67,6 +69,43 @@ export const QifPanel: React.FC<LanguagePanelProps> = ({
     }
     return map;
   }, [computed.doc]);
+
+  type CharRow = (typeof chars)[number];
+  const charColumns = useMemo<PanelDataGridColumn<CharRow>[]>(
+    () => [
+      { key: "id", label: "ID", mono: true, sortValue: (c) => c.id, render: (c) => <strong>{c.id}</strong> },
+      { key: "name", label: "Name", sortValue: (c) => c.name ?? "", render: (c) => c.name },
+      {
+        key: "nominalValue",
+        label: "Nominal",
+        align: "right",
+        mono: true,
+        sortValue: (c) => c.nominalValue ?? 0,
+        render: (c) => c.nominalValue ?? "—",
+      },
+      {
+        key: "measured",
+        label: "Measured",
+        align: "right",
+        mono: true,
+        sortValue: (c) => actualsByCharId.get(c.id)?.measuredValue ?? 0,
+        render: (c) => actualsByCharId.get(c.id)?.measuredValue ?? "—",
+      },
+      {
+        key: "status",
+        label: "Status",
+        sortValue: (c) => actualsByCharId.get(c.id)?.status ?? "",
+        render: (c) => {
+          const status = actualsByCharId.get(c.id)?.status;
+          const color =
+            status === "FAIL" ? "var(--ms-danger)" : status === "PASS" ? "var(--ms-success)" : "var(--ms-text-2)";
+          return <span style={{ fontWeight: 600, color }}>{status ?? "—"}</span>;
+        },
+      },
+    ],
+    [actualsByCharId],
+  );
+
   const kpis = useMemo<PanelKpiItem[]>(() => {
     const actuals = computed.doc?.actuals ?? [];
     const pass = actuals.filter((a) => a.status === "PASS").length;
@@ -96,7 +135,7 @@ export const QifPanel: React.FC<LanguagePanelProps> = ({
             )}
             {mode === "artifact" && host.openInAnsatzEditor && code && (
               <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "qif", title)}>
-                Open in Ansatz Editor
+                Open in Editor
               </PanelButton>
             )}
           </>
@@ -124,49 +163,13 @@ export const QifPanel: React.FC<LanguagePanelProps> = ({
       )}
 
       {activeTab === "characteristics" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>ID</th>
-                <th style={{ padding: "5px 6px" }}>Name</th>
-                <th style={{ padding: "5px 6px" }}>Nominal</th>
-                <th style={{ padding: "5px 6px" }}>Measured</th>
-                <th style={{ padding: "5px 6px" }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {chars.slice(0, 200).map((c, idx) => {
-                const actual = actualsByCharId.get(c.id);
-                return (
-                  <tr
-                    key={`${c.id}-${idx}`}
-                    style={{ borderBottom: "1px solid var(--ms-divider)", fontFamily: "var(--ms-font-mono)" }}
-                  >
-                    <td style={{ padding: "4px 6px", fontWeight: 600 }}>{c.id}</td>
-                    <td style={{ padding: "4px 6px", fontFamily: "var(--ms-font-sans)" }}>{c.name}</td>
-                    <td style={{ padding: "4px 6px" }}>{c.nominalValue ?? "—"}</td>
-                    <td style={{ padding: "4px 6px" }}>{actual?.measuredValue ?? "—"}</td>
-                    <td
-                      style={{
-                        padding: "4px 6px",
-                        fontWeight: 600,
-                        color:
-                          actual?.status === "FAIL"
-                            ? "var(--ms-danger)"
-                            : actual?.status === "PASS"
-                              ? "var(--ms-success)"
-                              : "var(--ms-text-2)",
-                      }}
-                    >
-                      {actual?.status ?? "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={chars}
+          columns={charColumns}
+          rowKey={(c, idx) => `${c.id}-${idx}`}
+          searchPlaceholder="Filter QIF characteristics by ID, name, or status…"
+          emptyMessage="No QIF characteristics parsed."
+        />
       )}
     </PanelShell>
   );

@@ -225,3 +225,154 @@ test("POST /api/v1/mcp handles Streamable HTTP MCP initialize request", async ()
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+import { getOrCreateDiskAnnService } from "../src/services/diskann-memory.js";
+
+test("POST /api/v1/ai/ansatz/chat wires computeDial (certified-m32 vs fast-m0) to DiskANN memory injection and strict orgId RBAC", async () => {
+  const originalFetch = globalThis.fetch;
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ansatz-diskann-chat-"));
+  const database = new LibraryDatabase(path.join(tmpDir, "db.sqlite"));
+  const storage = new LibraryStorage(path.join(tmpDir, "storage"));
+  const app = createApp({ database, storage });
+
+  const capturedPayloads: Array<{
+    messages?: Array<{ role: string; content: string }>;
+    reasoning_effort?: string;
+  }> = [];
+
+  try {
+    const diskann = getOrCreateDiskAnnService(database, path.join(storage.dataDir, "ml-memory"));
+    diskann.upsertChunk({
+      sourceKind: "package-symbol",
+      sourceUri: "pkg://@ms/thermal-pack@1.0.0/HeatCapacitor.mo",
+      packageName: "@ms/thermal-pack",
+      packageVersion: "1.0.0",
+      dialect: "modelica",
+      tenantScope: "public",
+      formalVerified: true,
+      symbolTags: ["HeatCapacitor", "HeatPort_a"],
+      content: "model HeatCapacitor uses HeatPort_a with equation C * der(T) = port.Q_flow;",
+    });
+    diskann.upsertChunk({
+      sourceKind: "package-symbol",
+      sourceUri: "pkg://@ms/thermal-pack@2.0.0/HeatCapacitor.mo",
+      packageName: "@ms/thermal-pack",
+      packageVersion: "2.0.0",
+      dialect: "modelica",
+      tenantScope: "public",
+      formalVerified: true,
+      symbolTags: ["HeatCapacitor", "ThermalPort"],
+      content: "model HeatCapacitor v2 uses ThermalPort with nonlinear Cp(T);",
+    });
+    diskann.upsertChunk({
+      sourceKind: "social-post",
+      sourceUri: "org://42/proprietary-heat-capacitor",
+      dialect: "modelica",
+      tenantScope: "org",
+      orgId: 42,
+      formalVerified: true,
+      symbolTags: ["HeatCapacitor", "Org42SecretGain"],
+      content: "Org42 proprietary HeatCapacitor calibration uses Org42SecretGain = 9.8142.",
+    });
+
+    globalThis.fetch = (async (_url, init) => {
+      if (init?.body && typeof init.body === "string") {
+        capturedPayloads.push(JSON.parse(init.body));
+      }
+      const sse = [
+        `data: ${JSON.stringify({ model: "qwen2.5-coder:32b", choices: [{ delta: { content: "Grounded reply." } }] })}\n\n`,
+        "data: [DONE]\n\n",
+      ].join("");
+      return new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    }) as typeof fetch;
+
+    const customProvider = {
+      protocol: "openai" as const,
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKey: "local",
+      model: "qwen2.5-coder:32b",
+    };
+
+    // 1. certified-m32 with packagePins -> queries DiskANN, injects grounded context, emits SSE memory_retrieval, excludes v2 and Org42 secret
+    const certifiedRes = await request(app)
+      .post("/api/v1/ai/ansatz/chat")
+      .send({
+        messages: [{ role: "user", content: "How does HeatCapacitor connect HeatPort_a and Org42SecretGain?" }],
+        context: { fileName: "ThermalBench.mo", dialect: "modelica", code: "model ThermalBench end ThermalBench;" },
+        computeDial: "certified-m32",
+        packagePins: { "@ms/thermal-pack": "1.0.0" },
+        providerMode: "custom",
+        customProvider,
+      })
+      .expect(200);
+
+    const sseEvents = certifiedRes.text
+      .split("\n\n")
+      .map((block) => block.trim())
+      .filter((block) => block.startsWith("data:"))
+      .map((block) => JSON.parse(block.slice(5).trim()) as Record<string, unknown>);
+
+    const memEvent = sseEvents.find((e) => e["type"] === "memory_retrieval");
+    assert.ok(memEvent, "Expected memory_retrieval SSE event for computeDial=certified-m32");
+    assert.equal(memEvent["computeDial"], "certified-m32");
+    assert.equal(memEvent["backend"], "diskann");
+    assert.equal(typeof memEvent["latencyMs"], "number");
+    assert.ok(Number(memEvent["chunkCount"]) >= 1);
+    const sources = memEvent["sources"] as Array<{ sourceUri: string; packageVersion?: string }>;
+    assert.ok(sources.some((s) => s.sourceUri === "pkg://@ms/thermal-pack@1.0.0/HeatCapacitor.mo"));
+    assert.equal(
+      sources.some((s) => s.sourceUri === "pkg://@ms/thermal-pack@2.0.0/HeatCapacitor.mo"),
+      false,
+      "Semver pin must exclude v2.0.0 chunk",
+    );
+    assert.equal(
+      sources.some((s) => s.sourceUri === "org://42/proprietary-heat-capacitor"),
+      false,
+      "Unauthenticated/public caller must not see Org 42 private chunk",
+    );
+
+    const certifiedSysMsg = capturedPayloads[0]?.messages?.find((m) => m.role === "system")?.content ?? "";
+    assert.match(certifiedSysMsg, /\[Verified DiskANN Engineering Memory\]/);
+    assert.match(certifiedSysMsg, /C \* der\(T\) = port\.Q_flow/);
+    assert.doesNotMatch(certifiedSysMsg, /Org42SecretGain/);
+    assert.equal(capturedPayloads[0]?.reasoning_effort, "high");
+
+    // 2. fast-m0 -> skips DiskANN lookup completely (0 ms overhead, no memory_retrieval SSE event, no memory block)
+    const fastRes = await request(app)
+      .post("/api/v1/ai/ansatz/chat")
+      .send({
+        messages: [{ role: "user", content: "How does HeatCapacitor connect HeatPort_a?" }],
+        context: { fileName: "ThermalBench.mo", dialect: "modelica", code: "model ThermalBench end ThermalBench;" },
+        computeDial: "fast-m0",
+        providerMode: "custom",
+        customProvider,
+      })
+      .expect(200);
+
+    assert.doesNotMatch(fastRes.text, /"type":"memory_retrieval"/);
+    const fastSysMsg = capturedPayloads[1]?.messages?.find((m) => m.role === "system")?.content ?? "";
+    assert.doesNotMatch(fastSysMsg, /\[Verified DiskANN Engineering Memory\]/);
+    assert.equal(capturedPayloads[1]?.reasoning_effort, "none");
+
+    // 3. Matching Org 42 caller via /api/v1/ai/chat retrieves Org 42 private chunk cleanly
+    const orgRes = await request(app)
+      .post("/api/v1/ai/chat")
+      .set("x-modelscript-org-id", "42")
+      .send({
+        messages: [{ role: "user", content: "What is Org42SecretGain for HeatCapacitor?" }],
+        context: { fileName: "ThermalBench.mo", dialect: "modelica", code: "model ThermalBench end ThermalBench;" },
+        computeDial: "certified-m32",
+        providerMode: "custom",
+        customProvider,
+      })
+      .expect(200);
+
+    assert.match(orgRes.text, /org:\/\/42\/proprietary-heat-capacitor/);
+    const orgSysMsg = capturedPayloads[2]?.messages?.find((m) => m.role === "system")?.content ?? "";
+    assert.match(orgSysMsg, /Org42SecretGain = 9\.8142/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    database.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});

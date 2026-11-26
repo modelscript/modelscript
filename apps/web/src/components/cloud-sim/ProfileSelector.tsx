@@ -11,7 +11,7 @@ import {
   ZapIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { ComputeProfileInfo, UserWalletInfo } from "../../api";
 import Box from "../Box";
 import { ProfileCard, ProfileGrid, StyledInput } from "./styles";
@@ -25,6 +25,7 @@ export interface ProfileSelectorProps {
   selectedProfile: string;
   setSelectedProfile: (val: string) => void;
   wallet: UserWalletInfo | null;
+  walletLoading?: boolean | undefined;
   currentProfile?: ComputeProfileInfo | undefined;
   recommendedProfileId?: string | undefined;
   sbatchPreview?: string | undefined;
@@ -40,6 +41,7 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
   selectedProfile,
   setSelectedProfile,
   wallet,
+  walletLoading = false,
   currentProfile,
   recommendedProfileId,
   sbatchPreview,
@@ -47,13 +49,42 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
 }) => {
   const [showSbatch, setShowSbatch] = useState(false);
   const [copiedSbatch, setCopiedSbatch] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleCopySbatch = () => {
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleCopySbatch = async () => {
     if (!sbatchPreview) return;
-    void navigator.clipboard.writeText(sbatchPreview);
-    setCopiedSbatch(true);
-    setTimeout(() => setCopiedSbatch(false), 2000);
+    setCopyError(null);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API unavailable");
+      }
+      await navigator.clipboard.writeText(sbatchPreview);
+      setCopiedSbatch(true);
+      if (copyTimerRef.current !== null) {
+        clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = setTimeout(() => {
+        setCopiedSbatch(false);
+        copyTimerRef.current = null;
+      }, 2000);
+    } catch {
+      setCopiedSbatch(false);
+      setCopyError("Copy failed — select text manually");
+    }
   };
+
+  // Minimum escrow matches backend quota-guard.ts: 3 minutes = 0.05 hours
+  const minEscrow = (currentProfile?.costCreditsPerHour ?? 0) * 0.05;
+  const isInsufficientBalance = wallet !== null && wallet.creditBalance < minEscrow;
 
   return (
     <Box display="flex" flexDirection="column" gap={3}>
@@ -102,12 +133,25 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
           </span>
         </Box>
 
-        <ProfileGrid>
+        <ProfileGrid role="radiogroup" aria-label="SLURM Compute Profiles">
           {profiles.map((p) => {
             const isSelected = selectedProfile === p.id;
             const isRecommended = recommendedProfileId === p.id;
             return (
-              <ProfileCard key={p.id} $selected={isSelected} onClick={() => setSelectedProfile(p.id)}>
+              <ProfileCard
+                key={p.id}
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={0}
+                $selected={isSelected}
+                onClick={() => setSelectedProfile(p.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedProfile(p.id);
+                  }
+                }}
+              >
                 <Box display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
                   <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
                     <Text fontWeight="bold" fontSize="13px" color="var(--color-fg-default)">
@@ -181,58 +225,93 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
         </ProfileGrid>
       </Box>
 
-      {/* Wallet Summary */}
-      {wallet && (
-        <Box
-          p={3}
-          borderRadius="10px"
-          bg="var(--color-canvas-subtle, #161b22)"
-          border="1px solid var(--color-border-default, #30363d)"
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          flexWrap="wrap"
-          gap={2}
-        >
-          <Box display="flex" alignItems="center" gap={2}>
-            <FlameIcon size={16} fill="var(--color-accent-emphasis, #06b6d4)" />
+      {/* Wallet Summary (always rendered with loading/sign-in state when wallet is null) */}
+      <Box
+        p={3}
+        borderRadius="10px"
+        bg={isInsufficientBalance ? "rgba(248, 81, 73, 0.08)" : "var(--color-canvas-subtle, #161b22)"}
+        border={`1px solid ${
+          isInsufficientBalance ? "var(--color-danger-fg, #f85149)" : "var(--color-border-default, #30363d)"
+        }`}
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        flexWrap="wrap"
+        gap={2}
+      >
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+          <FlameIcon size={16} fill={isInsufficientBalance ? "#f85149" : "var(--color-accent-emphasis, #06b6d4)"} />
+          {wallet ? (
             <Text fontSize="13px" color="var(--color-fg-default)">
               Wallet Credit Balance: <strong>{wallet.creditBalance.toFixed(2)} credits</strong>
+              {isInsufficientBalance && (
+                <span style={{ color: "var(--color-danger-fg, #f85149)", marginLeft: "8px", fontWeight: 600 }}>
+                  (Below min escrow — top up required)
+                </span>
+              )}
             </Text>
-          </Box>
-          <Box display="flex" alignItems="center" gap={3}>
-            <Text fontSize="12px" color="var(--color-fg-muted)">
-              Est. Minimum Cost:{" "}
-              <strong style={{ color: "var(--color-fg-default)" }}>
-                ~{((currentProfile?.costCreditsPerHour ?? 0) / 60 || 0.1).toFixed(2)} credits
-              </strong>
+          ) : walletLoading ? (
+            <Text fontSize="13px" color="var(--color-fg-muted)">
+              Loading wallet credit balance...
             </Text>
-            {sbatchPreview && (
-              <button
-                type="button"
-                onClick={() => setShowSbatch((v) => !v)}
-                style={{
-                  background: "transparent",
-                  border: "1px solid var(--color-border-default)",
-                  borderRadius: "6px",
-                  padding: "4px 9px",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  color: "var(--color-fg-default)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  fontFamily: "var(--font-mono, monospace)",
-                }}
-              >
-                <CodeIcon size={12} />
-                <span>{showSbatch ? "Hide #SBATCH Script" : "Preview #SBATCH Script"}</span>
-              </button>
-            )}
-          </Box>
+          ) : (
+            <Text fontSize="13px" color="var(--color-fg-muted)">
+              Sign in to view wallet balance and launch cloud HPC jobs.
+            </Text>
+          )}
         </Box>
-      )}
+        <Box display="flex" alignItems="center" gap={3} flexWrap="wrap">
+          <Text fontSize="12px" color="var(--color-fg-muted)">
+            Min Escrow (3 min):{" "}
+            <strong
+              style={{ color: isInsufficientBalance ? "var(--color-danger-fg, #f85149)" : "var(--color-fg-default)" }}
+            >
+              ~{minEscrow.toFixed(2)} credits
+            </strong>
+          </Text>
+          {isInsufficientBalance && (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-topup"))}
+              style={{
+                background: "rgba(139, 92, 246, 0.16)",
+                border: "1px solid rgba(139, 92, 246, 0.45)",
+                borderRadius: "6px",
+                padding: "4px 10px",
+                fontSize: "11px",
+                fontWeight: 700,
+                cursor: "pointer",
+                color: "var(--color-accent-purple, #a855f7)",
+              }}
+            >
+              Top Up Credits
+            </button>
+          )}
+          {sbatchPreview && (
+            <button
+              type="button"
+              onClick={() => setShowSbatch((v) => !v)}
+              style={{
+                background: "transparent",
+                border: "1px solid var(--color-border-default)",
+                borderRadius: "6px",
+                padding: "4px 9px",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: "pointer",
+                color: "var(--color-fg-default)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                fontFamily: "var(--font-mono, monospace)",
+              }}
+            >
+              <CodeIcon size={12} />
+              <span>{showSbatch ? "Hide #SBATCH Script" : "Preview #SBATCH Script"}</span>
+            </button>
+          )}
+        </Box>
+      </Box>
 
       {/* Expandable sbatch Preview */}
       {showSbatch && sbatchPreview && (
@@ -256,26 +335,33 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
                 Generated Slurm Batch Manifest (job.sbatch)
               </Text>
             </Box>
-            <button
-              type="button"
-              onClick={handleCopySbatch}
-              style={{
-                background: "transparent",
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "6px",
-                padding: "2px 8px",
-                fontSize: "11px",
-                fontWeight: 600,
-                cursor: "pointer",
-                color: "var(--color-fg-default)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              {copiedSbatch ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
-              <span>{copiedSbatch ? "Copied" : "Copy sbatch"}</span>
-            </button>
+            <Box display="flex" alignItems="center" gap={2}>
+              {copyError && (
+                <Text fontSize="11px" color="var(--color-danger-fg, #f85149)">
+                  {copyError}
+                </Text>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleCopySbatch()}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--color-border-default)",
+                  borderRadius: "6px",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  color: "var(--color-fg-default)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                {copiedSbatch ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                <span>{copiedSbatch ? "Copied" : "Copy sbatch"}</span>
+              </button>
+            </Box>
           </Box>
           <pre
             style={{

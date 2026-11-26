@@ -17,7 +17,6 @@ import {
   SplitSectionGeometryPasses,
   StencilSectionCapQuad,
 } from "@modelscript/editor/workbench/cad-viewer/HeroCadMaterials";
-import { tessellateScadSource } from "@modelscript/editor/workbench/hooks/useAnsatzEngine";
 import { getCadComponents } from "@modelscript/editor/workbench/util/lsp-bridge";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
@@ -1587,9 +1586,17 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
           }
           if (resolvedSource.trim().length > 0) {
             if (isScadDialect) {
-              const { components: scadComps } = tessellateScadSource(resolvedSource);
-              if (scadComps.length > 0) {
-                rawMeshes = await cadComponentsToRawMeshes(scadComps);
+              try {
+                const lspComps = await getCadComponents(
+                  viewConfig?.uri || "inmemory://model.scad",
+                  undefined,
+                  resolvedSource,
+                );
+                if (Array.isArray(lspComps) && lspComps.length > 0) {
+                  rawMeshes = await cadComponentsToRawMeshes(lspComps as CadComponent[]);
+                }
+              } catch {
+                // Handled by empty-mesh error fallback below
               }
             } else {
               const clientMeshes = tessellateStepBRepClient(resolvedSource);
@@ -1608,23 +1615,6 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
               (window as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
             }
           }, 1500);
-
-          // Async upgrade for OpenSCAD models using full @modelscript/scad WASM Manifold evaluator
-          if (isScadDialect && resolvedSource.trim().length > 0) {
-            void getCadComponents(viewConfig?.uri || "inmemory://model.scad", undefined, resolvedSource)
-              .then(async (lspComps) => {
-                if (!active || !Array.isArray(lspComps) || lspComps.length === 0) return;
-                const upgraded = await cadComponentsToRawMeshes(lspComps as CadComponent[]);
-                if (active && upgraded.length > 0) {
-                  setError(null);
-                  applyRawMeshes(upgraded);
-                  (window as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
-                }
-              })
-              .catch(() => {
-                // Keep fast client tessellation if WASM LSP worker is unavailable
-              });
-          }
         } else if (isScadDialect && resolvedSource.trim().length > 0 && active) {
           let resolved = false;
           try {

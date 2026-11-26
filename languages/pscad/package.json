@@ -54,6 +54,22 @@
     "./ui": {
       "types": "./dist/src/ui/Ieee2800Card.d.ts",
       "default": "./dist/src/ui/Ieee2800Card.js"
+    },
+    "./ui/PscadComponentWizardModal": {
+      "types": "./dist/src/ui/PscadComponentWizardModal.d.ts",
+      "default": "./dist/src/ui/PscadComponentWizardModal.js"
+    },
+    "./ui/PscadLineConstantsPanel": {
+      "types": "./dist/src/ui/PscadLineConstantsPanel.d.ts",
+      "default": "./dist/src/ui/PscadLineConstantsPanel.js"
+    },
+    "./ui/PscadScriptSegmentsPanel": {
+      "types": "./dist/src/ui/PscadScriptSegmentsPanel.d.ts",
+      "default": "./dist/src/ui/PscadScriptSegmentsPanel.js"
+    },
+    "./ui/PscadSweepPanel": {
+      "types": "./dist/src/ui/PscadSweepPanel.d.ts",
+      "default": "./dist/src/ui/PscadSweepPanel.js"
     }
   },
   "files": [
@@ -87,7 +103,8 @@
   "peerDependencies": {
     "@modelscript/design-tokens": "workspace:*",
     "@modelscript/diagram": "workspace:*",
-    "react": "^18.0.0 || ^19.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "recharts": "^3.7.0"
   },
   "peerDependenciesMeta": {
     "@modelscript/design-tokens": {
@@ -97,6 +114,9 @@
       "optional": true
     },
     "react": {
+      "optional": true
+    },
+    "recharts": {
       "optional": true
     }
   },

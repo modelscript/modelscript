@@ -13,6 +13,7 @@ import semver from "semver";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
 import { matchesPackagePattern, requireAuth } from "../middleware/auth-middleware.js";
+import { publishRateLimiter } from "../middleware/rate-limiter.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { ConflictError, type LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
@@ -52,6 +53,7 @@ function getSafeUploadPath(filePath: string | undefined): string | null {
 }
 
 function isValidPackageName(name: string): boolean {
+  if (name.includes("..")) return false;
   return /^(@[a-zA-Z0-9_.-]+\/)?[a-zA-Z0-9_.-]+$/.test(name);
 }
 
@@ -148,8 +150,13 @@ export function publishRouter(
       }
     }
 
+    const expectedOidcAudience = (process.env["OIDC_AUDIENCE"] || "modelscript-registry")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
     if (candidateOidcToken) {
-      const oidcVerify = await verifyOidcToken(candidateOidcToken);
+      const oidcVerify = await verifyOidcToken(candidateOidcToken, { expectedAudience: expectedOidcAudience });
       if (!oidcVerify.valid || !oidcVerify.attestation) {
         res.status(401).json({
           error: `OIDC attestation verification failed: ${oidcVerify.error || "Invalid token"} (M3012)`,
@@ -179,12 +186,14 @@ export function publishRouter(
     requireAuth(req, res, () => {
       // If user also provided an explicit X-Package-OIDC-Token, verify and attach attestation
       if (oidcHeader) {
-        verifyOidcToken(oidcHeader).then((v) => {
-          if (v.valid && v.attestation) {
-            (req as Request & { oidcAttestation?: OidcAttestation }).oidcAttestation = v.attestation;
-          }
-          next();
-        });
+        verifyOidcToken(oidcHeader, { expectedAudience: expectedOidcAudience })
+          .then((v) => {
+            if (v.valid && v.attestation) {
+              (req as Request & { oidcAttestation?: OidcAttestation }).oidcAttestation = v.attestation;
+            }
+            next();
+          })
+          .catch(() => next());
       } else {
         next();
       }
@@ -201,10 +210,27 @@ export function publishRouter(
    */
   router.post(
     ["/:name/:version", "/:scope/:name/:version"],
+    publishRateLimiter,
     authenticatePublishRequest,
     enforceExportCompliance(() => database),
     upload.single("file"),
     async (req: Request, res: Response): Promise<void> => {
+      // Guarantee uploaded temp file cleanup even on early 400/403/409 validation returns
+      const uploadedTempPath = getSafeUploadPath(req.file?.path);
+      const cleanupUploadedTemp = () => {
+        if (uploadedTempPath && fs.existsSync(uploadedTempPath)) {
+          try {
+            fs.unlinkSync(uploadedTempPath);
+          } catch {
+            // Best-effort cleanup of temporary upload archive
+          }
+        }
+      };
+      if (uploadedTempPath) {
+        res.once("finish", cleanupUploadedTemp);
+        res.once("close", cleanupUploadedTemp);
+      }
+
       const { name, version, baseName } = resolvePackageParams(req);
 
       // 1. Validate parameters
@@ -698,6 +724,30 @@ export function publishRouter(
       return;
     }
 
+    // Immutability & supply-chain protection: disallow permanent unpublish after 72h or if packages depend on it
+    const reqUser = req.user as { username?: string; account_type?: string; role?: string } | undefined;
+    const isAdmin = req.user?.username === "admin" || reqUser?.account_type === "admin" || reqUser?.role === "admin";
+    const release = database.getLibraryRelease(name, version);
+    if (!isAdmin && release?.published_at) {
+      const ageMs = Date.now() - new Date(release.published_at).getTime();
+      const UNPUBLISH_WINDOW_MS = 72 * 60 * 60 * 1000;
+      if (Number.isFinite(ageMs) && ageMs > UNPUBLISH_WINDOW_MS) {
+        res.status(403).json({
+          error: `Package version '${name}@${version}' was published more than 72 hours ago and cannot be permanently unpublished. Use 'msx yank' or 'msx deprecate' instead.`,
+        });
+        return;
+      }
+    }
+    if (!isAdmin) {
+      const dependents = database.getReverseDependencies(name);
+      if (dependents.length > 0) {
+        res.status(409).json({
+          error: `Cannot permanently unpublish '${name}@${version}' because ${dependents.length} package(s) depend on '${name}'. Use 'msx yank' or 'msx deprecate' instead.`,
+        });
+        return;
+      }
+    }
+
     // Remove from database
     database.deleteLibrary(name, version);
 
@@ -717,7 +767,7 @@ export function publishRouter(
       try {
         const author = database.getUserFederationInfo(req.user.id);
         if (author && author.actor_url) {
-          const publicUrl = process.env["PUBLIC_URL"] || "https://hub.modelscript.org";
+          const publicUrl = process.env["PUBLIC_URL"] || "https://ansatz.social";
           const packageId = `${publicUrl}/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}`;
           const tombstoneActivity = {
             "@context": "https://www.w3.org/ns/activitystreams",

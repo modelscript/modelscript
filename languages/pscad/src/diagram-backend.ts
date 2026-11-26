@@ -421,11 +421,20 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
 
         const activeSection = (params as { className?: string }).className;
         for (const rawAction of params.actions) {
-          const action =
+          let action =
             activeSection && !(rawAction as { section?: string }).section
               ? { ...rawAction, section: activeSection }
               : rawAction;
           if (action.type === "addComponent") {
+            // Library-tree drops arrive qualified (e.g. `PSCAD.master:resistor`); map to the native definition name.
+            const stripped = action.className.replace(/^__LIB__:/, "").replace(/^PSCAD\./i, "");
+            const nativeSchema = getMasterComponentSchema(stripped);
+            if (nativeSchema) {
+              action = { ...action, className: nativeSchema.className };
+            } else if (stripped !== action.className) {
+              action = { ...action, className: stripped };
+            }
+
             const dropEdits = computePscadComponentDropEdits({
               docText: workingText,
               rawClassName: action.className,

@@ -328,4 +328,142 @@ Job Id: 4242.cluster.internal
     assert.ok(lChunk2 !== null);
     assert.strictEqual(lChunk2.chunk, "Line 3\n");
   });
+
+  // ── 4. Security & Billing Hardening Tests ────────────────────────────
+  await t.test(
+    "generatePbsScript and KubeRayDriver strip dangerous env vars (LD_PRELOAD, PATH, BASH_ENV)",
+    async () => {
+      const dangerousEnv = {
+        LD_PRELOAD: "/tmp/evil.so",
+        PATH: "/tmp/evil-bin",
+        BASH_ENV: "/tmp/evil-hook.sh",
+        SAFE_SOLVER_MODE: "high-precision",
+      };
+
+      const pbsScript = generatePbsScript({
+        jobId: "pbs_env_1",
+        name: "PbsEnvSanitize",
+        command: "echo",
+        args: ["ok"],
+        workingDir: tmpDir,
+        resources: {},
+        env: dangerousEnv,
+      });
+
+      assert.ok(!pbsScript.includes("LD_PRELOAD"), "PBS script must strip LD_PRELOAD");
+      assert.ok(!pbsScript.includes("export PATH="), "PBS script must strip PATH");
+      assert.ok(!pbsScript.includes("BASH_ENV"), "PBS script must strip BASH_ENV");
+      assert.ok(
+        pbsScript.includes('export SAFE_SOLVER_MODE="high-precision"'),
+        "PBS script must preserve safe env vars",
+      );
+
+      let capturedRayEnv: Record<string, string> | undefined;
+      const rayDriver = new KubeRayDriver({
+        baseUrl: "http://ray-cluster:8265",
+        fetchFn: async (_input, init) => {
+          const body = JSON.parse(String(init?.body || "{}")) as {
+            runtime_env?: { env_vars?: Record<string, string> };
+          };
+          capturedRayEnv = body.runtime_env?.env_vars;
+          return new Response(JSON.stringify({ submission_id: "ray-env-1" }), { status: 200 });
+        },
+      });
+
+      await rayDriver.submit({
+        jobId: "ray_env_1",
+        name: "RayEnvSanitize",
+        command: "python",
+        args: ["solve.py"],
+        workingDir: path.join(tmpDir, "ray_env"),
+        resources: {},
+        env: dangerousEnv,
+      });
+
+      assert.ok(capturedRayEnv, "Should capture Ray runtime_env.env_vars");
+      assert.strictEqual(capturedRayEnv["LD_PRELOAD"], undefined, "KubeRayDriver must strip LD_PRELOAD");
+      assert.strictEqual(capturedRayEnv["PATH"], undefined, "KubeRayDriver must strip PATH");
+      assert.strictEqual(capturedRayEnv["BASH_ENV"], undefined, "KubeRayDriver must strip BASH_ENV");
+      assert.strictEqual(
+        capturedRayEnv["SAFE_SOLVER_MODE"],
+        "high-precision",
+        "KubeRayDriver must preserve safe env vars",
+      );
+    },
+  );
+
+  await t.test("PbsDriver.pollStatus throws on transient qstat failure instead of returning COMPLETED", async () => {
+    const pbsDriver = new PbsDriver({
+      executor: async (cmd) => {
+        if (cmd === "qstat") {
+          throw new Error("qstat: Connection refused (pbs_server restarting)");
+        }
+        return { stdout: "", stderr: "" };
+      },
+    });
+
+    await assert.rejects(
+      () => pbsDriver.pollStatus("4242.cluster.internal"),
+      /Connection refused/,
+      "Transient qstat error must propagate instead of silently reporting COMPLETED",
+    );
+  });
+
+  await t.test(
+    "PbsDriver and KubeRayDriver do not fabricate 60s billing when start_time or walltime is 0",
+    async () => {
+      const profile = getComputeProfile("standard");
+
+      const pbsDriver = new PbsDriver({
+        executor: async () => ({
+          stdout: `
+Job Id: 5050.cluster.internal
+    job_state = C
+    Exit_status = 1
+`,
+          stderr: "",
+        }),
+      });
+
+      const pbsMetrics = await pbsDriver.getMetrics("5050.cluster.internal", tmpDir, profile);
+      assert.strictEqual(pbsMetrics.wallClockSeconds, 0, "PBS must not fabricate 60s walltime when missing");
+      assert.strictEqual(pbsMetrics.costCredits, 0, "PBS must not bill credits for 0s walltime");
+
+      const rayDriver = new KubeRayDriver({
+        baseUrl: "http://ray-cluster:8265",
+        fetchFn: async () =>
+          new Response(
+            JSON.stringify({
+              submission_id: "ray-zero-time",
+              status: "FAILED",
+              start_time: 0,
+              end_time: 0,
+            }),
+            { status: 200 },
+          ),
+      });
+
+      const rayMetrics = await rayDriver.getMetrics("ray-zero-time", tmpDir, profile);
+      assert.strictEqual(rayMetrics.wallClockSeconds, 0, "KubeRay must not fabricate 60s when start_time === 0");
+      assert.strictEqual(rayMetrics.costCredits, 0, "KubeRay must not bill credits when start_time === 0");
+    },
+  );
+
+  await t.test("KubeRayDriver rejects path-traversal nativeJobId", async () => {
+    const rayDriver = new KubeRayDriver({
+      baseUrl: "http://ray-cluster:8265",
+      fetchFn: async () => new Response("should not be called", { status: 200 }),
+    });
+
+    await assert.rejects(
+      () => rayDriver.pollStatus("../../admin"),
+      /Invalid KubeRay nativeJobId/,
+      "pollStatus must reject path-traversal nativeJobId",
+    );
+    assert.throws(
+      () => rayDriver.getLogPath("../../admin", tmpDir),
+      /Invalid KubeRay nativeJobId/,
+      "getLogPath must reject path-traversal nativeJobId",
+    );
+  });
 });

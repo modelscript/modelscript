@@ -47,6 +47,7 @@ export interface ObjectStager {
     jobId: string,
     inputFiles: Record<string, string>, // { "deck.inp": "/local/path/deck.inp" }
     expectedOutputs: string[], // ["result.vtu", "scalars.json", "output.log"]
+    options?: { maxWalltimeSeconds?: number | undefined },
   ): Promise<JobStagingManifest>;
 
   /** Reads an incremental log chunk starting at byteOffset from remote object storage */

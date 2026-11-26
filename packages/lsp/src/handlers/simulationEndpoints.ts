@@ -20,7 +20,7 @@ import {
   simulateDroneReachability,
   Variability,
 } from "@modelscript/runtime";
-import { ArenaSimulator, simulateArena, simulateArenaAsync, Tet4Mesher } from "@modelscript/simulate";
+import { ArenaSimulator, simulateArena, simulateArenaAsync, StepMesher, Tet4Mesher } from "@modelscript/simulate";
 import { LspContext } from "../lsp-context.js";
 import {
   detectPolyglotPlan,
@@ -465,12 +465,38 @@ export function registerSimulationEndpoints(context: LspContext) {
               }
             }
           }
+          const openFortranDocs: Array<{ uri: string; text: string }> = [];
           if (typeof context.documents?.all === "function") {
             for (const openDoc of context.documents.all()) {
               if (/\.(pscx|pslx|pswx|psmx)($|\?|#)/i.test(openDoc.uri)) {
                 registerPscadSource(openDoc.uri, openDoc.getText());
               } else if (/\.(f90|f95|f03|f08|f77|for|f)($|\?|#)/i.test(openDoc.uri)) {
-                registerPscadFortranSource(openDoc.uri, openDoc.getText());
+                const fText = openDoc.getText();
+                registerPscadFortranSource(openDoc.uri, fText);
+                openFortranDocs.push({ uri: openDoc.uri, text: fText });
+              }
+            }
+          }
+          if (openFortranDocs.length > 0 && /<sourcefile\b/i.test(effectiveText)) {
+            const { lintFortranSource } = await import("@modelscript/fortran");
+            const sourceFileRe = /<sourcefile\b[^>]*\bpath="([^"]+)"/gi;
+            let sfMatch: RegExpExecArray | null;
+            while ((sfMatch = sourceFileRe.exec(effectiveText)) !== null) {
+              const refName = sfMatch[1]!.split(/[\\/]/).pop()?.toLowerCase();
+              if (!refName) continue;
+              const matchedDoc = openFortranDocs.find(
+                (d) => d.uri.split(/[\\/]/).pop()?.split("?")[0]?.toLowerCase() === refName,
+              );
+              if (!matchedDoc) continue;
+              const lintErr = lintFortranSource(matchedDoc.text).find((d) => d.severity === "error");
+              if (lintErr) {
+                const loc = lintErr.line ? ` (line ${lintErr.line})` : "";
+                return {
+                  t: [],
+                  y: [],
+                  states: [],
+                  error: `Fortran compilation failed in '${sfMatch[1]}'${loc}: ${lintErr.message}`,
+                };
               }
             }
           }
@@ -708,23 +734,158 @@ export function registerSimulationEndpoints(context: LspContext) {
                 cadUri = extractNamedCallAttr(doc.getText(), "cad", ["uri"], true);
               }
             }
+            let mesh: ReturnType<typeof Tet4Mesher.createBoxMesh> | undefined;
             if (cadUri) {
               context.connection.console.info(`[simulate] Resolved CAD geometry reference: ${cadUri}`);
+              try {
+                // Resolve relative CAD URI against the active Modelica document URI
+                let resolvedCadUri = cadUri;
+                if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(cadUri) && !cadUri.startsWith("/")) {
+                  const baseUri = doc?.uri ?? params.uri;
+                  if (baseUri) {
+                    const lastSlash = baseUri.lastIndexOf("/");
+                    if (lastSlash >= 0) {
+                      resolvedCadUri = baseUri.slice(0, lastSlash + 1) + cadUri;
+                    }
+                  }
+                }
+
+                // 1. Try open workspace documents & virtual filesystem
+                let cadData: string | Uint8Array | undefined =
+                  context.documents.get(resolvedCadUri)?.getText() ??
+                  context.documents.get(cadUri)?.getText() ??
+                  context.state.sharedContext?.fs?.read?.(resolvedCadUri) ??
+                  context.state.sharedContext?.fs?.read?.(cadUri);
+
+                // 2. Fallback to Node filesystem when available
+                if (!cadData && typeof process !== "undefined" && Boolean(process.versions?.node)) {
+                  try {
+                    const fsMod = await import("node:fs");
+                    const pathMod = await import("node:path");
+                    const fileUrlMod = await import("node:url");
+                    const candidatePaths: string[] = [];
+                    for (const u of [resolvedCadUri, cadUri]) {
+                      if (u.startsWith("file://")) {
+                        try {
+                          candidatePaths.push(fileUrlMod.fileURLToPath(u));
+                        } catch {
+                          candidatePaths.push(u.replace(/^file:\/\//i, ""));
+                        }
+                      } else if (pathMod.isAbsolute(u)) {
+                        candidatePaths.push(u);
+                      } else {
+                        const baseUri = doc?.uri ?? params.uri;
+                        if (baseUri?.startsWith("file://")) {
+                          try {
+                            const baseDir = pathMod.dirname(fileUrlMod.fileURLToPath(baseUri));
+                            candidatePaths.push(pathMod.resolve(baseDir, u));
+                          } catch {
+                            // ignore
+                          }
+                        }
+                        candidatePaths.push(pathMod.resolve(u));
+                      }
+                    }
+                    for (const p of candidatePaths) {
+                      if (fsMod.existsSync(p)) {
+                        cadData = new Uint8Array(fsMod.readFileSync(p));
+                        break;
+                      }
+                    }
+                  } catch {
+                    // Node fs unavailable in browser worker
+                  }
+                }
+
+                if (cadData && cadData.length > 0) {
+                  const lowerCad = cadUri.toLowerCase();
+                  const mesherOpts = {
+                    resolution: 12,
+                    order: "quadratic" as const,
+                    patchRules: {
+                      tags: {
+                        minX: "fixed_hub",
+                        maxX: "motor_mount",
+                      },
+                    },
+                  };
+
+                  if (lowerCad.endsWith(".stl")) {
+                    const stlText = typeof cadData === "string" ? cadData : new TextDecoder().decode(cadData);
+                    const stlVerts: number[] = [];
+                    const stlInds: number[] = [];
+                    const vRegex =
+                      /vertex\s+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s+([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/gi;
+                    let vm: RegExpExecArray | null;
+                    while ((vm = vRegex.exec(stlText)) !== null) {
+                      stlVerts.push(parseFloat(vm[1]!), parseFloat(vm[2]!), parseFloat(vm[3]!));
+                      stlInds.push(stlInds.length);
+                    }
+                    if (stlInds.length < 3 && typeof cadData !== "string" && cadData.byteLength >= 84) {
+                      // Binary STL fallback
+                      const dv = new DataView(cadData.buffer, cadData.byteOffset, cadData.byteLength);
+                      const triCount = dv.getUint32(80, true);
+                      if (84 + triCount * 50 <= cadData.byteLength) {
+                        for (let t = 0; t < triCount; t++) {
+                          const off = 84 + t * 50 + 12;
+                          for (let v = 0; v < 3; v++) {
+                            const vo = off + v * 12;
+                            stlVerts.push(
+                              dv.getFloat32(vo, true),
+                              dv.getFloat32(vo + 4, true),
+                              dv.getFloat32(vo + 8, true),
+                            );
+                            stlInds.push(stlInds.length);
+                          }
+                        }
+                      }
+                    }
+                    if (stlInds.length >= 3) {
+                      const res = StepMesher.meshStepToTetrahedra(
+                        { vertices: new Float32Array(stlVerts), indices: new Uint32Array(stlInds) },
+                        mesherOpts,
+                      );
+                      if (res.mesh.numElements > 0) {
+                        mesh = res.mesh;
+                      }
+                    }
+                  } else {
+                    const res = StepMesher.meshStepToTetrahedra(cadData, mesherOpts);
+                    if (res.mesh.numElements > 0) {
+                      mesh = res.mesh;
+                    }
+                  }
+
+                  if (mesh) {
+                    context.connection.console.info(
+                      `[simulate] Meshed CAD geometry (${cadUri}): ${mesh.numNodes} nodes, ${mesh.numElements} Tet10 elements.`,
+                    );
+                  }
+                }
+              } catch (cadErr) {
+                context.connection.console.warn(
+                  `[simulate] CAD meshing failed for '${cadUri}', falling back to box mesh: ${
+                    cadErr instanceof Error ? cadErr.message : String(cadErr)
+                  }`,
+                );
+              }
             }
 
-            const mesh = Tet4Mesher.createBoxMesh({
-              width: 0.12,
-              height: 0.015,
-              depth: 0.015,
-              nx: 12,
-              ny: 2,
-              nz: 2,
-              order: "quadratic",
-              faceTags: {
-                minX: "fixed_hub",
-                maxX: "motor_mount",
-              },
-            });
+            if (!mesh) {
+              mesh = Tet4Mesher.createBoxMesh({
+                width: 0.12,
+                height: 0.015,
+                depth: 0.015,
+                nx: 12,
+                ny: 2,
+                nz: 2,
+                order: "quadratic",
+                faceTags: {
+                  minX: "fixed_hub",
+                  maxX: "motor_mount",
+                },
+              });
+            }
             const aluminum = { E: 69e9, nu: 0.33, rho: 2700, yieldStrength: 270e6 };
             feaParticipant = new FeaCoSimParticipant("3d-fea", "StructuralArm", mesh, aluminum, {
               fixedTag: "fixed_hub",

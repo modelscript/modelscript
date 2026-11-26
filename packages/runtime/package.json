@@ -287,7 +287,8 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist/**",
-    "build/*.wasm"
+    "!dist/**/*.tsbuildinfo",
+    "build/release.wasm"
   ],
   "scripts": {
     "asbuild": "node scripts/build-as.js",

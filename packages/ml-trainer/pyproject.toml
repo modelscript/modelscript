@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modelscript-trainer"
+version = "0.1.0"
+description = "Tier 2 GPU Training Kernels for ModelScript Dynamic-m Relational Zonotope Small LLMs (PyTorch + optional Triton)"
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+torch = [
+  "torch>=2.2.0",
+  "safetensors>=0.4.0",
+]
+triton = [
+  "torch>=2.2.0",
+  "triton>=2.2.0",
+  "safetensors>=0.4.0",
+]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+msx-train-dynamic-m = "modelscript_trainer.train_dynamic_m:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["modelscript_trainer*"]

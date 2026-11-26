@@ -443,6 +443,10 @@ export class CanvasPointerFSM {
     }
   }
 
+  public getPortSnapRadius(): number {
+    return this.portSnapRadius;
+  }
+
   private getEdgeHitTolerance(): number {
     return Math.max(4, Math.min(32, 8 / Math.max(0.1, this.zoom)));
   }
@@ -848,29 +852,18 @@ export class CanvasPointerFSM {
     }
 
     if (this.mode === "wiring" && this.wiringPreview) {
-      const targetHit = this.scene.hitTestPort(evt.u, evt.v, this.portSnapRadius);
-      let snappedTarget = targetHit
+      const srcNodeId = this.wiringPreview.sourceNodeId;
+      const srcPortId = this.wiringPreview.sourcePortId;
+      const targetHit = this.scene.hitTestPort(evt.u, evt.v, this.portSnapRadius, undefined, (nodeId, portId) => {
+        if (nodeId === srcNodeId && portId === srcPortId) return false;
+        if (this.callbacks.validateConnection) {
+          return this.callbacks.validateConnection(srcNodeId, srcPortId, nodeId, portId);
+        }
+        return true;
+      });
+      const snappedTarget = targetHit
         ? { nodeId: targetHit.nodeId, portId: targetHit.portId, x: targetHit.x, y: targetHit.y }
         : null;
-      if (
-        snappedTarget &&
-        snappedTarget.nodeId === this.wiringPreview.sourceNodeId &&
-        snappedTarget.portId === this.wiringPreview.sourcePortId
-      ) {
-        snappedTarget = null;
-      }
-      if (
-        snappedTarget &&
-        this.callbacks.validateConnection &&
-        !this.callbacks.validateConnection(
-          this.wiringPreview.sourceNodeId,
-          this.wiringPreview.sourcePortId,
-          snappedTarget.nodeId,
-          snappedTarget.portId,
-        )
-      ) {
-        snappedTarget = null;
-      }
       this.wiringPreview = {
         ...this.wiringPreview,
         currentPoint: snappedTarget ? { x: snappedTarget.x, y: snappedTarget.y } : { x: evt.u, y: evt.v },

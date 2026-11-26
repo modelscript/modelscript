@@ -46,6 +46,7 @@ interface BotAccount {
   bot_scopes?: string | null | undefined;
   bot_last_used_at?: string | null | undefined;
   has_bot_api_key?: boolean | undefined;
+  has_api_key?: boolean | undefined;
   bot_api_key?: string | null | undefined;
 }
 
@@ -62,11 +63,15 @@ const AVAILABLE_SCOPES = [
 export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
   const toast = useToast();
   const [bots, setBots] = useState<BotAccount[]>([]);
+  const [isLoadingBots, setIsLoadingBots] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmingDeleteBotId, setConfirmingDeleteBotId] = useState<number | null>(null);
+  const [deletingBotId, setDeletingBotId] = useState<number | null>(null);
   const [confirmingRotateBotId, setConfirmingRotateBotId] = useState<number | null>(null);
   const [rotatingBotId, setRotatingBotId] = useState<number | null>(null);
   const [editingBotId, setEditingBotId] = useState<number | null>(null);
   const [savingBotEdit, setSavingBotEdit] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newBotToken, setNewBotToken] = useState<string | null>(null);
 
@@ -77,6 +82,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
   const [editSystemPrompt, setEditSystemPrompt] = useState("");
   const [editModel, setEditModel] = useState("gemini-1.5-flash");
   const [editApiKey, setEditApiKey] = useState("");
+  const [clearEditApiKey, setClearEditApiKey] = useState(false);
   const [editEndpointUrl, setEditEndpointUrl] = useState("");
   const [editScopes, setEditScopes] = useState<string[]>([]);
 
@@ -97,9 +103,28 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
   ]);
 
   useEffect(() => {
+    let cancelled = false;
+    setIsLoadingBots(true);
+    setLoadError(null);
     getBots()
-      .then((data) => setBots(data || []))
-      .catch(() => {});
+      .then((data) => {
+        if (!cancelled) {
+          setBots(data || []);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setLoadError(getApiErrorMessage(err, "Failed to load registered bots."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingBots(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const startEditingBot = (bot: BotAccount) => {
@@ -112,6 +137,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
     setEditSystemPrompt(bot.bot_system_prompt || "");
     setEditModel(bot.bot_model || "gemini-1.5-flash");
     setEditApiKey("");
+    setClearEditApiKey(false);
     setEditEndpointUrl(bot.bot_endpoint_url || "");
     const rawScopes = typeof bot.bot_scopes === "string" ? bot.bot_scopes : "social:read,social:write";
     setEditScopes(
@@ -134,7 +160,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
         system_prompt: editSystemPrompt,
         model: editModel,
         endpoint_url: editEndpointUrl.trim(),
-        ...(editApiKey.trim() ? { api_key: editApiKey.trim() } : {}),
+        ...(clearEditApiKey ? { api_key: "" } : editApiKey.trim() ? { api_key: editApiKey.trim() } : {}),
       };
       const res = await updateBot(botId, payload);
       setBots((prev) =>
@@ -149,12 +175,15 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                 bot_system_prompt: payload.system_prompt,
                 bot_model: payload.model,
                 bot_endpoint_url: payload.endpoint_url,
-                has_bot_api_key: Boolean(editApiKey.trim()) || b.has_bot_api_key,
+                has_bot_api_key: clearEditApiKey ? false : Boolean(editApiKey.trim()) || b.has_bot_api_key,
+                has_api_key: clearEditApiKey ? false : Boolean(editApiKey.trim()) || b.has_api_key,
+                bot_api_key: clearEditApiKey ? null : b.bot_api_key,
               }
             : b,
         ),
       );
       setEditingBotId(null);
+      setClearEditApiKey(false);
       toast.success("Bot configuration updated.");
     } catch (err: unknown) {
       const msg = getApiErrorMessage(err, "Failed to update bot");
@@ -183,23 +212,27 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
   };
 
   const handleDeleteBot = async (bot: BotAccount) => {
-    setConfirmingDeleteBotId(null);
+    if (deletingBotId === bot.id) return;
+    setDeletingBotId(bot.id);
     setError(null);
     try {
       await deleteBot(bot.id);
+      setConfirmingDeleteBotId(null);
       setBots((prev) => prev.filter((b) => b.id !== bot.id));
       toast.success(`Bot @${bot.username} deleted.`);
     } catch (err: unknown) {
       const msg = getApiErrorMessage(err, "Failed to delete bot");
       setError(msg);
       toast.error(msg);
+    } finally {
+      setDeletingBotId(null);
     }
   };
 
   return (
     <>
       <Header>
-        <CircleIconButton onClick={onBack} style={{ marginRight: "8px" }}>
+        <CircleIconButton onClick={onBack} aria-label="Back" style={{ marginRight: "8px" }}>
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         Developer / Bots
@@ -209,8 +242,28 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
           Manage your third-party bots and API applications. Bots can interact with the API on your behalf.
         </DetailSubtitle>
 
+        {loadError && (
+          <Box
+            role="alert"
+            mb={3}
+            p={3}
+            style={{
+              background: "var(--color-danger-subtle)",
+              color: "var(--color-danger-fg)",
+              borderRadius: "6px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <AlertIcon size={16} />
+            <Text fontSize="14px">{loadError}</Text>
+          </Box>
+        )}
+
         {error && (
           <Box
+            role="alert"
             mb={3}
             p={3}
             style={{
@@ -229,6 +282,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
 
         {newBotToken && (
           <Box
+            role="status"
             mb={4}
             p={3}
             style={{
@@ -238,11 +292,20 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
               borderRadius: "8px",
             }}
           >
-            <Box display="flex" alignItems="center" gap={2} mb={1}>
-              <CheckCircleIcon size={18} />
-              <Text fontWeight="bold" display="block">
-                Bot API Token Issued
-              </Text>
+            <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} mb={1}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <CheckCircleIcon size={18} />
+                <Text fontWeight="bold" display="block">
+                  Bot API Token Issued
+                </Text>
+              </Box>
+              <SecondaryButton
+                type="button"
+                style={{ padding: "4px 10px", fontSize: "12px" }}
+                onClick={() => setNewBotToken(null)}
+              >
+                Dismiss
+              </SecondaryButton>
             </Box>
             <Text fontSize="14px" display="block" mb={2}>
               Save this API token now. You will not be able to see it again:
@@ -264,9 +327,13 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
               <span>{newBotToken}</span>
               <button
                 type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(newBotToken);
-                  toast.success("Bot token copied to clipboard!");
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(newBotToken);
+                    toast.success("Bot token copied to clipboard!");
+                  } catch {
+                    toast.error("Failed to copy bot token to clipboard.");
+                  }
                 }}
                 style={{
                   background: "var(--color-accent-emphasis)",
@@ -291,13 +358,16 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
           <DetailTitle style={{ fontWeight: "bold", display: "block", marginBottom: "8px" }}>
             Your Registered Bots
           </DetailTitle>
-          {bots.length === 0 ? (
+          {isLoadingBots ? (
+            <Text color="var(--color-fg-muted)">Loading your bots...</Text>
+          ) : bots.length === 0 ? (
             <Text color="var(--color-fg-muted)">You haven&apos;t registered any bots yet.</Text>
           ) : (
             <Box display="flex" flexDirection="column" gap={2}>
               {bots.map((bot) => {
                 const isEditing = editingBotId === bot.id;
-                const hasApiKey = Boolean(bot.has_bot_api_key || bot.bot_api_key);
+                const isDeleting = deletingBotId === bot.id;
+                const hasApiKey = Boolean(bot.has_bot_api_key || bot.has_api_key || bot.bot_api_key);
                 return (
                   <Box
                     key={bot.id}
@@ -410,6 +480,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                           <Box display="flex" alignItems="center" gap={2}>
                             <SecondaryButton
                               type="button"
+                              disabled={isDeleting}
                               style={{ padding: "6px 12px", fontSize: "13px" }}
                               onClick={() => setConfirmingDeleteBotId(null)}
                             >
@@ -417,15 +488,19 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                             </SecondaryButton>
                             <DangerButton
                               type="button"
+                              disabled={isDeleting}
                               style={{ padding: "6px 14px", fontSize: "13px" }}
                               onClick={() => handleDeleteBot(bot)}
                             >
-                              Confirm Delete?
+                              {isDeleting ? "Deleting…" : "Confirm Delete?"}
                             </DangerButton>
                           </Box>
                         ) : (
                           <CircleIconButton
+                            type="button"
+                            aria-label="Delete bot"
                             title="Delete Bot"
+                            disabled={isDeleting}
                             onClick={() => {
                               setConfirmingRotateBotId(null);
                               setConfirmingDeleteBotId(bot.id);
@@ -495,9 +570,39 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                           type="password"
                           placeholder={hasApiKey ? "•••••••• (configured)" : "sk-... or AIzaSy..."}
                           value={editApiKey}
-                          onChange={(e) => setEditApiKey(e.target.value)}
+                          onChange={(e) => {
+                            setEditApiKey(e.target.value);
+                            if (e.target.value.trim()) {
+                              setClearEditApiKey(false);
+                            }
+                          }}
+                          disabled={clearEditApiKey}
                           autoComplete="off"
                         />
+                        {hasApiKey && (
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              fontSize: "13px",
+                              marginBottom: "12px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={clearEditApiKey}
+                              onChange={(e) => {
+                                setClearEditApiKey(e.target.checked);
+                                if (e.target.checked) {
+                                  setEditApiKey("");
+                                }
+                              }}
+                            />
+                            <span>Clear Stored API Key</span>
+                          </label>
+                        )}
 
                         <FormLabel>Custom Endpoint Base URL</FormLabel>
                         <FormInput
@@ -539,7 +644,10 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                           <SecondaryButton
                             type="button"
                             style={{ padding: "8px 16px", fontSize: "13px" }}
-                            onClick={() => setEditingBotId(null)}
+                            onClick={() => {
+                              setEditingBotId(null);
+                              setClearEditApiKey(false);
+                            }}
                           >
                             Cancel
                           </SecondaryButton>
@@ -568,6 +676,8 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
           <form
             onSubmit={async (e) => {
               e.preventDefault();
+              if (isCreating) return;
+              setIsCreating(true);
               setError(null);
               setNewBotToken(null);
               try {
@@ -582,7 +692,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                   api_key: botApiKey || undefined,
                   endpoint_url: botEndpointUrl || undefined,
                 });
-                setBots([res.bot, ...bots]);
+                setBots((prev) => [res.bot, ...prev]);
                 setNewBotToken(res.token);
                 setBotUsername("");
                 setBotDisplayName("");
@@ -593,6 +703,8 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                 setBotEndpointUrl("");
               } catch (err: unknown) {
                 setError(getApiErrorMessage(err, "Failed to create bot"));
+              } finally {
+                setIsCreating(false);
               }
             }}
           >
@@ -705,8 +817,8 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
             </Box>
 
             <Box mt={3} mb={3}>
-              <PrimaryButton type="submit" disabled={botScopes.length === 0}>
-                Create Autonomous Bot
+              <PrimaryButton type="submit" disabled={isCreating || botScopes.length === 0}>
+                {isCreating ? "Creating…" : "Create Autonomous Bot"}
               </PrimaryButton>
             </Box>
           </form>

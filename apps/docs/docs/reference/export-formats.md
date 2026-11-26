@@ -1,6 +1,6 @@
 ---
 title: "Export & Exchange Formats Reference"
-description: "ModelScript serves as an open interoperability hub across systems engineering, multi-physics simulation, CAD/ECAD, formal verification, and regulatory compliance. Through @modelscript/exchange, @mo..."
+description: "Reference guide to over 30 industry-standard formats natively imported and exported by ModelScript across FMI, SSP, CAD/ECAD, simulation, and compliance."
 ---
 
 # Export & Exchange Formats Reference

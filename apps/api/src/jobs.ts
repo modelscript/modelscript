@@ -4,8 +4,12 @@ import { fork, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+import type { LibraryDatabase } from "./database.js";
 import type { HpcUsageMetrics } from "./services/hpc/hpc-types.js";
+import type { LibraryStorage } from "./storage.js";
 
 export type JobStatus = "pending" | "processing" | "completed" | "failed";
 
@@ -632,4 +636,131 @@ export class JobQueue extends EventEmitter {
       }
     }
   }
+}
+
+export interface ReconcilePendingJobsOptions {
+  /** Override path to the publish-worker script (useful in tests). */
+  workerScript?: string | undefined;
+  /** Job priority for reconciled jobs (default: "low"). */
+  priority?: JobPriority | undefined;
+}
+
+export interface ReconcilePendingJobsResult {
+  scanned: number;
+  enqueued: string[];
+  skipped: number;
+}
+
+/**
+ * Boot-time reconciliation helper that scans published package releases across
+ * the database and storage, finds any release lacking indexed classes/symbols,
+ * and re-enqueues it into the `JobQueue` for `publish-worker` indexing.
+ */
+export async function reconcilePendingJobs(
+  database: LibraryDatabase,
+  storage: LibraryStorage,
+  jobQueue: JobQueue,
+  options?: ReconcilePendingJobsOptions,
+): Promise<ReconcilePendingJobsResult> {
+  const result: ReconcilePendingJobsResult = {
+    scanned: 0,
+    enqueued: [],
+    skipped: 0,
+  };
+
+  if (!database.isOpen()) {
+    return result;
+  }
+
+  // Collect unique (name, version) pairs from both DB and storage
+  const candidates = new Map<string, { name: string; version: string }>();
+
+  try {
+    const dbPackages = database.listPackages();
+    for (const pkg of dbPackages) {
+      const pkgRow = database.getPackage(pkg.name);
+      if (pkgRow) {
+        for (const v of database.getPackageVersions(pkgRow.id)) {
+          candidates.set(`${pkg.name}@${v.version}`, { name: pkg.name, version: v.version });
+        }
+      }
+      for (const rel of database.getLibraryReleases(pkg.name)) {
+        candidates.set(`${rel.library_name}@${rel.library_version}`, {
+          name: rel.library_name,
+          version: rel.library_version,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("[JobQueue] Error scanning database packages during boot reconciliation:", err);
+  }
+
+  try {
+    for (const name of storage.list()) {
+      for (const version of storage.versions(name)) {
+        candidates.set(`${name}@${version}`, { name, version });
+      }
+    }
+  } catch (err) {
+    console.warn("[JobQueue] Error scanning storage packages during boot reconciliation:", err);
+  }
+
+  const ext = import.meta.url.endsWith(".ts") ? ".ts" : ".js";
+  const workerScript = options?.workerScript ?? fileURLToPath(new URL(`./publish-worker${ext}`, import.meta.url));
+  const priority: JobPriority = options?.priority ?? "low";
+
+  for (const [jobKey, { name, version }] of candidates.entries()) {
+    result.scanned++;
+
+    // Skip if already queued or running
+    const existing = jobQueue.getStatus(jobKey);
+    if (existing?.status === "pending" || existing?.status === "processing") {
+      result.skipped++;
+      continue;
+    }
+
+    // Skip if already indexed with classes in the database
+    if (database.getClassCount(name, version) > 0) {
+      result.skipped++;
+      continue;
+    }
+
+    // Ensure the archive exists in storage before attempting extraction/re-enqueue
+    const archiveExists = storage.exists(name, version) || (await storage.existsAsync(name, version));
+    if (!archiveExists) {
+      result.skipped++;
+      continue;
+    }
+
+    try {
+      const libraryPath = await storage.extractLibrary(name, version);
+
+      // Skip if pre-compiled binary symbol index artifacts already exist on disk
+      const hasSymbolsBin = fs.existsSync(path.join(libraryPath, "symbols.bin"));
+      const hasMsidx = fs.existsSync(path.join(libraryPath, ".modelscript", "index.msidx"));
+      if (hasSymbolsBin || hasMsidx) {
+        result.skipped++;
+        continue;
+      }
+
+      jobQueue.enqueueProcess(
+        jobKey,
+        workerScript,
+        {
+          name,
+          version,
+          libraryPath,
+          storageDir: storage.dataDir,
+          dbDir: database.dbDir,
+        },
+        { priority },
+      );
+      result.enqueued.push(jobKey);
+    } catch (err) {
+      console.warn(`[JobQueue] Failed to reconcile pending job for "${jobKey}":`, err);
+      result.skipped++;
+    }
+  }
+
+  return result;
 }

@@ -139,6 +139,13 @@ export {
   type RealisticComponentKind,
   type RealisticComponentMesh3DProps,
 } from "./realistic-components-3d.js";
+export { RotundaContextDock, type DiagramHudApi, type RotundaContextDockProps } from "./RotundaContextDock.js";
+export {
+  RotundaStageCameraRig,
+  resolveStageCameraPose,
+  type RotundaStageCameraPose,
+  type RotundaStageCameraRigProps,
+} from "./RotundaStageCameraRig.js";
 export { ROTUNDA_SHOWCASE_MODELS, ROTUNDA_SHOWCASE_SCENARIOS, getRotundaScenarioById } from "./showcase-catalog.js";
 export {
   DIAGRAM_STAGE_DEFAULT_CENTER,
@@ -321,6 +328,7 @@ export {
   type VrSimulationSeries,
 } from "./vr-simulation-logic.js";
 export { VrSimulationPanel3D, type VrSimulationPanel3DProps } from "./VrSimulationPanel3D.js";
+export { VrSpatialNavBar3D, type VrSpatialNavBar3DProps } from "./VrSpatialNavBar3D.js";
 export {
   DiagramTypeBanner3D,
   FloatingCodePanel3D,

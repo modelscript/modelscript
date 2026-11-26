@@ -69,7 +69,7 @@ export function analyzeThermoFluidNetwork(code: string, lines: string[]): Thermo
         const id = cols[0]!;
         const elev = Number(cols[1]) || 0;
         const demand = Number(cols[2]) || 0;
-        nodeMap.set(id, { id, kind: "junction", elevationM: elev, demandLps: demand, headM: elev + 35, line: i + 1 });
+        nodeMap.set(id, { id, kind: "junction", elevationM: elev, demandLps: demand, headM: elev, line: i + 1 });
       }
       continue;
     }
@@ -77,7 +77,7 @@ export function analyzeThermoFluidNetwork(code: string, lines: string[]): Thermo
       const cols = trimmed.split(/\s+/);
       if (cols.length >= 2) {
         const id = cols[0]!;
-        const head = Number(cols[1]) || 50;
+        const head = Number(cols[1]) || 0;
         const initLvl = section === "TANKS" ? Number(cols[2]) || 0 : 0;
         nodeMap.set(id, {
           id,
@@ -139,12 +139,12 @@ export function analyzeThermoFluidNetwork(code: string, lines: string[]): Thermo
           kind: "junction",
           elevationM: elev,
           demandLps: 0,
-          headM: elev + 80,
+          headM: elev,
           line: i + 1,
         });
       }
       if (!nodeMap.has(to)) {
-        nodeMap.set(to, { id: to, kind: "junction", elevationM: elev, demandLps: 0, headM: elev + 70, line: i + 1 });
+        nodeMap.set(to, { id: to, kind: "junction", elevationM: elev, demandLps: 0, headM: elev, line: i + 1 });
       }
       conduits.push({
         id,
@@ -169,21 +169,23 @@ export function analyzeThermoFluidNetwork(code: string, lines: string[]): Thermo
   let runningHead =
     Array.from(nodeMap.values()).find((n) => n.kind === "reservoir" || n.kind === "tank")?.headM ??
     Array.from(nodeMap.values())[0]?.headM ??
-    60;
+    0;
 
   for (const c of conduits) {
     const nFrom = nodeMap.get(c.from);
     const nTo = nodeMap.get(c.to);
     const area = (Math.PI * c.diameterM * c.diameterM) / 4;
-    const estFlowM3s = totalDemandM3s > 0 ? totalDemandM3s / Math.max(1, Math.sqrt(conduits.length)) : area * 1.35;
-    const v = Math.max(0.15, Math.min(6.0, estFlowM3s / Math.max(area, 1e-6)));
+    const estFlowM3s = totalDemandM3s > 0 ? totalDemandM3s / Math.max(1, Math.sqrt(conduits.length)) : 0;
+    const v = estFlowM3s > 0 ? Math.min(6.0, estFlowM3s / Math.max(area, 1e-6)) : 0;
     const re = (v * c.diameterM) / kinematicViscosity;
     const epsM = c.roughness > 1 ? 0.00015 * (130 / c.roughness) : c.roughness;
     // Swamee-Jain explicit Darcy friction factor
     const f =
-      re < 2300
-        ? 64 / Math.max(re, 1)
-        : 0.25 / Math.pow(Math.log10(epsM / (3.7 * c.diameterM) + 5.74 / Math.pow(re, 0.9)), 2);
+      re < 1e-6
+        ? 0
+        : re < 2300
+          ? 64 / Math.max(re, 1)
+          : 0.25 / Math.pow(Math.log10(epsM / (3.7 * c.diameterM) + 5.74 / Math.pow(re, 0.9)), 2);
     const hf = f * (c.lengthM / c.diameterM) * ((v * v) / (2 * g));
     const hStart = nFrom ? nFrom.headM : runningHead;
     const hEnd = hStart - hf;

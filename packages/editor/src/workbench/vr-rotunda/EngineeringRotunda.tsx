@@ -2,7 +2,6 @@
 
 import { sampleTelemetryFrame } from "@modelscript/cad";
 import {
-  CANVAS_BOARD_THEMES,
   createCanonicalPolyglotDemoBoard,
   SpatialSurfaceBridge,
   type CanvasBoardThemeId,
@@ -10,7 +9,6 @@ import {
   type CanvasPeerPresence,
 } from "@modelscript/canvas";
 import type { DiagramEditAction } from "@modelscript/diagram/protocol";
-import { OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useXR, XR } from "@react-three/xr";
 import React, { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -33,6 +31,8 @@ import {
   OCTOPUS_SUBSYSTEMS,
   sampleOctopusTelemetryChannel,
 } from "./OctopusShowcaseAssembly.js";
+import { RotundaContextDock } from "./RotundaContextDock.js";
+import { RotundaStageCameraRig } from "./RotundaStageCameraRig.js";
 import type { SpatialNodePose3D } from "./spatial-diagram-state.js";
 import type { SpatialInteractionLock } from "./spatial-interaction.js";
 import { SpatialDiagramStage } from "./SpatialDiagramStage.js";
@@ -42,17 +42,16 @@ import {
   createInitialRotundaState,
   DEFAULT_DESK_THEME,
   DEFAULT_PODIUM_TILT_DEG,
-  deskScaleLabel,
   extractModelsFromCanvasDocument,
   getRotundaPlinthPresentation,
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
   ROTUNDA_ENVIRONMENTS,
   rotundaReducer,
-  rotundaScaleModeLabel,
   wrapIndex,
   type EngineeringRotundaProps,
   type RotundaAction,
+  type RotundaActiveView,
   type RotundaAnimationControllerLike,
   type RotundaCaeOverlay,
   type RotundaEnvironmentId,
@@ -64,6 +63,7 @@ import {
   type RotundaWorkspaceFile,
 } from "./types.js";
 import { VrSimulationPanel3D } from "./VrSimulationPanel3D.js";
+import { VrSpatialNavBar3D } from "./VrSpatialNavBar3D.js";
 import { FloatingCodePanel3D, VrFileCarousel3D, VrInspectorPanel3D } from "./VrWorkspacePanels3D.js";
 import { XrControllerBindings, XrLocomotionRig } from "./xr-gestures.js";
 import {
@@ -260,6 +260,10 @@ interface RotundaSceneContentsProps {
         edgeCount: number;
       }) => void)
     | undefined;
+  availableViews: readonly RotundaActiveView[];
+  onSelectView: (view: RotundaActiveView) => void;
+  onToggleSplitCode: () => void;
+  codeScrollCommand?: { readonly action: "top" | "bottom"; readonly seq: number } | null | undefined;
 }
 
 function RotundaSceneContents({
@@ -293,12 +297,17 @@ function RotundaSceneContents({
   libraryCatalog,
   onDiagramEdit,
   onExposeDiagramActions,
+  availableViews,
+  onSelectView,
+  onToggleSplitCode,
+  codeScrollCommand,
 }: RotundaSceneContentsProps): React.ReactElement {
   const isInXr = useXR((s) => Boolean(s.session));
   const isArSession = useXR((s) => s.mode === "immersive-ar");
   const [podiumLocked, setPodiumLocked] = useState(false);
   const [plinthDragging, setPlinthDragging] = useState(false);
   const [diagramLocked, setDiagramLocked] = useState(false);
+  const [codeFocusLine, setCodeFocusLine] = useState<number | null>(null);
   const diagramInteractionLockRef = useRef<SpatialInteractionLock>("none");
 
   const activeModel = models[wrapIndex(state.activeModelIndex, models.length)] ?? models[0];
@@ -476,22 +485,28 @@ function RotundaSceneContents({
   );
 
   const handleToggleDiagramEditor = useCallback(() => {
-    dispatch({ type: "toggleDiagramEditor" });
+    onSelectView(state.activeView === "diagram" ? "3d" : "diagram");
     onCue("arena-rotate");
-  }, [dispatch, onCue]);
+  }, [onSelectView, state.activeView, onCue]);
 
   const handleCycleSnapMode = useCallback(() => {
     dispatch({ type: "cycleDiagramSnapMode" });
   }, [dispatch]);
 
-  const isStockroomOpen = state.diagramEditorEnabled && state.wristPaletteOpen;
+  const is3dStage = state.activeView === "3d";
+  const isDiagramStage = state.activeView === "diagram";
+  const isSimulationStage = state.activeView === "simulation";
+  const isInspectorStage = state.activeView === "inspector";
+  const isCodeStage = state.activeView === "code";
+  const showCodePanel = isCodeStage || state.splitCodeOpen;
+  const isStockroomOpen = isDiagramStage && state.wristPaletteOpen;
 
   // Dedicated 180° Rotunda Mode Turntable:
-  //   - 0° hemisphere (-Z): Drafting Podium + Side Wings + Hero 3D Model
+  //   - 0° hemisphere (-Z): 3D Metrology Plinth + optional Drafting Podium + Side Wings
   //   - 180° hemisphere (+Z): Dedicated wide-open 3D Diagram Stage (zero podium clutter)
-  // Activating Diagram Mode smoothly rotates the arena 180° around the standing engineer!
+  // Activating Diagram Mode smoothly rotates the arena 180° around the standing engineer.
   const arenaGroupRef = useRef<THREE.Group | null>(null);
-  const targetArenaYaw = state.diagramEditorEnabled ? Math.PI : 0;
+  const targetArenaYaw = isDiagramStage ? Math.PI : 0;
 
   useFrame((_s, rawDelta) => {
     const grp = arenaGroupRef.current;
@@ -519,7 +534,7 @@ function RotundaSceneContents({
         modelCount={models.length}
         explodeFactor={state.explodeFactor}
         scaleMode={state.scaleMode}
-        diagramEditorEnabled={state.diagramEditorEnabled}
+        diagramEditorEnabled={isDiagramStage}
         stockroomOpen={isStockroomOpen}
         onCue={onCue}
         interactionLockRef={diagramInteractionLockRef}
@@ -533,9 +548,9 @@ function RotundaSceneContents({
       {/* 6 Photoreal Procedural Environments (Future Atrium hero + 5 presets) with matched IBL */}
       <RotundaEnvironment environment={state.environment} plinthCenter={plinthCenter} scaleMode={state.scaleMode} />
 
-      {/* Rotating 180° Rotunda Mode Arena: Podium + 3D Model at 0°, Dedicated 3D Diagram Stage at 180° */}
+      {/* Rotating 180° Rotunda Mode Arena: 3D Plinth Stage at 0°, Dedicated 3D Diagram Stage at 180° */}
       <group ref={arenaGroupRef} name="rotunda-mode-arena">
-        {/* 0° Hemisphere: Circular Metrology Plinth + Orbital 3D Model Carousel */}
+        {/* 0° Hemisphere: Circular Metrology Plinth + Orbital 3D Model Carousel (strictly visible only in 3D Stage) */}
         <TurntableCarousel
           models={models}
           activeModelIndex={state.activeModelIndex}
@@ -557,7 +572,7 @@ function RotundaSceneContents({
           autoTurntable={state.autoTurntable}
           isInXr={isInXr}
           dark={!backdrop.isLight}
-          visible={!state.diagramEditorEnabled}
+          visible={is3dStage}
           onSelectSubsystem={handleSelectSubsystem}
           onPageModel={handlePageModel}
           onSelectModelIndex={handleSelectModelIndex}
@@ -566,7 +581,7 @@ function RotundaSceneContents({
           onDraggingChange={setPlinthDragging}
         />
 
-        {/* 0° Hemisphere: Ergonomic Drafting Podium Hosting the Spread Blueprint Canvas */}
+        {/* 0° Hemisphere: Ergonomic Drafting Podium Hosting the Spread Blueprint Canvas (only in 3D Stage) */}
         <DraftingPodium
           document={doc}
           bridge={bridge}
@@ -578,8 +593,8 @@ function RotundaSceneContents({
           onCycleBoardTheme={handleCycleDeskTheme}
           onRecalibrateDeskHeight={handleRecalibrateDeskHeight}
           onResetDeskHeight={handleResetDeskHeight}
-          showPlinthTethers={!state.diagramEditorEnabled}
-          diagramEditorEnabled={state.diagramEditorEnabled}
+          showPlinthTethers={is3dStage}
+          diagramEditorEnabled={isDiagramStage}
           stockroomOpen={isStockroomOpen}
           onToggleDiagramEditor={handleToggleDiagramEditor}
           onToggleStockroom={handleToggleWristPalette}
@@ -588,7 +603,7 @@ function RotundaSceneContents({
           activeHeroTileId={activeHeroTileId}
           focusedTileId={state.focusedTileId}
           plinthWorldCenter={plinthCenter}
-          visible={state.podiumVisible}
+          visible={is3dStage && state.podiumVisible}
           onTileSelect={handleTileSelect}
           onFocusTileOnPlinth={handleFocusTileOnPlinth}
           onFocusTileFullscreen={handleFocusTileFullscreen}
@@ -602,12 +617,12 @@ function RotundaSceneContents({
           onInteractionLockChange={isInXr ? undefined : setPodiumLocked}
         />
 
-        {/* 0° Hemisphere: Left & Right Podium-Docked CNC Side-Console Wings */}
+        {/* 0° Hemisphere: Left & Right Podium-Docked CNC Side-Console Wings (only in 3D Stage) */}
         <FloatingToolWings
           state={{ ...state, simulationTime: effectiveSimTime }}
           activeModelTitle={activeModel?.title ?? "Model"}
           modelCount={models.length}
-          visible={state.wingsVisible}
+          visible={is3dStage && state.wingsVisible}
           dispatch={dispatch}
           activeScenarioLabel={activeScenario?.shortLabel ?? activeScenario?.label}
           onCycleScenario={onCycleScenario}
@@ -633,7 +648,7 @@ function RotundaSceneContents({
         {/* 180° Opposite Hemisphere: Dedicated Uncluttered 3D Volumetric Diagram Arena + Matrix Stockroom */}
         <group name="rotunda-diagram-hemisphere" rotation={[0, Math.PI, 0]}>
           <SpatialDiagramStage
-            visible={state.diagramEditorEnabled}
+            visible={isDiagramStage}
             tile={activeDiagramTile}
             snapMode={state.diagramSnapMode}
             waferStyle={state.diagramWaferStyle}
@@ -659,25 +674,42 @@ function RotundaSceneContents({
         </group>
       </group>
 
-      {/* Floating 3D Syntax-Highlighted Code Text Overlay (mirrors 2D floating code overlay) */}
+      {/* Dedicated Code Stage (centered) OR Orthogonal Split Code Companion Wing (docked right) */}
       <FloatingCodePanel3D
-        visible={state.codeOverlayOpen}
+        visible={showCodePanel}
         code={sourceCode ?? ""}
         fileName={activeFilePath ?? activeModel?.title ?? "model.mo"}
         theme={resolveDiagramLanguageTheme(languageId, diagramType)}
-        centered={state.activeView === "code"}
-        onClose={() => dispatch({ type: "setCodeOverlayOpen", open: false })}
+        centered={isCodeStage}
+        dockOffsetX={isDiagramStage ? 1.44 : 1.16}
+        workspaceFiles={workspaceFiles}
+        activeFilePath={activeFilePath}
+        onSelectFile={(path) => onSelectWorkspaceFile?.(path)}
+        diagnostics={inspectorData?.diagnostics}
+        focusLine={codeFocusLine}
+        scrollCommand={codeScrollCommand}
+        onClose={() => {
+          if (isCodeStage) {
+            onSelectView("3d");
+          } else {
+            onToggleSplitCode();
+          }
+        }}
         onCue={onCue}
       />
 
-      {/* Floating 3D Engineering Inspector Panel (Parameters, Selected Component & Diagnostics) */}
+      {/* Dedicated Spatial Engineering Inspector Stage (strictly active in Inspector View) */}
       <VrInspectorPanel3D
-        visible={state.inspectorOverlayOpen}
+        visible={isInspectorStage}
         fileName={activeFilePath ?? activeModel?.title ?? "model.mo"}
         theme={resolveDiagramLanguageTheme(languageId, diagramType)}
         inspectorData={inspectorData}
-        centered={state.activeView === "inspector"}
-        onClose={() => dispatch({ type: "setInspectorOverlayOpen", open: false })}
+        centered={true}
+        onJumpToLine={(line) => {
+          setCodeFocusLine(line);
+          onSelectView("code");
+        }}
+        onClose={() => onSelectView("3d")}
         onCue={onCue}
       />
 
@@ -691,22 +723,72 @@ function RotundaSceneContents({
         onCue={onCue}
       />
 
-      {/* Curved 3D VR Simulation & Multi-Channel Oscilloscope Theater */}
+      {/* Dedicated Curved 3D VR Simulation & Multi-Channel Oscilloscope Theater (strictly active in Simulation View) */}
       <VrSimulationPanel3D
-        visible={state.simulationPanelOpen}
+        visible={isSimulationStage}
         fileName={activeFilePath ?? activeModel?.title ?? "model.mo"}
         theme={resolveDiagramLanguageTheme(languageId, diagramType)}
         simulationData={simulationData}
         simulationTime={effectiveSimTime}
         isPlaying={state.isPlaying}
-        centered={state.activeView === "simulation"}
+        centered={true}
         onTogglePlaying={handleTogglePlaying}
         onSeekSimulationTime={(t) => {
           liveSimTimeRef.current = t;
           dispatch({ type: "setSimulationTime", time: t });
           onSimulationTimeChange?.(t);
         }}
-        onClose={() => dispatch({ type: "setSimulationPanelOpen", open: false })}
+        onClose={() => onSelectView("3d")}
+        onCue={onCue}
+      />
+
+      {/* Optional Synchronized Mini 3D CAD Preview beside Simulation Oscilloscope when live CAD bindings exist */}
+      {isSimulationStage && Boolean(animationController?.hasData) && models.length > 0 && (
+        <group name="vr-simulation-mini-plinth" position={[-1.45, 0.32, 0.15]} scale={0.42}>
+          <TurntableCarousel
+            models={models}
+            activeModelIndex={state.activeModelIndex}
+            carouselStep={state.carouselStep}
+            plinthYaw={state.plinthYaw}
+            plinthZoom={1}
+            explodeFactor={0}
+            caeOverlay={state.caeOverlay}
+            renderStyle={state.renderStyle}
+            scaleMode="tabletop"
+            sectionCutEnabled={false}
+            sectionCutAxis={state.sectionCutAxis}
+            sectionCutOffset={0}
+            simulationTime={effectiveSimTime}
+            simulationTimeRef={liveSimTimeRef}
+            isPlaying={state.isPlaying}
+            animationController={animationController}
+            visibility={visibility}
+            autoTurntable={false}
+            isInXr={isInXr}
+            dark={!backdrop.isLight}
+            visible={true}
+            onSelectSubsystem={handleSelectSubsystem}
+            onPageModel={handlePageModel}
+            onSelectModelIndex={handleSelectModelIndex}
+            onPlinthYawChange={handlePlinthYawChange}
+            onSectionCutOffsetChange={handleSectionCutOffsetChange}
+            onDraggingChange={setPlinthDragging}
+          />
+        </group>
+      )}
+
+      {/* In-Headset 1:1 Workbench View Switcher Bar (rendered inside WebXR sessions when DOM topbar is hidden) */}
+      <VrSpatialNavBar3D
+        visible={isInXr}
+        activeView={state.activeView}
+        availableViews={availableViews}
+        splitCodeOpen={state.splitCodeOpen}
+        fileCarouselOpen={state.fileCarouselOpen}
+        fileCount={workspaceFiles?.length ?? 0}
+        onSelectView={onSelectView}
+        onToggleSplitCode={onToggleSplitCode}
+        onToggleFileCarousel={() => dispatch({ type: "toggleFileCarousel" })}
+        onExitVr={() => onExitVr?.()}
         onCue={onCue}
       />
 
@@ -723,29 +805,18 @@ function RotundaSceneContents({
         />
       )}
 
-      {/* Desktop 3D Spatial Orbit Controls (unmounted during WebXR so OrbitControls never fights stereo head tracking) */}
+      {/* Desktop 3D Stage-Aware Camera & Orbit Rig (unmounted during WebXR so it never fights stereo head tracking) */}
       {!isInXr && (
-        <OrbitControls
-          makeDefault
+        <RotundaStageCameraRig
+          activeView={state.activeView}
+          scaleMode={state.scaleMode}
+          splitCodeOpen={state.splitCodeOpen}
           enabled={!podiumLocked && !plinthDragging && !diagramLocked}
-          target={state.scaleMode === "hero" ? [0, 1.4, -2.6] : [0, 1.24, -1.65]}
-          minDistance={0.85}
-          maxDistance={7.5}
-          maxPolarAngle={Math.PI * 0.495}
-          enableDamping
-          dampingFactor={0.08}
         />
       )}
     </>
   );
 }
-
-const CAE_CYCLE_OPTIONS: readonly { id: RotundaCaeOverlay; label: string }[] = [
-  { id: "none", label: "CAD" },
-  { id: "fea-stress", label: "FEA" },
-  { id: "cfd-flow", label: "CFD" },
-  { id: "thermal", label: "Thermal" },
-];
 
 interface CaeLegendSpec {
   readonly title: string;
@@ -818,7 +889,16 @@ export function EngineeringRotunda({
   topOverlayInset = 12,
   initialDiagramEditorEnabled = false,
   initialActiveView,
+  activeView: controlledActiveView,
+  onActiveViewChange,
   initialCodeOverlayOpen,
+  splitCodeOpen: controlledSplitCodeOpen,
+  onSplitCodeChange,
+  hostedInWorkbench = false,
+  vrQuickEditOpen = false,
+  onToggleVrQuickEdit,
+  availableViews,
+  initialPodiumVisible,
   languageId,
   diagramType,
   sourceCode,
@@ -830,6 +910,10 @@ export function EngineeringRotunda({
   libraryCatalog,
   onDiagramEdit,
 }: EngineeringRotundaProps): React.ReactElement {
+  const [codeScrollCommand, setCodeScrollCommand] = useState<{
+    readonly action: "top" | "bottom";
+    readonly seq: number;
+  } | null>(null);
   const langTheme = useMemo(() => resolveDiagramLanguageTheme(languageId, diagramType), [languageId, diagramType]);
   const [internalScenarioId, setInternalScenarioId] = useState<string | undefined>(
     () => activeScenarioId ?? scenarios?.[0]?.id,
@@ -1006,7 +1090,11 @@ export function EngineeringRotunda({
 
   const initialTelemetryEnabled = activeScenario?.id === "subsea-octopus" || models[0]?.kind === "octopus-rov";
 
-  const resolvedInitialView = initialActiveView ?? (initialDiagramEditorEnabled ? "diagram" : "3d");
+  const resolvedInitialView =
+    controlledActiveView ?? initialActiveView ?? (initialDiagramEditorEnabled ? "diagram" : "3d");
+  const resolvedInitialSplitCode =
+    controlledSplitCodeOpen ?? Boolean(initialCodeOverlayOpen && resolvedInitialView !== "code");
+  const resolvedInitialPodiumVisible = initialPodiumVisible ?? !hostedInWorkbench;
 
   const [state, dispatch] = useReducer(
     rotundaReducer,
@@ -1015,14 +1103,52 @@ export function EngineeringRotunda({
       deskTheme: initialDeskTheme,
       simulationTime: controlledSimulationTime ?? 0,
       telemetryWingEnabled: initialTelemetryEnabled,
+      podiumVisible: resolvedInitialPodiumVisible,
+      wingsVisible: resolvedInitialPodiumVisible,
       activeView: resolvedInitialView,
       diagramEditorEnabled: resolvedInitialView === "diagram",
-      codeOverlayOpen: initialCodeOverlayOpen ?? resolvedInitialView === "code",
+      splitCodeOpen: resolvedInitialSplitCode,
+      codeOverlayOpen: resolvedInitialView === "code" || resolvedInitialSplitCode,
       inspectorOverlayOpen: resolvedInitialView === "inspector",
       simulationPanelOpen: resolvedInitialView === "simulation",
     },
     (init) => createInitialRotundaState(init),
   );
+
+  // Sync controlled activeView & splitCodeOpen 1:1 from the host workbench navbar
+  useEffect(() => {
+    if (controlledActiveView && controlledActiveView !== state.activeView) {
+      dispatch({ type: "setActiveView", view: controlledActiveView });
+    }
+  }, [controlledActiveView, state.activeView]);
+
+  useEffect(() => {
+    if (controlledSplitCodeOpen !== undefined && controlledSplitCodeOpen !== state.splitCodeOpen) {
+      dispatch({ type: "setSplitCodeOpen", open: controlledSplitCodeOpen });
+    }
+  }, [controlledSplitCodeOpen, state.splitCodeOpen]);
+
+  const effectiveAvailableViews = useMemo<readonly RotundaActiveView[]>(
+    () =>
+      availableViews && availableViews.length > 0
+        ? availableViews
+        : (["diagram", "3d", "simulation", "inspector", "code"] as const),
+    [availableViews],
+  );
+
+  const handleSelectView = useCallback(
+    (nextView: RotundaActiveView) => {
+      dispatch({ type: "setActiveView", view: nextView });
+      onActiveViewChange?.(nextView);
+    },
+    [onActiveViewChange],
+  );
+
+  const handleToggleSplitCode = useCallback(() => {
+    const nextSplit = !state.splitCodeOpen;
+    dispatch({ type: "setSplitCodeOpen", open: nextSplit });
+    onSplitCodeChange?.(nextSplit);
+  }, [state.splitCodeOpen, onSplitCodeChange]);
 
   // Clear full-screen block zoom if the active board switches and no longer contains the focused tile
   useEffect(() => {
@@ -1173,6 +1299,12 @@ export function EngineeringRotunda({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && vrQuickEditOpen && onToggleVrQuickEdit) {
+        e.preventDefault();
+        onToggleVrQuickEdit();
+        triggerCue("click");
+        return;
+      }
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName?.toUpperCase();
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
@@ -1226,7 +1358,7 @@ export function EngineeringRotunda({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [models.length, triggerCue, handleSelectEnvironment, onExitTo2D, xrStore]);
+  }, [models.length, triggerCue, handleSelectEnvironment, onExitTo2D, xrStore, vrQuickEditOpen, onToggleVrQuickEdit]);
 
   const handleEnterVr = useCallback(() => {
     triggerCue("env");
@@ -1351,6 +1483,7 @@ export function EngineeringRotunda({
       data-diagram-editor={state.diagramEditorEnabled ? "open" : "closed"}
       data-wrist-palette={state.wristPaletteOpen ? "open" : "closed"}
       data-active-view={state.activeView}
+      data-split-code={state.splitCodeOpen && state.activeView !== "code" ? "open" : "closed"}
       data-language-id={langTheme.languageId}
       {...(activeScenario ? { "data-active-scenario": activeScenario.id } : {})}
       style={{
@@ -1417,6 +1550,10 @@ export function EngineeringRotunda({
                       libraryCatalog={libraryCatalog}
                       onDiagramEdit={handleDiagramEdit}
                       onExposeDiagramActions={setDiagramHudApi}
+                      availableViews={effectiveAvailableViews}
+                      onSelectView={handleSelectView}
+                      onToggleSplitCode={handleToggleSplitCode}
+                      codeScrollCommand={codeScrollCommand}
                     />
                   </Suspense>
                 </XR>
@@ -1432,8 +1569,8 @@ export function EngineeringRotunda({
         </div>
       )}
 
-      {/* Top-Left Model Carousel Pill & Compact Scenario Switcher */}
-      {!hideDesktopHud && (
+      {/* Top-Left Model Carousel Pill & Compact Scenario Switcher (hidden in hosted single-model mode to keep viewport calm) */}
+      {!hideDesktopHud && (!hostedInWorkbench || hasScenarios || (state.activeView === "3d" && models.length > 1)) && (
         <div
           data-testid="rotunda-carousel-bar"
           style={{
@@ -1553,8 +1690,8 @@ export function EngineeringRotunda({
         </div>
       )}
 
-      {/* Top-Right WebXR Headset / Handoff & Exit Controls */}
-      {!hideDesktopHud && (
+      {/* Top-Right WebXR Headset / Handoff & Exit Controls (standalone mode only; workbench navbar + context dock own these when hosted) */}
+      {!hideDesktopHud && !hostedInWorkbench && (
         <div
           style={{
             position: "absolute",
@@ -1651,33 +1788,37 @@ export function EngineeringRotunda({
         </div>
       )}
 
-      {/* Subtle VR HUD Interaction Status Hint (preserved data-testid for existing test suite) */}
-      <div
-        data-testid="spatial-vr-hud-status"
-        style={{
-          position: "absolute",
-          ...(hideDesktopHud
-            ? { bottom: 12, left: 12 }
-            : desktopOctopusFrame
-              ? { top: topOverlayInset + 108, left: 196 }
-              : { top: topOverlayInset + 52, left: 12 }),
-          maxWidth: "min(620px, calc(100% - 24px))",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-          padding: "4px 10px",
-          borderRadius: 8,
-          border: hudStatus ? "1px solid #38bdf8" : "1px solid rgba(51, 65, 85, 0.72)",
-          background: "rgba(9, 15, 29, 0.78)",
-          color: hudStatus ? "#f8fafc" : "#cbd5e1",
-          fontSize: 11,
-          pointerEvents: "none",
-          zIndex: 20,
-        }}
-      >
-        {hudStatus ??
-          "Engineering Rotunda · Drag tiles or desk to pan · Click ⤢ or double-click block to zoom · Pull CADPort to wire"}
-      </div>
+      {/* Subtle VR HUD Interaction Status Hint (shown transiently when hosted; persistent in standalone mode) */}
+      {(!hostedInWorkbench || Boolean(hudStatus)) && (
+        <div
+          data-testid="spatial-vr-hud-status"
+          style={{
+            position: "absolute",
+            ...(hideDesktopHud
+              ? { bottom: 12, left: 12 }
+              : hostedInWorkbench
+                ? { top: topOverlayInset, left: "50%", transform: "translateX(-50%)" }
+                : desktopOctopusFrame
+                  ? { top: topOverlayInset + 108, left: 196 }
+                  : { top: topOverlayInset + 52, left: 12 }),
+            maxWidth: "min(620px, calc(100% - 24px))",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            padding: "4px 10px",
+            borderRadius: 8,
+            border: hudStatus ? "1px solid #38bdf8" : "1px solid rgba(51, 65, 85, 0.72)",
+            background: "rgba(9, 15, 29, 0.78)",
+            color: hudStatus ? "#f8fafc" : "#cbd5e1",
+            fontSize: 11,
+            pointerEvents: "none",
+            zIndex: 20,
+          }}
+        >
+          {hudStatus ??
+            "Engineering Rotunda · Drag tiles or desk to pan · Click ⤢ or double-click block to zoom · Pull CADPort to wire"}
+        </div>
+      )}
 
       {/* Scientific CAE Colorbar Legend (FEA Von Mises Stress / CFD Flow Velocity / Thermal Field) */}
       {!hideDesktopHud &&
@@ -1753,703 +1894,36 @@ export function EngineeringRotunda({
           );
         })()}
 
-      {/* Bottom Compact Desktop Control Dock (mirrors the 3D Floating Tool Wings for mouse users) */}
+      {/* Context-Aware Bottom Spatial Control Dock */}
       {!hideDesktopHud && (
-        <div
-          data-testid="rotunda-control-dock"
-          style={{
-            position: "absolute",
-            bottom: 12,
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            padding: "6px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(148, 163, 184, 0.25)",
-            background: "rgba(9, 15, 29, 0.88)",
-            backdropFilter: "blur(12px)",
-            color: "#e2e8f0",
-            fontSize: 11,
-            zIndex: 20,
-            maxWidth: "calc(100% - 24px)",
-          }}
-        >
-          {/* 6 Environment Presets */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            {ROTUNDA_ENVIRONMENTS.map((env) => {
-              const active = state.environment === env.id;
-              return (
-                <button
-                  key={env.id}
-                  type="button"
-                  data-testid={`rotunda-env-${env.id}`}
-                  onClick={() => handleSelectEnvironment(env.id)}
-                  title={env.description}
-                  style={{
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    border: active ? `1px solid ${env.accentColor}` : "1px solid #334155",
-                    background: active ? "rgba(56, 189, 248, 0.18)" : "rgba(15, 23, 42, 0.7)",
-                    color: active ? "#f8fafc" : "#94a3b8",
-                    fontSize: 11,
-                    fontWeight: active ? 700 : 500,
-                    cursor: "pointer",
-                  }}
-                >
-                  {env.shortLabel}
-                </button>
-              );
-            })}
-          </div>
-
-          <span style={{ color: "#334155" }}>|</span>
-
-          {/* Explode Slider */}
-          <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#cbd5e1" }}>
-            <span>Explode</span>
-            <input
-              type="range"
-              aria-label="CAD Explode Factor"
-              min={0}
-              max={100}
-              value={Math.round(state.explodeFactor * 100)}
-              onChange={(e) => dispatch({ type: "setExplode", factor: Number(e.target.value) / 100 })}
-              style={{ width: 68, accentColor: "#38bdf8", cursor: "pointer" }}
-            />
-          </label>
-
-          {/* CAE Overlays */}
-          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
-            {CAE_CYCLE_OPTIONS.map((opt) => {
-              const active = state.caeOverlay === opt.id;
-              return (
-                <button
-                  key={opt.id}
-                  type="button"
-                  data-testid={`rotunda-cae-${opt.id}`}
-                  onClick={() => {
-                    dispatch({ type: "setCaeOverlay", overlay: opt.id });
-                    triggerCue("click");
-                  }}
-                  style={{
-                    padding: "3px 7px",
-                    borderRadius: 6,
-                    border: active ? "1px solid #38bdf8" : "1px solid #334155",
-                    background: active ? "rgba(56, 189, 248, 0.2)" : "transparent",
-                    color: active ? "#f8fafc" : "#94a3b8",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <span style={{ color: "#334155" }}>|</span>
-
-          {/* Section Cut, 1:1 Scale, Podium & Wings Toggles */}
-          <button
-            type="button"
-            onClick={() => {
-              dispatch({ type: "toggleSectionCut" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.sectionCutEnabled ? "1px solid #06b6d4" : "1px solid #334155",
-              background: state.sectionCutEnabled ? "rgba(6, 182, 212, 0.22)" : "transparent",
-              color: state.sectionCutEnabled ? "#67e8f9" : "#cbd5e1",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Cut
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              dispatch({ type: "toggleScaleMode" });
-              triggerCue("snap");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.scaleMode !== "tabletop" ? "1px solid #f59e0b" : "1px solid #334155",
-              background: state.scaleMode !== "tabletop" ? "rgba(245, 158, 11, 0.2)" : "transparent",
-              color: state.scaleMode !== "tabletop" ? "#fcd34d" : "#cbd5e1",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-            title="Model scale: Hero → Tabletop → 1:1 (M)"
-            data-testid="rotunda-toggle-scale-mode"
-          >
-            {rotundaScaleModeLabel(state.scaleMode)}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              dispatch({ type: "togglePodiumVisible" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.podiumVisible ? "1px solid #38bdf8" : "1px solid #334155",
-              background: state.podiumVisible ? "rgba(56, 189, 248, 0.16)" : "transparent",
-              color: state.podiumVisible ? "#e0f2fe" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Desk
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-cycle-desk-scale"
-            title="Desk size: S → M → L → XL (D)"
-            onClick={() => {
-              dispatch({ type: "cycleDeskScale" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: "1px solid #334155",
-              background: "transparent",
-              color: "#cbd5e1",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Desk {deskScaleLabel(state.deskScale)}
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-desk-tilt"
-            title="Desk tilt: 20° drafting → 45° → upright (T)"
-            onClick={() => {
-              dispatch({ type: "togglePodiumTilt" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: "1px solid #334155",
-              background: "transparent",
-              color: "#cbd5e1",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Tilt {Math.round(90 - state.podiumTiltDeg)}°
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-cycle-desk-theme"
-            title="Desk paper theme: Blueprint → Light → Dark (B)"
-            onClick={() => {
-              dispatch({ type: "cycleDeskTheme" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border:
-                state.deskTheme === "blueprint"
-                  ? "1px solid #38bdf8"
-                  : state.deskTheme === "light"
-                    ? "1px solid #cbd5e1"
-                    : "1px solid #334155",
-              background:
-                state.deskTheme === "blueprint"
-                  ? "rgba(13, 59, 102, 0.85)"
-                  : state.deskTheme === "light"
-                    ? "rgba(241, 245, 249, 0.16)"
-                    : "transparent",
-              color: state.deskTheme === "blueprint" ? "#e0f2fe" : state.deskTheme === "light" ? "#f8fafc" : "#cbd5e1",
-              fontSize: 11,
-              fontWeight: state.deskTheme === "blueprint" ? 600 : 500,
-              cursor: "pointer",
-            }}
-          >
-            {CANVAS_BOARD_THEMES[state.deskTheme].label}
-          </button>
-          {state.deskHeightY !== null && (
-            <button
-              type="button"
-              data-testid="rotunda-reset-desk-height"
-              title="Desk height was calibrated from your headset — click to restore default height"
-              onClick={() => {
-                dispatch({ type: "resetDeskHeight" });
-                triggerCue("click");
-              }}
-              style={{
-                padding: "3px 8px",
-                borderRadius: 6,
-                border: "1px solid #38bdf8",
-                background: "rgba(56, 189, 248, 0.16)",
-                color: "#e0f2fe",
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              Height {state.deskHeightY.toFixed(2)} m ✕
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              dispatch({ type: "toggleWingsVisible" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.wingsVisible ? "1px solid #8b5cf6" : "1px solid #334155",
-              background: state.wingsVisible ? "rgba(139, 92, 246, 0.18)" : "transparent",
-              color: state.wingsVisible ? "#ede9fe" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            3D Menus
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-ghost"
-            onClick={() => {
-              dispatch({ type: "toggleGhostShell" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.ghostShellEnabled ? "1px solid #06b6d4" : "1px solid #334155",
-              background: state.ghostShellEnabled ? "rgba(6, 182, 212, 0.2)" : "transparent",
-              color: state.ghostShellEnabled ? "#a5f3fc" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Ghost Shell
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-labels"
-            onClick={() => {
-              dispatch({ type: "toggleShowLabels" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.showLabels ? "1px solid #f97316" : "1px solid #334155",
-              background: state.showLabels ? "rgba(249, 115, 22, 0.2)" : "transparent",
-              color: state.showLabels ? "#fed7aa" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Labels
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-turntable"
-            onClick={() => {
-              dispatch({ type: "toggleAutoTurntable" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.autoTurntable ? "1px solid #22c55e" : "1px solid #334155",
-              background: state.autoTurntable ? "rgba(34, 197, 94, 0.2)" : "transparent",
-              color: state.autoTurntable ? "#bbf7d0" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Turntable
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-telemetry"
-            onClick={() => {
-              dispatch({ type: "toggleTelemetryWing" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.telemetryWingEnabled ? "1px solid #f97316" : "1px solid #334155",
-              background: state.telemetryWingEnabled ? "rgba(249, 115, 22, 0.22)" : "transparent",
-              color: state.telemetryWingEnabled ? "#ffedd5" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Field HUD
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-diagram-3d"
-            title="Switch central stage between 3D Model Showcase and 3D Volumetric Diagram Editor"
-            onClick={() => {
-              dispatch({ type: "toggleDiagramEditor" });
-              triggerCue("arena-rotate");
-            }}
-            style={{
-              padding: "3px 9px",
-              borderRadius: 6,
-              border: state.diagramEditorEnabled ? "1px solid #22d3ee" : "1px solid rgba(34, 211, 238, 0.45)",
-              background: state.diagramEditorEnabled
-                ? "linear-gradient(135deg, rgba(2, 132, 199, 0.85), rgba(6, 182, 212, 0.85))"
-                : "rgba(6, 182, 212, 0.14)",
-              color: state.diagramEditorEnabled ? "#ffffff" : "#67e8f9",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            {state.diagramEditorEnabled ? "✦ Diagram Mode" : "◈ 3D Model"}
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-code-overlay"
-            title="Toggle floating 3D syntax-highlighted code text overlay"
-            onClick={() => {
-              dispatch({ type: "toggleCodeOverlay" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.codeOverlayOpen ? `1px solid ${langTheme.secondaryColor}` : "1px solid #334155",
-              background: state.codeOverlayOpen ? "rgba(56, 189, 248, 0.2)" : "transparent",
-              color: state.codeOverlayOpen ? "#e0f2fe" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Code
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-inspector-overlay"
-            title="Toggle floating 3D Engineering Inspector panel (parameters & diagnostics)"
-            onClick={() => {
-              dispatch({ type: "toggleInspectorOverlay" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.inspectorOverlayOpen ? "1px solid #a855f7" : "1px solid #334155",
-              background: state.inspectorOverlayOpen ? "rgba(168, 85, 247, 0.2)" : "transparent",
-              color: state.inspectorOverlayOpen ? "#f3e8ff" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Inspector
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-simulation-panel"
-            title="Toggle curved 3D Simulation & Multi-Channel Oscilloscope Theater (run solver & toggle variables)"
-            onClick={() => {
-              dispatch({ type: "toggleSimulationPanel" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: state.simulationPanelOpen ? "1px solid #10b981" : "1px solid #334155",
-              background: state.simulationPanelOpen ? "rgba(16, 185, 129, 0.22)" : "transparent",
-              color: state.simulationPanelOpen ? "#a7f3d0" : "#94a3b8",
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Sim Plots
-          </button>
-          {workspaceFiles && workspaceFiles.length > 0 && (
-            <button
-              type="button"
-              data-testid="rotunda-toggle-file-carousel"
-              title="Open animated 3D Workspace File Carousel to switch files inside VR"
-              onClick={() => {
-                dispatch({ type: "toggleFileCarousel" });
-                triggerCue("page");
-              }}
-              style={{
-                padding: "3px 8px",
-                borderRadius: 6,
-                border: state.fileCarouselOpen ? `1px solid ${langTheme.accentColor}` : "1px solid #334155",
-                background: state.fileCarouselOpen ? "rgba(37, 99, 235, 0.25)" : "transparent",
-                color: state.fileCarouselOpen ? "#ffffff" : "#cbd5e1",
-                fontSize: 11,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Files ({workspaceFiles.length})
-            </button>
-          )}
-          <span
-            data-testid="rotunda-language-badge"
-            title={langTheme.diagramKindLabel}
-            style={{
-              padding: "2px 7px",
-              borderRadius: 5,
-              background: langTheme.accentColor,
-              color: "#ffffff",
-              fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.04em",
-            }}
-          >
-            {langTheme.badgeLabel}
-          </span>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-ao"
-            disabled={state.environment === "passthrough"}
-            title={
-              state.environment === "passthrough"
-                ? "Studio SSAO is disabled in AR passthrough to preserve real-room alpha"
-                : "Toggle desktop-only Studio SSAO cavity shading (automatically disabled in WebXR)"
+        <RotundaContextDock
+          hostedInWorkbench={hostedInWorkbench}
+          activeView={state.activeView}
+          splitCodeOpen={state.splitCodeOpen}
+          state={state}
+          langTheme={langTheme}
+          workspaceFileCount={workspaceFiles?.length ?? 0}
+          ambientMuted={ambientMuted}
+          diagramHudApi={diagramHudApi}
+          xrSupported={{ vr: xrCaps.vrSupported, ar: xrCaps.arSupported }}
+          onSelectEnvironment={handleSelectEnvironment}
+          onSelectView={handleSelectView}
+          onToggleSplitCode={handleToggleSplitCode}
+          onToggleAmbientMuted={() => {
+            const nextMuted = !ambientMuted;
+            setAmbientMuted(nextMuted);
+            if (!nextMuted) {
+              playRotundaCue("click");
             }
-            onClick={() => {
-              dispatch({ type: "toggleStudioSsao" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border:
-                state.studioSsaoEnabled && state.environment !== "passthrough"
-                  ? "1px solid #38bdf8"
-                  : "1px solid #334155",
-              background:
-                state.studioSsaoEnabled && state.environment !== "passthrough"
-                  ? "rgba(56, 189, 248, 0.22)"
-                  : "transparent",
-              color: state.environment === "passthrough" ? "#475569" : state.studioSsaoEnabled ? "#e0f2fe" : "#94a3b8",
-              fontSize: 11,
-              cursor: state.environment === "passthrough" ? "not-allowed" : "pointer",
-            }}
-          >
-            AO
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-ambient-audio"
-            title={
-              ambientMuted
-                ? "Unmute soothing ambient soundscape & VR sound effects"
-                : "Mute ambient soundscape & VR sound effects"
-            }
-            onClick={() => {
-              const nextMuted = !ambientMuted;
-              setAmbientMuted(nextMuted);
-              if (!nextMuted) {
-                playRotundaCue("click");
-              }
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: !ambientMuted ? "1px solid #22c55e" : "1px solid #334155",
-              background: !ambientMuted ? "rgba(34, 197, 94, 0.18)" : "transparent",
-              color: !ambientMuted ? "#bbf7d0" : "#94a3b8",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            {ambientMuted ? "🔇 Muted" : "🔊 Sound"}
-          </button>
-        </div>
-      )}
-
-      {/* Floating Desktop 3D Diagram Studio Bar (mirrors the Matrix Stockroom & Diagram tools for desktop 3D parity) */}
-      {!hideDesktopHud && state.diagramEditorEnabled && (
-        <div
-          data-testid="rotunda-diagram-studio-bar"
-          style={{
-            position: "absolute",
-            bottom: 112,
-            left: "50%",
-            transform: "translateX(-50%)",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "5px 10px",
-            borderRadius: 10,
-            border: "1px solid rgba(34, 211, 238, 0.45)",
-            background: "rgba(9, 15, 29, 0.90)",
-            backdropFilter: "blur(10px)",
-            color: "#e2e8f0",
-            fontSize: 11,
-            zIndex: 21,
           }}
-        >
-          <button
-            type="button"
-            data-testid="rotunda-toggle-wrist-library"
-            onClick={() => {
-              dispatch({ type: "toggleWristPalette" });
-              triggerCue(state.wristPaletteOpen ? "click" : "stockroom-open");
-            }}
-            style={{
-              padding: "3px 9px",
-              borderRadius: 6,
-              border: state.wristPaletteOpen ? "1px solid #22d3ee" : "1px solid #0284c7",
-              background: state.wristPaletteOpen ? "#0284c7" : "rgba(2, 132, 199, 0.22)",
-              color: "#ffffff",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
-          >
-            {state.wristPaletteOpen ? "✕ Close Stockroom" : "＋ Stockroom (L)"}
-          </button>
-          <span style={{ color: "#334155" }}>|</span>
-          <button
-            type="button"
-            data-testid="rotunda-cycle-snap-mode"
-            onClick={() => {
-              dispatch({ type: "cycleDiagramSnapMode" });
-              triggerCue("tick");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: "1px solid #334155",
-              background: "rgba(30, 41, 59, 0.8)",
-              color: "#bae6fd",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            Snap:{" "}
-            {state.diagramSnapMode === "free-3d"
-              ? "Free 3D"
-              : state.diagramSnapMode === "domain-layers"
-                ? "Domain Layers"
-                : state.diagramSnapMode === "grid-5cm"
-                  ? "5cm Grid"
-                  : "Flat 2D"}
-          </button>
-          <button
-            type="button"
-            data-testid="rotunda-toggle-wafer-style"
-            onClick={() => {
-              dispatch({ type: "toggleDiagramWaferStyle" });
-              triggerCue("click");
-            }}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: "1px solid #334155",
-              background: "rgba(30, 41, 59, 0.8)",
-              color: "#cbd5e1",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-          >
-            {state.diagramWaferStyle === "tactile-tile" ? "Wafer Tile" : "Pure 3D SVG"}
-          </button>
-          {diagramHudApi && (
-            <>
-              <button
-                type="button"
-                data-testid="rotunda-diagram-autolayer"
-                onClick={() => diagramHudApi.autoLayerByDomain()}
-                style={{
-                  padding: "3px 7px",
-                  borderRadius: 6,
-                  border: "1px solid #334155",
-                  background: "transparent",
-                  color: "#94a3b8",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                Layers
-              </button>
-              <button
-                type="button"
-                data-testid="rotunda-diagram-flatten"
-                onClick={() => diagramHudApi.flattenTo2D()}
-                style={{
-                  padding: "3px 7px",
-                  borderRadius: 6,
-                  border: "1px solid #334155",
-                  background: "transparent",
-                  color: "#94a3b8",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                Flat 2D
-              </button>
-              <span style={{ color: "#334155" }}>|</span>
-              <button
-                type="button"
-                data-testid="rotunda-diagram-undo"
-                disabled={!diagramHudApi.canUndo}
-                onClick={() => {
-                  diagramHudApi.undo();
-                  triggerCue("snap");
-                }}
-                style={{
-                  padding: "3px 7px",
-                  borderRadius: 6,
-                  border: "1px solid #334155",
-                  background: "transparent",
-                  color: diagramHudApi.canUndo ? "#e2e8f0" : "#475569",
-                  fontSize: 11,
-                  cursor: diagramHudApi.canUndo ? "pointer" : "not-allowed",
-                }}
-              >
-                ↶
-              </button>
-              <button
-                type="button"
-                data-testid="rotunda-diagram-redo"
-                disabled={!diagramHudApi.canRedo}
-                onClick={() => {
-                  diagramHudApi.redo();
-                  triggerCue("snap");
-                }}
-                style={{
-                  padding: "3px 7px",
-                  borderRadius: 6,
-                  border: "1px solid #334155",
-                  background: "transparent",
-                  color: diagramHudApi.canRedo ? "#e2e8f0" : "#475569",
-                  fontSize: 11,
-                  cursor: diagramHudApi.canRedo ? "pointer" : "not-allowed",
-                }}
-              >
-                ↷
-              </button>
-              <span style={{ color: "#64748b", fontFamily: "monospace", fontSize: 10 }}>
-                {diagramHudApi.nodeCount} parts · {diagramHudApi.edgeCount} wires
-              </span>
-            </>
-          )}
-        </div>
+          onEnterVr={handleEnterVr}
+          onEnterAr={handleEnterAr}
+          onScrollCode={(action) => setCodeScrollCommand((prev) => ({ action, seq: (prev?.seq ?? 0) + 1 }))}
+          vrQuickEditOpen={vrQuickEditOpen}
+          onToggleVrQuickEdit={onToggleVrQuickEdit}
+          dispatch={dispatch}
+          onCue={triggerCue}
+        />
       )}
 
       {/* Desktop Field-Simulator Telemetry HUD + Subsystem Inspector + Operation Log Scrubber for Pelagos OC-8 */}
@@ -2459,7 +1933,7 @@ export function EngineeringRotunda({
           dark={!backdrop.isLight}
           isPlaying={state.isPlaying}
           topOffsetPx={62}
-          bottomOffsetPx={60}
+          bottomOffsetPx={hostedInWorkbench ? 68 : 116}
           onTogglePlaying={() => {
             dispatch({ type: "togglePlaying" });
             triggerCue("click");

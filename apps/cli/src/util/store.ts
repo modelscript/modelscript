@@ -78,8 +78,48 @@ export class GlobalPackageStore {
 
     try {
       fs.mkdirSync(tmpDir, { recursive: true });
+      const resolvedTmpDir = path.resolve(tmpDir);
       const zip = new AdmZip(zipBuffer);
-      zip.extractAllTo(tmpDir, true);
+      const entries = zip.getEntries();
+
+      const MAX_ENTRIES = 20_000;
+      const MAX_UNCOMPRESSED_BYTES = 512 * 1024 * 1024; // 512 MB
+      if (entries.length > MAX_ENTRIES) {
+        throw new Error(`Archive for ${packageName}@${version} exceeds maximum entry count (${MAX_ENTRIES})`);
+      }
+
+      let totalUncompressedBytes = 0;
+      for (const entry of entries) {
+        const rawName = entry.entryName.replace(/\\/g, "/");
+        if (rawName.startsWith("/") || /^[a-zA-Z]:/.test(rawName) || rawName.split("/").includes("..")) {
+          throw new Error(`Unsafe archive entry path rejected (Zip Slip): '${entry.entryName}'`);
+        }
+
+        // Reject symbolic links encoded in Unix external file attributes (0o120000)
+        const unixMode = (entry.header.attr >>> 16) & 0o170000;
+        if (unixMode === 0o120000) {
+          throw new Error(`Symlink entry rejected in package archive: '${entry.entryName}'`);
+        }
+
+        const targetPath = path.resolve(resolvedTmpDir, rawName);
+        if (targetPath !== resolvedTmpDir && !targetPath.startsWith(resolvedTmpDir + path.sep)) {
+          throw new Error(`Archive entry escapes extraction directory: '${entry.entryName}'`);
+        }
+
+        if (entry.isDirectory) {
+          fs.mkdirSync(targetPath, { recursive: true });
+          continue;
+        }
+
+        const data = entry.getData();
+        totalUncompressedBytes += data.length;
+        if (totalUncompressedBytes > MAX_UNCOMPRESSED_BYTES) {
+          throw new Error(`Archive for ${packageName}@${version} exceeds maximum uncompressed size (512 MB)`);
+        }
+
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.writeFileSync(targetPath, data);
+      }
 
       // Write integrity marker
       fs.writeFileSync(

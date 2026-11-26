@@ -43,8 +43,9 @@ if ${COMPOSE_CMD} ps --status running --services 2>/dev/null | grep -q "^api$"; 
     }
   ' "${FILENAME}"
 
-  # Copy snapshot from container volume to persistent host directory
+  # Copy snapshot from container volume to persistent host directory, then remove container temp file
   ${COMPOSE_CMD} cp "api:/app/apps/api/data/backups/${FILENAME}" "${HOST_BACKUP_PATH}"
+  ${COMPOSE_CMD} exec -T api rm -f "/app/apps/api/data/backups/${FILENAME}" >/dev/null 2>&1 || true
 else
   # Method 2: Cold backup via Docker volume mount
   echo "    API container is not running. Locating api-data volume mount..."

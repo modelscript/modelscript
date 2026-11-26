@@ -6,6 +6,7 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { getNonce } from "./utils/nonce.js";
+import { attachExtensionWebviewBridge } from "./webview/shared/extension-lsp-bridge.js";
 
 interface BltAnalysisResult {
   className: string;
@@ -14,6 +15,13 @@ interface BltAnalysisResult {
   algebraicLoops: { variables: string[]; equations: string[] }[];
   equationCount: number;
   unknownCount: number;
+}
+
+interface BltWebviewPayload {
+  sourceCode: string;
+  flattenedCode?: string | undefined;
+  className?: string | undefined;
+  documentUri: string;
 }
 
 interface ClassHierarchyNode {
@@ -42,6 +50,7 @@ export class AnalysisPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
   private disposables: vscode.Disposable[] = [];
+  private latestBltPayload: BltWebviewPayload | undefined;
 
   static async createOrShowBlt(extensionUri: vscode.Uri, client: LanguageClient) {
     const editor = vscode.window.activeTextEditor;
@@ -50,7 +59,9 @@ export class AnalysisPanel {
       return;
     }
 
-    const uri = editor.document.uri.toString();
+    const document = editor.document;
+    const uri = document.uri.toString();
+    const sourceCode = document.getText();
 
     await vscode.window.withProgress(
       {
@@ -59,22 +70,53 @@ export class AnalysisPanel {
         cancellable: false,
       },
       async () => {
-        const result: BltAnalysisResult | null = await client.sendRequest("modelscript/analyzeBlt", { uri });
+        let className: string | undefined;
+        let flattenedCode: string | undefined;
 
-        if (!result) {
-          vscode.window.showInformationMessage("No BLT analysis available for this file.");
-          return;
+        try {
+          const result: BltAnalysisResult | null = await client.sendRequest("modelscript/analyzeBlt", { uri });
+          if (result?.className) className = result.className;
+        } catch {
+          // Fall back to direct source BLT analysis in BltVisualizer
         }
 
+        try {
+          const flatRes = await client.sendRequest<{ flattened?: string; code?: string } | string>(
+            "modelscript/flatten",
+            { uri },
+          );
+          const text =
+            typeof flatRes === "string"
+              ? flatRes
+              : typeof flatRes?.flattened === "string"
+                ? flatRes.flattened
+                : typeof flatRes?.code === "string"
+                  ? flatRes.code
+                  : undefined;
+          if (text && text.trim().length > 0) {
+            flattenedCode = text;
+          }
+        } catch {
+          // Flattening is optional; BltVisualizer handles source equations directly
+        }
+
+        const payload: BltWebviewPayload = {
+          sourceCode,
+          ...(flattenedCode ? { flattenedCode } : {}),
+          ...(className ? { className } : {}),
+          documentUri: uri,
+        };
+
         if (AnalysisPanel.bltPanel) {
+          AnalysisPanel.bltPanel.panel.title = `BLT: ${className ?? document.uri.path.split("/").pop() ?? "Model"}`;
           AnalysisPanel.bltPanel.panel.reveal(vscode.ViewColumn.Beside);
-          AnalysisPanel.bltPanel.postBltData(result);
+          AnalysisPanel.bltPanel.postBltModelData(payload);
           return;
         }
 
         const panel = vscode.window.createWebviewPanel(
           AnalysisPanel.viewType,
-          `BLT: ${result.className}`,
+          `BLT: ${className ?? document.uri.path.split("/").pop() ?? "Model"}`,
           vscode.ViewColumn.Beside,
           {
             enableScripts: true,
@@ -83,8 +125,8 @@ export class AnalysisPanel {
           },
         );
 
-        AnalysisPanel.bltPanel = new AnalysisPanel(panel, extensionUri, "blt");
-        AnalysisPanel.bltPanel.postBltData(result);
+        AnalysisPanel.bltPanel = new AnalysisPanel(panel, extensionUri, "blt", client, document);
+        AnalysisPanel.bltPanel.postBltModelData(payload);
       },
     );
   }
@@ -185,18 +227,53 @@ export class AnalysisPanel {
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     private readonly mode: "blt" | "hierarchy" | "componentTree",
+    client?: LanguageClient,
+    document?: vscode.TextDocument,
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
-    this.panel.webview.html = this.getHtmlForWebview();
+    this.panel.webview.html = this.mode === "blt" ? this.getBltWebviewHtml() : this.getHtmlForWebview();
+    if (this.mode === "blt") {
+      const bridgeSub = attachExtensionWebviewBridge(this.panel.webview, {
+        client,
+        getDocument: () => document,
+        title: this.panel.title,
+        languageId: document?.languageId ?? "modelica",
+        onUnhandledMessage: (msg) => {
+          if (msg.type === "ready" && this.latestBltPayload) {
+            void this.panel.webview.postMessage({ type: "bltModelData", data: this.latestBltPayload });
+          }
+        },
+      });
+      this.disposables.push(bridgeSub);
+    }
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
   }
 
-  private postBltData(data: BltAnalysisResult) {
-    const isDark =
-      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-      vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-    this.panel.webview.postMessage({ type: "bltData", data, isDark });
+  private postBltModelData(data: BltWebviewPayload) {
+    this.latestBltPayload = data;
+    void this.panel.webview.postMessage({ type: "bltModelData", data });
+  }
+
+  private getBltWebviewHtml(): string {
+    const scriptUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "dist", "blt-webview.js"));
+    const nonce = getNonce();
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${this.panel.webview.cspSource} data: blob:; style-src ${this.panel.webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src ${this.panel.webview.cspSource} https: http: data: blob:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BLT Structural Analysis</title>
+  <style>
+    html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--vscode-editor-background, #0d1117); color: var(--vscode-editor-foreground, #c9d1d9); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
   }
 
   private postHierarchyData(data: ClassHierarchyNode) {

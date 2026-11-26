@@ -51,6 +51,7 @@ import {
   AnsatzEditorNavbar as NavbarContainer,
   SearchTrigger,
   SplitToggleButton,
+  VrToggleButton,
 } from "../styles";
 
 export interface AnsatzEditorNavbarProps {
@@ -64,6 +65,8 @@ export interface AnsatzEditorNavbarProps {
   canSplit?: boolean;
   splitOrientation?: "horizontal" | "vertical";
   onToggleSplit?: () => void;
+  isVrMode?: boolean;
+  onToggleVrMode?: () => void;
   isDirty?: boolean;
   isSimulating?: boolean;
   publishLabel?: string;
@@ -102,6 +105,8 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
   canSplit = true,
   splitOrientation = "horizontal",
   onToggleSplit,
+  isVrMode = false,
+  onToggleVrMode,
   isDirty: _isDirty = false,
   isSimulating = false,
   runStatus,
@@ -434,6 +439,41 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
             >
               <SplitIcon size={14} />
             </SplitToggleButton>
+          )}
+
+          {onToggleVrMode && (
+            <VrToggleButton
+              type="button"
+              role="button"
+              data-testid="ansatz-vr-rotunda-toggle"
+              aria-pressed={isVrMode}
+              aria-label={isVrMode ? "Exit VR Spatial Mode" : "Enter VR Spatial Mode"}
+              $active={isVrMode}
+              onClick={onToggleVrMode}
+              title={
+                isVrMode
+                  ? "Exit VR Spatial Mode and return to flat desktop view (⌥V)"
+                  : "Enter VR Spatial Mode — 1:1 Diagram, 3D, Simulation, Inspector & Code stages (⌥V)"
+              }
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="2" y="7" width="20" height="10" rx="3" />
+                <path d="M9 17l1.8-2.4a1.5 1.5 0 0 1 2.4 0L15 17" />
+                <circle cx="8" cy="12" r="1.4" />
+                <circle cx="16" cy="12" r="1.4" />
+              </svg>
+              <span className="vr-label">VR</span>
+            </VrToggleButton>
           )}
         </NavCenter>
       ) : (

@@ -538,7 +538,13 @@ export function createOAuthRouter(database: LibraryDatabase): Router {
         },
       ];
 
-      res.json({ providers });
+      const linkableProviders = ["github", "gitlab"] as const;
+      const supportedProviders = linkableProviders.filter((provider) => {
+        const creds = database.getOAuthCredentials(provider);
+        return Boolean(creds.clientId && buildOAuthAuthorizeUrl(req, provider, creds.clientId, "probe", creds.baseUrl));
+      });
+
+      res.json({ providers, supportedProviders });
     } catch {
       res.status(500).json({ error: "Failed to fetch connected accounts" });
     }
@@ -560,12 +566,24 @@ export function createOAuthRouter(database: LibraryDatabase): Router {
     }
 
     try {
-      database.unlinkOAuthAccount(req.user!.id, provider);
+      const userId = req.user!.id;
+      const user = database.getUserById(userId);
+      const hasPassword = Boolean(user?.password_hash);
+      const linkedAccounts = database.getPublicOAuthAccounts(userId);
+      const otherLinkedAccounts = linkedAccounts.filter((acc) => acc.provider.toLowerCase() !== provider);
+      if (!hasPassword && otherLinkedAccounts.length === 0) {
+        res.status(400).json({
+          error: "Cannot disconnect your only sign-in method. Set a password first in Your Account settings.",
+        });
+        return;
+      }
+
+      database.unlinkOAuthAccount(userId, provider);
       database.logAudit({
-        actorId: req.user!.id,
+        actorId: userId,
         action: "auth_oauth_unlinked",
         resourceType: "auth",
-        resourceId: String(req.user!.id),
+        resourceId: String(userId),
         ipAddress: getClientIp(req),
         details: { provider },
       });

@@ -2,12 +2,14 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelSvgStage,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import { renderEpanetPlanSvg, type EpanetModelLike } from "@modelscript/diagram/epanet-diagram-builder";
@@ -26,6 +28,8 @@ export const EpanetPanel: React.FC<LanguagePanelProps> = ({
   host,
 }) => {
   const [activeTab, setActiveTab] = useState<EpanetTabId>("plan");
+  const [canvasThemeOverride, setCanvasThemeOverride] = useState<"light" | "dark" | null>(null);
+  const canvasTheme = canvasThemeOverride ?? colorMode;
 
   const computed = useMemo(() => {
     if (!code.trim()) return { network: null, error: undefined as string | undefined };
@@ -44,11 +48,11 @@ export const EpanetPanel: React.FC<LanguagePanelProps> = ({
   const svg = useMemo(() => {
     if (!computed.network) return "";
     try {
-      return renderEpanetPlanSvg(computed.network as unknown as EpanetModelLike);
+      return renderEpanetPlanSvg(computed.network as unknown as EpanetModelLike, { theme: canvasTheme });
     } catch {
       return "";
     }
-  }, [computed.network]);
+  }, [computed.network, canvasTheme]);
 
   const kpis = useMemo<PanelKpiItem[]>(() => {
     const net = computed.network;
@@ -60,6 +64,65 @@ export const EpanetPanel: React.FC<LanguagePanelProps> = ({
       { label: "Pumps", value: net?.pumps?.length ?? 0 },
     ];
   }, [computed.network]);
+
+  const junctions = computed.network?.junctions ?? [];
+  const pipes = computed.network?.pipes ?? [];
+
+  type JunctionRow = (typeof junctions)[number];
+  type PipeRow = (typeof pipes)[number];
+
+  const junctionColumns = useMemo<PanelDataGridColumn<JunctionRow>[]>(
+    () => [
+      { key: "id", label: "ID", mono: true, sortValue: (j) => j.id, render: (j) => <strong>{j.id}</strong> },
+      {
+        key: "elevation",
+        label: "Elevation",
+        align: "right",
+        mono: true,
+        sortValue: (j) => j.elevation,
+        render: (j) => j.elevation,
+      },
+      {
+        key: "demand",
+        label: "Demand",
+        align: "right",
+        mono: true,
+        sortValue: (j) => j.demand ?? 0,
+        render: (j) => j.demand ?? 0,
+      },
+    ],
+    [],
+  );
+
+  const pipeColumns = useMemo<PanelDataGridColumn<PipeRow>[]>(
+    () => [
+      { key: "id", label: "ID", mono: true, sortValue: (p) => p.id, render: (p) => <strong>{p.id}</strong> },
+      {
+        key: "nodes",
+        label: "Node 1 → Node 2",
+        mono: true,
+        sortValue: (p) => `${p.node1}->${p.node2}`,
+        render: (p) => `${p.node1} → ${p.node2}`,
+      },
+      {
+        key: "length",
+        label: "Length",
+        align: "right",
+        mono: true,
+        sortValue: (p) => p.length,
+        render: (p) => p.length,
+      },
+      {
+        key: "diameter",
+        label: "Diameter",
+        align: "right",
+        mono: true,
+        sortValue: (p) => p.diameter,
+        render: (p) => p.diameter,
+      },
+    ],
+    [],
+  );
 
   return (
     <PanelShell mode={mode} colorMode={colorMode} isFullScreen={isFullScreen}>
@@ -79,7 +142,7 @@ export const EpanetPanel: React.FC<LanguagePanelProps> = ({
                 variant="primary"
                 onClick={() => host.openInAnsatzEditor?.(code, dialect || "epanet", title)}
               >
-                Open in Ansatz Editor
+                Open in Editor
               </PanelButton>
             )}
           </>
@@ -93,73 +156,41 @@ export const EpanetPanel: React.FC<LanguagePanelProps> = ({
         onSelect={setActiveTab}
         tabs={[
           { id: "plan", label: "Network Plan" },
-          { id: "junctions", label: "Junctions", count: computed.network?.junctions?.length ?? 0 },
-          { id: "pipes", label: "Pipes", count: computed.network?.pipes?.length ?? 0 },
+          { id: "junctions", label: "Junctions", count: junctions.length },
+          { id: "pipes", label: "Pipes", count: pipes.length },
         ]}
       />
 
       {activeTab === "plan" && (
         <PanelSvgStage
           svg={svg}
+          canvasTheme={canvasTheme}
+          onToggleCanvasTheme={() =>
+            setCanvasThemeOverride((prev) => ((prev ?? colorMode) === "dark" ? "light" : "dark"))
+          }
           onRevealLine={host.onRevealLine}
           emptyMessage={computed.error ?? "Load an EPANET (.epanet / .net / .inp) network file."}
         />
       )}
 
       {activeTab === "junctions" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>ID</th>
-                <th style={{ padding: "5px 6px" }}>Elevation</th>
-                <th style={{ padding: "5px 6px" }}>Demand</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(computed.network?.junctions ?? []).slice(0, 200).map((j, idx) => (
-                <tr
-                  key={`${j.id}-${idx}`}
-                  style={{ borderBottom: "1px solid var(--ms-divider)", fontFamily: "var(--ms-font-mono)" }}
-                >
-                  <td style={{ padding: "4px 6px", fontWeight: 600 }}>{j.id}</td>
-                  <td style={{ padding: "4px 6px" }}>{j.elevation}</td>
-                  <td style={{ padding: "4px 6px" }}>{j.demand ?? 0}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={junctions}
+          columns={junctionColumns}
+          rowKey={(j, idx) => `${j.id}-${idx}`}
+          searchPlaceholder="Filter junctions by ID or elevation…"
+          emptyMessage="No junctions parsed."
+        />
       )}
 
       {activeTab === "pipes" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>ID</th>
-                <th style={{ padding: "5px 6px" }}>Node 1 → Node 2</th>
-                <th style={{ padding: "5px 6px" }}>Length</th>
-                <th style={{ padding: "5px 6px" }}>Diameter</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(computed.network?.pipes ?? []).slice(0, 200).map((p, idx) => (
-                <tr
-                  key={`${p.id}-${idx}`}
-                  style={{ borderBottom: "1px solid var(--ms-divider)", fontFamily: "var(--ms-font-mono)" }}
-                >
-                  <td style={{ padding: "4px 6px", fontWeight: 600 }}>{p.id}</td>
-                  <td style={{ padding: "4px 6px" }}>
-                    {p.node1} → {p.node2}
-                  </td>
-                  <td style={{ padding: "4px 6px" }}>{p.length}</td>
-                  <td style={{ padding: "4px 6px" }}>{p.diameter}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={pipes}
+          columns={pipeColumns}
+          rowKey={(p, idx) => `${p.id}-${idx}`}
+          searchPlaceholder="Filter pipes by ID or connected nodes…"
+          emptyMessage="No pipes parsed."
+        />
       )}
     </PanelShell>
   );

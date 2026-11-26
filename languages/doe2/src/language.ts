@@ -31,6 +31,7 @@ export const doe2Language = language({
   },
   word: doe2Grammar.word,
   extras: doe2Grammar.extras,
+  conflicts: doe2Grammar.conflicts,
   rules: doe2Grammar.rules,
 
   actions: [

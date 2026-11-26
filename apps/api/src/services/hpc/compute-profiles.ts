@@ -65,7 +65,7 @@ export const COMPUTE_PROFILES: Record<string, ComputeProfile> = {
     description:
       "64 CPUs across 4 low-latency nodes (16 tasks/node), 128 GB RAM, 1x A100 GPU/node. Optimized for delay-decoupled Bergeron transmission line EMT partitioning with SharedArrayBuffer / MPI ring buffers.",
     partition: "emt-rt",
-    cpus: 4,
+    cpus: 1,
     tasksPerNode: 16,
     nodes: 4,
     gpus: 1,

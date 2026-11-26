@@ -9,6 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { LANGUAGES } from "../docs/.vitepress/theme/data/languages.js";
 
 const LANGUAGE_EXTENSIONS_MAP: Record<string, string[]> = {
   adams: [".adm", ".cmd", ".acf"],
@@ -57,6 +58,19 @@ const LANGUAGE_EXTENSIONS_MAP: Record<string, string[]> = {
   urdf: [".urdf", ".sdf", ".xacro"],
   "verilog-a": [".va", ".vams"],
 };
+
+// Populate extensions for all 169 languages from the canonical docs language registry
+for (const lang of LANGUAGES) {
+  const parsed = lang.ext
+    .split(/[\s,/]+/)
+    .map((e) => e.trim())
+    .filter((e) => e.startsWith(".") && e.length > 1);
+  if (parsed.length > 0) {
+    const existing = LANGUAGE_EXTENSIONS_MAP[lang.slug] ?? [];
+    const merged = Array.from(new Set([...existing, ...parsed]));
+    LANGUAGE_EXTENSIONS_MAP[lang.slug] = merged;
+  }
+}
 
 const docsRoot = path.resolve(import.meta.dirname, "..");
 const repoRoot = path.resolve(docsRoot, "../..");

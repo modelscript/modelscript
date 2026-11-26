@@ -1,6 +1,6 @@
 ---
 title: "C Numerical & Embedded Engineering Integration (.c, .h)"
-description: '@modelscript/c (languages/c) provides native WebAssembly GLR parsing, procedural simulation step compilation, automated Modelica external "C" header binding, continuous DAE lowering, and static ana...'
+description: "@modelscript/c provides WASM GLR parsing, procedural step compilation, Modelica external C header binding, DAE lowering, and static analysis for ANSI C/C99."
 ---
 
 # C Numerical & Embedded Engineering Integration (`.c`, `.h`)

@@ -13,6 +13,8 @@ option(MS_ENABLE_DAWN "Link Dawn native WebGPU runtime" OFF)
 option(MS_ENABLE_CUDA "Enable NVIDIA CUDA / NVRTC hardware FP64 GPU backend" OFF)
 option(MS_ENABLE_HIP "Enable AMD HIP / hipRTC hardware FP64 GPU backend" OFF)
 option(MS_ENABLE_SUNDIALS "Link native SUNDIALS CVODE library" OFF)
+option(MS_ENABLE_MPI "Enable MPI multi-node distributed HPC backend" OFF)
+option(MS_ENABLE_NCCL "Enable NCCL/RCCL GPU-Direct collective communication" OFF)
 option(MS_HPC_NATIVE_ARCH "Compile with -march=native for HPC compute nodes" OFF)
 
 set(GEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/generated")
@@ -115,6 +117,24 @@ if(MS_ENABLE_SUNDIALS)
     else()
       message(WARNING "MS_ENABLE_SUNDIALS=ON requested but libsundials_cvode not found; building without native SUNDIALS")
     endif()
+  endif()
+endif()
+
+# Optional MPI multi-node distributed HPC backend
+if(MS_ENABLE_MPI)
+  find_package(MPI REQUIRED)
+  target_compile_definitions(modelscript_native_core PUBLIC MS_ENABLE_MPI=1)
+  target_link_libraries(modelscript_native_core PUBLIC MPI::MPI_CXX)
+endif()
+
+# Optional NCCL/RCCL GPU-Direct collective communication
+if(MS_ENABLE_NCCL)
+  target_compile_definitions(modelscript_native_core PUBLIC MS_ENABLE_NCCL=1)
+  find_library(MS_NCCL_LIB NAMES nccl rccl)
+  if(MS_NCCL_LIB)
+    target_link_libraries(modelscript_native_core PUBLIC "${MS_NCCL_LIB}")
+  else()
+    message(WARNING "MS_ENABLE_NCCL=ON requested but libnccl/librccl not found; building with MS_ENABLE_NCCL=1 only")
   endif()
 endif()
 

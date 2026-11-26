@@ -16,7 +16,7 @@ import {
   TrashIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   acceptFollowRequest,
   deleteAccount,
@@ -26,7 +26,6 @@ import {
   getMutedUsers,
   getPrivacySettings,
   importSocialGraph,
-  migrateAccountToActor,
   rejectFollowRequest,
   updateAccountAliases,
   updatePrivacySettings,
@@ -36,6 +35,7 @@ import {
   type PrivacyFederationSettings,
   type ProfileFieldItem,
 } from "../../../api/account";
+import { api } from "../../../api/client";
 import { unblockUser, unmuteUser } from "../../../api/social";
 import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
@@ -156,6 +156,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
   // Privacy & Federation Settings state
   const [privacy, setPrivacy] = useState<PrivacyFederationSettings>(DEFAULT_PRIVACY);
   const [loadingPrivacy, setLoadingPrivacy] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [savingPrivacy, setSavingPrivacy] = useState(false);
   const [privacyStatus, setPrivacyStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -169,13 +170,14 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
   const [verifyingFields, setVerifyingFields] = useState(false);
   const [verifyStatus, setVerifyStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [copiedBacklink, setCopiedBacklink] = useState(false);
+  const copyBacklinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Blocked & Muted accounts state
   const [blockedUsers, setBlockedUsers] = useState<BlockedOrMutedUser[]>([]);
   const [mutedUsers, setMutedUsers] = useState<BlockedOrMutedUser[]>([]);
   const [loadingSafetyLists, setLoadingSafetyLists] = useState(false);
-  const [unblockingUsername, setUnblockingUsername] = useState<string | null>(null);
-  const [unmutingUsername, setUnmutingUsername] = useState<string | null>(null);
+  const [unblockingUserId, setUnblockingUserId] = useState<number | null>(null);
+  const [unmutingUserId, setUnmutingUserId] = useState<number | null>(null);
 
   // Social graph portability state
   const [exportingKey, setExportingKey] = useState<string | null>(null);
@@ -193,21 +195,35 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
   const [newAliasInput, setNewAliasInput] = useState("");
   const [savingAliases, setSavingAliases] = useState(false);
   const [targetActorUrl, setTargetActorUrl] = useState("");
+  const [movePassword, setMovePassword] = useState("");
+  const [moveTotpCode, setMoveTotpCode] = useState("");
+  const [moveConfirmUsername, setMoveConfirmUsername] = useState("");
   const [confirmMoveUnderstand, setConfirmMoveUnderstand] = useState(false);
   const [migratingActor, setMigratingActor] = useState(false);
   const [federationStatus, setFederationStatus] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Account Deletion state
   const [deleteConfirmUsername, setDeleteConfirmUsername] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteTotpCode, setDeleteTotpCode] = useState("");
   const [deleteConsentUnderstood, setDeleteConsentUnderstood] = useState(false);
   const [deleteConsentBackedUp, setDeleteConsentBackedUp] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const loadAllPrivacyData = useCallback(async () => {
+  useEffect(() => {
+    return () => {
+      if (copyBacklinkTimerRef.current) {
+        clearTimeout(copyBacklinkTimerRef.current);
+      }
+    };
+  }, []);
+
+  const loadAllPrivacyData = useCallback(async (isCancelled?: () => boolean) => {
     setLoadingPrivacy(true);
     setLoadingRequests(true);
     setLoadingSafetyLists(true);
+    setLoadError(null);
 
     const [privRes, reqRes, blockedRes, mutedRes] = await Promise.allSettled([
       getPrivacySettings(),
@@ -215,6 +231,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       getBlockedUsers(),
       getMutedUsers(),
     ]);
+
+    if (isCancelled?.()) return;
 
     if (privRes.status === "fulfilled" && privRes.value) {
       const data = privRes.value;
@@ -244,6 +262,14 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
         { name: "GitHub", value: "", verified_at: null },
         { name: "Website", value: "", verified_at: null },
       ]);
+      if (privRes.status === "rejected") {
+        setLoadError(
+          getApiErrorMessage(
+            privRes.reason,
+            "Failed to load your privacy settings. Displayed preferences may not reflect your saved account state.",
+          ),
+        );
+      }
     }
     setLoadingPrivacy(false);
 
@@ -258,16 +284,28 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
     if (mutedRes.status === "fulfilled") {
       setMutedUsers(Array.isArray(mutedRes.value) ? mutedRes.value : []);
     }
+    if (
+      privRes.status !== "rejected" &&
+      (reqRes.status === "rejected" || blockedRes.status === "rejected" || mutedRes.status === "rejected")
+    ) {
+      setLoadError(
+        "Some privacy lists (follow requests, blocked, or muted accounts) could not be loaded. Please try refreshing.",
+      );
+    }
     setLoadingSafetyLists(false);
   }, []);
 
   useEffect(() => {
-    if (subView === "privacy") {
-      void loadAllPrivacyData();
-    }
+    if (subView !== "privacy") return;
+    let cancelled = false;
+    void loadAllPrivacyData(() => cancelled);
+    return () => {
+      cancelled = true;
+    };
   }, [subView, loadAllPrivacyData]);
 
   const handleSavePrivacySettings = async (nextOverride?: Partial<PrivacyFederationSettings>) => {
+    const prevPrivacy = privacy;
     const merged = { ...privacy, ...nextOverride };
     setPrivacy(merged);
     setSavingPrivacy(true);
@@ -283,6 +321,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       setPrivacyStatus({ type: "success", text: "Privacy and discovery preferences saved." });
       toast.success("Privacy settings saved.");
     } catch (err: unknown) {
+      setPrivacy(prevPrivacy);
       const msg = getApiErrorMessage(err, "Failed to update privacy settings.");
       setPrivacyStatus({ type: "error", text: msg });
       toast.error(msg);
@@ -357,29 +396,31 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
     }
   };
 
-  const handleUnblockUser = async (username: string) => {
-    setUnblockingUsername(username);
+  const handleUnblockUser = async (target: BlockedOrMutedUser) => {
+    const handle = `@${target.username}${target.remote_domain ? `@${target.remote_domain}` : ""}`;
+    setUnblockingUserId(target.id);
     try {
-      await unblockUser(username);
-      setBlockedUsers((prev) => prev.filter((u) => u.username !== username));
-      toast.success(`Unblocked @${username}.`);
+      await unblockUser(target.username, target.id);
+      setBlockedUsers((prev) => prev.filter((u) => u.id !== target.id));
+      toast.success(`Unblocked ${handle}.`);
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, `Failed to unblock @${username}.`));
+      toast.error(getApiErrorMessage(err, `Failed to unblock ${handle}.`));
     } finally {
-      setUnblockingUsername(null);
+      setUnblockingUserId(null);
     }
   };
 
-  const handleUnmuteUser = async (username: string) => {
-    setUnmutingUsername(username);
+  const handleUnmuteUser = async (target: BlockedOrMutedUser) => {
+    const handle = `@${target.username}${target.remote_domain ? `@${target.remote_domain}` : ""}`;
+    setUnmutingUserId(target.id);
     try {
-      await unmuteUser(username);
-      setMutedUsers((prev) => prev.filter((u) => u.username !== username));
-      toast.success(`Unmuted @${username}.`);
+      await unmuteUser(target.username, target.id);
+      setMutedUsers((prev) => prev.filter((u) => u.id !== target.id));
+      toast.success(`Unmuted ${handle}.`);
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, `Failed to unmute @${username}.`));
+      toast.error(getApiErrorMessage(err, `Failed to unmute ${handle}.`));
     } finally {
-      setUnmutingUsername(null);
+      setUnmutingUserId(null);
     }
   };
 
@@ -401,7 +442,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
       toast.success(`Exported ${type} list as ${format.toUpperCase()}.`);
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Failed to export social graph."));
@@ -412,12 +453,25 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
 
   const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
+    const MAX_IMPORT_FILE_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_IMPORT_FILE_BYTES) {
+      const msg = "Selected file exceeds the 5 MB size limit.";
+      setImportResult({ type: "error", text: msg });
+      toast.error(msg);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
         setImportCsvText(reader.result);
       }
+    };
+    reader.onerror = () => {
+      const msg = "Failed to read the selected file. Please try again.";
+      setImportResult({ type: "error", text: msg });
+      toast.error(msg);
     };
     reader.readAsText(file);
   };
@@ -519,11 +573,49 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       });
       return;
     }
+    const requiresPassword = user?.has_password !== false;
+    const requiresTotp = Boolean(user?.totp_enabled);
+    const requiresUsernameConfirm = !requiresPassword && !requiresTotp;
+
+    if (requiresPassword && !movePassword) {
+      setFederationStatus({ type: "error", text: "Please enter your current password to verify account migration." });
+      return;
+    }
+    if (requiresTotp && !moveTotpCode.trim()) {
+      setFederationStatus({
+        type: "error",
+        text: "Please enter your 6-digit two-factor authentication code to verify account migration.",
+      });
+      return;
+    }
+    if (
+      requiresUsernameConfirm &&
+      (!moveConfirmUsername.trim() || moveConfirmUsername.trim().toLowerCase() !== (user?.username || "").toLowerCase())
+    ) {
+      setFederationStatus({
+        type: "error",
+        text: `Please type your exact username ("${user?.username || ""}") to confirm account migration.`,
+      });
+      return;
+    }
+
     setMigratingActor(true);
     setFederationStatus(null);
     try {
-      const res = await migrateAccountToActor(target);
+      const { data: res } = await api.post<{
+        success: boolean;
+        movedToActorUrl: string;
+        migratedLocalFollowers: number;
+      }>("/users/me/move", {
+        targetActorUrl: target,
+        ...(requiresPassword ? { password: movePassword } : {}),
+        ...(requiresTotp ? { totpCode: moveTotpCode.trim() } : {}),
+        ...(requiresUsernameConfirm ? { confirmUsername: moveConfirmUsername.trim() } : {}),
+      });
       setPrivacy((prev) => ({ ...prev, moved_to_actor_url: res.movedToActorUrl || target }));
+      setMovePassword("");
+      setMoveTotpCode("");
+      setMoveConfirmUsername("");
       setFederationStatus({
         type: "success",
         text: `Account migration broadcast to ${res.movedToActorUrl || target}. Migrated ${res.migratedLocalFollowers ?? 0} local followers.`,
@@ -548,10 +640,22 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       setDeleteError("Please confirm both acknowledgment checkboxes before proceeding.");
       return;
     }
+    if (user.has_password !== false && !deletePassword) {
+      setDeleteError("Please enter your current password to confirm account deletion.");
+      return;
+    }
+    if (user.totp_enabled && !deleteTotpCode.trim()) {
+      setDeleteError("Please enter your two-factor authentication code to confirm account deletion.");
+      return;
+    }
     setIsDeletingAccount(true);
     setDeleteError(null);
     try {
-      await deleteAccount();
+      await deleteAccount({
+        password: user.has_password !== false ? deletePassword : undefined,
+        totpCode: user.totp_enabled ? deleteTotpCode.trim() : undefined,
+        confirmUsername: deleteConfirmUsername.trim(),
+      });
       toast.info("Your account and associated personal data have been permanently erased.");
       logout({ redirect: false });
       window.location.href = "/";
@@ -572,12 +676,13 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
         <Header>
           <CircleIconButton
             className="subtab-back"
+            aria-label="Back"
             onClick={() => navigateTab("privacy")}
             style={{ marginRight: "8px" }}
           >
             <ArrowLeftIcon size={20} />
           </CircleIconButton>
-          Deactivate or Delete Account
+          Delete Account
         </Header>
         <Box px={4} pb={4} style={{ overflowY: "auto" }}>
           <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
@@ -599,8 +704,11 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
               </Text>
             </Box>
             <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.6", display: "block", marginBottom: "16px" }}>
-              Deleting your account permanently anonymizes and erases your profile, email, authentication tokens,
-              published posts, comments, models, and personal records. This action cannot be reversed.
+              Deleting your account permanently erases your personal records, email address, profile metadata,
+              authentication tokens, signing keys, push subscriptions, connected OAuth accounts, and active sessions.
+              Public posts, comments, and models remain published with anonymized authorship so shared engineering
+              discussions and references stay intact (you may delete any public posts or models manually beforehand).
+              This action cannot be reversed.
             </DetailSubtitle>
 
             <Box
@@ -633,6 +741,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
 
           {deleteError && (
             <Box
+              role="alert"
               mb={4}
               p={3}
               bg="var(--color-danger-subtle)"
@@ -661,8 +770,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
                   style={{ marginTop: "3px", width: "18px", height: "18px", cursor: "pointer" }}
                 />
                 <Text fontSize="14px" style={{ lineHeight: "1.4" }}>
-                  I understand that this action is permanent and my account, posts, models, and credits will be
-                  permanently destroyed.
+                  I understand that this action is permanent, my personal data, credentials, and credits will be
+                  permanently erased, and any public posts, comments, or models will remain with anonymized authorship.
                 </Text>
               </label>
 
@@ -693,6 +802,37 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
               />
             </Box>
 
+            {user?.has_password !== false && (
+              <Box mb={4}>
+                <FormLabel style={{ display: "block", marginBottom: "6px" }}>Current password:</FormLabel>
+                <FormInput
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Enter your current password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  style={{ marginTop: 0 }}
+                />
+              </Box>
+            )}
+
+            {user?.totp_enabled && (
+              <Box mb={4}>
+                <FormLabel style={{ display: "block", marginBottom: "6px" }}>
+                  Two-factor authentication (2FA) code:
+                </FormLabel>
+                <FormInput
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="Enter 6-digit authenticator code"
+                  value={deleteTotpCode}
+                  onChange={(e) => setDeleteTotpCode(e.target.value)}
+                  style={{ marginTop: 0 }}
+                />
+              </Box>
+            )}
+
             <Box display="flex" justifyContent="flex-end" gap={3}>
               <SecondaryButton type="button" onClick={() => navigateTab("privacy")}>
                 Cancel
@@ -704,7 +844,9 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
                   isDeletingAccount ||
                   deleteConfirmUsername.trim() !== user?.username ||
                   !deleteConsentUnderstood ||
-                  !deleteConsentBackedUp
+                  !deleteConsentBackedUp ||
+                  (user?.has_password !== false && !deletePassword) ||
+                  (Boolean(user?.totp_enabled) && !deleteTotpCode.trim())
                 }
               >
                 <TrashIcon size={16} />
@@ -720,7 +862,11 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
   return (
     <>
       <Header>
-        <CircleIconButton onClick={() => (onBack ? onBack() : navigateTab("account"))} style={{ marginRight: "8px" }}>
+        <CircleIconButton
+          aria-label="Back"
+          onClick={() => (onBack ? onBack() : navigateTab("account"))}
+          style={{ marginRight: "8px" }}
+        >
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         Privacy, Safety &amp; Federation Control Center
@@ -731,6 +877,37 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
           &amp; ORCID), blocked/muted accounts, ActivityPub social graph portability, and GDPR data rights on{" "}
           {brandName}.
         </DetailSubtitle>
+
+        {loadError && (
+          <Box
+            role="alert"
+            mb={4}
+            p={3}
+            borderRadius="8px"
+            display="flex"
+            alignItems="center"
+            justifyContent="space-between"
+            gap={2}
+            style={{
+              background: "var(--color-danger-subtle)",
+              color: "var(--color-danger-fg)",
+              fontSize: "13px",
+            }}
+          >
+            <Box display="flex" alignItems="center" gap={2}>
+              <AlertIcon size={16} />
+              <span>{loadError}</span>
+            </Box>
+            <SecondaryButton
+              type="button"
+              onClick={() => void loadAllPrivacyData()}
+              style={{ padding: "4px 10px", fontSize: "12px", flexShrink: 0 }}
+            >
+              <SyncIcon size={12} />
+              Retry
+            </SecondaryButton>
+          </Box>
+        )}
 
         {/* SECTION 1: Profile Discovery & Post Privacy */}
         <Box
@@ -754,6 +931,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
 
           {privacyStatus && (
             <Box
+              role={privacyStatus.type === "error" ? "alert" : "status"}
               mb={3}
               p={3}
               borderRadius="8px"
@@ -1081,10 +1259,18 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
             </code>
             <SecondaryButton
               type="button"
-              onClick={() => {
-                navigator.clipboard?.writeText(relMeSnippet).catch(() => {});
-                setCopiedBacklink(true);
-                setTimeout(() => setCopiedBacklink(false), 1800);
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(relMeSnippet);
+                  setCopiedBacklink(true);
+                  if (copyBacklinkTimerRef.current) clearTimeout(copyBacklinkTimerRef.current);
+                  copyBacklinkTimerRef.current = setTimeout(() => {
+                    setCopiedBacklink(false);
+                    copyBacklinkTimerRef.current = null;
+                  }, 1800);
+                } catch {
+                  toast.error("Failed to copy snippet to clipboard.");
+                }
               }}
               style={{ padding: "4px 10px", fontSize: "12px", flexShrink: 0 }}
             >
@@ -1095,6 +1281,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
 
           {verifyStatus && (
             <Box
+              role={verifyStatus.type === "error" ? "alert" : "status"}
               mb={3}
               p={3}
               borderRadius="8px"
@@ -1258,11 +1445,11 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
                       </Box>
                       <SecondaryButton
                         type="button"
-                        disabled={unblockingUsername === u.username}
-                        onClick={() => void handleUnblockUser(u.username)}
+                        disabled={unblockingUserId === u.id}
+                        onClick={() => void handleUnblockUser(u)}
                         style={{ padding: "4px 12px", fontSize: "12px" }}
                       >
-                        {unblockingUsername === u.username ? "Unblocking..." : "Unblock"}
+                        {unblockingUserId === u.id ? "Unblocking..." : "Unblock"}
                       </SecondaryButton>
                     </Box>
                   ))}
@@ -1304,11 +1491,11 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
                       </Box>
                       <SecondaryButton
                         type="button"
-                        disabled={unmutingUsername === u.username}
-                        onClick={() => void handleUnmuteUser(u.username)}
+                        disabled={unmutingUserId === u.id}
+                        onClick={() => void handleUnmuteUser(u)}
                         style={{ padding: "4px 12px", fontSize: "12px" }}
                       >
-                        {unmutingUsername === u.username ? "Unmuting..." : "Unmute"}
+                        {unmutingUserId === u.id ? "Unmuting..." : "Unmute"}
                       </SecondaryButton>
                     </Box>
                   ))}
@@ -1372,6 +1559,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
 
             {importResult && (
               <Box
+                role={importResult.type === "error" ? "alert" : "status"}
                 mb={3}
                 p={2}
                 borderRadius="6px"
@@ -1499,6 +1687,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
 
           {federationStatus && (
             <Box
+              role={federationStatus.type === "error" ? "alert" : "status"}
               mb={3}
               p={3}
               borderRadius="8px"
@@ -1615,6 +1804,56 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
               onChange={(e) => setTargetActorUrl(e.target.value)}
               style={{ marginTop: 0, marginBottom: "10px", padding: "8px 12px", fontSize: "13px" }}
             />
+
+            {user?.has_password !== false && (
+              <Box mb={2}>
+                <FormLabel style={{ marginBottom: "4px", fontSize: "12.5px" }}>Current Password</FormLabel>
+                <FormInput
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Enter your current password"
+                  aria-label="Current Password for Account Migration"
+                  value={movePassword}
+                  onChange={(e) => setMovePassword(e.target.value)}
+                  style={{ marginTop: 0, marginBottom: "6px", padding: "8px 12px", fontSize: "13px" }}
+                />
+              </Box>
+            )}
+
+            {user?.totp_enabled && (
+              <Box mb={2}>
+                <FormLabel style={{ marginBottom: "4px", fontSize: "12.5px" }}>
+                  Two-Factor Authentication Code (TOTP)
+                </FormLabel>
+                <FormInput
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="6-digit authenticator code"
+                  aria-label="Two-Factor Authentication Code for Account Migration"
+                  value={moveTotpCode}
+                  onChange={(e) => setMoveTotpCode(e.target.value)}
+                  style={{ marginTop: 0, marginBottom: "6px", padding: "8px 12px", fontSize: "13px" }}
+                />
+              </Box>
+            )}
+
+            {user?.has_password === false && !user?.totp_enabled && (
+              <Box mb={2}>
+                <FormLabel style={{ marginBottom: "4px", fontSize: "12.5px" }}>
+                  Confirm Username (<code>{user.username}</code>)
+                </FormLabel>
+                <FormInput
+                  type="text"
+                  placeholder={`Type ${user.username} to confirm`}
+                  aria-label="Confirm Username for Account Migration"
+                  value={moveConfirmUsername}
+                  onChange={(e) => setMoveConfirmUsername(e.target.value)}
+                  style={{ marginTop: 0, marginBottom: "6px", padding: "8px 12px", fontSize: "13px" }}
+                />
+              </Box>
+            )}
+
             <label
               style={{
                 display: "flex",
@@ -1638,7 +1877,16 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
             <Box display="flex" justifyContent="flex-end">
               <DangerButton
                 type="button"
-                disabled={migratingActor || !targetActorUrl.trim() || !confirmMoveUnderstand}
+                disabled={
+                  migratingActor ||
+                  !targetActorUrl.trim() ||
+                  !confirmMoveUnderstand ||
+                  (user?.has_password !== false && !movePassword) ||
+                  (Boolean(user?.totp_enabled) && !moveTotpCode.trim()) ||
+                  (user?.has_password === false &&
+                    !user?.totp_enabled &&
+                    moveConfirmUsername.trim().toLowerCase() !== (user?.username || "").toLowerCase())
+                }
                 onClick={() => void handleMigrateAccount()}
                 style={{ padding: "8px 16px", fontSize: "13px" }}
               >

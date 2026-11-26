@@ -34,6 +34,160 @@ export interface SimulationStepSnapshot {
   variables: Record<string, number>;
 }
 
+interface CstNodeLike {
+  readonly type: string;
+  readonly text?: string | undefined;
+  readonly startOffset?: number | undefined;
+  readonly endOffset?: number | undefined;
+  readonly startIndex?: number | undefined;
+  readonly endIndex?: number | undefined;
+  readonly children?: readonly CstNodeLike[] | undefined;
+  childForFieldName?: ((name: string) => CstNodeLike | null | undefined) | undefined;
+}
+
+interface WasmParserLike {
+  parse?: ((source: string) => { rootNode?: CstNodeLike | null | undefined } | null | undefined) | undefined;
+}
+
+const MODELICA_CLASS_KINDS = new Set(["model", "block", "class", "connector", "record", "package", "function", "type"]);
+const MODELICA_SIMULATABLE_KINDS = new Set(["model", "block", "class"]);
+
+function getCstNodeText(node: CstNodeLike, source: string): string {
+  const start = node.startOffset ?? node.startIndex;
+  const end = node.endOffset ?? node.endIndex;
+  if (typeof start === "number" && typeof end === "number" && end >= start && end <= source.length) {
+    return source.slice(start, end);
+  }
+  return node.text ?? "";
+}
+
+function getCstFieldOrChild(node: CstNodeLike, fieldOrType: string): CstNodeLike | null {
+  if (typeof node.childForFieldName === "function") {
+    const byField = node.childForFieldName(fieldOrType);
+    if (byField) return byField;
+  }
+  for (const child of node.children ?? []) {
+    if (child.type === fieldOrType) return child;
+  }
+  return null;
+}
+
+function findCstDirectChild(node: CstNodeLike, typeName: string): CstNodeLike | null {
+  for (const child of node.children ?? []) {
+    if (child.type === typeName) return child;
+  }
+  return null;
+}
+
+function splitAsciiIdentifiers(text: string): string[] {
+  const words: string[] = [];
+  let start = -1;
+  for (let i = 0; i <= text.length; i++) {
+    const code = i < text.length ? text.charCodeAt(i) : 0;
+    const isIdent =
+      (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code === 95;
+    if (isIdent) {
+      if (start === -1) start = i;
+    } else if (start !== -1) {
+      words.push(text.slice(start, i));
+      start = -1;
+    }
+  }
+  return words;
+}
+
+function extractCstClassKind(classDefNode: CstNodeLike, source: string): string | null {
+  const prefixesNode = getCstFieldOrChild(classDefNode, "class_prefixes");
+  if (!prefixesNode) return null;
+  const words = splitAsciiIdentifiers(getCstNodeText(prefixesNode, source));
+  for (let i = words.length - 1; i >= 0; i--) {
+    const lower = words[i]!.toLowerCase();
+    if (MODELICA_CLASS_KINDS.has(lower)) return lower;
+  }
+  return null;
+}
+
+function extractCstClassName(classDefNode: CstNodeLike, source: string): string | null {
+  const specWrapper = getCstFieldOrChild(classDefNode, "class_specifier");
+  const specNode =
+    (specWrapper &&
+      (findCstDirectChild(specWrapper, "long_class_specifier") ??
+        findCstDirectChild(specWrapper, "short_class_specifier") ??
+        findCstDirectChild(specWrapper, "der_class_specifier"))) ??
+    specWrapper ??
+    findCstDirectChild(classDefNode, "long_class_specifier") ??
+    findCstDirectChild(classDefNode, "short_class_specifier") ??
+    findCstDirectChild(classDefNode, "der_class_specifier");
+  if (!specNode) return null;
+  const nameNode =
+    (typeof specNode.childForFieldName === "function" ? specNode.childForFieldName("name") : null) ??
+    findCstDirectChild(specNode, "identifier");
+  if (!nameNode) return null;
+  const name = getCstNodeText(nameNode, source).trim();
+  return name.length > 0 ? name : null;
+}
+
+function cstClassHasExperimentAnnotation(classDefNode: CstNodeLike, source: string): boolean {
+  const stack: CstNodeLike[] = [...(classDefNode.children ?? [])].reverse();
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    if (cur.type === "class_definition") continue;
+    if (cur.type === "annotation_clause") {
+      const annText = getCstNodeText(cur, source).toLowerCase();
+      const idx = annText.indexOf("experiment");
+      if (idx !== -1) {
+        let j = idx + "experiment".length;
+        while (
+          j < annText.length &&
+          (annText[j] === " " || annText[j] === "\t" || annText[j] === "\r" || annText[j] === "\n")
+        ) {
+          j++;
+        }
+        if (annText[j] === "(") return true;
+      }
+      continue;
+    }
+    const children = cur.children ?? [];
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push(children[i]!);
+    }
+  }
+  return false;
+}
+
+function extractPrimaryModelicaClassNameFromParser(parser: unknown, source: string): string | null {
+  const wasmParser = parser as WasmParserLike | null | undefined;
+  if (!wasmParser || typeof wasmParser.parse !== "function" || !source) return null;
+  const tree = wasmParser.parse(source);
+  const rootNode = tree?.rootNode;
+  if (!rootNode) return null;
+
+  const classes: { kind: string; name: string; hasExperiment: boolean }[] = [];
+  const walk = (node: CstNodeLike): void => {
+    if (node.type === "class_definition") {
+      const kind = extractCstClassKind(node, source);
+      const name = extractCstClassName(node, source);
+      if (kind && name) {
+        const hasExperiment = MODELICA_SIMULATABLE_KINDS.has(kind) && cstClassHasExperimentAnnotation(node, source);
+        classes.push({ kind, name, hasExperiment });
+      }
+    }
+    for (const child of node.children ?? []) {
+      walk(child);
+    }
+  };
+  walk(rootNode);
+
+  if (classes.length === 0) return null;
+  for (const entry of classes) {
+    if (entry.hasExperiment) return entry.name;
+  }
+  for (let i = classes.length - 1; i >= 0; i--) {
+    if (MODELICA_SIMULATABLE_KINDS.has(classes[i]!.kind)) return classes[i]!.name;
+  }
+  return classes[0]!.name;
+}
+
 /**
  * Steps a flattened Modelica `DAEBuilder` arena forward in time for interactive DAP debugging.
  * When `program` points to an existing `.mo` file on disk, flattens and steps the actual Modelica
@@ -152,9 +306,8 @@ export class WasmSimulationStepper {
       const globalRec = globalThis as Record<string, unknown>;
       const parser = globalRec["modelicaParser"];
       if (!parser || typeof ContextCtor !== "function") return false;
-      const classMatch = source.match(/\b(?:model|class|block)\s+([A-Za-z_][A-Za-z0-9_]*)/);
-      if (!classMatch?.[1]) return false;
-      const className = classMatch[1];
+      const className = extractPrimaryModelicaClassNameFromParser(parser, source);
+      if (!className) return false;
 
       interface ModelicaContextInstance {
         load: (src: string, path: string) => void;

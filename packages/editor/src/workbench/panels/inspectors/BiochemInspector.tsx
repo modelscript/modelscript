@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import React, { useMemo, useState } from "react";
 import { InspectorTabs } from "./InspectorTabs.js";
 
@@ -126,6 +127,30 @@ function computeConservedMoieties(species: string[], stoich: number[][]): string
   return moieties;
 }
 
+function getXmlAttr(el: XmlElement, name: string): string | undefined {
+  const lower = name.toLowerCase();
+  const val = el.attributes.find((a) => a.name.toLowerCase() === lower)?.value;
+  return val && val.length > 0 ? val : undefined;
+}
+
+function collectXmlElements(el: XmlElement | null | undefined, tagName: string, out: XmlElement[] = []): XmlElement[] {
+  if (!el) return out;
+  const lower = tagName.toLowerCase();
+  if (el.name.toLowerCase() === lower) out.push(el);
+  for (const child of el.children) {
+    collectXmlElements(child, lower, out);
+  }
+  return out;
+}
+
+function offsetToLine(code: string, offset: number): number {
+  let line = 1;
+  for (let i = 0; i < offset && i < code.length; i++) {
+    if (code.charCodeAt(i) === 10) line++;
+  }
+  return line;
+}
+
 export function analyzeBiochemStoichiometry(code: string, lines: string[]): BiochemSummary {
   const reactions: ParsedReaction[] = [];
   const speciesOrder: string[] = [];
@@ -140,42 +165,40 @@ export function analyzeBiochemStoichiometry(code: string, lines: string[]): Bioc
 
   // 1. SBML XML parsing (<species>, <reaction>, <listOfReactants>, <listOfProducts>)
   if (code.includes("<sbml") || code.includes("<listOfReactions") || code.includes("<reaction")) {
-    const spRe = /<species\b([^>]*)\/?>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = spRe.exec(code)) !== null) {
-      const boundary = /\bboundaryCondition\s*=\s*["']true["']/i.test(m[1]!);
-      const id = /\bid\s*=\s*["']([^"']+)["']/i.exec(m[1]!)?.[1];
-      if (id && !boundary) registerSpecies(id);
-    }
+    const doc = parseXmlSync(code);
+    if (doc.root) {
+      for (const spEl of collectXmlElements(doc.root, "species")) {
+        const boundary = getXmlAttr(spEl, "boundaryCondition")?.toLowerCase() === "true";
+        const id = getXmlAttr(spEl, "id");
+        if (id && !boundary) registerSpecies(id);
+      }
 
-    const rxnRe = /<reaction\b([^>]*)>([\s\S]*?)<\/reaction>/gi;
-    while ((m = rxnRe.exec(code)) !== null) {
-      const attrs = m[1]!;
-      const body = m[2]!;
-      const id = /\bid\s*=\s*["']([^"']+)["']/i.exec(attrs)?.[1] ?? `R${reactions.length + 1}`;
-      const reversible = !/\breversible\s*=\s*["']false["']/i.test(attrs);
-      const line = code.slice(0, m.index).split("\n").length;
+      for (const rxnEl of collectXmlElements(doc.root, "reaction")) {
+        const id = getXmlAttr(rxnEl, "id") ?? `R${reactions.length + 1}`;
+        const reversible = getXmlAttr(rxnEl, "reversible")?.toLowerCase() !== "false";
+        const line = offsetToLine(code, rxnEl.start);
 
-      const parseRefBlock = (tag: string) => {
-        const block = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i").exec(body)?.[1] ?? "";
-        const refRe = /<speciesReference\b([^>]*)\/?>/gi;
-        const list: Array<{ species: string; coeff: number }> = [];
-        let rm: RegExpExecArray | null;
-        while ((rm = refRe.exec(block)) !== null) {
-          const sp = /\bspecies\s*=\s*["']([^"']+)["']/i.exec(rm[1]!)?.[1];
-          const coeff = Number(/\bstoichiometry\s*=\s*["']([^"']+)["']/i.exec(rm[1]!)?.[1] ?? 1);
-          if (sp) {
-            registerSpecies(sp);
-            list.push({ species: sp, coeff });
+        const parseRefBlock = (tag: string) => {
+          const blockEl = rxnEl.children.find((c) => c.name.toLowerCase() === tag);
+          if (!blockEl) return [];
+          const list: Array<{ species: string; coeff: number }> = [];
+          for (const refEl of collectXmlElements(blockEl, "speciesreference")) {
+            const sp = getXmlAttr(refEl, "species");
+            const stoichAttr = getXmlAttr(refEl, "stoichiometry");
+            const coeff = stoichAttr ? Number(stoichAttr) : 1;
+            if (sp) {
+              registerSpecies(sp);
+              list.push({ species: sp, coeff });
+            }
           }
-        }
-        return list;
-      };
+          return list;
+        };
 
-      const reactants = parseRefBlock("listOfReactants");
-      const products = parseRefBlock("listOfProducts");
-      if (reactants.length > 0 || products.length > 0) {
-        reactions.push({ id, reversible, reactants, products, line });
+        const reactants = parseRefBlock("listofreactants");
+        const products = parseRefBlock("listofproducts");
+        if (reactants.length > 0 || products.length > 0) {
+          reactions.push({ id, reversible, reactants, products, line });
+        }
       }
     }
   }

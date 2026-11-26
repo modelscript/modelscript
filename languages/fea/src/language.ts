@@ -334,10 +334,10 @@ export const feaLanguage = language({
       }),
 
     KeywordScalar: ($) =>
-      choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!, $["NUMBER"]!, $["STRING"]!, $["EmbeddedExpression"]!),
+      prec(1, choice($["IDENTIFIER"]!, $["QUALIFIED_IDENT"]!, $["NUMBER"]!, $["STRING"]!, $["EmbeddedExpression"]!)),
 
     ParameterAssignment: ($) =>
-      prec(3, seq(field("param", $["IDENTIFIER"]!), "=", field("value", $["KeywordScalar"]!))),
+      seq(field("param", $["IDENTIFIER"]!), prec(3, "="), field("value", $["KeywordScalar"]!)),
 
     DataToken: ($) =>
       choice(

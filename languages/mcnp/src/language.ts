@@ -19,6 +19,8 @@ export const mcnpLanguage = language({
   },
   errorCodes: McnpErrorCode,
 
+  conflicts: ($) => [[$["SurfaceCard"]!, $["PositiveInt"]!]],
+
   rules: {
     Deck: ($) => repeat(choice($["CellCard"]!, $["SurfaceCard"]!, $["DataCard"]!, $["Comment"]!)),
 

@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /workspace && chown 1000:1000 /workspace
 WORKDIR /workspace
+USER 1000:1000
 
 ENTRYPOINT ["ccx"]
 CMD ["-i", "job"]

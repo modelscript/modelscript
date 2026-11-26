@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { GlobeIcon, PaintbrushIcon } from "@primer/octicons-react";
+import {
+  ArrowLeftIcon,
+  BookIcon,
+  ChevronRightIcon,
+  GlobeIcon,
+  PaintbrushIcon,
+  SlidersIcon,
+} from "@primer/octicons-react";
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getUserTopics, updateUserTopic } from "../../../api";
 import { useCapabilities } from "../../../CapabilitiesContext";
 import Box from "../../../components/Box";
+import { useToast } from "../../../components/ToastContext";
 import { useLanguageEnabled } from "../../../FeatureFlagContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { useTheme } from "../../../theme";
@@ -73,15 +81,22 @@ function applyDisplayPreferencesToDom(prefs: DisplayAccessibilityPrefs): void {
   }
 }
 
-export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> = ({ subView = "display" }) => {
+export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> = ({
+  subView = "display",
+  onNavigate,
+}) => {
   const { theme, setTheme, isOverridden, clearThemeOverride } = useTheme();
   const navigate = useNavigate();
+  const toast = useToast();
   const branding = useInstanceBranding();
   const { tier, edition, airgapEnforced, capabilities } = useCapabilities();
   const isModelScriptEnabled = useLanguageEnabled("modelscript");
   const brandName = branding.instanceName || "Ansatz";
 
   const [topics, setTopics] = useState<{ concept: string; is_active: boolean }[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState<string | null>(null);
+  const [topicsRetryCount, setTopicsRetryCount] = useState(0);
 
   const [displayPrefs, setDisplayPrefs] = useState<DisplayAccessibilityPrefs>(() => {
     try {
@@ -114,12 +129,32 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
   }, [displayPrefs]);
 
   useEffect(() => {
-    if (subView === "contentPreferences") {
-      getUserTopics()
-        .then((data) => setTopics(data))
-        .catch(() => {});
-    }
-  }, [subView]);
+    if (subView !== "contentPreferences") return;
+    let active = true;
+    setTopicsLoading(true);
+    setTopicsError(null);
+    getUserTopics()
+      .then((data) => {
+        if (active) {
+          setTopics(data);
+        }
+      })
+      .catch((err: unknown) => {
+        if (active) {
+          setTopicsError(
+            err instanceof Error && err.message ? err.message : "Failed to load personalized topics. Please try again.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setTopicsLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [subView, topicsRetryCount]);
 
   const runtimeChecks = useMemo(() => {
     const hasWasm = typeof WebAssembly === "object" && typeof WebAssembly.instantiate === "function";
@@ -156,7 +191,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
         flexDirection="column"
         gap={2}
       >
-        <Box display="flex" justifyContent="space-between" py={1}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} py={1}>
           <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>Instance Name &amp; Tier</span>
           <span style={{ fontSize: "13px", fontFamily: "var(--font-mono)", fontWeight: "600" }}>
             {brandName} ({edition.toUpperCase()} • {tier})
@@ -165,6 +200,9 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
         <Box
           display="flex"
           justifyContent="space-between"
+          alignItems="center"
+          flexWrap="wrap"
+          gap={2}
           py={1}
           style={{ borderTop: "1px solid var(--color-border-subtle)" }}
         >
@@ -187,6 +225,9 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
         <Box
           display="flex"
           justifyContent="space-between"
+          alignItems="center"
+          flexWrap="wrap"
+          gap={2}
           py={1}
           style={{ borderTop: "1px solid var(--color-border-subtle)" }}
         >
@@ -198,6 +239,9 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
         <Box
           display="flex"
           justifyContent="space-between"
+          alignItems="center"
+          flexWrap="wrap"
+          gap={2}
           py={1}
           style={{ borderTop: "1px solid var(--color-border-subtle)" }}
         >
@@ -243,10 +287,38 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
     </Box>
   );
 
+  const handleDetailKeyDown = (action: () => void) => (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      action();
+    }
+  };
+
   if (subView === "contentPreferences") {
     return (
       <>
-        <Header>Content preferences</Header>
+        <Header>
+          <button
+            type="button"
+            className="subtab-back"
+            aria-label="Back"
+            onClick={() => onNavigate?.("displayAndLanguages")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              color: "inherit",
+              font: "inherit",
+            }}
+          >
+            <ArrowLeftIcon size={20} />
+            <span>Content preferences</span>
+          </button>
+        </Header>
         <Box px={4} pb={3}>
           <Box
             p={3}
@@ -290,13 +362,39 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
           </DetailSubtitle>
         </Box>
         <Box p={4}>
-          {topics.length === 0 ? (
+          {topicsLoading ? (
+            <DetailSubtitle role="status">Loading your personalized topics…</DetailSubtitle>
+          ) : topicsError ? (
+            <Box
+              role="alert"
+              p={3}
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              flexWrap="wrap"
+              gap={3}
+              style={{
+                border: "1px solid var(--color-danger-emphasis, #f43f5e)",
+                borderRadius: "10px",
+                background: "var(--color-danger-subtle, rgba(244, 63, 94, 0.1))",
+              }}
+            >
+              <DetailSubtitle style={{ color: "var(--color-text-primary)", margin: 0 }}>{topicsError}</DetailSubtitle>
+              <SecondaryButton
+                type="button"
+                onClick={() => setTopicsRetryCount((c) => c + 1)}
+                style={{ padding: "6px 14px", fontSize: "12.5px" }}
+              >
+                Retry
+              </SecondaryButton>
+            </Box>
+          ) : topics.length === 0 ? (
             <DetailSubtitle>
               No topics discovered yet. Keep interacting with posts to get recommendations!
             </DetailSubtitle>
           ) : (
             topics.map((t) => (
-              <Box key={t.concept} display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Box key={t.concept} display="flex" justifyContent="space-between" alignItems="center" gap={3} mb={3}>
                 <Box>
                   <FormLabel style={{ display: "block", textTransform: "capitalize" }}>{t.concept}</FormLabel>
                   <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
@@ -307,15 +405,28 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                   type="checkbox"
                   role="switch"
                   aria-checked={t.is_active}
+                  aria-label={`Toggle ${t.concept} topic`}
                   checked={t.is_active}
                   onChange={async (e) => {
-                    const val = e.target.checked;
-                    setTopics(topics.map((top) => (top.concept === t.concept ? { ...top, is_active: val } : top)));
+                    const nextVal = e.target.checked;
+                    const prevVal = t.is_active;
+                    setTopics((prev) =>
+                      prev.map((top) => (top.concept === t.concept ? { ...top, is_active: nextVal } : top)),
+                    );
                     try {
-                      await updateUserTopic(t.concept, val);
-                    } catch {}
+                      await updateUserTopic(t.concept, nextVal);
+                    } catch (err) {
+                      setTopics((prev) =>
+                        prev.map((top) => (top.concept === t.concept ? { ...top, is_active: prevVal } : top)),
+                      );
+                      toast.error(
+                        err instanceof Error && err.message
+                          ? `Failed to update "${t.concept}": ${err.message}`
+                          : `Failed to update "${t.concept}" topic preference. Please try again.`,
+                      );
+                    }
                   }}
-                  style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                  style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
                 />
               </Box>
             ))
@@ -327,9 +438,39 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
 
   if (subView === "other") {
     const docsRoot = branding.docsBaseUrl || "https://modelscript.org";
+    const docLinkStyle: React.CSSProperties = {
+      fontSize: "13px",
+      fontWeight: "600",
+      color: "var(--color-accent-cyan, #06b6d4)",
+      textDecoration: "none",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+    };
     return (
       <>
-        <Header>Help &amp; Additional Resources</Header>
+        <Header>
+          <button
+            type="button"
+            className="subtab-back"
+            aria-label="Back"
+            onClick={() => onNavigate?.("displayAndLanguages")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              color: "inherit",
+              font: "inherit",
+            }}
+          >
+            <ArrowLeftIcon size={20} />
+            <span>Help &amp; Additional Resources</span>
+          </button>
+        </Header>
         <Box px={4} pb={4} style={{ overflowY: "auto" }}>
           <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
             Explore comprehensive documentation, learn editor keyboard shortcuts, check federation status, and view
@@ -388,17 +529,17 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
             <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(260px, 1fr))" gap={3}>
               {[
                 {
-                  title: "Platform Overview & User Guide",
-                  desc: `Learn how ${brandName} unifies Modelica simulation, Git repositories, and scientific publishing.`,
-                  link: "/about",
-                  label: "Open Platform Guide →",
+                  title: "Explore Models & Community",
+                  desc: `Discover simulations, published engineering posts, and featured repositories across ${brandName}.`,
+                  link: "/explore",
+                  label: "Explore Platform →",
                   external: false,
                 },
                 {
-                  title: "Federation & ActivityPub Network",
-                  desc: "Inspect connected Fediverse instances, WebFinger resolution, and cryptographic HTTP signatures.",
-                  link: "/federation",
-                  label: "Explore Federation →",
+                  title: "Collaborative Spaces & Network",
+                  desc: "Join domain engineering spaces, inspect federated communities, and collaborate on shared models.",
+                  link: "/spaces",
+                  label: "Browse Spaces →",
                   external: false,
                 },
                 {
@@ -440,22 +581,15 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                   <DetailSubtitle style={{ display: "block", margin: "6px 0 12px 0", lineHeight: "1.4" }}>
                     {doc.desc}
                   </DetailSubtitle>
-                  <a
-                    href={doc.link}
-                    target={doc.external ? "_blank" : undefined}
-                    rel={doc.external ? "noreferrer" : undefined}
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: "600",
-                      color: "var(--color-accent-cyan, #06b6d4)",
-                      textDecoration: "none",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    {doc.label}
-                  </a>
+                  {doc.external ? (
+                    <a href={doc.link} target="_blank" rel="noreferrer" style={docLinkStyle}>
+                      {doc.label}
+                    </a>
+                  ) : (
+                    <Link to={doc.link} style={docLinkStyle}>
+                      {doc.label}
+                    </Link>
+                  )}
                 </Box>
               ))}
             </Box>
@@ -494,7 +628,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
               <DetailTitle>Color Theme</DetailTitle>
               <DetailSubtitle>Choose how {brandName} looks on this device.</DetailSubtitle>
             </DetailText>
-            <Box display="flex" gap={1}>
+            <Box display="flex" gap={1} flexWrap="wrap" role="group" aria-label="Color Theme">
               <button
                 type="button"
                 className="ms-chip"
@@ -555,7 +689,7 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
                 <FormLabel style={{ margin: 0, display: "block" }}>UI Font Scale</FormLabel>
                 <DetailSubtitle>Scale application typography across timelines, menus, and dialogs</DetailSubtitle>
               </Box>
-              <Box display="flex" gap={2} flexWrap="wrap">
+              <Box display="flex" gap={2} flexWrap="wrap" role="group" aria-label="UI Font Scale">
                 {FONT_SCALE_OPTIONS.map((opt) => {
                   const active = displayPrefs.fontScale === opt.value;
                   return (
@@ -587,58 +721,62 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
             {/* Compact Density Mode */}
             <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Compact Density Mode</FormLabel>
-                <DetailSubtitle>
-                  Tighten spacing in feeds, tables, and repository trees (<code>data-density="compact"</code>)
-                </DetailSubtitle>
+                <FormLabel htmlFor="display-compact-density" style={{ margin: 0, display: "block" }}>
+                  Compact Density Mode
+                </FormLabel>
+                <DetailSubtitle>Tighten spacing in feeds, tables, and repository trees.</DetailSubtitle>
               </Box>
               <input
+                id="display-compact-density"
                 type="checkbox"
                 role="switch"
                 aria-checked={displayPrefs.compactDensity}
                 aria-label="Compact Density Mode"
                 checked={displayPrefs.compactDensity}
                 onChange={(e) => updateDisplayPrefs({ compactDensity: e.target.checked })}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
 
             {/* Reduced Motion */}
             <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Reduced Motion</FormLabel>
-                <DetailSubtitle>
-                  Suppress non-essential UI transitions and micro-animations (<code>data-reduced-motion="true"</code>)
-                </DetailSubtitle>
+                <FormLabel htmlFor="display-reduced-motion" style={{ margin: 0, display: "block" }}>
+                  Reduced Motion
+                </FormLabel>
+                <DetailSubtitle>Suppress non-essential UI transitions and micro-animations.</DetailSubtitle>
               </Box>
               <input
+                id="display-reduced-motion"
                 type="checkbox"
                 role="switch"
                 aria-checked={displayPrefs.reducedMotion}
                 aria-label="Reduced Motion"
                 checked={displayPrefs.reducedMotion}
                 onChange={(e) => updateDisplayPrefs({ reducedMotion: e.target.checked })}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
 
             {/* High Contrast Borders */}
             <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>High Contrast Borders</FormLabel>
+                <FormLabel htmlFor="display-high-contrast" style={{ margin: 0, display: "block" }}>
+                  High Contrast Borders
+                </FormLabel>
                 <DetailSubtitle>
-                  Increase border luminance and focus ring contrast across cards and inputs (
-                  <code>data-high-contrast="true"</code>)
+                  Increase border luminance and focus ring contrast across cards and inputs.
                 </DetailSubtitle>
               </Box>
               <input
+                id="display-high-contrast"
                 type="checkbox"
                 role="switch"
                 aria-checked={displayPrefs.highContrast}
                 aria-label="High Contrast Borders"
                 checked={displayPrefs.highContrast}
                 onChange={(e) => updateDisplayPrefs({ highContrast: e.target.checked })}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
 
@@ -655,6 +793,54 @@ export const DisplayAndPreferencesTab: React.FC<DisplayAndPreferencesTabProps> =
         </Box>
 
         {renderInstanceTelemetryCard()}
+
+        {/* Additional Preferences & Resources Navigation */}
+        <Box
+          mb={4}
+          style={{
+            border: "1px solid var(--color-border-default)",
+            borderRadius: "12px",
+            background: "var(--color-canvas-subtle, rgba(255,255,255,0.02))",
+            overflow: "hidden",
+          }}
+        >
+          <DetailItem
+            $clickable
+            role="button"
+            tabIndex={0}
+            onClick={() => onNavigate?.("contentPreferences")}
+            onKeyDown={handleDetailKeyDown(() => onNavigate?.("contentPreferences"))}
+          >
+            <DetailIcon>
+              <SlidersIcon size={20} />
+            </DetailIcon>
+            <DetailText>
+              <DetailTitle>Content Preferences &amp; Topics</DetailTitle>
+              <DetailSubtitle>Manage discovered feed topics and replay the interactive product tour.</DetailSubtitle>
+            </DetailText>
+            <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+          </DetailItem>
+
+          <DetailItem
+            $clickable
+            role="button"
+            tabIndex={0}
+            onClick={() => onNavigate?.("other")}
+            onKeyDown={handleDetailKeyDown(() => onNavigate?.("other"))}
+            style={{ borderTop: "1px solid var(--color-border-subtle)" }}
+          >
+            <DetailIcon>
+              <BookIcon size={20} />
+            </DetailIcon>
+            <DetailText>
+              <DetailTitle>Keyboard Shortcuts &amp; Resources</DetailTitle>
+              <DetailSubtitle>
+                View editor keyboard shortcuts, engineering documentation, and platform guides.
+              </DetailSubtitle>
+            </DetailText>
+            <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+          </DetailItem>
+        </Box>
       </Box>
     </>
   );

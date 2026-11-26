@@ -1,6 +1,7 @@
 {
   "name": "@modelscript/api",
   "version": "0.1.0",
+  "private": true,
   "description": "Ansatz & ModelScript backend API server — REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub federation, Slurm HPC, and MCP SSE gateway",
   "keywords": [
     "modelscript",

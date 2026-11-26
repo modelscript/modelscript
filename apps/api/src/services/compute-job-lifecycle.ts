@@ -13,7 +13,7 @@ import fs from "node:fs";
 import type { LibraryDatabase } from "../database.js";
 import type { JobInfo, JobQueue } from "../jobs.js";
 import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
-import { getComputeProfile } from "./hpc/compute-profiles.js";
+import { calculateCostCredits, getComputeProfile } from "./hpc/compute-profiles.js";
 import type { ComputeProfile } from "./hpc/hpc-types.js";
 import { checkComputeQuota, resolveRequestUserId } from "./hpc/quota-guard.js";
 
@@ -82,6 +82,16 @@ export interface FailComputeJobOptions {
   userId: number | null;
   error: unknown;
   fallbackMessage: string;
+  /** Actual elapsed compute time in seconds (if job ran before failing/timing out/being cancelled). */
+  elapsedSeconds?: number | undefined;
+  /** Pre-computed actual credit cost to settle (if omitted, derived from elapsedSeconds + profile). */
+  costCredits?: number | undefined;
+  /** Compute profile used for the job (for calculating elapsed cost). */
+  profile?: ComputeProfile | undefined;
+  /** Failure category; "platform_fault" triggers a 100% refund, whereas timeout/cancelled/user_error settle elapsed time. */
+  failureReason?: "timeout" | "cancelled" | "user_error" | "credit_exhausted" | "platform_fault" | undefined;
+  /** Optional accounting snapshot to persist on failed runs that consumed compute. */
+  accounting?: Parameters<LibraryDatabase["updateJobAccounting"]>[1] | undefined;
 }
 
 export interface ComputeJobResultMessages {
@@ -232,7 +242,7 @@ export function holdComputeEscrow(options: HoldComputeEscrowOptions): boolean {
 }
 
 /**
- * Finalizes a succeeded compute job: updates DB status and accounting, settles credit escrow,
+ * Finalizes a succeeded compute job atomically: updates DB status and accounting, settles credit escrow,
  * and optionally dispatches completion notifications and referral rewards.
  */
 export function completeComputeJob(options: CompleteComputeJobOptions): void {
@@ -249,13 +259,29 @@ export function completeComputeJob(options: CompleteComputeJobOptions): void {
   } = options;
   if (!database || !dbJobId) return;
 
-  if (accounting) {
-    database.updateJobAccounting(dbJobId, accounting);
+  const commitCore = () => {
+    if (accounting) {
+      database.updateJobAccounting(dbJobId, accounting);
+    }
+    if (userId) {
+      database.settleUserEscrow(userId, dbJobId, costCredits, description, metadata);
+    }
+    database.updateJobStatus(dbJobId, "SUCCESS");
+  };
+
+  if (database.db && typeof database.db.transaction === "function") {
+    database.db.transaction(commitCore)();
+  } else {
+    commitCore();
   }
+
   if (userId) {
-    database.settleUserEscrow(userId, dbJobId, costCredits, description, metadata);
     if (notificationType) {
-      database.createNotification(userId, userId, notificationType);
+      try {
+        database.createNotification(userId, userId, notificationType);
+      } catch (err) {
+        console.warn(`[compute-job-lifecycle] Notification dispatch failed for job #${dbJobId}:`, err);
+      }
     }
     if (grantReferralReward) {
       try {
@@ -265,21 +291,65 @@ export function completeComputeJob(options: CompleteComputeJobOptions): void {
       }
     }
   }
-  database.updateJobStatus(dbJobId, "SUCCESS");
 }
 
 /**
- * Finalizes a failed compute job: marks DB status as `FAILED` and releases any held credit escrow.
+ * Finalizes a failed compute job: marks DB status as `FAILED` and either settles actual elapsed
+ * compute credits (for timeout/cancel/user-error runs with elapsed time > 0) or releases 100%
+ * of held escrow (for platform startup faults or zero-elapsed failures).
  */
 export function failComputeJob(options: FailComputeJobOptions): void {
-  const { database, dbJobId, userId, error, fallbackMessage } = options;
+  const {
+    database,
+    dbJobId,
+    userId,
+    error,
+    fallbackMessage,
+    elapsedSeconds,
+    costCredits,
+    profile,
+    failureReason,
+    accounting,
+  } = options;
   if (!database || !dbJobId) return;
 
-  database.updateJobStatus(dbJobId, "FAILED");
-  if (userId) {
-    const reason =
-      error instanceof Error ? error.message : typeof error === "string" && error.length > 0 ? error : fallbackMessage;
-    database.releaseUserEscrow(userId, dbJobId, reason);
+  const reason =
+    error instanceof Error ? error.message : typeof error === "string" && error.length > 0 ? error : fallbackMessage;
+
+  const actualElapsed = elapsedSeconds ?? 0;
+  const computedCost =
+    costCredits !== undefined
+      ? costCredits
+      : actualElapsed > 0
+        ? calculateCostCredits(actualElapsed, profile ?? getComputeProfile())
+        : 0;
+
+  const shouldSettleActual = failureReason !== "platform_fault" && actualElapsed > 0 && computedCost > 0;
+
+  const commitFail = () => {
+    if (accounting) {
+      database.updateJobAccounting(dbJobId, accounting);
+    }
+    database.updateJobStatus(dbJobId, "FAILED");
+    if (userId) {
+      if (shouldSettleActual) {
+        database.settleUserEscrow(
+          userId,
+          dbJobId,
+          computedCost,
+          `Partial compute settlement (${failureReason ?? "failed"}): ${reason}`,
+          { failureReason: failureReason ?? "failed", elapsedSeconds: actualElapsed },
+        );
+      } else {
+        database.releaseUserEscrow(userId, dbJobId, reason);
+      }
+    }
+  };
+
+  if (database.db && typeof database.db.transaction === "function") {
+    database.db.transaction(commitFail)();
+  } else {
+    commitFail();
   }
 }
 

@@ -4,12 +4,14 @@ import bcrypt from "bcryptjs";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import jwt from "jsonwebtoken";
-import { execFileSync, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, isAccountBlocked } from "../middleware/auth-middleware.js";
+import { getOrCreateDiskAnnService, type GitDiffFileChange } from "../services/diskann-memory.js";
 import { LocalGitVaultService, SAFE_GIT_SEGMENT_RE } from "../services/local-git-vault.js";
 import { isIpInAllowlist } from "../util/cidr-matcher.js";
 import { getClientIp } from "../util/client-ip.js";
@@ -23,6 +25,192 @@ import {
   killAfter,
   limitedRequestBody,
 } from "../util/git-hardening.js";
+
+const execFileAsync = promisify(execFile);
+
+const DISKANN_INDEXABLE_EXTS = new Set([
+  ".mo",
+  ".msx",
+  ".sysml",
+  ".kerml",
+  ".scad",
+  ".step",
+  ".stp",
+  ".urdf",
+  ".owl",
+  ".ofn",
+  ".ttl",
+  ".rq",
+  ".sparql",
+  ".sp",
+  ".cir",
+  ".spice",
+  ".md",
+  ".markdown",
+  ".txt",
+]);
+
+const MAX_AUTO_INDEX_FILES = 64;
+const MAX_AUTO_INDEX_FILE_BYTES = 256 * 1024;
+
+/**
+ * Incrementally extracts added/modified/deleted engineering files from the latest commit
+ * of a bare Git repository and indexes them into DiskANN.
+ */
+export async function indexBareRepoCommitIntoDiskAnn(
+  database: LibraryDatabase,
+  repoPath: string,
+  namespace: string,
+  cleanProj: string,
+  localGitVault: LocalGitVaultService,
+): Promise<{ indexedChunks: number; deletedChunks: number; filesProcessed: number }> {
+  if (!database.isOpen() || !fs.existsSync(repoPath)) {
+    return { indexedChunks: 0, deletedChunks: 0, filesProcessed: 0 };
+  }
+
+  // Respect repository visibility: public repos -> public scope, private org repos -> org scope,
+  // private personal repos -> skipped to prevent cross-user leakage.
+  const unauthAccess = localGitVault.checkLocalRepoAccess(database, undefined, namespace, cleanProj);
+  let tenantScope: "public" | "org" = "public";
+  let orgId: number | null = null;
+  if (!unauthAccess.allowed) {
+    const org = database.getOrganizationBySlug(namespace.toLowerCase());
+    if (!org) {
+      return { indexedChunks: 0, deletedChunks: 0, filesProcessed: 0 };
+    }
+    tenantScope = "org";
+    orgId = org.id;
+  }
+
+  const gitOpts = { env: gitSubprocessEnv(), timeout: 10_000, maxBuffer: MAX_AUTO_INDEX_FILE_BYTES };
+  let sha = "";
+  try {
+    const headRes = await execFileAsync("git", ["--git-dir", repoPath, "rev-parse", "--verify", "HEAD"], gitOpts);
+    sha = headRes.stdout.trim();
+  } catch {
+    try {
+      const refRes = await execFileAsync(
+        "git",
+        [
+          "--git-dir",
+          repoPath,
+          "for-each-ref",
+          "--count=1",
+          "--sort=-committerdate",
+          "--format=%(objectname)",
+          "refs/heads/",
+        ],
+        gitOpts,
+      );
+      sha = refRes.stdout.trim();
+    } catch {
+      return { indexedChunks: 0, deletedChunks: 0, filesProcessed: 0 };
+    }
+  }
+  if (!sha) {
+    return { indexedChunks: 0, deletedChunks: 0, filesProcessed: 0 };
+  }
+
+  let hasParent = false;
+  try {
+    await execFileAsync("git", ["--git-dir", repoPath, "rev-parse", "--verify", `${sha}^`], gitOpts);
+    hasParent = true;
+  } catch {
+    hasParent = false;
+  }
+
+  const rawEntries: Array<{ status: "A" | "M" | "D"; filePath: string }> = [];
+  if (hasParent) {
+    const diffRes = await execFileAsync(
+      "git",
+      ["--git-dir", repoPath, "diff-tree", "--no-commit-id", "--name-status", "-r", `${sha}^`, sha],
+      gitOpts,
+    );
+    for (const line of diffRes.stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const parts = trimmed.split("\t");
+      const code = parts[0] ?? "";
+      if (code.startsWith("R") && parts[1] && parts[2]) {
+        rawEntries.push({ status: "D", filePath: parts[1] });
+        rawEntries.push({ status: "A", filePath: parts[2] });
+      } else if ((code === "A" || code === "M" || code === "D") && parts[1]) {
+        rawEntries.push({ status: code, filePath: parts[1] });
+      }
+    }
+  } else {
+    const treeRes = await execFileAsync("git", ["--git-dir", repoPath, "ls-tree", "-r", "--name-only", sha], gitOpts);
+    for (const line of treeRes.stdout.split(/\r?\n/)) {
+      const filePath = line.trim();
+      if (filePath) rawEntries.push({ status: "A", filePath });
+    }
+  }
+
+  const eligible = rawEntries
+    .filter((entry) => DISKANN_INDEXABLE_EXTS.has(path.extname(entry.filePath).toLowerCase()))
+    .slice(0, MAX_AUTO_INDEX_FILES);
+
+  if (eligible.length === 0) {
+    return { indexedChunks: 0, deletedChunks: 0, filesProcessed: 0 };
+  }
+
+  const changes: GitDiffFileChange[] = [];
+  for (const entry of eligible) {
+    if (entry.status === "D") {
+      changes.push({ path: entry.filePath, status: "D" });
+      continue;
+    }
+    try {
+      const blobRes = await execFileAsync("git", ["--git-dir", repoPath, "show", `${sha}:${entry.filePath}`], gitOpts);
+      const content = blobRes.stdout;
+      if (content && !content.includes("\u0000")) {
+        changes.push({ path: entry.filePath, status: entry.status, content });
+      }
+    } catch {
+      // Skip unreadable or oversized blobs without interrupting other files
+    }
+  }
+
+  if (changes.length === 0 || !database.isOpen()) {
+    return { indexedChunks: 0, deletedChunks: 0, filesProcessed: 0 };
+  }
+
+  const diskann = getOrCreateDiskAnnService(database);
+  return diskann.indexGitDiff({
+    packageName: `${namespace}/${cleanProj}`,
+    packageVersion: "main",
+    gitSha: sha,
+    tenantScope,
+    orgId,
+    changes,
+  });
+}
+
+/**
+ * Best-effort, non-blocking DiskANN auto-indexing trigger after a successful `git-receive-pack`.
+ * Fully guarded with try/catch so Git push latency and reliability are never impacted.
+ */
+function scheduleBestEffortDiskAnnGitIndex(
+  database: LibraryDatabase,
+  repoPath: string,
+  namespace: string,
+  cleanProj: string,
+  localGitVault: LocalGitVaultService,
+): void {
+  try {
+    setImmediate(() => {
+      try {
+        void indexBareRepoCommitIntoDiskAnn(database, repoPath, namespace, cleanProj, localGitVault).catch(() => {
+          // Best-effort background indexing: never surface errors to Git push callers
+        });
+      } catch {
+        // Guard against synchronous exceptions during shutdown/teardown
+      }
+    });
+  } catch {
+    // Ignore scheduling failures
+  }
+}
 
 function pktLine(str: string): Buffer {
   const length = Buffer.byteLength(str) + 4;
@@ -544,6 +732,7 @@ export function gitServerRouter(database: LibraryDatabase, options?: GitServerOp
         // Link repo in database if not already linked
         const cleanProj = project.replace(/\.git$/, "");
         database.linkRepo(user.id, "local", `${namespace}/${cleanProj}`, `${namespace}/${cleanProj}`, "main");
+        scheduleBestEffortDiskAnnGitIndex(database, repoPath, namespace, cleanProj, localGitVault);
       }
     });
 

@@ -84,6 +84,10 @@ export default {
       );
     }
     app.component(
+      "HomeTurbineShowcase",
+      defineAsyncComponent(() => import("./components/HomeTurbineShowcase.vue")),
+    );
+    app.component(
       "HomeThread",
       defineAsyncComponent(() => import("./components/HomeThread.vue")),
     );

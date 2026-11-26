@@ -40,7 +40,6 @@ export const topasDeckGrammar = language({
         "=",
         field("count", choice($.NumberLiteral, $.Identifier)),
         repeat(field("item", choice($.NumberLiteral, $.StringLiteral, $.Identifier))),
-        optional(field("unit", $.Identifier)),
       ),
 
     IncludeDirective: ($) =>

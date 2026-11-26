@@ -458,6 +458,30 @@ importers:
         specifier: ^8.46.3
         version: 8.73.0(eslint@10.15.0(jiti@2.7.0))(typescript@5.9.3)
 
+  apps/blog:
+    devDependencies:
+      '@modelscript/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
+      '@modelscript/embed':
+        specifier: workspace:*
+        version: link:../../packages/embed
+      katex:
+        specifier: ^0.19.1
+        version: 0.19.1
+      markdown-it-mathjax3:
+        specifier: ^4.3.2
+        version: 4.3.2
+      shiki:
+        specifier: ^2.5.0
+        version: 2.5.0
+      vitepress:
+        specifier: ^1.1.4
+        version: 1.6.4(@algolia/client-search@5.65.0)(@types/node@25.9.9)(@types/react@19.3.0)(axios@1.21.1)(jiti@2.7.0)(lightningcss@1.33.0)(markdown-it-mathjax3@4.3.2)(postcss@8.5.33)(qrcode@1.5.4)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(search-insights@2.17.3)(tsx@4.23.15)(typescript@5.9.3)(yaml@2.9.1)
+      vue:
+        specifier: ^3.5.44
+        version: 3.5.46(typescript@5.9.3)
+
   apps/cli:
     dependencies:
       '@babel/standalone':
@@ -937,9 +961,12 @@ importers:
       assemblyscript:
         specifier: ^0.28.19
         version: 0.28.20
-      better-sqlite3:
-        specifier: ^12.8.0
-        version: 12.11.1
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
+      express:
+        specifier: ^5.1.0
+        version: 5.3.0
       jiti:
         specifier: ^2.6.1
         version: 2.7.0
@@ -1010,6 +1037,10 @@ importers:
       typescript-eslint:
         specifier: ^8.46.3
         version: 8.73.0(eslint@10.15.0(jiti@2.7.0))(typescript@5.9.3)
+    optionalDependencies:
+      better-sqlite3:
+        specifier: ^12.8.0
+        version: 12.11.1
 
   apps/docs:
     devDependencies:
@@ -3957,6 +3988,9 @@ importers:
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.3.1
+      recharts:
+        specifier: ^3.7.0
+        version: 3.11.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@19.3.1)(react@19.3.1)(redux@5.0.1)
     devDependencies:
       '@types/react':
         specifier: ^19.2.7
@@ -5995,6 +6029,9 @@ importers:
       '@modelscript/cellml':
         specifier: workspace:*
         version: link:../../languages/cellml
+      '@modelscript/cfd':
+        specifier: workspace:*
+        version: link:../../languages/cfd
       '@modelscript/comtrade':
         specifier: workspace:*
         version: link:../../languages/comtrade
@@ -6016,6 +6053,9 @@ importers:
       '@modelscript/exchange':
         specifier: workspace:*
         version: link:../exchange
+      '@modelscript/fea':
+        specifier: workspace:*
+        version: link:../../languages/fea
       '@modelscript/febio':
         specifier: workspace:*
         version: link:../../languages/febio

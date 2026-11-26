@@ -184,9 +184,9 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
       },
     },
     {
-      name: "Qwen3.5-0.8B (Local)",
-      family: "qwen3.5",
-      version: "0.8B-q4f16",
+      name: "Qwen3-1.7B / 0.6B (Local WebGPU)",
+      family: "qwen3",
+      version: "1.7B-q4f16",
       maxInputTokens: 32768,
       maxOutputTokens: 8192,
       isDefault: false,
@@ -194,5 +194,5 @@ export function registerLLMProvider(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(disposable);
-  console.log("[llm-provider] Registered local Qwen3.5-0.8B model provider");
+  console.log("[llm-provider] Registered local Qwen3-1.7B / 0.6B WebGPU model provider");
 }

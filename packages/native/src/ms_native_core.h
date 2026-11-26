@@ -100,6 +100,103 @@ int ms_gpu_fp64_execute_batch(
     size_t error_buf_size);
 
 /**
+ * Opaque handle for a persistent GPU compute session (CUDA Driver API, HIP Runtime,
+ * or host-memory fallback when neither GPU backend is compiled in).
+ */
+typedef struct ms_gpu_session ms_gpu_session_t;
+
+/**
+ * Creates a persistent GPU compute session on `device_id`.
+ * Returns NULL on failure and writes a diagnostic message to `error_buf` if provided.
+ */
+ms_gpu_session_t* ms_gpu_session_create(
+    int device_id,
+    char* error_buf,
+    size_t error_buf_size);
+
+/**
+ * Destroys a persistent GPU session and releases all tracked device allocations.
+ */
+void ms_gpu_session_destroy(ms_gpu_session_t* session);
+
+/**
+ * Allocates a persistent device buffer of `byte_size` bytes within `session`.
+ * Returns a non-zero buffer handle on success, or 0 on failure.
+ */
+uint64_t ms_gpu_session_alloc(ms_gpu_session_t* session, size_t byte_size);
+
+/**
+ * Uploads `byte_size` bytes from `host_src` to buffer `handle` at `byte_offset`.
+ * Returns 0 on success, negative on error.
+ */
+int ms_gpu_session_upload(
+    ms_gpu_session_t* session,
+    uint64_t handle,
+    size_t byte_offset,
+    const void* host_src,
+    size_t byte_size);
+
+/**
+ * Downloads `byte_size` bytes from buffer `handle` at `byte_offset` into `host_dst`.
+ * Returns 0 on success, negative on error.
+ */
+int ms_gpu_session_download(
+    ms_gpu_session_t* session,
+    uint64_t handle,
+    size_t byte_offset,
+    void* host_dst,
+    size_t byte_size);
+
+/**
+ * Synchronizes all pending GPU operations in `session`.
+ * Returns 0 on success, negative on error.
+ */
+int ms_gpu_session_sync(ms_gpu_session_t* session);
+
+/**
+ * Compiles a CUDA/HIP GPU kernel via NVRTC/hipRTC and registers it under `kernel_name`
+ * within `session` (or validates and registers it in the host registry when CUDA/HIP is disabled).
+ * Returns 0 on success, negative on error with a diagnostic in `error_buf`.
+ */
+int ms_gpu_session_compile_kernel(
+    ms_gpu_session_t* session,
+    const char* kernel_name,
+    const char* source_code,
+    char* error_buf,
+    size_t error_buf_size);
+
+/**
+ * Launches a previously compiled kernel registered under `kernel_name` in `session`
+ * with the specified 3D grid/block dimensions and session buffer handle arguments.
+ * Returns 0 on success, negative on error with a diagnostic in `error_buf`.
+ */
+int ms_gpu_session_launch_kernel(
+    ms_gpu_session_t* session,
+    const char* kernel_name,
+    uint32_t grid_x,
+    uint32_t grid_y,
+    uint32_t grid_z,
+    uint32_t block_x,
+    uint32_t block_y,
+    uint32_t block_z,
+    const uint32_t* buffer_handles,
+    uint32_t num_buffers,
+    char* error_buf,
+    size_t error_buf_size);
+
+typedef struct ms_mpi_capabilities {
+  bool mpi_compiled;
+  bool nccl_compiled;
+  int rank;
+  int world_size;
+} ms_mpi_capabilities_t;
+
+/**
+ * Queries MPI / NCCL distributed HPC capabilities and current rank/world_size.
+ */
+void ms_mpi_probe(ms_mpi_capabilities_t* out_caps);
+
+/**
  * Returns 1 if native SUNDIALS CVODE was compiled into libmodelscript_native, 0 otherwise.
  */
 int ms_sundials_native_available(void);

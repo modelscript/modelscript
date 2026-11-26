@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  applyHypergraphOverrides,
+  compileRelationalHypergraph,
   formatConstraint,
   RegionDecomposer,
   SosBarrierSynthesizer,
   TraceRecordNormalizer,
   type CanonicalTraceRecord,
   type DAEBuilder,
+  type HypergraphTokenOverride,
+  type RelationalHypergraphRecord,
 } from "@modelscript/runtime";
 import { simulateArena, UnifiedVerifier } from "@modelscript/simulate";
 import {
@@ -826,6 +830,27 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
                 },
               };
             }
+          } else {
+            const features = resolveFeatureFlags(context.settings);
+            if (!(features.demos && Boolean(params.uri && /powertrain/i.test(params.uri)))) {
+              return {
+                success: true,
+                hierarchy: {
+                  system: {
+                    name: params.systemContractName || "SystemContract",
+                    assumptions: [],
+                    guarantees: [],
+                  },
+                  components: [],
+                  isCompatible: true,
+                  isRefined: true,
+                  compatibilityViolations: [],
+                  refinementViolations: [],
+                  traces: [],
+                  summary: "No document source loaded for contract hierarchy extraction.",
+                },
+              };
+            }
           }
 
           const defaultSystem: AssumeGuaranteeContract = {
@@ -915,6 +940,66 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
             summary: compResult.summary,
           },
         };
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    },
+  );
+
+  // Incremental 4-column Typed Relational Hypergraph cache keyed by URI
+  const hypergraphCache = new Map<
+    string,
+    { version: number; dialect: string; symbolCount: number; record: RelationalHypergraphRecord }
+  >();
+
+  context.connection.onRequest(
+    "modelscript/getRelationalHypergraph",
+    (params: {
+      uri: string;
+      source?: string | undefined;
+      dialect?: string | undefined;
+      overrides?: HypergraphTokenOverride[] | undefined;
+    }): { success: boolean; record?: RelationalHypergraphRecord; cached?: boolean; error?: string } => {
+      try {
+        const doc = context.documents.get(params.uri);
+        const sourceText = params.source ?? doc?.getText();
+        if (typeof sourceText !== "string") {
+          return { success: false, error: `Document not open and no inline source provided for ${params.uri}` };
+        }
+        const dialect = params.dialect || doc?.languageId || "modelica";
+        const symbolIndex = context.workspaceManager.unifiedWorkspace.getIndex();
+        const symbolCount = symbolIndex.symbols.size;
+        const version = params.source !== undefined ? -1 : (doc?.version ?? 0);
+
+        let baseRecord: RelationalHypergraphRecord;
+        let cached = false;
+        const prev = hypergraphCache.get(params.uri);
+        if (
+          version >= 0 &&
+          prev &&
+          prev.version === version &&
+          prev.dialect === dialect &&
+          prev.symbolCount === symbolCount
+        ) {
+          baseRecord = prev.record;
+          cached = true;
+        } else {
+          baseRecord = compileRelationalHypergraph({
+            source: sourceText,
+            uri: params.uri,
+            dialect,
+            symbolIndex,
+          });
+          if (version >= 0) {
+            hypergraphCache.set(params.uri, { version, dialect, symbolCount, record: baseRecord });
+          }
+        }
+
+        const record =
+          params.overrides && params.overrides.length > 0
+            ? applyHypergraphOverrides(baseRecord, params.overrides)
+            : baseRecord;
+        return { success: true, record, cached };
       } catch (e) {
         return { success: false, error: e instanceof Error ? e.message : String(e) };
       }

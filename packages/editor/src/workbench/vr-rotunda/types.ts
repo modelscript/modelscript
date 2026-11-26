@@ -260,6 +260,8 @@ export interface RotundaState {
   activeView: RotundaActiveView;
   /** Floating 3D syntax-highlighted code text panel overlaid over any VR view (mirrors 2D code overlay). */
   codeOverlayOpen: boolean;
+  /** Orthogonal right-docked Split Code companion panel (maps 1:1 with topbar Split toggle). */
+  splitCodeOpen: boolean;
   /** Floating 3D engineering inspector panel showing live parameters, properties, and diagnostics. */
   inspectorOverlayOpen: boolean;
   /** Curved 3D workspace file switcher carousel showing all available Ansatz project files. */
@@ -317,6 +319,8 @@ export interface RotundaInspectorData {
       }[]
     | undefined;
   readonly summary?: string | undefined;
+  /** Optional write-back handler invoked when a numeric parameter stepper is clicked in VR Inspector. */
+  readonly onModifyParameter?: ((name: string, nextValue: string) => void) | undefined;
 }
 
 /** Default drafting desk sheet presentation theme (spread cyanotype architectural blueprint). */
@@ -374,6 +378,8 @@ export type RotundaAction =
   | { type: "setWristPaletteOpen"; open: boolean }
   | { type: "toggleWristPalette" }
   | { type: "setActiveView"; view: RotundaActiveView }
+  | { type: "toggleSplitCode" }
+  | { type: "setSplitCodeOpen"; open: boolean }
   | { type: "toggleCodeOverlay" }
   | { type: "setCodeOverlayOpen"; open: boolean }
   | { type: "toggleInspectorOverlay" }
@@ -389,6 +395,8 @@ const SNAP_MODE_ORDER: readonly SpatialDiagramSnapMode[] = ["free-3d", "domain-l
 export function createInitialRotundaState(overrides?: Partial<RotundaState>): RotundaState {
   const initialActiveView: RotundaActiveView =
     overrides?.activeView ?? (overrides?.diagramEditorEnabled ? "diagram" : "3d");
+  const initialSplitCode =
+    overrides?.splitCodeOpen ?? Boolean(overrides?.codeOverlayOpen && initialActiveView !== "code");
   return {
     environment: DEFAULT_ROTUNDA_ENVIRONMENT,
     activeModelIndex: 0,
@@ -425,7 +433,8 @@ export function createInitialRotundaState(overrides?: Partial<RotundaState>): Ro
     diagramWaferStyle: "tactile-tile",
     wristPaletteOpen: false,
     activeView: initialActiveView,
-    codeOverlayOpen: initialActiveView === "code",
+    codeOverlayOpen: initialActiveView === "code" || initialSplitCode,
+    splitCodeOpen: initialSplitCode,
     inspectorOverlayOpen: initialActiveView === "inspector",
     fileCarouselOpen: false,
     simulationPanelOpen: initialActiveView === "simulation",
@@ -579,21 +588,34 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
       return { ...state, studioSsaoEnabled: action.enabled };
     case "toggleDiagramEditor": {
       const nextEnabled = !state.diagramEditorEnabled;
+      const nextView: RotundaActiveView = nextEnabled ? "diagram" : "3d";
       return {
         ...state,
         diagramEditorEnabled: nextEnabled,
-        activeView: nextEnabled ? "diagram" : "3d",
+        activeView: nextView,
         wristPaletteOpen: nextEnabled ? state.wristPaletteOpen : false,
+        inspectorOverlayOpen: false,
+        simulationPanelOpen: false,
+        codeOverlayOpen: state.splitCodeOpen,
       };
     }
-    case "setDiagramEditorEnabled":
+    case "setDiagramEditorEnabled": {
+      const nextView: RotundaActiveView = action.enabled
+        ? "diagram"
+        : state.activeView === "diagram"
+          ? "3d"
+          : state.activeView;
       return {
         ...state,
         diagramEditorEnabled: action.enabled,
-        activeView: action.enabled ? "diagram" : state.activeView === "diagram" ? "3d" : state.activeView,
+        activeView: nextView,
         activeDiagramTileId: action.tileId !== undefined ? action.tileId : state.activeDiagramTileId,
         wristPaletteOpen: action.enabled ? state.wristPaletteOpen : false,
+        inspectorOverlayOpen: nextView === "inspector",
+        simulationPanelOpen: nextView === "simulation",
+        codeOverlayOpen: nextView === "code" || state.splitCodeOpen,
       };
+    }
     case "setActiveDiagramTile":
       return { ...state, activeDiagramTileId: action.tileId };
     case "setDiagramSnapMode":
@@ -615,6 +637,9 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
         ...state,
         diagramEditorEnabled: true,
         activeView: "diagram",
+        inspectorOverlayOpen: false,
+        simulationPanelOpen: false,
+        codeOverlayOpen: state.splitCodeOpen,
         wristPaletteOpen: !state.wristPaletteOpen,
       };
     case "setActiveView": {
@@ -624,27 +649,78 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
         activeView: nextView,
         diagramEditorEnabled: nextView === "diagram",
         wristPaletteOpen: nextView === "diagram" ? state.wristPaletteOpen : false,
-        codeOverlayOpen: nextView === "code" ? true : state.codeOverlayOpen,
-        inspectorOverlayOpen: nextView === "inspector" ? true : nextView === "3d" ? false : state.inspectorOverlayOpen,
-        simulationPanelOpen: nextView === "simulation" ? true : state.simulationPanelOpen,
+        inspectorOverlayOpen: nextView === "inspector",
+        simulationPanelOpen: nextView === "simulation",
+        codeOverlayOpen: nextView === "code" || state.splitCodeOpen,
       };
     }
-    case "toggleCodeOverlay":
-      return { ...state, codeOverlayOpen: !state.codeOverlayOpen };
-    case "setCodeOverlayOpen":
-      return { ...state, codeOverlayOpen: action.open };
-    case "toggleInspectorOverlay":
-      return { ...state, inspectorOverlayOpen: !state.inspectorOverlayOpen };
+    case "toggleSplitCode": {
+      const nextSplit = !state.splitCodeOpen;
+      return {
+        ...state,
+        splitCodeOpen: nextSplit,
+        codeOverlayOpen: state.activeView === "code" || nextSplit,
+      };
+    }
+    case "setSplitCodeOpen":
+      return {
+        ...state,
+        splitCodeOpen: action.open,
+        codeOverlayOpen: state.activeView === "code" || action.open,
+      };
+    case "toggleCodeOverlay": {
+      if (state.activeView === "code") {
+        return { ...state, activeView: "3d", codeOverlayOpen: state.splitCodeOpen };
+      }
+      const nextSplit = !state.splitCodeOpen;
+      return { ...state, splitCodeOpen: nextSplit, codeOverlayOpen: nextSplit };
+    }
+    case "setCodeOverlayOpen": {
+      if (!action.open && state.activeView === "code") {
+        return { ...state, activeView: "3d", splitCodeOpen: false, codeOverlayOpen: false };
+      }
+      return { ...state, splitCodeOpen: action.open, codeOverlayOpen: state.activeView === "code" || action.open };
+    }
+    case "toggleInspectorOverlay": {
+      const nextOpen = !state.inspectorOverlayOpen;
+      return {
+        ...state,
+        inspectorOverlayOpen: nextOpen,
+        activeView: nextOpen ? "inspector" : state.activeView === "inspector" ? "3d" : state.activeView,
+        diagramEditorEnabled: nextOpen ? false : state.diagramEditorEnabled,
+        simulationPanelOpen: nextOpen ? false : state.simulationPanelOpen,
+      };
+    }
     case "setInspectorOverlayOpen":
-      return { ...state, inspectorOverlayOpen: action.open };
+      return {
+        ...state,
+        inspectorOverlayOpen: action.open,
+        activeView: action.open ? "inspector" : state.activeView === "inspector" ? "3d" : state.activeView,
+        diagramEditorEnabled: action.open ? false : state.diagramEditorEnabled,
+        simulationPanelOpen: action.open ? false : state.simulationPanelOpen,
+      };
     case "toggleFileCarousel":
       return { ...state, fileCarouselOpen: !state.fileCarouselOpen };
     case "setFileCarouselOpen":
       return { ...state, fileCarouselOpen: action.open };
-    case "toggleSimulationPanel":
-      return { ...state, simulationPanelOpen: !state.simulationPanelOpen };
+    case "toggleSimulationPanel": {
+      const nextOpen = !state.simulationPanelOpen;
+      return {
+        ...state,
+        simulationPanelOpen: nextOpen,
+        activeView: nextOpen ? "simulation" : state.activeView === "simulation" ? "3d" : state.activeView,
+        diagramEditorEnabled: nextOpen ? false : state.diagramEditorEnabled,
+        inspectorOverlayOpen: nextOpen ? false : state.inspectorOverlayOpen,
+      };
+    }
     case "setSimulationPanelOpen":
-      return { ...state, simulationPanelOpen: action.open };
+      return {
+        ...state,
+        simulationPanelOpen: action.open,
+        activeView: action.open ? "simulation" : state.activeView === "simulation" ? "3d" : state.activeView,
+        diagramEditorEnabled: action.open ? false : state.diagramEditorEnabled,
+        inspectorOverlayOpen: action.open ? false : state.inspectorOverlayOpen,
+      };
     case "resetPlinthView":
       return {
         ...state,
@@ -1288,8 +1364,26 @@ export interface EngineeringRotundaProps {
   initialDiagramEditorEnabled?: boolean | undefined;
   /** Initial VR workstation view matching the host Ansatz Editor view (`"3d"`, `"diagram"`, `"inspector"`, `"code"`). */
   initialActiveView?: RotundaActiveView | undefined;
+  /** Controlled active VR view synced 1:1 with the host workbench topbar. */
+  activeView?: RotundaActiveView | undefined;
+  /** Callback when the active VR view changes from inside VR (headset nav bar or standalone dock). */
+  onActiveViewChange?: ((view: RotundaActiveView) => void) | undefined;
   /** Open the floating 3D syntax-highlighted code text panel automatically on mount. */
   initialCodeOverlayOpen?: boolean | undefined;
+  /** Controlled orthogonal Split Code companion wing synced 1:1 with the host topbar Split toggle. */
+  splitCodeOpen?: boolean | undefined;
+  /** Callback when the user toggles Split Code from inside VR. */
+  onSplitCodeChange?: ((open: boolean) => void) | undefined;
+  /** When true, the host workbench navbar owns top-level view switching, Split, and VR toggle. */
+  hostedInWorkbench?: boolean | undefined;
+  /** Whether the desktop translucent Quick-Edit Monaco overlay is currently open over VR Code/Split. */
+  vrQuickEditOpen?: boolean | undefined;
+  /** Callback to toggle the desktop translucent Quick-Edit Monaco overlay over VR Code/Split. */
+  onToggleVrQuickEdit?: (() => void) | undefined;
+  /** Optional ordered list of views supported by the active language (shown in WebXR headset nav bar). */
+  availableViews?: readonly RotundaActiveView[] | undefined;
+  /** Initial visibility of the 45° Drafting Podium in 3D view (defaults to false for single-model workbench files, true for multi-tile Canvas boards). */
+  initialPodiumVisible?: boolean | undefined;
   /** Active engineering language / dialect (e.g. `"modelica"`, `"sysml2"`, `"spice"`, `"scad"`). */
   languageId?: string | undefined;
   /** Optional diagram subtype (e.g. `"diagram"`, `"bdd"`, `"ibd"`, `"oneline"`). */

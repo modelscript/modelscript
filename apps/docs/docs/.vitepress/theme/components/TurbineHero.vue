@@ -93,8 +93,11 @@ const gdtAnchorPoints = computed(() => [
 
 let resizeObs: ResizeObserver | undefined;
 let interObs: IntersectionObserver | undefined;
+let bootObs: IntersectionObserver | undefined;
 let motionQuery: MediaQueryList | undefined;
 let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+let sceneBooted = false;
+let unmounted = false;
 const onMotionChange = (e: MediaQueryListEvent) => scene.value?.setReducedMotion(e.matches);
 
 function webglAvailable(): boolean {
@@ -327,8 +330,9 @@ function selectCallout(c: CalloutSpec): void {
   activeCalloutKey.value = c.key;
 }
 
-onMounted(async () => {
-  window.addEventListener("keydown", onWindowKeydown);
+async function bootTurbineScene(): Promise<void> {
+  if (sceneBooted || unmounted) return;
+  sceneBooted = true;
 
   if (!canvas.value || !stage.value || !webglAvailable()) {
     fallback.value = true;
@@ -336,7 +340,7 @@ onMounted(async () => {
   }
 
   // Safety net: if the 3D scene never signals first frame within 8s (generous for older mobile A10 CPUs),
-  // gracefully fall back to the digital twin illustration so the hero is never blank.
+  // gracefully fall back to the digital twin illustration so the stage is never blank.
   fallbackTimer = setTimeout(() => {
     if (!ready.value && !fallback.value) {
       fallback.value = true;
@@ -344,15 +348,15 @@ onMounted(async () => {
   }, 8000);
 
   await nextTick();
-  if (!canvas.value || !stage.value) {
-    fallback.value = true;
+  if (unmounted || !canvas.value || !stage.value) {
+    if (!unmounted) fallback.value = true;
     return;
   }
 
   try {
     motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
     const { TurbineScene } = await import("./turbine/scene");
-    if (!canvas.value || !stage.value) return;
+    if (unmounted || !canvas.value || !stage.value) return;
 
     scene.value = new TurbineScene({
       canvas: canvas.value,
@@ -425,14 +429,37 @@ onMounted(async () => {
     if (fallbackTimer) clearTimeout(fallbackTimer);
     fallback.value = true;
   });
+}
+
+onMounted(() => {
+  window.addEventListener("keydown", onWindowKeydown);
+
+  if (typeof IntersectionObserver !== "undefined" && root.value) {
+    bootObs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          bootObs?.disconnect();
+          bootObs = undefined;
+          void bootTurbineScene();
+        }
+      },
+      { rootMargin: "350px" },
+    );
+    bootObs.observe(root.value);
+  } else {
+    void bootTurbineScene();
+  }
 });
 
 onBeforeUnmount(() => {
+  unmounted = true;
   cancelIntentPrefetch();
   if (typeof window !== "undefined") {
     window.removeEventListener("keydown", onWindowKeydown);
   }
   if (fallbackTimer) clearTimeout(fallbackTimer);
+  bootObs?.disconnect();
+  bootObs = undefined;
   slotObs?.disconnect();
   resizeObs?.disconnect();
   interObs?.disconnect();

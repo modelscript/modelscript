@@ -27,6 +27,11 @@ struct LbmUniforms {
   movingWallVy: f32,
   movingWallVz: f32,
   timestepParity: u32,
+  useRegularized: u32,
+  useWMLES: u32,
+  kappa: f32,
+  lawOfWallB: f32,
+  _pad: u32,
 };
 
 @group(0) @binding(0) var<uniform> u: LbmUniforms;
@@ -34,7 +39,7 @@ struct LbmUniforms {
 @group(0) @binding(2) var<storage, read> f_ping: array<f32>;        // SoA: totalCells * 19
 @group(0) @binding(3) var<storage, read_write> f_pong: array<f32>;   // SoA: totalCells * 19
 @group(0) @binding(4) var<storage, read_write> macroFields: array<vec4<f32>>; // [vx, vy, vz, rho]
-@group(0) @binding(5) var<storage, read_write> dragOutput: array<f32>; // [Fx, Fy, Fz, maxVel, pDrop]
+@group(0) @binding(5) var<storage, read_write> dragOutput: array<atomic<i32>>; // fixed-point [Fx, Fy, Fz] * 1e6
 @group(0) @binding(6) var<storage, read> deltaWall: array<f32>;     // Bouzidi delta: totalCells * 19
 
 const CX = array<i32, 19>(0, 1, -1, 0, 0, 0, 0, 1, -1, 1, -1, 1, -1, 1, -1, 0, 0, 0, 0);
@@ -56,6 +61,37 @@ fn getCellIndex(x: u32, y: u32, z: u32) -> u32 {
 
 fn getSoAIndex(direction: u32, cellIdx: u32) -> u32 {
   return direction * u.totalCells + cellIdx;
+}
+
+fn solve_spalding_utau(uTan: f32, yWall: f32, nuPhys: f32, kappa: f32, lawOfWallB: f32) -> f32 {
+  let uMag = abs(uTan);
+  if (uMag < 1e-6 || yWall <= 0.0 || nuPhys <= 0.0) {
+    return 0.0;
+  }
+  var uTau = max(sqrt((nuPhys * uMag) / yWall), uMag * 0.04);
+  let expNegKB = exp(-kappa * lawOfWallB);
+
+  for (var iter: u32 = 0u; iter < 5u; iter = iter + 1u) {
+    let uPlus = uMag / max(1e-6, uTau);
+    let yPlus = (uTau * yWall) / nuPhys;
+    let ku = min(25.0, kappa * uPlus);
+    let expKu = exp(ku);
+    let poly = 1.0 + ku + 0.5 * ku * ku + (ku * ku * ku) / 6.0;
+    let fVal = uPlus + expNegKB * (expKu - poly) - yPlus;
+
+    let dfDuPlus = 1.0 + kappa * expNegKB * (expKu - (1.0 + ku + 0.5 * ku * ku));
+    let dfDuTau = dfDuPlus * (-uPlus / max(1e-6, uTau)) - yWall / nuPhys;
+    if (abs(dfDuTau) < 1e-12) {
+      break;
+    }
+    let next = uTau - fVal / dfDuTau;
+    if (next > 1e-6 && next < 1e12) {
+      uTau = next;
+    } else {
+      uTau = uTau * 0.5;
+    }
+  }
+  return uTau;
 }
 
 @compute @workgroup_size(8, 8, 4)
@@ -210,7 +246,7 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
       fIn[i] = feq;
     }
 
-    if (u.useLES != 0u) {
+    if (u.useLES != 0u || u.useWMLES != 0u || u.useRegularized != 0u) {
       let fneq = fIn[i] - feq;
       piXX += cx * cx * fneq;
       piYY += cy * cy * fneq;
@@ -222,17 +258,72 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
   }
 
   var omegaLoc = u.omega;
-  if (u.useLES != 0u) {
+  if (u.useLES != 0u || u.useWMLES != 0u) {
     let piMag = sqrt(2.0 * (piXX * piXX + piYY * piYY + piZZ * piZZ + 2.0 * (piXY * piXY + piYZ * piYZ + piZX * piZX)));
     let tau0 = u.tau;
-    let deltaTau = 0.5 * (sqrt(tau0 * tau0 + 18.0 * 1.41421356 * u.csSq * (piMag * invRho)) - tau0);
-    omegaLoc = 1.0 / (tau0 + deltaTau);
+    var deltaTauSgs: f32 = 0.0;
+    if (u.useLES != 0u) {
+      deltaTauSgs = 0.5 * (sqrt(tau0 * tau0 + 18.0 * 1.41421356 * u.csSq * (piMag * invRho)) - tau0);
+    }
+
+    var deltaTauWall: f32 = 0.0;
+    if (u.useWMLES != 0u) {
+      var isWallAdjacent: bool = false;
+      var minWallDelta: f32 = 0.5;
+      for (var d: u32 = 1u; d <= 6u; d = d + 1u) {
+        let wx = gx + CX[d];
+        let wy = gy + CY[d];
+        let wz = gz + CZ[d];
+        if (wx >= 0 && wx < i32(u.nx) && wy >= 0 && wy < i32(u.ny) && wz >= 0 && wz < i32(u.nz)) {
+          let wt = cellTypes[getCellIndex(u32(wx), u32(wy), u32(wz))];
+          if (wt == 1u || wt == 2u) {
+            isWallAdjacent = true;
+            if (u.useBouzidi != 0u) {
+              let dw = deltaWall[d * u.totalCells + cellIdx];
+              if (dw > 0.0 && dw < minWallDelta) {
+                minWallDelta = dw;
+              }
+            }
+          }
+        }
+      }
+      if (isWallAdjacent) {
+        let physSpeed = sqrt(uSq) * (u.dx / u.dt);
+        let yWallPhys = max(0.1, minWallDelta) * u.dx;
+        let nuPhys = (1.0 / 3.0) * max(1e-4, tau0 - 0.5) * ((u.dx * u.dx) / u.dt);
+        let uTau = solve_spalding_utau(physSpeed, yWallPhys, nuPhys, u.kappa, u.lawOfWallB);
+        var nuWallEff: f32 = nuPhys;
+        if (physSpeed > 1e-6) {
+          nuWallEff = (uTau * uTau * yWallPhys) / physSpeed;
+        }
+        let nuTurbWall = max(0.0, nuWallEff - nuPhys);
+        deltaTauWall = 3.0 * nuTurbWall * (u.dt / (u.dx * u.dx));
+      }
+    }
+
+    omegaLoc = 1.0 / (tau0 + max(deltaTauSgs, deltaTauWall));
   }
 
   // 4. Collision and write to f_pong in SoA layout
-  for (var i: u32 = 0u; i < 19u; i = i + 1u) {
-    let fPost = fIn[i] - omegaLoc * (fIn[i] - feqs[i]);
-    f_pong[getSoAIndex(i, cellIdx)] = fPost;
+  if (u.useRegularized != 0u) {
+    let oneMinusOmega = 1.0 - omegaLoc;
+    for (var i: u32 = 0u; i < 19u; i = i + 1u) {
+      let cxi = f32(CX[i]);
+      let cyi = f32(CY[i]);
+      let czi = f32(CZ[i]);
+      let qPi =
+        (cxi * cxi - 1.0 / 3.0) * piXX +
+        (cyi * cyi - 1.0 / 3.0) * piYY +
+        (czi * czi - 1.0 / 3.0) * piZZ +
+        2.0 * (cxi * cyi * piXY + cyi * czi * piYZ + czi * cxi * piZX);
+      let f1Reg = 4.5 * W[i] * qPi;
+      f_pong[getSoAIndex(i, cellIdx)] = feqs[i] + oneMinusOmega * f1Reg;
+    }
+  } else {
+    for (var i: u32 = 0u; i < 19u; i = i + 1u) {
+      let fPost = fIn[i] - omegaLoc * (fIn[i] - feqs[i]);
+      f_pong[getSoAIndex(i, cellIdx)] = fPost;
+    }
   }
 
   // 5. Store macroscopic flow field: [vx, vy, vz, rho] in physical units
@@ -242,9 +333,108 @@ fn cs_lbm_step(@builtin(global_invocation_id) gid: vec3<u32>) {
   macroFields[cellIdx] = vec4<f32>(physVx, physVy, physVz, rho);
 
   if (cellFx != 0.0 || cellFy != 0.0 || cellFz != 0.0) {
-    dragOutput[0] = cellFx;
-    dragOutput[1] = cellFy;
-    dragOutput[2] = cellFz;
+    // Fixed-point atomic accumulation (scale 1e6) eliminates multi-thread race overwrites on dragOutput
+    let scale: f32 = 1000000.0;
+    atomicAdd(&dragOutput[0], i32(round(cellFx * scale)));
+    atomicAdd(&dragOutput[1], i32(round(cellFy * scale)));
+    atomicAdd(&dragOutput[2], i32(round(cellFz * scale)));
   }
+}
+`;
+
+/**
+ * WebGPU WGSL Compute Shader for Double-Distribution D3Q7 Thermal LBM.
+ * Advects and diffuses temperature T coupled to the D3Q19 macroscopic velocity field.
+ */
+export const LBM_THERMAL_D3Q7_WGSL = /* wgsl */ `
+struct ThermalUniforms {
+  nx: u32,
+  ny: u32,
+  nz: u32,
+  totalCells: u32,
+  omegaT: f32,
+  dt: f32,
+  dx: f32,
+  ambientTempK: f32,
+  wallTempK: f32,
+  heatFluxDeltaT: f32,
+  useHeatFlux: u32,
+  _pad: u32,
+};
+
+@group(0) @binding(0) var<uniform> tu: ThermalUniforms;
+@group(0) @binding(1) var<storage, read> cellTypes: array<u32>;
+@group(0) @binding(2) var<storage, read> macroFields: array<vec4<f32>>;
+@group(0) @binding(3) var<storage, read> g_ping: array<f32>;
+@group(0) @binding(4) var<storage, read_write> g_pong: array<f32>;
+@group(0) @binding(5) var<storage, read_write> temperature: array<f32>;
+
+const TCX = array<i32, 7>(0, 1, -1, 0, 0, 0, 0);
+const TCY = array<i32, 7>(0, 0, 0, 1, -1, 0, 0);
+const TCZ = array<i32, 7>(0, 0, 0, 0, 0, 1, -1);
+const TOPP = array<u32, 7>(0u, 2u, 1u, 4u, 3u, 6u, 5u);
+const TW = array<f32, 7>(0.25, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125);
+
+@compute @workgroup_size(8, 8, 4)
+fn cs_lbm_thermal_step(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x >= tu.nx || gid.y >= tu.ny || gid.z >= tu.nz) {
+    return;
+  }
+  let cellIdx = gid.x + gid.y * tu.nx + gid.z * tu.nx * tu.ny;
+  let cType = cellTypes[cellIdx];
+  if (cType == 1u || cType == 2u) {
+    temperature[cellIdx] = tu.wallTempK;
+    return;
+  }
+
+  let macro = macroFields[cellIdx];
+  let ux = macro.x * (tu.dt / tu.dx);
+  let uy = macro.y * (tu.dt / tu.dx);
+  let uz = macro.z * (tu.dt / tu.dx);
+
+  var gIn: array<f32, 7>;
+  var temp: f32 = 0.0;
+  let gx = i32(gid.x);
+  let gy = i32(gid.y);
+  let gz = i32(gid.z);
+
+  for (var q: u32 = 0u; q < 7u; q = q + 1u) {
+    let sx = gx - TCX[q];
+    let sy = gy - TCY[q];
+    let sz = gz - TCZ[q];
+    var pulled: f32 = 0.0;
+    if (sx < 0 || sx >= i32(tu.nx) || sy < 0 || sy >= i32(tu.ny) || sz < 0 || sz >= i32(tu.nz)) {
+      pulled = TW[q] * tu.ambientTempK;
+    } else {
+      let upIdx = u32(sx) + u32(sy) * tu.nx + u32(sz) * tu.nx * tu.ny;
+      let upType = cellTypes[upIdx];
+      if (upType == 1u) {
+        let oppQ = TOPP[q];
+        if (tu.useHeatFlux != 0u) {
+          pulled = g_ping[oppQ * tu.totalCells + cellIdx] + TW[q] * tu.heatFluxDeltaT;
+        } else {
+          pulled = 2.0 * TW[q] * tu.wallTempK - g_ping[oppQ * tu.totalCells + cellIdx];
+        }
+      } else if (upType == 2u) {
+        let oppQ = TOPP[q];
+        pulled = g_ping[oppQ * tu.totalCells + cellIdx];
+      } else {
+        pulled = g_ping[q * tu.totalCells + upIdx];
+      }
+    }
+    gIn[q] = pulled;
+    temp += pulled;
+  }
+
+  if (cType == 3u) {
+    temp = tu.ambientTempK;
+  }
+
+  for (var q: u32 = 0u; q < 7u; q = q + 1u) {
+    let cu = f32(TCX[q]) * ux + f32(TCY[q]) * uy + f32(TCZ[q]) * uz;
+    let geq = TW[q] * temp * (1.0 + 4.0 * cu);
+    g_pong[q * tu.totalCells + cellIdx] = gIn[q] - tu.omegaT * (gIn[q] - geq);
+  }
+  temperature[cellIdx] = temp;
 }
 `;

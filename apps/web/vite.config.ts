@@ -636,6 +636,22 @@ export default defineConfig({
     minify: "esbuild",
     reportCompressedSize: false,
     chunkSizeWarningLimit: 15000,
+    modulePreload: {
+      resolveDependencies(_filename, deps, { hostType }) {
+        if (hostType !== "html") return deps;
+        const lazyOnlyChunks = [
+          "vendor-cad",
+          "vendor-three",
+          "vendor-charts",
+          "vendor-compiler",
+          "vendor-monaco",
+          "vendor-webllm",
+          "vendor-mermaid",
+          "vendor-antv",
+        ];
+        return deps.filter((dep) => !lazyOnlyChunks.some((chunk) => dep.includes(chunk)));
+      },
+    },
     rollupOptions: {
       onwarn(warning, warn) {
         if (warning.code === "INEFFECTIVE_DYNAMIC_IMPORT") return;
@@ -643,6 +659,14 @@ export default defineConfig({
       },
       output: {
         manualChunks(id) {
+          if (
+            id.includes("vite/preload-helper") ||
+            /\/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|styled-components|stylis|@emotion\/is-prop-valid|shallowequal)\//.test(
+              id,
+            )
+          ) {
+            return "core-react";
+          }
           if (id.includes("packages/cad") || id.includes("@modelscript/cad") || id.includes("occt-import-js")) {
             return "vendor-cad";
           }

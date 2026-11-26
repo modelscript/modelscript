@@ -220,8 +220,17 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
     try {
       const [report] = await Promise.all([verifyAll(documentUri), refreshThreadGraph()]);
       setVerifyReport(report);
-    } catch {
-      // ignore transient errors
+      if (!report) {
+        setSimStatus({
+          state: "error",
+          message: "Formal verification returned no report for the active workspace.",
+        });
+      }
+    } catch (err) {
+      setSimStatus({
+        state: "error",
+        message: `Formal verification error: ${err instanceof Error ? err.message : String(err)}`,
+      });
     } finally {
       setIsVerifyingFormal(false);
     }
@@ -311,8 +320,22 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
           .split("/")
           .pop() ?? "Target";
       const otherSym = moFile === dstFile ? srcSymbol : dstSymbol;
-      const escapedSym = sym.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const symRegex = new RegExp(`(?<![A-Za-z0-9_])${escapedSym}(?![A-Za-z0-9_])`);
+      const isIdentChar = (c: number): boolean =>
+        (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95;
+      const findSymIndex = (haystack: string, needle: string): number => {
+        if (!needle) return -1;
+        let from = 0;
+        while (from <= haystack.length - needle.length) {
+          const idx = haystack.indexOf(needle, from);
+          if (idx === -1) return -1;
+          const prevOk = idx === 0 || !isIdentChar(haystack.charCodeAt(idx - 1));
+          const nextIdx = idx + needle.length;
+          const nextOk = nextIdx >= haystack.length || !isIdentChar(haystack.charCodeAt(nextIdx));
+          if (prevOk && nextOk) return idx;
+          from = idx + 1;
+        }
+        return -1;
+      };
       const lines = moContent.split("\n");
       let inBlockComment = false;
       let replaced = false;
@@ -353,9 +376,9 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
             masked += ch;
           }
         }
-        const match = symRegex.exec(masked);
-        if (match) {
-          const semiIdx = masked.indexOf(";", match.index + match[0].length);
+        const matchIdx = findSymIndex(masked, sym);
+        if (matchIdx !== -1) {
+          const semiIdx = masked.indexOf(";", matchIdx + sym.length);
           if (semiIdx !== -1) {
             lines[lineIdx] =
               `${line.slice(0, semiIdx)} annotation(twin = "${otherStem}::${otherSym}")${line.slice(semiIdx)}`;
@@ -920,6 +943,37 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
             </div>
           )}
 
+          {conflicts.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ms-status-fail-fg, #fb7185)" }}>
+                Detected Conflicts ({conflicts.length})
+              </div>
+              {conflicts.map((conflict, idx) => {
+                const c = conflict as unknown as Record<string, unknown>;
+                const msg =
+                  (typeof c.message === "string" && c.message) ||
+                  (typeof c.description === "string" && c.description) ||
+                  (typeof c.reason === "string" && c.reason) ||
+                  (typeof c.symbol === "string" ? `Conflict on '${c.symbol}'` : JSON.stringify(conflict));
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 6,
+                      backgroundColor: "var(--ms-status-fail-bg, rgba(251, 113, 133, 0.12))",
+                      border: "1px solid var(--ms-status-fail-border, rgba(251, 113, 133, 0.32))",
+                      color: "var(--ms-status-fail-fg, #fb7185)",
+                      fontSize: 11.5,
+                    }}
+                  >
+                    {msg}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {suggestedEdits.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: textMuted }}>Suggested Reconciliations</div>
@@ -1012,9 +1066,42 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
             </div>
           ))}
           {blastRadius && (
-            <div style={{ fontSize: 11, color: textMuted }}>
-              Blast Radius: {blastRadius.totalImpactedCount} impacted node(s) across{" "}
-              {blastRadius.impactedThreads.length} thread(s).
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 11, color: textMuted }}>
+                Blast Radius: {blastRadius.totalImpactedCount} impacted node(s) across{" "}
+                {blastRadius.impactedThreads.length} thread(s).
+              </div>
+              {Array.isArray((blastRadius as unknown as { impactedNodes?: unknown[] }).impactedNodes) &&
+                ((
+                  blastRadius as unknown as {
+                    impactedNodes?: Array<{ domain?: string; name?: string; nodeId?: string }>;
+                  }
+                ).impactedNodes?.length ?? 0) > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {(
+                      blastRadius as unknown as {
+                        impactedNodes: Array<{ domain?: string; name?: string; nodeId?: string }>;
+                      }
+                    ).impactedNodes
+                      .slice(0, 24)
+                      .map((node, idx) => (
+                        <span
+                          key={`${node.domain ?? ""}:${node.nodeId ?? idx}`}
+                          style={{
+                            fontSize: 10.5,
+                            padding: "2px 6px",
+                            borderRadius: 999,
+                            backgroundColor: "var(--ms-status-warn-bg, rgba(245,158,11,0.12))",
+                            color: "var(--ms-status-warn-fg, #d97706)",
+                            border: "1px solid var(--ms-status-warn-border, rgba(245,158,11,0.3))",
+                          }}
+                        >
+                          {node.domain ? `[${node.domain}] ` : ""}
+                          {node.name ?? node.nodeId ?? "node"}
+                        </span>
+                      ))}
+                  </div>
+                )}
             </div>
           )}
         </div>

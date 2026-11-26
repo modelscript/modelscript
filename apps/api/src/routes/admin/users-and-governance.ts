@@ -320,25 +320,62 @@ export function createUsersAndGovernanceRouter({ database, verifyAdminSudo }: Ad
     }
   });
 
+  const MAX_ADMIN_CREDIT_ADJUSTMENT = 100_000;
+  const ADMIN_CREDIT_IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+  const MAX_IDEMPOTENCY_CACHE_ENTRIES = 5_000;
+  const adminCreditIdempotencyCache = new Map<string, { expiresAt: number; payload: Record<string, unknown> }>();
+
   /**
    * POST /api/v1/admin/users/:id/credits
    * Grants or deducts compute credits for a user account and records a ledger transaction
    */
   router.post("/admin/users/:id/credits", adminAuth, express.json(), (req: Request, res: Response) => {
     const userId = Number(req.params["id"]);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      res.status(400).json({ error: "Invalid user ID" });
+      return;
+    }
+
     const amount = Number(req.body?.amount ?? req.body?.deltaCredits);
     const reason =
       typeof req.body?.reason === "string" && req.body.reason.trim()
         ? req.body.reason.trim()
         : "Admin compute credit adjustment";
 
-    if (!Number.isFinite(amount) || amount === 0) {
-      res.status(400).json({ error: "amount must be a non-zero number" });
+    if (!Number.isFinite(amount) || Math.round(Math.abs(amount) * 100) === 0) {
+      res.status(400).json({ error: "amount must be a non-zero number (at least 0.01 credits)" });
       return;
     }
 
+    if (Math.abs(amount) > MAX_ADMIN_CREDIT_ADJUSTMENT) {
+      res.status(400).json({
+        error: `amount must be between -${MAX_ADMIN_CREDIT_ADJUSTMENT} and ${MAX_ADMIN_CREDIT_ADJUSTMENT}`,
+      });
+      return;
+    }
+
+    const roundedAmount = Math.round(amount * 100) / 100;
+    const rawIdempotencyKey =
+      typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"].trim()
+        : typeof req.body?.idempotencyKey === "string"
+          ? req.body.idempotencyKey.trim()
+          : "";
+    const cacheKey = rawIdempotencyKey ? `${req.user?.id ?? "admin"}:${userId}:${rawIdempotencyKey.slice(0, 256)}` : "";
+
+    if (cacheKey) {
+      const cached = adminCreditIdempotencyCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        res.json({ ...cached.payload, idempotentReplay: true });
+        return;
+      }
+      if (cached) {
+        adminCreditIdempotencyCache.delete(cacheKey);
+      }
+    }
+
     try {
-      const result = database.adjustUserCreditsForAdmin(userId, amount, reason);
+      const result = database.adjustUserCreditsForAdmin(userId, roundedAmount, reason);
       if (!result.success) {
         res.status(404).json({ error: "User not found" });
         return;
@@ -350,17 +387,38 @@ export function createUsersAndGovernanceRouter({ database, verifyAdminSudo }: Ad
         resourceType: "user",
         resourceId: String(userId),
         ipAddress: getClientIp(req),
-        details: { userId, delta: amount, newBalance: result.newBalance, reason },
+        details: {
+          userId,
+          delta: roundedAmount,
+          newBalance: result.newBalance,
+          reason,
+          ...(rawIdempotencyKey ? { idempotencyKey: rawIdempotencyKey.slice(0, 256) } : {}),
+        },
       });
 
-      res.json({
+      const responsePayload: Record<string, unknown> = {
         success: true,
         userId,
-        delta: amount,
-        deltaCredits: amount,
+        delta: roundedAmount,
+        deltaCredits: roundedAmount,
         newBalance: result.newBalance,
         reason,
-      });
+      };
+
+      if (cacheKey) {
+        if (adminCreditIdempotencyCache.size >= MAX_IDEMPOTENCY_CACHE_ENTRIES) {
+          const oldestKey = adminCreditIdempotencyCache.keys().next().value;
+          if (oldestKey !== undefined) {
+            adminCreditIdempotencyCache.delete(oldestKey);
+          }
+        }
+        adminCreditIdempotencyCache.set(cacheKey, {
+          expiresAt: Date.now() + ADMIN_CREDIT_IDEMPOTENCY_TTL_MS,
+          payload: responsePayload,
+        });
+      }
+
+      res.json(responsePayload);
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to adjust user credits" });
     }

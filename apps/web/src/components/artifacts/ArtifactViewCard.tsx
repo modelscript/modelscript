@@ -508,6 +508,10 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     "vega-plot",
     "owl",
     "owl2",
+    "training-recipe",
+    "memory-shard",
+    "dataset-pretrain",
+    "dataset-posttrain",
   ].includes(normalizedViewType);
 
   const isSimulatableArtifact =

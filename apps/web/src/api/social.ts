@@ -224,8 +224,9 @@ export const blockUser = async (username: string): Promise<SocialMutationRespons
   return data;
 };
 
-export const unblockUser = async (username: string): Promise<SocialMutationResponse> => {
-  const { data } = await api.delete(`/users/${encodeURIComponent(username)}/block`);
+export const unblockUser = async (username: string, userId?: number): Promise<SocialMutationResponse> => {
+  const query = userId !== undefined ? `?userId=${encodeURIComponent(String(userId))}` : "";
+  const { data } = await api.delete(`/users/${encodeURIComponent(username)}/block${query}`);
   return data;
 };
 
@@ -234,8 +235,9 @@ export const muteUser = async (username: string): Promise<SocialMutationResponse
   return data;
 };
 
-export const unmuteUser = async (username: string): Promise<SocialMutationResponse> => {
-  const { data } = await api.delete(`/users/${encodeURIComponent(username)}/mute`);
+export const unmuteUser = async (username: string, userId?: number): Promise<SocialMutationResponse> => {
+  const query = userId !== undefined ? `?userId=${encodeURIComponent(String(userId))}` : "";
+  const { data } = await api.delete(`/users/${encodeURIComponent(username)}/mute${query}`);
   return data;
 };
 

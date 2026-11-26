@@ -9,6 +9,7 @@ export interface S3ClientConfig {
   bucket: string;
   accessKeyId?: string | undefined;
   secretAccessKey?: string | undefined;
+  sessionToken?: string | undefined;
   forcePathStyle?: boolean | undefined;
   prefix?: string | undefined;
 }
@@ -222,6 +223,7 @@ export class S3StorageDriver implements StorageDriver {
   ): Record<string, string> {
     const accessKey = this.#config.accessKeyId || process.env["AWS_ACCESS_KEY_ID"] || "";
     const secretKey = this.#config.secretAccessKey || process.env["AWS_SECRET_ACCESS_KEY"] || "";
+    const sessionToken = this.#config.sessionToken || process.env["AWS_SESSION_TOKEN"] || "";
 
     if (!accessKey || !secretKey) {
       // Unauthenticated / public access fallback
@@ -240,6 +242,7 @@ export class S3StorageDriver implements StorageDriver {
       host: url.host,
       "x-amz-date": amzDate,
       "x-amz-content-sha256": payloadHash,
+      ...(sessionToken ? { "x-amz-security-token": sessionToken } : {}),
       ...extraHeaders,
     };
 

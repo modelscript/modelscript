@@ -40,7 +40,7 @@ export function getApiUrl(): string {
   if (envUrl) return envUrl.replace(/\/+$/, "");
   const rcUrl = readRc().apiUrl;
   if (rcUrl) return rcUrl.replace(/\/+$/, "");
-  return "http://localhost:3000";
+  return "https://ansatz.social";
 }
 
 export function saveApiUrl(url: string): void {

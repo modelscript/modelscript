@@ -160,13 +160,22 @@ export interface FloatingCodePanel3DProps {
   theme: DiagramLanguageTheme;
   /** Centered prominently when in Code view, or docked to the right when overlaid over Diagram/3D. */
   centered?: boolean | undefined;
+  /** Optional X coordinate when right-docked beside wide stages such as Diagram. */
+  dockOffsetX?: number | undefined;
+  workspaceFiles?: readonly RotundaWorkspaceFile[] | undefined;
+  activeFilePath?: string | undefined;
+  onSelectFile?: ((path: string) => void) | undefined;
+  diagnostics?: RotundaInspectorData["diagnostics"];
+  focusLine?: number | null | undefined;
+  /** External jump command triggered from dock controls (Scroll Top / Bottom). */
+  scrollCommand?: { readonly action: "top" | "bottom"; readonly seq: number } | null | undefined;
   onClose: () => void;
   onCue?: ((kind: RotundaCueKind) => void) | undefined;
 }
 
 const CODE_CANVAS_W = 1024;
 const CODE_CANVAS_H = 768;
-const CODE_VISIBLE_LINES = 24;
+const CODE_VISIBLE_LINES = 22;
 
 export function FloatingCodePanel3D({
   visible,
@@ -174,6 +183,13 @@ export function FloatingCodePanel3D({
   fileName,
   theme,
   centered = false,
+  dockOffsetX = 1.16,
+  workspaceFiles,
+  activeFilePath,
+  onSelectFile,
+  diagnostics,
+  focusLine = null,
+  scrollCommand = null,
   onClose,
   onCue,
 }: FloatingCodePanel3DProps): React.ReactElement | null {
@@ -185,7 +201,34 @@ export function FloatingCodePanel3D({
     setScrollLine(0);
   }, [fileName]);
 
+  useEffect(() => {
+    if (focusLine && focusLine > 0) {
+      setScrollLine(Math.max(0, Math.min(maxScroll, focusLine - 4)));
+    }
+  }, [focusLine, maxScroll]);
+
+  useEffect(() => {
+    if (!scrollCommand) return;
+    setScrollLine(scrollCommand.action === "top" ? 0 : maxScroll);
+  }, [scrollCommand, maxScroll]);
+
   const clampedScroll = Math.min(scrollLine, maxScroll);
+  const shownTabs = useMemo(
+    () => (workspaceFiles && workspaceFiles.length > 1 ? workspaceFiles.slice(0, 5) : []),
+    [workspaceFiles],
+  );
+  const hasTabs = shownTabs.length > 1;
+
+  const diagByLine = useMemo(() => {
+    const map = new Map<number, { severity: "error" | "warning" | "info"; message: string }>();
+    for (const d of diagnostics ?? []) {
+      const existing = map.get(d.line);
+      if (!existing || (d.severity === "error" && existing.severity !== "error")) {
+        map.set(d.line, { severity: d.severity, message: d.message });
+      }
+    }
+    return map;
+  }, [diagnostics]);
 
   const texture = useMemo(() => {
     if (typeof document === "undefined" || !visible) return null;
@@ -241,35 +284,74 @@ export function FloatingCodePanel3D({
     drawBtn(822, 86, "▼ DN", "rgba(51, 65, 85, 0.9)");
     drawBtn(916, 76, "✕", "rgba(185, 28, 28, 0.85)");
 
-    // Code lines with lightweight syntax coloring
+    // Optional multi-file tab strip
+    if (hasTabs) {
+      const tabW = Math.floor((CODE_CANVAS_W - 44 - (shownTabs.length - 1) * 8) / shownTabs.length);
+      for (let t = 0; t < shownTabs.length; t++) {
+        const f = shownTabs[t]!;
+        const tx = 22 + t * (tabW + 8);
+        const isActive = f.path === activeFilePath || f.name === fileName;
+        drawRoundedRect(ctx, tx, 88, tabW, 34, 8);
+        ctx.fillStyle = isActive ? "rgba(56, 189, 248, 0.24)" : "rgba(30, 41, 59, 0.72)";
+        ctx.fill();
+        ctx.lineWidth = isActive ? 2 : 1;
+        ctx.strokeStyle = isActive ? theme.secondaryColor : "rgba(148, 163, 184, 0.22)";
+        ctx.stroke();
+        ctx.fillStyle = isActive ? "#ffffff" : "#94a3b8";
+        ctx.font = `${isActive ? "700" : "500"} 15px ${MONO_FONT}`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const tabLabel = f.name.length > 16 ? `${f.name.slice(0, 15)}…` : f.name;
+        ctx.fillText(tabLabel, tx + tabW * 0.5, 105);
+      }
+    }
+
+    // Code lines with lightweight syntax coloring + diagnostic gutter markers
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    const startY = 104;
+    const startY = hasTabs ? 142 : 108;
     const lineH = 26;
 
     for (let i = 0; i < CODE_VISIBLE_LINES; i++) {
       const lineIdx = clampedScroll + i;
       if (lineIdx >= lines.length) break;
+      const lineNum = lineIdx + 1;
       const y = startY + i * lineH;
       const rawLine = lines[lineIdx] ?? "";
+      const diag = diagByLine.get(lineNum);
 
-      // Gutter line number
-      ctx.fillStyle = "#64748b";
+      // Highlight focused or diagnostic line background
+      if (diag) {
+        ctx.fillStyle = diag.severity === "error" ? "rgba(239, 68, 68, 0.16)" : "rgba(245, 158, 11, 0.14)";
+        ctx.fillRect(18, y - 12, CODE_CANVAS_W - 36, 24);
+      } else if (focusLine === lineNum) {
+        ctx.fillStyle = "rgba(56, 189, 248, 0.16)";
+        ctx.fillRect(18, y - 12, CODE_CANVAS_W - 36, 24);
+      }
+
+      // Gutter diagnostic dot + line number
+      if (diag) {
+        ctx.beginPath();
+        ctx.arc(24, y, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle = diag.severity === "error" ? "#f87171" : "#fbbf24";
+        ctx.fill();
+      }
+      ctx.fillStyle = diag ? (diag.severity === "error" ? "#fca5a5" : "#fde68a") : "#64748b";
       ctx.font = `600 17px ${MONO_FONT}`;
-      ctx.fillText(String(lineIdx + 1).padStart(3, " "), 26, y);
+      ctx.fillText(String(lineNum).padStart(3, " "), 34, y);
 
       // Comment line shortcut
       const trimmed = rawLine.trimStart();
       if (trimmed.startsWith("//") || trimmed.startsWith("#") || trimmed.startsWith("*")) {
         ctx.fillStyle = "#6ee7b7";
         ctx.font = `500 18px ${MONO_FONT}`;
-        ctx.fillText(rawLine.slice(0, 74), 84, y);
+        ctx.fillText(rawLine.slice(0, 72), 92, y);
         continue;
       }
 
       // Token-colored rendering
-      let cursorX = 84;
-      const clipped = rawLine.slice(0, 76);
+      let cursorX = 92;
+      const clipped = rawLine.slice(0, 74);
       const tokens = clipped.split(/(\s+|"[^"]*"|[(){};,=.+\-*/:]+)/g);
       ctx.font = `500 18px ${MONO_FONT}`;
       for (const tok of tokens) {
@@ -291,12 +373,15 @@ export function FloatingCodePanel3D({
       }
     }
 
-    // Footer status
-    ctx.fillStyle = "#94a3b8";
+    // Footer status (includes active diagnostic count if any)
+    const errCount = (diagnostics ?? []).filter((d) => d.severity === "error").length;
+    const warnCount = (diagnostics ?? []).filter((d) => d.severity === "warning").length;
+    ctx.fillStyle = errCount > 0 ? "#fca5a5" : "#94a3b8";
     ctx.font = `600 16px ${UI_FONT}`;
     ctx.textAlign = "left";
+    const diagSuffix = errCount > 0 || warnCount > 0 ? ` · ${errCount} err / ${warnCount} warn` : " · 0 issues";
     ctx.fillText(
-      `Lines ${clampedScroll + 1}–${Math.min(lines.length, clampedScroll + CODE_VISIBLE_LINES)} of ${lines.length} · Synced live with Ansatz Editor`,
+      `Lines ${clampedScroll + 1}–${Math.min(lines.length, clampedScroll + CODE_VISIBLE_LINES)} of ${lines.length}${diagSuffix} · Wheel or ▲/▼ to scroll`,
       28,
       CODE_CANVAS_H - 26,
     );
@@ -306,7 +391,19 @@ export function FloatingCodePanel3D({
     tex.anisotropy = 4;
     tex.needsUpdate = true;
     return tex;
-  }, [visible, lines, clampedScroll, fileName, theme]);
+  }, [
+    visible,
+    lines,
+    clampedScroll,
+    fileName,
+    theme,
+    hasTabs,
+    shownTabs,
+    activeFilePath,
+    diagByLine,
+    diagnostics,
+    focusLine,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -335,17 +432,40 @@ export function FloatingCodePanel3D({
         onCue?.("click");
         onClose();
       }
+      return;
+    }
+    if (hasTabs && py >= 86 && py <= 124 && onSelectFile) {
+      const tabW = Math.floor((CODE_CANVAS_W - 44 - (shownTabs.length - 1) * 8) / shownTabs.length);
+      for (let t = 0; t < shownTabs.length; t++) {
+        const tx = 22 + t * (tabW + 8);
+        if (px >= tx && px <= tx + tabW) {
+          const target = shownTabs[t];
+          if (target) {
+            pulseEventHaptic(e, 0.12, 10);
+            onCue?.("page");
+            onSelectFile(target.path);
+          }
+          return;
+        }
+      }
     }
   };
 
   return (
     <group
       name="vr-floating-code-panel"
-      position={centered ? [0, 1.44, -1.08] : [0.92, 1.46, -0.82]}
-      rotation={centered ? [0, 0, 0] : [0, -0.46, 0]}
+      position={centered ? [0, 1.46, -1.16] : [dockOffsetX, 1.46, -1.04]}
+      rotation={centered ? [0, 0, 0] : [0, -0.34, 0]}
     >
-      <mesh onPointerDown={handlePointerDown}>
-        <planeGeometry args={centered ? [1.28, 0.96] : [0.96, 0.72]} />
+      <mesh
+        onPointerDown={handlePointerDown}
+        onWheel={(e) => {
+          e.stopPropagation();
+          const deltaLines = e.deltaY > 0 ? 4 : -4;
+          setScrollLine((s) => Math.max(0, Math.min(maxScroll, s + deltaLines)));
+        }}
+      >
+        <planeGeometry args={centered ? [1.34, 1.0] : [0.92, 0.69]} />
         <meshBasicMaterial map={texture} transparent toneMapped={false} />
       </mesh>
     </group>
@@ -362,12 +482,33 @@ export interface VrInspectorPanel3DProps {
   theme: DiagramLanguageTheme;
   inspectorData?: RotundaInspectorData | undefined;
   centered?: boolean | undefined;
+  onJumpToLine?: ((line: number) => void) | undefined;
   onClose: () => void;
   onCue?: ((kind: RotundaCueKind) => void) | undefined;
 }
 
 const INSP_W = 896;
 const INSP_H = 720;
+const INSP_PARAMS_PER_PAGE = 6;
+const INSP_PARAMS_START_Y = 198;
+const INSP_PARAM_ROW_STRIDE = 48;
+const INSP_DIAGS_START_Y = 548;
+
+function computeParameterStep(value: number): number {
+  const abs = Math.abs(value);
+  if (abs === 0) return 1;
+  if (abs < 0.2) return 0.01;
+  if (abs < 2) return 0.1;
+  if (abs < 20) return 1;
+  if (abs < 200) return 2;
+  return Math.pow(10, Math.floor(Math.log10(abs)) - 1);
+}
+
+function formatSteppedParameterValue(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  const rounded = Math.round(value * 10000) / 10000;
+  return Object.is(rounded, -0) ? "0" : String(rounded);
+}
 
 export function VrInspectorPanel3D({
   visible,
@@ -375,9 +516,22 @@ export function VrInspectorPanel3D({
   theme,
   inspectorData,
   centered = false,
+  onJumpToLine,
   onClose,
   onCue,
 }: VrInspectorPanel3DProps): React.ReactElement | null {
+  const [paramOffset, setParamOffset] = useState(0);
+  const params = useMemo(() => inspectorData?.parameters ?? [], [inspectorData?.parameters]);
+  const diags = useMemo(() => inspectorData?.diagnostics ?? [], [inspectorData?.diagnostics]);
+  const onModifyParameter = inspectorData?.onModifyParameter;
+  const maxParamOffset = Math.max(0, params.length - INSP_PARAMS_PER_PAGE);
+
+  useEffect(() => {
+    setParamOffset(0);
+  }, [fileName]);
+
+  const clampedParamOffset = Math.min(paramOffset, maxParamOffset);
+
   const texture = useMemo(() => {
     if (typeof document === "undefined" || !visible) return null;
     const canvas = document.createElement("canvas");
@@ -424,59 +578,108 @@ export function VrInspectorPanel3D({
 
     // Selected Component Banner
     ctx.textAlign = "left";
-    let y = 112;
+    let y = 110;
     ctx.fillStyle = "#94a3b8";
-    ctx.font = `700 16px ${UI_FONT}`;
+    ctx.font = `700 15px ${UI_FONT}`;
     ctx.fillText("ACTIVE ELEMENT / DIAGRAM PARADIGM", 28, y);
     y += 28;
     ctx.fillStyle = "#f8fafc";
     ctx.font = `700 21px ${MONO_FONT}`;
     ctx.fillText(inspectorData?.selectedComponent || theme.diagramKindLabel, 28, y);
 
-    // Parameters Section
-    y += 42;
+    // Parameters Section Header + Scroll Pager
+    y += 38;
     ctx.fillStyle = theme.secondaryColor;
-    ctx.font = `800 17px ${UI_FONT}`;
-    const params = inspectorData?.parameters ?? [];
-    ctx.fillText(`PARAMETERS (${params.length})`, 28, y);
-    y += 22;
+    ctx.font = `800 16px ${UI_FONT}`;
+    const editableHint = onModifyParameter ? " · CLICK − / + TO EDIT LIVE" : "";
+    ctx.fillText(
+      params.length > INSP_PARAMS_PER_PAGE
+        ? `PARAMETERS (${clampedParamOffset + 1}–${Math.min(params.length, clampedParamOffset + INSP_PARAMS_PER_PAGE)} of ${params.length})${editableHint}`
+        : `PARAMETERS (${params.length})${editableHint}`,
+      28,
+      y,
+    );
+    if (params.length > INSP_PARAMS_PER_PAGE) {
+      drawRoundedRect(ctx, INSP_W - 154, y - 14, 56, 28, 7);
+      ctx.fillStyle = clampedParamOffset > 0 ? "rgba(51, 65, 85, 0.9)" : "rgba(30, 41, 59, 0.4)";
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `700 15px ${UI_FONT}`;
+      ctx.textAlign = "center";
+      ctx.fillText("▲", INSP_W - 126, y);
+
+      drawRoundedRect(ctx, INSP_W - 90, y - 14, 56, 28, 7);
+      ctx.fillStyle = clampedParamOffset < maxParamOffset ? "rgba(51, 65, 85, 0.9)" : "rgba(30, 41, 59, 0.4)";
+      ctx.fill();
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText("▼", INSP_W - 62, y);
+      ctx.textAlign = "left";
+    }
+    y = INSP_PARAMS_START_Y;
 
     if (params.length === 0) {
       ctx.fillStyle = "#64748b";
       ctx.font = `500 18px ${UI_FONT}`;
       ctx.fillText("No editable parameters extracted for this file yet.", 28, y + 18);
-      y += 46;
     } else {
-      const shown = params.slice(0, 8);
+      const shown = params.slice(clampedParamOffset, clampedParamOffset + INSP_PARAMS_PER_PAGE);
       for (const p of shown) {
+        const numericVal = Number(p.value);
+        const canStep = Boolean(onModifyParameter) && p.value.trim() !== "" && Number.isFinite(numericVal);
         drawRoundedRect(ctx, 26, y, INSP_W - 52, 42, 10);
         ctx.fillStyle = "rgba(30, 41, 59, 0.75)";
         ctx.fill();
         ctx.fillStyle = "#e2e8f0";
         ctx.font = `700 18px ${MONO_FONT}`;
         ctx.textAlign = "left";
-        ctx.fillText(p.name.slice(0, 32), 42, y + 21);
+        ctx.fillText(p.name.slice(0, canStep ? 24 : 32), 42, y + 21);
         ctx.fillStyle = "#38bdf8";
         ctx.textAlign = "right";
         const valText = `${p.value}${p.unit ? ` ${p.unit}` : ""}`;
-        ctx.fillText(valText.slice(0, 22), INSP_W - 42, y + 21);
-        y += 48;
+        ctx.fillText(valText.slice(0, 20), canStep ? INSP_W - 158 : INSP_W - 42, y + 21);
+
+        if (canStep) {
+          // Minus button
+          drawRoundedRect(ctx, INSP_W - 144, y + 6, 44, 30, 7);
+          ctx.fillStyle = "rgba(51, 65, 85, 0.92)";
+          ctx.fill();
+          ctx.fillStyle = "#f8fafc";
+          ctx.font = `800 18px ${UI_FONT}`;
+          ctx.textAlign = "center";
+          ctx.fillText("−", INSP_W - 122, y + 21);
+
+          // Plus button
+          drawRoundedRect(ctx, INSP_W - 92, y + 6, 44, 30, 7);
+          ctx.fillStyle = "rgba(14, 116, 144, 0.92)";
+          ctx.fill();
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText("+", INSP_W - 70, y + 21);
+        }
+        y += INSP_PARAM_ROW_STRIDE;
       }
     }
 
-    // Diagnostics Section
-    y = Math.max(y + 18, 520);
-    const diags = inspectorData?.diagnostics ?? [];
+    // Diagnostics Section (click any row to jump directly to VR Code at that line)
+    let dy = INSP_DIAGS_START_Y - 26;
     ctx.textAlign = "left";
     ctx.fillStyle = diags.some((d) => d.severity === "error") ? "#f87171" : "#34d399";
-    ctx.font = `800 17px ${UI_FONT}`;
-    ctx.fillText(diags.length === 0 ? "DIAGNOSTICS · ALL CLEAR (0 ISSUES)" : `DIAGNOSTICS (${diags.length})`, 28, y);
-    y += 28;
+    ctx.font = `800 16px ${UI_FONT}`;
+    ctx.fillText(
+      diags.length === 0
+        ? "DIAGNOSTICS · ALL CLEAR (0 ISSUES)"
+        : `DIAGNOSTICS (${diags.length}) · CLICK TO OPEN LINE IN CODE`,
+      28,
+      dy,
+    );
+    dy = INSP_DIAGS_START_Y;
     for (const d of diags.slice(0, 4)) {
+      drawRoundedRect(ctx, 26, dy, INSP_W - 52, 32, 8);
+      ctx.fillStyle = d.severity === "error" ? "rgba(127, 29, 29, 0.42)" : "rgba(120, 53, 15, 0.36)";
+      ctx.fill();
       ctx.fillStyle = d.severity === "error" ? "#fca5a5" : "#fde68a";
-      ctx.font = `600 16px ${MONO_FONT}`;
-      ctx.fillText(`L${d.line}: ${d.message.slice(0, 62)}`, 28, y);
-      y += 26;
+      ctx.font = `600 15px ${MONO_FONT}`;
+      ctx.fillText(`L${d.line}: ${d.message.slice(0, 62)}`, 38, dy + 16);
+      dy += 38;
     }
 
     const tex = new THREE.CanvasTexture(canvas);
@@ -484,7 +687,7 @@ export function VrInspectorPanel3D({
     tex.anisotropy = 4;
     tex.needsUpdate = true;
     return tex;
-  }, [visible, fileName, theme, inspectorData]);
+  }, [visible, fileName, theme, inspectorData, params, diags, clampedParamOffset, maxParamOffset, onModifyParameter]);
 
   useEffect(() => {
     return () => {
@@ -503,17 +706,78 @@ export function VrInspectorPanel3D({
       pulseEventHaptic(e, 0.14, 10);
       onCue?.("click");
       onClose();
+      return;
+    }
+    if (params.length > INSP_PARAMS_PER_PAGE && py >= 158 && py <= 194) {
+      if (px >= INSP_W - 156 && px <= INSP_W - 96) {
+        setParamOffset((o) => Math.max(0, o - 3));
+        pulseEventHaptic(e, 0.1, 8);
+        onCue?.("tick");
+        return;
+      }
+      if (px >= INSP_W - 92 && px <= INSP_W - 32) {
+        setParamOffset((o) => Math.min(maxParamOffset, o + 3));
+        pulseEventHaptic(e, 0.1, 8);
+        onCue?.("tick");
+        return;
+      }
+    }
+    // Parameter row numeric − / + steppers
+    if (
+      onModifyParameter &&
+      params.length > 0 &&
+      py >= INSP_PARAMS_START_Y &&
+      py <= INSP_PARAMS_START_Y + INSP_PARAMS_PER_PAGE * INSP_PARAM_ROW_STRIDE
+    ) {
+      const rowIdx = Math.floor((py - INSP_PARAMS_START_Y) / INSP_PARAM_ROW_STRIDE);
+      const localY = (py - INSP_PARAMS_START_Y) % INSP_PARAM_ROW_STRIDE;
+      const param = params[clampedParamOffset + rowIdx];
+      if (param && localY <= 42) {
+        const numericVal = Number(param.value);
+        if (param.value.trim() !== "" && Number.isFinite(numericVal)) {
+          const step = computeParameterStep(numericVal);
+          if (px >= INSP_W - 146 && px <= INSP_W - 98) {
+            pulseEventHaptic(e, 0.12, 10);
+            onCue?.("tick");
+            onModifyParameter(param.name, formatSteppedParameterValue(numericVal - step));
+            return;
+          }
+          if (px >= INSP_W - 94 && px <= INSP_W - 46) {
+            pulseEventHaptic(e, 0.12, 10);
+            onCue?.("tick");
+            onModifyParameter(param.name, formatSteppedParameterValue(numericVal + step));
+            return;
+          }
+        }
+      }
+    }
+    if (onJumpToLine && diags.length > 0 && py >= INSP_DIAGS_START_Y && py <= INSP_DIAGS_START_Y + 4 * 38) {
+      const idx = Math.floor((py - INSP_DIAGS_START_Y) / 38);
+      const diag = diags[idx];
+      if (diag) {
+        pulseEventHaptic(e, 0.14, 12);
+        onCue?.("snap");
+        onJumpToLine(diag.line);
+      }
     }
   };
 
   return (
     <group
       name="vr-inspector-panel"
-      position={centered ? [0, 1.44, -1.08] : [-0.92, 1.46, -0.82]}
+      position={centered ? [0, 1.46, -1.22] : [-0.92, 1.46, -0.82]}
       rotation={centered ? [0, 0, 0] : [0, 0.46, 0]}
     >
-      <mesh onPointerDown={handlePointerDown}>
-        <planeGeometry args={centered ? [1.18, 0.94] : [0.88, 0.7]} />
+      <mesh
+        onPointerDown={handlePointerDown}
+        onWheel={(e) => {
+          if (maxParamOffset <= 0) return;
+          e.stopPropagation();
+          const delta = e.deltaY > 0 ? 2 : -2;
+          setParamOffset((o) => Math.max(0, Math.min(maxParamOffset, o + delta)));
+        }}
+      >
+        <planeGeometry args={centered ? [1.22, 0.98] : [0.88, 0.7]} />
         <meshBasicMaterial map={texture} transparent toneMapped={false} />
       </mesh>
     </group>

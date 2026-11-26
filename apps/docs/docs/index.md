@@ -8,9 +8,6 @@ hero:
   name: "ModelScript"
   text: "One web-native compiler for every engineering model"
   tagline: "Build a computable digital thread across 169 engineering formats. Link requirements, architecture, multi-physics models and 3D CAD — with simulation, formal verification, optimization and AI-agent tooling (MCP) built in."
-  image:
-    src: /ms-logo.png
-    alt: ModelScript 3D turbine engine
   actions:
     - theme: brand
       text: Get Started
@@ -36,6 +33,8 @@ import {
 } from "./.vitepress/theme/data/feature-flags";
 </script>
 
+<HomePolyglotSandbox v-if="isHomePolyglotSandboxEnabled" hero />
+
 <HomeWhatsNew />
 
 <HomeStats />
@@ -50,9 +49,7 @@ import {
 
 <HomeSemanticCoordinator v-if="isHomeSemanticCoordinatorEnabled" />
 
-<ClientOnly>
-  <HomePolyglotSandbox v-if="isHomePolyglotSandboxEnabled" />
-</ClientOnly>
+<HomeTurbineShowcase />
 
 <HomeThread />
 

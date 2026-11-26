@@ -1068,9 +1068,11 @@ export async function buildDiagramData(
               ]
             : [connectorMarkup];
 
+        const portConnectorType = connector.classInstance?.compositeName || connector.classInstance?.name || undefined;
         ports.push({
           id: connector.name ?? "",
           group: "absolute",
+          ...(portConnectorType ? { connectorType: portConnectorType } : {}),
           args: { x: desiredCenterX, y: desiredCenterY, angle: portAngle },
           markup: {
             tagName: "g",

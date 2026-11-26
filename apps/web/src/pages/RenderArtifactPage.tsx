@@ -60,20 +60,41 @@ export default function RenderArtifactPage() {
   const [isHpcModalOpen, setIsHpcModalOpen] = useState<boolean>(false);
   const hasCloudSolverFlag = useFeatureFlag("cae_cloud_solver");
 
-  // Preserve clean chromeless viewport for headless Puppeteer thumbnail capture or explicit ?chromeless=1
+  // Preserve clean chromeless viewport for headless Puppeteer thumbnail capture, ?embed=1 blog/external embeds, or explicit ?chromeless=1
   const isChromeless = useMemo(() => {
     const thumb = searchParams.get("thumbnail");
     const headless = searchParams.get("headless");
     const chromeless = searchParams.get("chromeless");
+    const embed = searchParams.get("embed");
     return (
       thumb === "true" ||
       thumb === "1" ||
       headless === "true" ||
       headless === "1" ||
       chromeless === "true" ||
-      chromeless === "1"
+      chromeless === "1" ||
+      embed === "true" ||
+      embed === "1"
     );
   }, [searchParams]);
+
+  const [embedColorMode, setEmbedColorMode] = useState<"auto" | "day" | "night">(() => {
+    const t = (searchParams.get("theme") || "").toLowerCase();
+    if (t === "dark") return "night";
+    if (t === "light") return "day";
+    return "auto";
+  });
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; theme?: string } | null;
+      if (!data || data.type !== "SET_THEME") return;
+      if (data.theme === "dark") setEmbedColorMode("night");
+      else if (data.theme === "light") setEmbedColorMode("day");
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   usePageTitle(artifact ? `Artifact: ${artifact.title || artifact.view_type}` : "Render Artifact");
 
@@ -544,7 +565,7 @@ export default function RenderArtifactPage() {
 
   if (isChromeless) {
     return (
-      <ThemeProvider colorMode="auto">
+      <ThemeProvider colorMode={embedColorMode}>
         <BaseStyles style={{ width: "100vw", height: "100vh", overflow: "hidden", margin: 0, padding: 0 }}>
           <Box width="100%" height="100%" bg="var(--color-canvas-default)">
             {activeViewportElement}

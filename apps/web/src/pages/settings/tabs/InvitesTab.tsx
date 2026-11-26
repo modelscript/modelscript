@@ -11,7 +11,7 @@ import {
   PlusIcon,
   SparkleFillIcon,
 } from "@primer/octicons-react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { generateUserInvite, getUserInvites } from "../../../api/admin";
 import Box from "../../../components/Box";
@@ -19,6 +19,7 @@ import { CircleIconButton } from "../../../components/SharedStyles";
 import Spinner from "../../../components/Spinner";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { DetailSubtitle, FormInput, FormLabel, Header, SaveButton } from "../settingsStyles";
 
 export interface InvitesTabProps {
@@ -119,7 +120,7 @@ const CopyButton = styled.button`
   }
 `;
 
-const StatusBadge = styled.span<{ $variant: "success" | "pending" | "used" }>`
+const StatusBadge = styled.span<{ $variant: "success" | "pending" | "used" | "danger" }>`
   font-size: 11px;
   font-weight: 700;
   padding: 3px 8px;
@@ -131,19 +132,37 @@ const StatusBadge = styled.span<{ $variant: "success" | "pending" | "used" }>`
       ? "rgba(16, 185, 129, 0.15)"
       : props.$variant === "pending"
         ? "rgba(234, 179, 8, 0.15)"
-        : "rgba(148, 163, 184, 0.15)"};
+        : props.$variant === "danger"
+          ? "rgba(239, 68, 68, 0.15)"
+          : "rgba(148, 163, 184, 0.15)"};
   color: ${(props) =>
-    props.$variant === "success" ? "#10b981" : props.$variant === "pending" ? "#eab308" : "#94a3b8"};
+    props.$variant === "success"
+      ? "#10b981"
+      : props.$variant === "pending"
+        ? "#eab308"
+        : props.$variant === "danger"
+          ? "#ef4444"
+          : "#94a3b8"};
   border: 1px solid
     ${(props) =>
       props.$variant === "success"
         ? "rgba(16, 185, 129, 0.3)"
         : props.$variant === "pending"
           ? "rgba(234, 179, 8, 0.3)"
-          : "rgba(148, 163, 184, 0.3)"};
+          : props.$variant === "danger"
+            ? "rgba(239, 68, 68, 0.3)"
+            : "rgba(148, 163, 184, 0.3)"};
 `;
 
 type UserInvitesData = Awaited<ReturnType<typeof getUserInvites>>;
+type InviteItem = UserInvitesData["invites"][number] & {
+  used_count?: number | undefined;
+  usesCount?: number | undefined;
+  uses_count?: number | undefined;
+  used_by?: number | string | null | undefined;
+  revoked_at?: string | null | undefined;
+  expires_at?: string | null | undefined;
+};
 
 export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
   const toast = useToast();
@@ -151,22 +170,35 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
   const brandName = branding.instanceName || "Ansatz";
 
   const [loading, setLoading] = useState(true);
+  const [invitesEnabled, setInvitesEnabled] = useState(true);
   const [invitesRemaining, setInvitesRemaining] = useState(0);
-  const [invites, setInvites] = useState<UserInvitesData["invites"]>([]);
+  const [invites, setInvites] = useState<InviteItem[]>([]);
   const [referrals, setReferrals] = useState<UserInvitesData["referrals"]>([]);
   const [count, setCount] = useState(1);
   const [note, setNote] = useState("");
   const [generating, setGenerating] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [copiedLinkCode, setCopiedLinkCode] = useState<string | null>(null);
+  const [loadedAtMs, setLoadedAtMs] = useState<number>(() => Date.now());
+  const copiedCodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copiedLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedCodeTimerRef.current) clearTimeout(copiedCodeTimerRef.current);
+      if (copiedLinkTimerRef.current) clearTimeout(copiedLinkTimerRef.current);
+    };
+  }, []);
 
   const fetchInvites = useCallback(async () => {
     try {
       setLoading(true);
       const data = await getUserInvites();
+      setInvitesEnabled(data.invitesEnabled !== false);
       setInvitesRemaining(data.invitesRemaining);
-      setInvites(data.invites);
+      setInvites(data.invites as InviteItem[]);
       setReferrals(data.referrals);
+      setLoadedAtMs(Date.now());
     } catch {
       toast.show("Failed to load invites", { type: "error" });
     } finally {
@@ -178,11 +210,13 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
     void fetchInvites();
   }, [fetchInvites]);
 
+  const maxGenerateCount = Math.min(Math.max(1, invitesRemaining), 10);
+
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (invitesRemaining <= 0) return;
+    if (!invitesEnabled || invitesRemaining <= 0) return;
 
-    const toGenerate = Math.max(1, Math.min(count, invitesRemaining));
+    const toGenerate = Math.max(1, Math.min(count, invitesRemaining, 10));
     setGenerating(true);
     try {
       for (let i = 0; i < toGenerate; i++) {
@@ -193,27 +227,43 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
       });
       setNote("");
       setCount(1);
-      await fetchInvites();
-    } catch {
-      toast.show("Failed to generate invite code", { type: "error" });
+    } catch (err: unknown) {
+      toast.show(getApiErrorMessage(err, "Failed to generate invite code"), { type: "error" });
     } finally {
+      await fetchInvites();
       setGenerating(false);
     }
   };
 
-  const copyRawCode = (code: string) => {
-    navigator.clipboard.writeText(code).catch(() => {});
-    setCopiedCode(code);
-    toast.show("Invite code copied to clipboard", { type: "success" });
-    setTimeout(() => setCopiedCode(null), 2500);
+  const copyRawCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      toast.show("Invite code copied to clipboard", { type: "success" });
+      if (copiedCodeTimerRef.current) clearTimeout(copiedCodeTimerRef.current);
+      copiedCodeTimerRef.current = setTimeout(() => {
+        setCopiedCode(null);
+        copiedCodeTimerRef.current = null;
+      }, 2500);
+    } catch {
+      toast.show("Failed to copy invite code to clipboard", { type: "error" });
+    }
   };
 
-  const copyRegistrationLink = (inv: { code: string }) => {
-    const link = `${window.location.origin}/register?invite=${inv.code}`;
-    navigator.clipboard.writeText(link).catch(() => {});
-    setCopiedLinkCode(inv.code);
-    toast.show("Registration link copied to clipboard", { type: "success" });
-    setTimeout(() => setCopiedLinkCode(null), 2500);
+  const copyRegistrationLink = async (inv: { code: string }) => {
+    const link = `${window.location.origin}/register?invite=${encodeURIComponent(inv.code)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedLinkCode(inv.code);
+      toast.show("Registration link copied to clipboard", { type: "success" });
+      if (copiedLinkTimerRef.current) clearTimeout(copiedLinkTimerRef.current);
+      copiedLinkTimerRef.current = setTimeout(() => {
+        setCopiedLinkCode(null);
+        copiedLinkTimerRef.current = null;
+      }, 2500);
+    } catch {
+      toast.show("Failed to copy registration link to clipboard", { type: "error" });
+    }
   };
 
   if (loading) {
@@ -299,6 +349,22 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
             <KeyIcon size={18} />
             Generate New Codes
           </div>
+          {!invitesEnabled && (
+            <Box
+              role="status"
+              mb={3}
+              p={3}
+              style={{
+                background: "rgba(234, 179, 8, 0.12)",
+                border: "1px solid rgba(234, 179, 8, 0.35)",
+                color: "#eab308",
+                borderRadius: "8px",
+                fontSize: "13px",
+              }}
+            >
+              User invite code generation is currently disabled on this instance by the administrator.
+            </Box>
+          )}
           <form onSubmit={handleGenerate}>
             <div style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap" }}>
               <div>
@@ -309,10 +375,10 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                   id="ticket-count"
                   type="number"
                   min={1}
-                  max={Math.max(1, invitesRemaining)}
+                  max={maxGenerateCount}
                   value={count}
-                  onChange={(e) => setCount(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
-                  disabled={invitesRemaining <= 0 || generating}
+                  onChange={(e) => setCount(Math.max(1, Math.min(maxGenerateCount, Number(e.target.value) || 1)))}
+                  disabled={!invitesEnabled || invitesRemaining <= 0 || generating}
                   style={{ width: "90px", margin: 0 }}
                 />
               </div>
@@ -326,13 +392,13 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                   placeholder="e.g. For Dr. Robert Smith (Propulsion Lab)"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  disabled={invitesRemaining <= 0 || generating}
+                  disabled={!invitesEnabled || invitesRemaining <= 0 || generating}
                   style={{ margin: 0 }}
                 />
               </div>
               <SaveButton
                 type="submit"
-                disabled={invitesRemaining <= 0 || generating}
+                disabled={!invitesEnabled || invitesRemaining <= 0 || generating}
                 style={{ height: "42px", display: "inline-flex", alignItems: "center", gap: "6px" }}
               >
                 <PlusIcon size={16} />
@@ -376,7 +442,13 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                 </tr>
               ) : (
                 invites.map((inv) => {
-                  const isUsed = Boolean(inv.used_by) || inv.uses_count >= inv.max_uses;
+                  const usedCount = inv.used_count ?? inv.usesCount ?? inv.uses_count ?? 0;
+                  const isUsed = Boolean(inv.used_by) || usedCount >= inv.max_uses;
+                  const isRevoked = Boolean(inv.revoked_at);
+                  const isExpired = Boolean(inv.expires_at && new Date(inv.expires_at).getTime() < loadedAtMs);
+                  const statusVariant = isRevoked ? "danger" : isExpired ? "pending" : isUsed ? "used" : "success";
+                  const statusLabel = isRevoked ? "Revoked" : isExpired ? "Expired" : isUsed ? "Redeemed" : "Available";
+
                   return (
                     <tr key={inv.id ?? inv.code}>
                       <td
@@ -385,39 +457,41 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                         {inv.code}
                       </td>
                       <td>
-                        <StatusBadge $variant={isUsed ? "used" : "success"}>
-                          {isUsed ? "Redeemed" : "Available"}
-                        </StatusBadge>
+                        <StatusBadge $variant={statusVariant}>{statusLabel}</StatusBadge>
                       </td>
                       <td>{inv.initial_credits ?? 100} MSX</td>
                       <td style={{ color: "var(--color-text-secondary, #94a3b8)" }}>{inv.note || "—"}</td>
                       <td>
-                        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-                          <CopyButton type="button" onClick={() => copyRawCode(inv.code)}>
-                            {copiedCode === inv.code ? (
-                              <>
-                                <CheckIcon size={14} fill="#10b981" /> Copied Code
-                              </>
-                            ) : (
-                              <>
-                                <CopyIcon size={14} /> Copy Code
-                              </>
-                            )}
-                          </CopyButton>
-                          {!isUsed && (
-                            <CopyButton type="button" onClick={() => copyRegistrationLink(inv)}>
-                              {copiedLinkCode === inv.code ? (
+                        {isRevoked || isExpired ? (
+                          <span style={{ color: "var(--color-text-secondary, #94a3b8)" }}>—</span>
+                        ) : (
+                          <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
+                            <CopyButton type="button" onClick={() => void copyRawCode(inv.code)}>
+                              {copiedCode === inv.code ? (
                                 <>
-                                  <CheckIcon size={14} fill="#10b981" /> Link Copied
+                                  <CheckIcon size={14} fill="#10b981" /> Copied Code
                                 </>
                               ) : (
                                 <>
-                                  <LinkIcon size={14} /> Copy Registration Link
+                                  <CopyIcon size={14} /> Copy Code
                                 </>
                               )}
                             </CopyButton>
-                          )}
-                        </Box>
+                            {!isUsed && (
+                              <CopyButton type="button" onClick={() => void copyRegistrationLink(inv)}>
+                                {copiedLinkCode === inv.code ? (
+                                  <>
+                                    <CheckIcon size={14} fill="#10b981" /> Link Copied
+                                  </>
+                                ) : (
+                                  <>
+                                    <LinkIcon size={14} /> Copy Registration Link
+                                  </>
+                                )}
+                              </CopyButton>
+                            )}
+                          </Box>
+                        )}
                       </td>
                     </tr>
                   );
@@ -485,7 +559,9 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
                         color: ref.reward_granted ? "#10b981" : "var(--color-text-secondary, #94a3b8)",
                       }}
                     >
-                      {ref.reward_granted ? `+${ref.reward_amount} Credits` : "75 Credits on First Run"}
+                      {ref.reward_granted
+                        ? `+${ref.reward_amount} Credits`
+                        : `${ref.reward_amount ?? 50} Credits on First Run`}
                     </td>
                     <td style={{ color: "var(--color-text-secondary, #94a3b8)" }}>
                       {new Date(ref.created_at).toLocaleDateString()}

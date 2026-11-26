@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { evaluateModelScriptPortCompatibility } from "@modelscript/diagram";
 import { cellsToDiagramData, renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
 import {
   DiagramApplyEditsParams,
   DiagramDrillDownParams,
   DiagramGetPaletteParams,
   DiagramMethods,
+  type DiagramValidateConnectionParams,
+  type DiagramValidateConnectionResult,
 } from "../diagramProtocol.js";
 import { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
@@ -376,13 +379,43 @@ export function registerDiagramHandlers(context: LspContext) {
       }
 
       try {
-        const data = await dispatchLanguageRequest<unknown[]>(
+        let data = await dispatchLanguageRequest<unknown[]>(
           context,
           "modelscript/getCadComponents",
           params.uri,
           params,
           [],
         );
+        if ((!Array.isArray(data) || data.length === 0) && effectiveUri.toLowerCase().endsWith(".mo") && sourceText) {
+          try {
+            const { extractModelicaCadAnnotationsFromCst } = await import("@modelscript/modelica/document-queries");
+            const cachedDocTree = context.documentManager.documentTrees.get(effectiveUri);
+            let rootNode =
+              cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
+                ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractModelicaCadAnnotationsFromCst>[0])
+                : null;
+            if (!rootNode) {
+              const parser = context.parserService.getParser("modelica");
+              const parsed = parser?.parse(sourceText);
+              rootNode =
+                (parsed?.rootNode as unknown as Parameters<typeof extractModelicaCadAnnotationsFromCst>[0]) ?? null;
+            }
+            if (rootNode) {
+              const cstEntries = extractModelicaCadAnnotationsFromCst(rootNode, sourceText);
+              if (cstEntries.length > 0) {
+                data = cstEntries.map((entry) => ({
+                  name: entry.name,
+                  cad: entry.cad ?? "",
+                  shapeType: entry.shapeType,
+                  defaults: entry.modifiers,
+                  dynamicBindings: [],
+                }));
+              }
+            }
+          } catch {
+            // Best-effort Modelica CST CAD fallback
+          }
+        }
         if (version !== "unknown" && Array.isArray(data) && data.length > 0) {
           cadComponentsCache.set(params.uri, { version, data });
         }
@@ -391,6 +424,138 @@ export function registerDiagramHandlers(context: LspContext) {
         const msg = e instanceof Error ? e.message : String(e);
         context.connection.console.error(`[cad] Error extracting CAD components: ${msg}`);
         return [];
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/getCadFeatureTree",
+    async (params: { uri: string; documentText?: string | undefined }) => {
+      try {
+        const effectiveUri = params.uri.startsWith("modelscript-lib://global")
+          ? "file://" + params.uri.substring("modelscript-lib://global".length)
+          : params.uri;
+        if (!effectiveUri.toLowerCase().endsWith(".scad")) {
+          return [];
+        }
+        const cachedDocTree = context.documentManager.documentTrees.get(effectiveUri);
+        const sourceText =
+          params.documentText ??
+          context.validationService.lastIndexedText.get(effectiveUri) ??
+          context.documentManager.documents.get(effectiveUri)?.getText() ??
+          cachedDocTree?.text ??
+          "";
+        if (!sourceText.trim()) return [];
+
+        const { buildScadFeatureTreeFromCst, getScadParser } = await import("@modelscript/scad");
+        // Reuse the already-parsed WASM GLR CST when the text matches; otherwise parse via WASM GLR parser.
+        let rootNode: Parameters<typeof buildScadFeatureTreeFromCst>[0] | null =
+          cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
+            ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof buildScadFeatureTreeFromCst>[0])
+            : null;
+        if (!rootNode) {
+          const parser = await getScadParser();
+          const parsed = parser.parse(sourceText);
+          rootNode = (parsed?.rootNode as unknown as Parameters<typeof buildScadFeatureTreeFromCst>[0]) ?? null;
+        }
+        return rootNode ? buildScadFeatureTreeFromCst(rootNode, sourceText) : [];
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        context.connection.console.error(`[cad] Error extracting CAD feature tree from CST: ${msg}`);
+        return [];
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/getDocumentParameters",
+    async (params: { uri: string; documentText?: string | undefined }) => {
+      try {
+        const effectiveUri = params.uri.startsWith("modelscript-lib://global")
+          ? "file://" + params.uri.substring("modelscript-lib://global".length)
+          : params.uri;
+        const lowerUri = effectiveUri.toLowerCase();
+        const cachedDocTree = context.documentManager.documentTrees.get(effectiveUri);
+        const sourceText =
+          params.documentText ??
+          context.validationService.lastIndexedText.get(effectiveUri) ??
+          context.documentManager.documents.get(effectiveUri)?.getText() ??
+          cachedDocTree?.text ??
+          "";
+        if (!sourceText.trim()) return [];
+
+        if (lowerUri.endsWith(".scad")) {
+          const { extractScadParametersFromCst, getScadParser } = await import("@modelscript/scad");
+          let rootNode: Parameters<typeof extractScadParametersFromCst>[0] | null =
+            cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
+              ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractScadParametersFromCst>[0])
+              : null;
+          if (!rootNode) {
+            const parser = await getScadParser();
+            const parsed = parser.parse(sourceText);
+            rootNode = (parsed?.rootNode as unknown as Parameters<typeof extractScadParametersFromCst>[0]) ?? null;
+          }
+          return rootNode ? extractScadParametersFromCst(rootNode, sourceText) : [];
+        }
+
+        if (lowerUri.endsWith(".mo")) {
+          const { extractModelicaParametersFromCst } = await import("@modelscript/modelica/document-queries");
+          let rootNode: Parameters<typeof extractModelicaParametersFromCst>[0] | null =
+            cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
+              ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractModelicaParametersFromCst>[0])
+              : null;
+          if (!rootNode) {
+            const parser = context.parserService.getParser("modelica");
+            const parsed = parser?.parse(sourceText);
+            rootNode = (parsed?.rootNode as unknown as Parameters<typeof extractModelicaParametersFromCst>[0]) ?? null;
+          }
+          return rootNode ? extractModelicaParametersFromCst(rootNode, sourceText) : [];
+        }
+
+        return [];
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        context.connection.console.error(`[diagram] Error extracting document parameters from CST: ${msg}`);
+        return [];
+      }
+    },
+  );
+
+  context.connection.onRequest(
+    "modelscript/getPrimaryClassName",
+    async (params: { uri: string; documentText?: string | undefined }) => {
+      try {
+        const effectiveUri = params.uri.startsWith("modelscript-lib://global")
+          ? "file://" + params.uri.substring("modelscript-lib://global".length)
+          : params.uri;
+        if (!effectiveUri.toLowerCase().endsWith(".mo")) {
+          return { className: null };
+        }
+        const cachedDocTree = context.documentManager.documentTrees.get(effectiveUri);
+        const sourceText =
+          params.documentText ??
+          context.validationService.lastIndexedText.get(effectiveUri) ??
+          context.documentManager.documents.get(effectiveUri)?.getText() ??
+          cachedDocTree?.text ??
+          "";
+        if (!sourceText.trim()) return { className: null };
+
+        const { extractPrimaryModelicaClassNameFromCst } = await import("@modelscript/modelica/document-queries");
+        let rootNode: Parameters<typeof extractPrimaryModelicaClassNameFromCst>[0] | null =
+          cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
+            ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractPrimaryModelicaClassNameFromCst>[0])
+            : null;
+        if (!rootNode) {
+          const parser = context.parserService.getParser("modelica");
+          const parsed = parser?.parse(sourceText);
+          rootNode =
+            (parsed?.rootNode as unknown as Parameters<typeof extractPrimaryModelicaClassNameFromCst>[0]) ?? null;
+        }
+        return { className: rootNode ? extractPrimaryModelicaClassNameFromCst(rootNode, sourceText) : null };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        context.connection.console.error(`[diagram] Error extracting primary class name from CST: ${msg}`);
+        return { className: null };
       }
     },
   );
@@ -406,6 +571,86 @@ export function registerDiagramHandlers(context: LspContext) {
   context.connection.onRequest(DiagramMethods.drillDown, async (params: DiagramDrillDownParams) => {
     return await context.diagramService.getDiagramDispatch().drillDown(params);
   });
+
+  context.connection.onRequest(
+    DiagramMethods.validateConnection,
+    async (params: DiagramValidateConnectionParams): Promise<DiagramValidateConnectionResult> => {
+      try {
+        const dispatch = context.diagramService.getDiagramDispatch();
+        const data = await dispatch.getData({
+          uri: params.uri,
+          className: params.className,
+          diagramType: params.diagramType,
+        });
+        const nodes = Array.isArray(data?.nodes) ? data.nodes : [];
+        const findNode = (id: string) =>
+          nodes.find((n: { id?: string; name?: string }) => n.id === id || n.name === id) as
+            | {
+                id?: string;
+                label?: string;
+                properties?: { className?: string };
+                ports?: { items?: Record<string, unknown>[] } | Record<string, unknown>[];
+              }
+            | undefined;
+        const findPort = (node: ReturnType<typeof findNode>, portId?: string): Record<string, unknown> | undefined => {
+          if (!node?.ports || !portId) return undefined;
+          const items = Array.isArray(node.ports) ? node.ports : node.ports.items;
+          if (!Array.isArray(items)) return undefined;
+          return items.find((p) => p?.["id"] === portId || p?.["name"] === portId);
+        };
+
+        const srcNode = findNode(params.sourceNode);
+        const tgtNode = findNode(params.targetNode);
+        const srcPort = findPort(srcNode, params.sourcePort);
+        const tgtPort = findPort(tgtNode, params.targetPort);
+
+        const uriLower = (params.uri ?? "").toLowerCase();
+        const inferredLang =
+          params.languageId ??
+          (uriLower.endsWith(".sysml") ? "sysml2" : uriLower.endsWith(".mo") ? "modelica" : undefined);
+
+        const compat = evaluateModelScriptPortCompatibility(
+          {
+            nodeId: params.sourceNode,
+            portId: params.sourcePort || "out",
+            connectorType: typeof srcPort?.["connectorType"] === "string" ? srcPort["connectorType"] : undefined,
+            domain: typeof srcPort?.["domain"] === "string" ? srcPort["domain"] : undefined,
+            direction:
+              typeof srcPort?.["direction"] === "string"
+                ? srcPort["direction"]
+                : typeof srcPort?.["group"] === "string"
+                  ? srcPort["group"]
+                  : undefined,
+            isConjugated: typeof srcPort?.["isConjugated"] === "boolean" ? srcPort["isConjugated"] : undefined,
+            nodeClassName: srcNode?.properties?.className,
+            nodeLabel: srcNode?.label,
+          },
+          {
+            nodeId: params.targetNode,
+            portId: params.targetPort || "in",
+            connectorType: typeof tgtPort?.["connectorType"] === "string" ? tgtPort["connectorType"] : undefined,
+            domain: typeof tgtPort?.["domain"] === "string" ? tgtPort["domain"] : undefined,
+            direction:
+              typeof tgtPort?.["direction"] === "string"
+                ? tgtPort["direction"]
+                : typeof tgtPort?.["group"] === "string"
+                  ? tgtPort["group"]
+                  : undefined,
+            isConjugated: typeof tgtPort?.["isConjugated"] === "boolean" ? tgtPort["isConjugated"] : undefined,
+            nodeClassName: tgtNode?.properties?.className,
+            nodeLabel: tgtNode?.label,
+          },
+          { allowSameNode: true, languageId: inferredLang },
+        );
+        return compat;
+      } catch (err) {
+        context.connection.console.warn?.(
+          `[diagram] validateConnection fallback: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return { compatible: true };
+      }
+    },
+  );
 
   context.connection.onRequest(
     "modelscript/getStepMeshes",

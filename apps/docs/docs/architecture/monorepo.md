@@ -1,6 +1,6 @@
 ---
 title: "Monorepo Architecture: ModelScript & Ansatz"
-description: "ModelScript and Ansatz are developed together within a single unified monorepo. This document details the architectural rationale, the four-layer taxonomy, and the boundary enforcement mechanisms t..."
+description: "Architectural rationale, four-layer taxonomy, and boundary enforcement mechanisms keeping the ModelScript engine decoupled from web and cloud platforms."
 ---
 
 # Monorepo Architecture: ModelScript & Ansatz
@@ -31,7 +31,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 
 ### Layer 1: Core Engine & Languages
 
-- **Directories:** `languages/*` (105 documented domain formats / 106 total workspace packages across `Beta` [33], `Alpha` [72], and `Pre-Alpha` [1] tiers) and `packages/{dsl,runtime,solve,simulate,cad,diagram,exchange,lsp,mcp,sdk}`.
+- **Directories:** `languages/*` (169 documented domain formats across `Beta` [96], `Alpha` [72], and `Pre-Alpha` [1] tiers) and `packages/{dsl,runtime,solve,simulate,cad,diagram,exchange,lsp,mcp,sdk}`.
 - **Rule:** Pure computation, formal theory, parsers, and solvers. Zero UI dependencies, zero database dependencies, and zero Express/HTTP servers.
 - **Independence:** Can be compiled and embedded in any JavaScript, Node.js, WebAssembly, or desktop runtime.
 

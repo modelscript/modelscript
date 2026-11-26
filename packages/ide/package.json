@@ -26,8 +26,41 @@
       {
         "command": "modelscript.openAlmRemotes",
         "title": "ModelScript: Open ALM & PLM Remotes"
+      },
+      {
+        "command": "modelscript.trainingStudio.open",
+        "title": "ModelScript: Open Dynamic-m Training Studio"
+      },
+      {
+        "command": "modelscript.trainingStudio.toggleGroupIdOverlay",
+        "title": "ModelScript: Toggle Relational Hypergraph group_id Overlay"
+      },
+      {
+        "command": "modelscript.openRtmContracts",
+        "title": "ModelScript: Open Requirements, RTM & Contracts"
+      },
+      {
+        "command": "modelscript.openSpatialDiagram3D",
+        "title": "ModelScript: Open 3D / VR Spatial Diagram Stage"
+      },
+      {
+        "command": "modelscript.openAnsatzCopilot",
+        "title": "ModelScript: Open Ansatz AI Copilot"
+      },
+      {
+        "command": "modelscript.openDomainInspector",
+        "title": "ModelScript: Open Polyglot Domain Inspector"
       }
-    ]
+    ],
+    "views": {
+      "modelscript-sidebar": [
+        {
+          "id": "modelscript.trainingStudio",
+          "name": "Dynamic-m Training Studio",
+          "type": "webview"
+        }
+      ]
+    }
   },
   "dependencies": {
     "@antv/layout": "^0.3.25",

@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CheckIcon, ChevronDownIcon, GlobeIcon } from "@primer/octicons-react";
+import { BeakerIcon, CheckIcon, ChevronDownIcon, GlobeIcon } from "@primer/octicons-react";
 import React from "react";
 import { scrollToTop } from "../../../components/ScrollToTop";
 import { SortMenu, Tab, TabBar, TabText } from "../styles";
 
+export type FeedTab = "forYou" | "following" | "federated" | "rlhfArena";
+
 export interface FeedTabBarProps {
-  activeTab: "forYou" | "following" | "federated";
-  setActiveTab: (tab: "forYou" | "following" | "federated") => void;
+  activeTab: FeedTab;
+  setActiveTab: (tab: FeedTab) => void;
   followingSort: "popular" | "recent";
   setFollowingSort: (sort: "popular" | "recent") => void;
   showSortMenu: boolean;
@@ -22,8 +24,8 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
   showSortMenu,
   setShowSortMenu,
 }) => {
-  const handleKeyDownTab = (e: React.KeyboardEvent, currentTab: "forYou" | "following" | "federated") => {
-    const tabs: ("forYou" | "following" | "federated")[] = ["forYou", "following", "federated"];
+  const handleKeyDownTab = (e: React.KeyboardEvent, currentTab: FeedTab) => {
+    const tabs: FeedTab[] = ["forYou", "following", "federated", "rlhfArena"];
     const idx = tabs.indexOf(currentTab);
     if (e.key === "ArrowRight") {
       e.preventDefault();
@@ -138,6 +140,28 @@ export const FeedTabBar: React.FC<FeedTabBarProps> = ({
         <TabText $active={activeTab === "federated"} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
           <GlobeIcon size={16} />
           <span>Federated</span>
+        </TabText>
+      </Tab>
+      <Tab
+        id="feed-tab-rlhfArena"
+        role="tab"
+        aria-selected={activeTab === "rlhfArena"}
+        aria-controls="feed-tabpanel"
+        tabIndex={activeTab === "rlhfArena" ? 0 : -1}
+        $active={activeTab === "rlhfArena"}
+        onClick={() => {
+          if (activeTab === "rlhfArena") {
+            scrollToTop({ smooth: true });
+          } else {
+            setActiveTab("rlhfArena");
+            scrollToTop({ smooth: false });
+          }
+        }}
+        onKeyDown={(e) => handleKeyDownTab(e, "rlhfArena")}
+      >
+        <TabText $active={activeTab === "rlhfArena"} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+          <BeakerIcon size={16} />
+          <span>RLHF Arena</span>
         </TabText>
       </Tab>
     </TabBar>

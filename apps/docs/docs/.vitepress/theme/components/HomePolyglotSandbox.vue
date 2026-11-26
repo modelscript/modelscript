@@ -111,11 +111,46 @@ interface LanguageExampleEntry {
   viewLabel?: string;
 }
 
-const examplesBySlug = shallowRef(new Map<string, LanguageExampleEntry>());
+const props = withDefaults(
+  defineProps<{
+    hero?: boolean;
+  }>(),
+  {
+    hero: false,
+  },
+);
+
+const DEFAULT_MODELICA_EXAMPLE: LanguageExampleEntry = {
+  slug: "modelica",
+  ext: ".mo",
+  filename: "ChuaNonlinearCircuit.mo",
+  viewLabel: "Acausal Electrical Schematic",
+  code: `model ChuaNonlinearCircuit "Chua's chaotic oscillator circuit"
+  parameter Real C1 = 10.0 "Capacitor C1 [F]";
+  parameter Real C2 = 100.0 "Capacitor C2 [F]";
+  parameter Real L = 18.0 "Inductor L [H]";
+  parameter Real G = 0.7 "Conductance R [S]";
+  parameter Real Ga = -0.757576 "Inner diode slope [S]";
+  parameter Real Gb = -0.409091 "Outer diode slope [S]";
+
+  Real v1(start = 0.15) "Voltage across C1 [V]";
+  Real v2(start = 0.0) "Voltage across C2 [V]";
+  Real iL(start = 0.0) "Inductor current [A]";
+  Real i_nl "Nonlinear Chua diode current [A]";
+equation
+  i_nl = Gb * v1 + 0.5 * (Ga - Gb) * (abs(v1 + 1.0) - abs(v1 - 1.0));
+  C1 * der(v1) = G * (v2 - v1) - i_nl;
+  C2 * der(v2) = G * (v1 - v2) + iL;
+  L * der(iL) = -v2;
+end ChuaNonlinearCircuit;`,
+};
+
+const examplesBySlug = shallowRef(new Map<string, LanguageExampleEntry>([["modelica", DEFAULT_MODELICA_EXAMPLE]]));
 let examplesLoadPromise: Promise<void> | null = null;
+let allExamplesLoaded = false;
 
 function ensureLanguageExamplesLoaded(): Promise<void> {
-  if (examplesBySlug.value.size > 0) return Promise.resolve();
+  if (allExamplesLoaded) return Promise.resolve();
   if (!examplesLoadPromise) {
     examplesLoadPromise = fetch(languageExamplesUrl)
       .then((res) => {
@@ -128,6 +163,7 @@ function ensureLanguageExamplesLoaded(): Promise<void> {
           nextMap.set(ex.slug, ex);
         }
         examplesBySlug.value = nextMap;
+        allExamplesLoaded = true;
         // Populate any unedited placeholder tabs with the loaded example code
         for (let i = 0; i < tabs.value.length; i++) {
           const tab = tabs.value[i]!;
@@ -216,13 +252,48 @@ const isDragActive = ref(false);
 const sandboxSectionRef = ref<HTMLElement | null>(null);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const useMonacoMode = ref(true);
+const liveActivated = ref(false);
+const monacoReady = ref(false);
 const monacoLoading = ref(false);
 const monacoContainerRef = ref<HTMLElement | null>(null);
 let monacoHandle: SandboxMonacoHandle | null = null;
-let intersectionObserver: IntersectionObserver | null = null;
 let hasBooted = false;
 
 const activeTab = computed(() => tabs.value.find((t) => t.id === activeTabId.value) ?? tabs.value[0]!);
+
+function escapeHtml(raw: string): string {
+  return raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const STATIC_TOKEN_RE =
+  /(\/\/.*$|#.*$|--.*$|^\s*\*.*$|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|\b(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(model|package|block|connector|record|function|equation|algorithm|parameter|constant|input|output|flow|stream|discrete|extends|import|within|connect|der|abs|initial|when|then|elsewhen|else|if|for|loop|in|while|return|end|part|attribute|port|item|action|state|transition|requirement|constraint|satisfy|verify|calc|def|module|endmodule|electrical|ground|branch|subckt|ends)\b|\b(Real|Integer|Boolean|String|Voltage|Current|Temperature|Pressure|Mass|Length|Time|Velocity|Force|Torque|Frequency|Resistance|Capacitance|Inductance)\b/gm;
+
+function highlightCodeLine(line: string): string {
+  if (!line) return " ";
+  let out = "";
+  let last = 0;
+  STATIC_TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = STATIC_TOKEN_RE.exec(line)) !== null) {
+    if (m.index > last) {
+      out += escapeHtml(line.slice(last, m.index));
+    }
+    const text = escapeHtml(m[0]);
+    if (m[1]) out += `<span class="sb-tok-com">${text}</span>`;
+    else if (m[2]) out += `<span class="sb-tok-str">${text}</span>`;
+    else if (m[3]) out += `<span class="sb-tok-num">${text}</span>`;
+    else if (m[4]) out += `<span class="sb-tok-kw">${text}</span>`;
+    else if (m[5]) out += `<span class="sb-tok-ty">${text}</span>`;
+    else out += text;
+    last = STATIC_TOKEN_RE.lastIndex;
+  }
+  if (last < line.length) {
+    out += escapeHtml(line.slice(last));
+  }
+  return out || " ";
+}
+
+const staticHighlightedLines = computed(() => activeTab.value.code.split("\n").map(highlightCodeLine));
 const activeLangMeta = computed(
   () => allLanguages.value.find((l) => l.slug === activeTab.value.langSlug) ?? allLanguages.value[0]!,
 );
@@ -282,6 +353,7 @@ async function initMonacoEditor(): Promise<void> {
       onChange: (nextCode) => onCodeInput(nextCode),
       onPaste: () => onEditorPaste(),
     });
+    monacoReady.value = true;
     for (const tab of tabs.value) {
       const diags = diagnosticsByUri.value[tab.uri];
       if (diags) monacoHandle.setDiagnostics(tab.uri, diags);
@@ -388,12 +460,27 @@ async function refreshQuickFixesForUri(uri: string, diags: LspDiagnostic[]): Pro
   quickFixByDiagKey.value = nextFixes;
 }
 
-function bootSandbox(): void {
-  if (hasBooted) return;
-  hasBooted = true;
-  void ensureLanguageExamplesLoaded();
-  void initMonacoEditor();
-  void syncTabsAndLint();
+function activateLiveSandbox(options?: { skipInitialSync?: boolean; loadExamples?: boolean }): void {
+  liveActivated.value = true;
+  if (options?.loadExamples) {
+    void ensureLanguageExamplesLoaded();
+  }
+  if (useMonacoMode.value) {
+    void initMonacoEditor();
+  }
+  if (!hasBooted) {
+    hasBooted = true;
+    if (!options?.skipInitialSync) {
+      void syncTabsAndLint();
+    }
+  }
+}
+
+function setRightPaneView(view: "both" | "diagnostics" | "diagram"): void {
+  rightPaneView.value = view;
+  if (view === "diagram" && !hasBooted) {
+    activateLiveSandbox();
+  }
 }
 
 onMounted(() => {
@@ -414,32 +501,15 @@ onMounted(() => {
       monacoHandle?.refreshSemanticTokens();
     }
   });
-
-  if (typeof IntersectionObserver !== "undefined" && sandboxSectionRef.value) {
-    intersectionObserver = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          bootSandbox();
-          intersectionObserver?.disconnect();
-          intersectionObserver = null;
-        }
-      },
-      { rootMargin: "250px" },
-    );
-    intersectionObserver.observe(sandboxSectionRef.value);
-  } else {
-    bootSandbox();
-  }
 });
 
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer);
-  intersectionObserver?.disconnect();
-  intersectionObserver = null;
   stopDiagListening?.();
   stopStatusListening?.();
   monacoHandle?.dispose();
   monacoHandle = null;
+  monacoReady.value = false;
   diagramHandle?.dispose();
   diagramHandle = null;
 });
@@ -485,7 +555,9 @@ async function switchTabLanguage(tab: SandboxTab, newSlug: string, keepExistingC
   tab.uri = `file:///sandbox/${tabIdx}_${tab.fileName}`;
   if (oldUri !== tab.uri) {
     monacoHandle?.removeModel(oldUri);
-    await closeDocsLspBuffer(oldUri);
+    if (hasBooted) {
+      await closeDocsLspBuffer(oldUri);
+    }
     const next = { ...diagnosticsByUri.value };
     delete next[oldUri];
     diagnosticsByUri.value = next;
@@ -496,6 +568,7 @@ async function switchTabLanguage(tab: SandboxTab, newSlug: string, keepExistingC
 }
 
 async function onLanguageChange(newSlug: string): Promise<void> {
+  activateLiveSandbox({ skipInitialSync: true, loadExamples: true });
   await switchTabLanguage(activeTab.value, newSlug, false);
   await syncTabsAndLint();
 }
@@ -523,6 +596,7 @@ function onEditorPaste(): void {
 
 async function acceptDetectedLanguage(): Promise<void> {
   if (!detectedHint.value) return;
+  activateLiveSandbox({ skipInitialSync: true });
   await switchTabLanguage(activeTab.value, detectedHint.value.slug, true);
   await runVerifyAll();
 }
@@ -532,6 +606,7 @@ async function onDropFiles(ev: DragEvent): Promise<void> {
   const dropped = Array.from(ev.dataTransfer?.files ?? []);
   if (dropped.length === 0) return;
 
+  activateLiveSandbox({ skipInitialSync: true });
   const newTabs: SandboxTab[] = [];
   let idx = tabs.value.length + 1;
   for (const file of dropped.slice(0, 8)) {
@@ -548,7 +623,9 @@ async function onDropFiles(ev: DragEvent): Promise<void> {
   }
 }
 
-function addCrossFileTab(): void {
+async function addCrossFileTab(): Promise<void> {
+  activateLiveSandbox({ skipInitialSync: true, loadExamples: true });
+  await ensureLanguageExamplesLoaded();
   const idx = tabs.value.length + 1;
   const nextSlug = tabs.value.some((t) => t.langSlug === "spice") ? "sysml2" : "spice";
   const tab = createTabForLang(nextSlug, idx);
@@ -564,7 +641,9 @@ async function removeTab(tabId: string): Promise<void> {
   const [removed] = tabs.value.splice(idx, 1);
   if (removed) {
     monacoHandle?.removeModel(removed.uri);
-    await closeDocsLspBuffer(removed.uri);
+    if (hasBooted) {
+      await closeDocsLspBuffer(removed.uri);
+    }
     const next = { ...diagnosticsByUri.value };
     delete next[removed.uri];
     diagnosticsByUri.value = next;
@@ -576,9 +655,13 @@ async function removeTab(tabId: string): Promise<void> {
 }
 
 async function loadPolyglotTwinPreset(): Promise<void> {
+  const wasBooted = hasBooted;
+  activateLiveSandbox({ skipInitialSync: true });
   for (const t of tabs.value) {
     monacoHandle?.removeModel(t.uri);
-    await closeDocsLspBuffer(t.uri);
+    if (wasBooted) {
+      await closeDocsLspBuffer(t.uri);
+    }
   }
   diagnosticsByUri.value = {};
   verifyResult.value = null;
@@ -615,6 +698,7 @@ R2 out 0 1k`,
 }
 
 async function onInjectFault(): Promise<void> {
+  activateLiveSandbox({ skipInitialSync: true });
   const res = injectRealisticFault(activeTab.value.langSlug, activeTab.value.code);
   activeTab.value.code = res.code;
   faultBanner.value = res.label;
@@ -622,6 +706,7 @@ async function onInjectFault(): Promise<void> {
 }
 
 async function runVerifyAll(): Promise<void> {
+  activateLiveSandbox({ skipInitialSync: true });
   verifying.value = true;
   workerError.value = null;
   try {
@@ -755,10 +840,26 @@ function severityLabel(sev?: number): string {
 </script>
 
 <template>
-  <section id="polyglot-sandbox" ref="sandboxSectionRef" class="sandbox-section">
+  <section
+    id="polyglot-sandbox"
+    ref="sandboxSectionRef"
+    class="sandbox-section"
+    :class="{ 'sandbox-section--hero': props.hero }"
+    aria-label="In-browser polyglot verification playground"
+  >
     <div class="sandbox-container">
-      <div class="sandbox-header">
-        <div>
+      <div class="sandbox-header" :class="{ 'sandbox-header--hero': props.hero }">
+        <div v-if="props.hero" class="sandbox-hero-lead">
+          <span class="sandbox-hero-pill">
+            <span class="sandbox-hero-dot" aria-hidden="true" />
+            <span>Live In-Browser WASM Verifier</span>
+            <span class="sandbox-hero-sep" aria-hidden="true">·</span>
+            <span>{{ allLanguages.length }} Formats</span>
+            <span class="sandbox-hero-sep" aria-hidden="true">·</span>
+            <span>100% Local</span>
+          </span>
+        </div>
+        <div v-else>
           <span class="sandbox-eyebrow">Live In-Browser WASM LSP · {{ allLanguages.length }} Languages · Runs 100% Locally</span>
           <h2 class="sandbox-title">Paste Any Engineering Model. Lint &amp; Verify in Your Browser.</h2>
           <p class="sandbox-subtitle">
@@ -784,7 +885,7 @@ function severityLabel(sev?: number): string {
 
       <div
         class="sandbox-card"
-        :class="{ 'is-dragging': isDragActive }"
+        :class="{ 'is-dragging': isDragActive, 'sandbox-card--hero': props.hero }"
         @dragover.prevent="isDragActive = true"
         @dragleave.prevent="isDragActive = false"
         @drop.prevent="onDropFiles"
@@ -828,11 +929,13 @@ function severityLabel(sev?: number): string {
                 :placeholder="`Filter ${allLanguages.length} languages…`"
                 aria-label="Filter languages"
                 class="sb-filter-input"
+                @focus="ensureLanguageExamplesLoaded()"
               />
               <select
                 :value="activeTab.langSlug"
                 aria-label="Select engineering language"
                 class="sb-select"
+                @focus="ensureLanguageExamplesLoaded()"
                 @change="onLanguageChange(($event.target as HTMLSelectElement).value)"
               >
                 <optgroup v-for="grp in groupedFilteredLanguages" :key="grp.group" :label="grp.title">
@@ -874,17 +977,38 @@ function severityLabel(sev?: number): string {
                 <span>{{ activeLangMeta.ruleCount ?? 0 }} lint rules</span>
                 <span class="sb-worker-pill" :class="`state-${workerStatus.state}`">
                   <span class="sb-worker-dot" />
-                  {{ workerStatus.state }}
+                  {{ workerStatus.state === "idle" && !liveActivated ? "on-demand" : workerStatus.state }}
                 </span>
               </div>
             </div>
-            <div
-              v-if="useMonacoMode"
-              ref="monacoContainerRef"
-              class="sb-monaco-host"
-              aria-label="Monaco polyglot editor"
-            >
-              <div v-if="monacoLoading" class="sb-monaco-loading">Loading Monaco + WASM LSP…</div>
+            <div v-if="useMonacoMode" class="sb-editor-stage">
+              <div
+                v-if="liveActivated"
+                ref="monacoContainerRef"
+                class="sb-monaco-host"
+                :class="{ 'is-ready': monacoReady }"
+                aria-label="Monaco polyglot editor"
+              />
+              <div
+                v-if="!monacoReady"
+                class="sb-static-editor"
+                role="button"
+                tabindex="0"
+                aria-label="Click to edit model in live Monaco editor with WASM LSP"
+                @click="activateLiveSandbox()"
+                @keydown.enter.prevent="activateLiveSandbox()"
+                @keydown.space.prevent="activateLiveSandbox()"
+              >
+                <div class="sb-static-lines">
+                  <div v-for="(lineHtml, idx) in staticHighlightedLines" :key="idx" class="sb-static-line">
+                    <span class="sb-static-ln" aria-hidden="true">{{ idx + 1 }}</span>
+                    <span class="sb-static-code" v-html="lineHtml" />
+                  </div>
+                </div>
+                <span class="sb-static-badge">
+                  {{ monacoLoading ? "Starting Monaco + WASM LSP…" : "Click to edit live · Drop any file" }}
+                </span>
+              </div>
             </div>
             <textarea
               v-else
@@ -908,7 +1032,7 @@ function severityLabel(sev?: number): string {
                     class="sb-scope-btn"
                     :class="{ active: rightPaneView === 'both' }"
                     :aria-selected="rightPaneView === 'both'"
-                    @click="rightPaneView = 'both'"
+                    @click="setRightPaneView('both')"
                   >
                     Both
                   </button>
@@ -918,7 +1042,7 @@ function severityLabel(sev?: number): string {
                     class="sb-scope-btn"
                     :class="{ active: rightPaneView === 'diagnostics' }"
                     :aria-selected="rightPaneView === 'diagnostics'"
-                    @click="rightPaneView = 'diagnostics'"
+                    @click="setRightPaneView('diagnostics')"
                   >
                     Diagnostics ({{ totalDiagCount }})
                   </button>
@@ -928,7 +1052,7 @@ function severityLabel(sev?: number): string {
                     class="sb-scope-btn"
                     :class="{ active: rightPaneView === 'diagram' }"
                     :aria-selected="rightPaneView === 'diagram'"
-                    @click="rightPaneView = 'diagram'"
+                    @click="setRightPaneView('diagram')"
                   >
                     Diagram
                   </button>
@@ -982,7 +1106,37 @@ function severityLabel(sev?: number): string {
                   </ul>
                 </div>
 
-                <div v-if="visibleDiagnostics.length === 0 && !verifyResult && !hasLiveDiagram" class="sb-empty">
+                <div v-if="visibleDiagnostics.length === 0 && !verifyResult && !hasLiveDiagram && !liveActivated" class="sb-ready-card">
+                  <div class="sb-ready-head">
+                    <span class="sb-ready-pill">Zero-Install Browser Compiler</span>
+                    <span class="sb-ready-meta">{{ activeLangMeta.ruleCount ?? 0 }} {{ activeLangMeta.name }} rules ready</span>
+                  </div>
+                  <p class="sb-ready-copy">
+                    Paste or drop any of <strong>{{ allLanguages.length }} engineering formats</strong> to run native
+                    WebAssembly GLR parsing, <code>CompilerLint</code> diagnostics, cross-file
+                    <code>SemanticTheoryCoordinator</code> checks, and live diagram synthesis — 100% client-side.
+                  </p>
+                  <div class="sb-ready-actions">
+                    <button type="button" class="sb-btn sb-btn-primary" @click="runVerifyAll">
+                      <MsIcon name="shield" :size="14" />
+                      <span>Verify {{ activeTab.fileName }}</span>
+                    </button>
+                    <button type="button" class="sb-btn sb-btn-ghost" @click="onInjectFault">
+                      <span>Inject Fault</span>
+                    </button>
+                    <button type="button" class="sb-btn sb-btn-ghost" @click="loadPolyglotTwinPreset">
+                      <MsIcon name="workflow" :size="14" />
+                      <span>SysML + SPICE Twin</span>
+                    </button>
+                  </div>
+                  <div class="sb-ready-checks">
+                    <span><MsIcon name="check" :size="12" /> Native WASM GLR parser</span>
+                    <span><MsIcon name="check" :size="12" /> 1-click LSP QuickFixes</span>
+                    <span><MsIcon name="check" :size="12" /> Cross-file SMT contracts</span>
+                  </div>
+                </div>
+
+                <div v-else-if="visibleDiagnostics.length === 0 && !verifyResult && !hasLiveDiagram" class="sb-empty">
                   Edit or drop any model, click <strong>Inject Fault</strong>, or click <strong>Lint &amp; Verify All</strong> to run {{ allLanguages.length }}+ language WASM checks.
                 </div>
 
@@ -1300,6 +1454,7 @@ function severityLabel(sev?: number): string {
     border-right: none;
     border-bottom: 1px solid var(--vp-c-divider);
   }
+  .sb-editor-stage,
   .sb-monaco-host {
     height: 340px;
   }
@@ -1580,17 +1735,229 @@ function severityLabel(sev?: number): string {
 .sb-worker-pill.state-error .sb-worker-dot {
   background: #ef4444;
 }
-.sb-monaco-host {
+.sb-editor-stage {
   position: relative;
-  width: 100%;
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
-.sb-monaco-loading {
-  padding: 16px;
+.sb-monaco-host {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.sb-monaco-host.is-ready {
+  opacity: 1;
+}
+.sb-static-editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 0;
+  cursor: text;
+  background: var(--vp-c-bg);
+  outline: none;
+  font-family: var(--vp-font-family-mono);
   font-size: 13px;
+  line-height: 1.55;
+}
+.sb-static-editor:hover,
+.sb-static-editor:focus-visible {
+  background: color-mix(in srgb, var(--vp-c-bg-soft) 45%, var(--vp-c-bg));
+}
+.sb-static-lines {
+  display: flex;
+  flex-direction: column;
+  min-width: max-content;
+}
+.sb-static-line {
+  display: flex;
+  align-items: baseline;
+  padding: 0 14px 0 0;
+  white-space: pre;
+}
+.sb-static-ln {
+  width: 42px;
+  padding-right: 12px;
+  text-align: right;
+  user-select: none;
+  color: var(--vp-c-text-3);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.sb-static-code {
+  color: var(--vp-c-text-1);
+}
+.sb-static-code :deep(.sb-tok-kw) {
+  color: #0284c7;
+  font-weight: 600;
+}
+.sb-static-code :deep(.sb-tok-ty) {
+  color: #0d9488;
+}
+.sb-static-code :deep(.sb-tok-str) {
+  color: #b45309;
+}
+.sb-static-code :deep(.sb-tok-num) {
+  color: #7c3aed;
+}
+.sb-static-code :deep(.sb-tok-com) {
+  color: #64748b;
+  font-style: italic;
+}
+:global(.dark) .sb-static-code :deep(.sb-tok-kw) {
+  color: #38bdf8;
+}
+:global(.dark) .sb-static-code :deep(.sb-tok-ty) {
+  color: #2dd4bf;
+}
+:global(.dark) .sb-static-code :deep(.sb-tok-str) {
+  color: #fbbf24;
+}
+:global(.dark) .sb-static-code :deep(.sb-tok-num) {
+  color: #c084fc;
+}
+:global(.dark) .sb-static-code :deep(.sb-tok-com) {
+  color: #94a3b8;
+}
+.sb-static-badge {
+  position: sticky;
+  bottom: 10px;
+  float: right;
+  margin-right: 12px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ms-border-strong, var(--vp-c-divider));
+  background: color-mix(in srgb, var(--vp-c-bg-elv, var(--vp-c-bg)) 90%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-base);
+  font-size: 11.5px;
+  font-weight: 500;
+  pointer-events: none;
+  box-shadow: 0 2px 10px rgba(2, 6, 23, 0.14);
+}
+.sandbox-section--hero {
+  position: relative;
+  z-index: 2;
+  padding: 0 24px 40px;
+  border-top: none;
+  background: transparent;
+}
+@media (min-width: 960px) {
+  .sandbox-section--hero {
+    padding: 0 32px 44px;
+  }
+}
+.sandbox-header--hero {
+  align-items: center;
+  margin-bottom: 12px;
+}
+.sandbox-hero-lead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sandbox-hero-pill {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 30%, var(--vp-c-divider));
+  background: color-mix(in srgb, var(--vp-c-bg-soft) 84%, transparent);
+  backdrop-filter: blur(10px);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+.sandbox-hero-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.22);
+}
+.sandbox-hero-sep {
+  color: var(--vp-c-text-3);
+}
+.sandbox-card--hero {
+  border-color: var(--ms-border-strong, var(--vp-c-divider));
+  border-radius: 16px;
+  box-shadow:
+    0 24px 60px -28px rgba(2, 6, 23, 0.28),
+    0 4px 18px -4px rgba(14, 116, 144, 0.14);
+}
+:global(.dark) .sandbox-card--hero {
+  box-shadow:
+    0 28px 72px -24px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(56, 189, 248, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.sb-ready-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 24%, var(--vp-c-divider));
+  background:
+    radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--vp-c-brand-1) 8%, transparent), transparent 60%),
+    var(--vp-c-bg-soft);
+}
+.sb-ready-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sb-ready-pill {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vp-c-brand-1);
+}
+.sb-ready-meta {
+  font-size: 12px;
   color: var(--vp-c-text-2);
   font-family: var(--vp-font-family-mono);
+}
+.sb-ready-copy {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--vp-c-text-2);
+}
+.sb-ready-copy strong {
+  color: var(--vp-c-text-1);
+}
+.sb-ready-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sb-ready-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 12px;
+  color: var(--vp-c-text-2);
+}
+.sb-ready-checks span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .sb-diagram-card {
   display: flex;

@@ -359,17 +359,9 @@ export function generatePackageJson(
   const contributesLanguages: Record<string, unknown>[] = [];
   const contributesGrammars: Record<string, unknown>[] = [];
   const customEditors: Record<string, unknown>[] = [];
-  const activationEvents: string[] = [
-    "onStartupFinished",
-    "onUri",
-    "onFileSystem:memfs",
-    "onFileSystem:modelica",
-    "onFileSystem:github",
-  ];
+  const activationEvents: string[] = ["onUri", "onFileSystem:memfs", "onFileSystem:modelica", "onFileSystem:github"];
 
   for (const lang of languages) {
-    activationEvents.push(`onLanguage:${lang.id}`);
-
     const aliases = [lang.displayName, lang.name];
     if (lang.id === "sysml2" || lang.id === "sysml") {
       for (const a of ["SysML v2", "SysML", "sysml2", "sysml"]) {
@@ -397,7 +389,6 @@ export function generatePackageJson(
     });
 
     if (lang.id === "sysml2") {
-      activationEvents.push("onLanguage:sysml");
       const sysmlEntry: Record<string, unknown> = {
         id: "sysml",
         aliases: ["SysML", "sysml"],
@@ -756,6 +747,30 @@ export function generatePackageJson(
       title: "ModelScript: Go to OWL2 Declaration",
       category: "ModelScript OWL2",
     },
+    {
+      command: "modelscript.openRtmContracts",
+      title: "ModelScript: Open Requirements, RTM & Contracts",
+      category: "ModelScript Verification",
+      icon: "$(checklist)",
+    },
+    {
+      command: "modelscript.openSpatialDiagram3D",
+      title: "ModelScript: Open 3D / VR Spatial Diagram Stage",
+      category: "ModelScript Diagrams",
+      icon: "$(globe)",
+    },
+    {
+      command: "modelscript.openAnsatzCopilot",
+      title: "ModelScript: Open Ansatz AI Copilot",
+      category: "ModelScript AI",
+      icon: "$(sparkle)",
+    },
+    {
+      command: "modelscript.openDomainInspector",
+      title: "ModelScript: Open Polyglot Domain Inspector",
+      category: "ModelScript Inspector",
+      icon: "$(inspect)",
+    },
   ];
 
   const submenus: Record<string, unknown>[] = [
@@ -783,6 +798,26 @@ export function generatePackageJson(
 
   // Secondary actions are folded into the ModelScript Actions overflow menu by default (when editorTitleActions == 'compact')
   const editorMoreActionsMenus: Record<string, unknown>[] = [
+    {
+      command: "modelscript.openDomainInspector",
+      when: "modelscript.activeEditorSupported",
+      group: "0_ansatz@1",
+    },
+    {
+      command: "modelscript.openSpatialDiagram3D",
+      when: "modelscript.activeEditorSupported",
+      group: "0_ansatz@2",
+    },
+    {
+      command: "modelscript.openRtmContracts",
+      when: "modelscript.activeEditorSupported",
+      group: "0_ansatz@3",
+    },
+    {
+      command: "modelscript.openAnsatzCopilot",
+      when: "modelscript.activeEditorSupported",
+      group: "0_ansatz@4",
+    },
     {
       command: "modelscript.openDroneReachabilityDemo",
       when: "(editorLangId == modelica || resourceLangId == modelica || editorLangId == sysml2 || resourceLangId == sysml2 || editorLangId == sysml || resourceLangId == sysml) && modelscript.feature.demos",
@@ -2711,9 +2746,8 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   // 2. Generate package.json manifest
   const pkg = generatePackageJson(languages, {
     name: "modelscript",
-    displayName: "ModelScript — Modelica & Polyglot Systems IDE",
-    description:
-      "Complete Modelica, SysML, STEP, and OWL2 development environment — diagram editing, simulation, scripting, notebooks, and bundled MSL.",
+    displayName: "ModelScript — Polyglot Systems Engineering & Simulation IDE",
+    description: `Polyglot IDE for ${languages.length} engineering languages (Modelica, SysML v2, SPICE, KiCad, STEP, OWL2, and more) — visual diagrams, real-time simulation, notebooks, and bundled MSL.`,
     version: options?.version || workspaceVersion,
     icon: options?.icon || "images/icon.png",
     ...options,
@@ -2728,6 +2762,11 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
     },
   });
 
+  // Marketplace metadata
+  pkg["bugs"] = { url: "https://github.com/modelscript/modelscript/issues" };
+  pkg["qna"] = "https://github.com/modelscript/modelscript/discussions";
+  pkg["galleryBanner"] = { color: "#0b1120", theme: "dark" };
+
   // Set browser client entry point (always present for VS Code for Web & fallback)
   pkg["browser"] = "./dist/browserClientMain.js";
   const isDesktopTarget = Boolean(options?.platformTarget && options.platformTarget !== "web");
@@ -2740,12 +2779,30 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   fs.writeFileSync(path.join(outDir, "package.json"), JSON.stringify(pkg, null, 2), "utf-8");
   fs.writeFileSync(path.join(outDir, "package.nls.json"), "{}", "utf-8");
   fs.writeFileSync(path.join(outDir, ".vscodeignore"), DEFAULT_VSCODEIGNORE, "utf-8");
-  fs.writeFileSync(
-    path.join(outDir, "LICENSE.md"),
-    "GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors\n",
-    "utf-8",
-  );
-  fs.writeFileSync(path.join(outDir, "README.md"), `# ${pkg["displayName"]}\n\n${pkg["description"]}\n`, "utf-8");
+
+  // Copy full AGPL-3.0 license text (COPYING), rich Marketplace README, and CHANGELOG
+  const rootCopying = path.join(repoRoot, "COPYING");
+  if (fs.existsSync(rootCopying)) {
+    fs.copyFileSync(rootCopying, path.join(outDir, "LICENSE.md"));
+  } else {
+    fs.writeFileSync(
+      path.join(outDir, "LICENSE.md"),
+      "GNU AFFERO GENERAL PUBLIC LICENSE Version 3\n\nCopyright © 2025-2026 Mohamad Omar Nachawati and ModelScript Contributors\n",
+      "utf-8",
+    );
+  }
+
+  const ideReadme = path.join(repoRoot, "packages", "ide", "README.md");
+  if (fs.existsSync(ideReadme)) {
+    fs.copyFileSync(ideReadme, path.join(outDir, "README.md"));
+  } else {
+    fs.writeFileSync(path.join(outDir, "README.md"), `# ${pkg["displayName"]}\n\n${pkg["description"]}\n`, "utf-8");
+  }
+
+  const rootChangelog = path.join(repoRoot, "CHANGELOG.md");
+  if (fs.existsSync(rootChangelog)) {
+    fs.copyFileSync(rootChangelog, path.join(outDir, "CHANGELOG.md"));
+  }
 
   // 3. Write language configs and syntaxes
   for (const lang of languages) {

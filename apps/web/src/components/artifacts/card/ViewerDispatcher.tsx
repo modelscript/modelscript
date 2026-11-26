@@ -72,6 +72,7 @@ const FiberSpliceMatrixViewer = React.lazy(() => import("../FiberSpliceMatrixVie
 const MicrowaveProfileViewer = React.lazy(() => import("../MicrowaveProfileViewer"));
 const MpeExclusionViewer = React.lazy(() => import("../MpeExclusionViewer"));
 const SpatialCanvasArtifactViewer = React.lazy(() => import("../SpatialCanvasArtifactViewer"));
+const TrainingRecipeArtifactCard = React.lazy(() => import("../TrainingRecipeArtifactCard"));
 
 export function getViewerExpectedHeight(
   viewType: string | undefined,
@@ -155,6 +156,11 @@ export function getViewerExpectedHeight(
     case "repository":
     case "repo":
       return "140px";
+    case "training-recipe":
+    case "memory-shard":
+    case "dataset-pretrain":
+    case "dataset-posttrain":
+      return "340px";
     case "solution":
     case "engineering-app":
     case "app":
@@ -612,6 +618,19 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "repository":
       case "repo":
         return <RepositoryViewCard viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+      case "training-recipe":
+      case "memory-shard":
+      case "dataset-pretrain":
+      case "dataset-posttrain":
+        return (
+          <TrainingRecipeArtifactCard
+            artifactId={artifactId}
+            viewType={artifact.view_type}
+            title={artifact.title || artifact.name}
+            viewConfig={viewConfig}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "solution":
       case "engineering-app":
       case "app":

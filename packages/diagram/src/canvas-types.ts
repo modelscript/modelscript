@@ -250,6 +250,17 @@ export interface DiagramRendererOptions {
   disableBuiltinContextMenu?: boolean | undefined;
   /** Optional viewport insets (in pixels) for floating overlays when fitting/centering. */
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
+  /** Optional LSP-backed connection validator invoked when connecting two ports. */
+  onValidateConnection?:
+    | ((params: {
+        sourceNode: string;
+        sourcePort: string;
+        targetNode: string;
+        targetPort: string;
+      }) =>
+        | Promise<{ compatible: boolean; reason?: string | undefined }>
+        | { compatible: boolean; reason?: string | undefined })
+    | undefined;
 }
 
 export interface ContainerDiagramInstance {

@@ -4,14 +4,19 @@
 #   - hpc-worker      (Linux x64/arm64, wasm2c native + headless Vulkan)
 #   - hpc-worker-cuda (NVIDIA CUDA 12.6 + NVRTC hardware FP64)
 
+FROM node:24-slim AS node-dist
+
 FROM ubuntu:24.04 AS base-builder
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl git build-essential cmake ninja-build \
-    && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && corepack enable \
+    ca-certificates git build-essential cmake ninja-build \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=node-dist /usr/local/bin/node /usr/local/bin/node
+COPY --from=node-dist /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && ln -sf /usr/local/lib/node_modules/corepack/dist/corepack.js /usr/local/bin/corepack \
+    && corepack enable
 
 WORKDIR /src
 COPY . .
@@ -31,15 +36,19 @@ RUN cmake -S packages/native -B packages/native/build-hpc -G Ninja \
 
 FROM ubuntu:24.04 AS hpc-worker
 RUN apt-get update && apt-get install -y --no-install-recommends libvulkan1 ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --create-home --uid 10001 --shell /usr/sbin/nologin msxworker
 COPY --from=build-cpu /src/packages/native/build-hpc/msx-hpc-worker /usr/local/bin/msx-hpc-worker
+USER msxworker
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/msx-hpc-worker", "--version"]
 ENTRYPOINT ["/usr/local/bin/msx-hpc-worker"]
 CMD ["--info"]
 
 FROM nvidia/cuda:12.6.3-devel-ubuntu24.04 AS build-cuda
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl git cmake ninja-build \
+    ca-certificates git cmake ninja-build \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY --from=base-builder /src/packages/native /src/packages/native
@@ -53,6 +62,10 @@ RUN cmake -S packages/native -B packages/native/build-cuda -G Ninja \
     && ./packages/native/build-cuda/msx-hpc-worker --version --selftest
 
 FROM nvidia/cuda:12.6.3-runtime-ubuntu24.04 AS hpc-worker-cuda
+RUN useradd --system --create-home --uid 10001 --shell /usr/sbin/nologin msxworker
 COPY --from=build-cuda /src/packages/native/build-cuda/msx-hpc-worker /usr/local/bin/msx-hpc-worker
+USER msxworker
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/msx-hpc-worker", "--version"]
 ENTRYPOINT ["/usr/local/bin/msx-hpc-worker"]
 CMD ["--info"]

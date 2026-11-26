@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { assertSafePublicUrl, isAllowedIntranetHost, isAllowedIntranetIp } from "../../util/ssrf.js";
+import { isAllowedIntranetHost, isAllowedIntranetIp, safePublicFetch } from "../../util/ssrf.js";
 import { isStrictAirgapEnv } from "../../util/tier-presets.js";
 
 export function isLocalOrIntranetLLMUrl(rawUrl: string): boolean {
@@ -70,9 +70,7 @@ export interface LLMResponse {
 }
 
 export type LLMStreamChunk =
-  | { type: "text"; delta: string }
-  | { type: "tool_calls"; toolCalls: LLMToolCall[] }
-  | { type: "done"; model: string };
+  { type: "text"; delta: string } | { type: "tool_calls"; toolCalls: LLMToolCall[] } | { type: "done"; model: string };
 
 export interface LLMProvider {
   complete(messages: LLMMessage[], options?: LLMCompletionOptions): Promise<LLMResponse>;
@@ -156,11 +154,18 @@ export class OpenAICompatibleProvider implements LLMProvider {
   #apiKey: string;
   #baseUrl: string;
   #allowInternalHost: boolean;
+  #resolver?: ((host: string) => Promise<{ address: string; family: number }[]>) | undefined;
 
-  constructor(apiKey: string, baseUrl: string = "https://api.openai.com/v1", allowInternalHost: boolean = false) {
+  constructor(
+    apiKey: string,
+    baseUrl: string = "https://api.openai.com/v1",
+    allowInternalHost: boolean = false,
+    resolver?: (host: string) => Promise<{ address: string; family: number }[]>,
+  ) {
     this.#apiKey = apiKey;
     this.#baseUrl = baseUrl.replace(/\/+$/, "");
     this.#allowInternalHost = allowInternalHost;
+    this.#resolver = resolver;
   }
 
   #prepareRequest(
@@ -191,8 +196,6 @@ export class OpenAICompatibleProvider implements LLMProvider {
           `Air-Gap Egress Blocked: Cloud LLM endpoint '${this.#baseUrl}' is forbidden in corporate air-gapped mode. Configure a local/intranet Ollama or vLLM endpoint via AI_BASE_URL or OLLAMA_BASE_URL.`,
         );
       }
-    } else if (process.env["NODE_ENV"] === "production" && !this.#allowInternalHost) {
-      assertSafePublicUrl(targetUrl);
     }
 
     const headers: Record<string, string> = {
@@ -206,16 +209,28 @@ export class OpenAICompatibleProvider implements LLMProvider {
     return { targetUrl, headers, payload, model };
   }
 
-  async complete(messages: LLMMessage[], options?: LLMCompletionOptions): Promise<LLMResponse> {
-    const { targetUrl, headers, payload, model } = this.#prepareRequest(messages, options, false);
-
-    const res = await fetch(targetUrl, {
+  async #fetchEndpoint(
+    targetUrl: string,
+    headers: Record<string, string>,
+    payload: Record<string, unknown>,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const init: RequestInit = {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-      redirect: "error",
-      signal: AbortSignal.timeout(30_000),
-    });
+      signal: AbortSignal.timeout(timeoutMs),
+    };
+    if (isStrictAirgapEnv() || this.#allowInternalHost) {
+      return fetch(targetUrl, { ...init, redirect: "error" });
+    }
+    return safePublicFetch(targetUrl, init, this.#resolver);
+  }
+
+  async complete(messages: LLMMessage[], options?: LLMCompletionOptions): Promise<LLMResponse> {
+    const { targetUrl, headers, payload, model } = this.#prepareRequest(messages, options, false);
+
+    const res = await this.#fetchEndpoint(targetUrl, headers, payload, 30_000);
 
     if (!res.ok) {
       const errText = (await res.text()).slice(0, 512);
@@ -255,13 +270,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
   async *completeStream(messages: LLMMessage[], options?: LLMCompletionOptions): AsyncIterable<LLMStreamChunk> {
     const { targetUrl, headers, payload, model } = this.#prepareRequest(messages, options, true);
 
-    const res = await fetch(targetUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-      redirect: "error",
-      signal: AbortSignal.timeout(60_000),
-    });
+    const res = await this.#fetchEndpoint(targetUrl, headers, payload, 60_000);
 
     if (!res.ok || !res.body) {
       const errText = (await res.text().catch(() => "")).slice(0, 512);
@@ -353,10 +362,16 @@ export class OpenAICompatibleProvider implements LLMProvider {
 export class AnthropicProvider implements LLMProvider {
   #apiKey: string;
   #baseUrl: string;
+  #resolver?: ((host: string) => Promise<{ address: string; family: number }[]>) | undefined;
 
-  constructor(apiKey: string, baseUrl: string = "https://api.anthropic.com/v1") {
+  constructor(
+    apiKey: string,
+    baseUrl: string = "https://api.anthropic.com/v1",
+    resolver?: (host: string) => Promise<{ address: string; family: number }[]>,
+  ) {
     this.#apiKey = apiKey;
     this.#baseUrl = baseUrl.replace(/\/+$/, "");
+    this.#resolver = resolver;
   }
 
   #prepareRequest(
@@ -408,8 +423,6 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error(
         `Air-Gap Egress Blocked: Cloud LLM endpoint '${this.#baseUrl}' is forbidden in corporate air-gapped mode.`,
       );
-    } else if (process.env["NODE_ENV"] === "production") {
-      assertSafePublicUrl(targetUrl);
     }
 
     const payload: Record<string, unknown> = {
@@ -442,16 +455,28 @@ export class AnthropicProvider implements LLMProvider {
     };
   }
 
-  async complete(messages: LLMMessage[], options?: LLMCompletionOptions): Promise<LLMResponse> {
-    const { targetUrl, headers, payload, model } = this.#prepareRequest(messages, options, false);
-
-    const res = await fetch(targetUrl, {
+  async #fetchEndpoint(
+    targetUrl: string,
+    headers: Record<string, string>,
+    payload: Record<string, unknown>,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const init: RequestInit = {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
-      redirect: "error",
-      signal: AbortSignal.timeout(30_000),
-    });
+      signal: AbortSignal.timeout(timeoutMs),
+    };
+    if (isStrictAirgapEnv()) {
+      return fetch(targetUrl, { ...init, redirect: "error" });
+    }
+    return safePublicFetch(targetUrl, init, this.#resolver);
+  }
+
+  async complete(messages: LLMMessage[], options?: LLMCompletionOptions): Promise<LLMResponse> {
+    const { targetUrl, headers, payload, model } = this.#prepareRequest(messages, options, false);
+
+    const res = await this.#fetchEndpoint(targetUrl, headers, payload, 30_000);
 
     if (!res.ok) {
       const errText = (await res.text()).slice(0, 512);
@@ -484,13 +509,7 @@ export class AnthropicProvider implements LLMProvider {
   async *completeStream(messages: LLMMessage[], options?: LLMCompletionOptions): AsyncIterable<LLMStreamChunk> {
     const { targetUrl, headers, payload, model } = this.#prepareRequest(messages, options, true);
 
-    const res = await fetch(targetUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-      redirect: "error",
-      signal: AbortSignal.timeout(60_000),
-    });
+    const res = await this.#fetchEndpoint(targetUrl, headers, payload, 60_000);
 
     if (!res.ok || !res.body) {
       const errText = (await res.text()).slice(0, 512);

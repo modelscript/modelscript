@@ -18,6 +18,13 @@ export const cplexLpLanguage = language({
   },
   errorCodes: CplexLpErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
+  conflicts: ($) => [
+    [$["_OptRowName"]!, $["Identifier"]!],
+    [$["SosConstraint"]!, $["Identifier"]!],
+  ],
+
   rules: {
     Model: ($) =>
       seq(
@@ -33,25 +40,26 @@ export const cplexLpLanguage = language({
             $["SosSection"]!,
             $["LindoDirective"]!,
             $["EndSection"]!,
-            $["Comment"]!,
           ),
         ),
       ),
+
+    _OptRowName: ($) => optional(seq(field("name", $["Identifier"]!), ":")),
 
     TitleDirective: ($) => seq($["TitleKeyword"]!, field("title", $["Identifier"]!)),
 
     ObjectiveSection: ($) =>
       seq(
         field("sense", choice($["MinimizeKeyword"]!, $["MaximizeKeyword"]!)),
-        optional(seq(field("name", $["Identifier"]!), ":")),
-        repeat(choice($["LinearTerm"]!, $["QuadraticBlock"]!, $["Comment"]!)),
+        $["_OptRowName"]!,
+        repeat(choice($["LinearTerm"]!, $["QuadraticBlock"]!)),
       ),
 
-    ConstraintsSection: ($) => seq($["SubjectToKeyword"]!, repeat(choice($["Constraint"]!, $["Comment"]!))),
+    ConstraintsSection: ($) => seq($["SubjectToKeyword"]!, repeat($["Constraint"]!)),
 
     Constraint: ($) =>
       seq(
-        optional(seq(field("name", $["Identifier"]!), ":")),
+        $["_OptRowName"]!,
         repeat(choice($["LinearTerm"]!, $["QuadraticBlock"]!)),
         field("operator", choice("<=", "<", ">=", ">", "=")),
         field("rhs", $["SignedNumber"]!),
@@ -77,7 +85,7 @@ export const cplexLpLanguage = language({
         choice(seq("^", $["NumberLiteral"]!), seq("*", field("var2", $["Identifier"]!))),
       ),
 
-    BoundsSection: ($) => seq($["BoundsKeyword"]!, repeat(choice($["BoundStatement"]!, $["Comment"]!))),
+    BoundsSection: ($) => seq($["BoundsKeyword"]!, repeat($["BoundStatement"]!)),
 
     BoundStatement: ($) =>
       choice(
@@ -93,21 +101,15 @@ export const cplexLpLanguage = language({
 
     BoundValue: ($) => choice($["InfinityLiteral"]!, $["SignedNumber"]!),
 
-    GeneralsSection: ($) => seq($["GeneralsKeyword"]!, repeat(choice($["Identifier"]!, $["Comment"]!))),
+    GeneralsSection: ($) => seq($["GeneralsKeyword"]!, repeat($["Identifier"]!)),
 
-    BinariesSection: ($) => seq($["BinariesKeyword"]!, repeat(choice($["Identifier"]!, $["Comment"]!))),
+    BinariesSection: ($) => seq($["BinariesKeyword"]!, repeat($["Identifier"]!)),
 
-    SemiContinuousSection: ($) => seq($["SemiContinuousKeyword"]!, repeat(choice($["Identifier"]!, $["Comment"]!))),
+    SemiContinuousSection: ($) => seq($["SemiContinuousKeyword"]!, repeat($["Identifier"]!)),
 
-    SosSection: ($) => seq($["SosKeyword"]!, repeat(choice($["SosConstraint"]!, $["Comment"]!))),
+    SosSection: ($) => seq($["SosKeyword"]!, repeat($["SosConstraint"]!)),
 
-    SosConstraint: ($) =>
-      seq(
-        optional(seq(field("name", $["Identifier"]!), ":")),
-        field("sosType", $["SosType"]!),
-        "::",
-        repeat($["SosEntry"]!),
-      ),
+    SosConstraint: ($) => seq($["_OptRowName"]!, field("sosType", $["SosType"]!), "::", repeat($["SosEntry"]!)),
 
     SosEntry: ($) => seq(field("variable", $["Identifier"]!), ":", field("weight", $["SignedNumber"]!)),
 

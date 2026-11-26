@@ -30,6 +30,7 @@ export const doe2Grammar = language({
       "NamedCommand",
     ],
   },
+  conflicts: ($) => [[$.ScheduleClause, $.TupleValue]],
   rules: {
     Document: ($) => repeat(choice($.Statement, $.CommentLine)),
 

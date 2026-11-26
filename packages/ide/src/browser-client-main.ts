@@ -52,6 +52,7 @@ import {
   type ModelScriptFeatureFlags,
   syncFeatureContextKeys,
 } from "./utils/config.js";
+import { TrainingStudioPanelProvider } from "./webview/training-studio-panel.js";
 
 let lspManager: LspClientManager | undefined;
 export let languageWorker: Worker | undefined;
@@ -261,6 +262,9 @@ export async function activate(context: vscode.ExtensionContext) {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
+
+  // 8b. Dynamic-m Training Studio Sidebar View Provider & Commands
+  TrainingStudioPanelProvider.register(context, lspManager.client);
 
   // 9. Collaboration Presence
   try {

@@ -62,9 +62,10 @@ export function prepareDiagramRenderModel(
             },
           },
         },
-        items: (node.ports as { id?: string; name?: string; direction?: string }[]).map((p, idx) => ({
-          id: p.id || p.name || `port_${idx}`,
-          group: p.direction === "in" || p.id === "in" ? "in" : "out",
+        items: (node.ports as Record<string, unknown>[]).map((p, idx) => ({
+          ...p,
+          id: (typeof p["id"] === "string" && p["id"]) || (typeof p["name"] === "string" && p["name"]) || `port_${idx}`,
+          group: p["direction"] === "in" || p["id"] === "in" ? "in" : "out",
         })),
       };
     }

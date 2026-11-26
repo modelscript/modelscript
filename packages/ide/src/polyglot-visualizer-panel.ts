@@ -355,14 +355,13 @@ export class PolyglotVisualizerPanel extends BaseWebviewPanel {
 
     // 2. If Modelica
     if (ext === ".mo") {
-      const compRegex = new RegExp(
-        `(${payload.shapeName}\\b[\\s\\S]*?annotation\\([\\s\\S]*?CAD\\([^)]*?position\\s*=\\s*\\{)[^}]*(\\}[\\s\\S]*?\\))`,
-      );
-      const match = compRegex.exec(source);
-      if (match) {
+      const span = await this.findModelicaComponentSpan(doc, source, payload.shapeName);
+      const braceRange = span
+        ? (findCadPositionBraces(source, span[0], span[1]) ?? findCadPositionBraces(source, span[0], source.length))
+        : null;
+      if (braceRange) {
         const edit = new vscode.WorkspaceEdit();
-        const startIdx = match.index + match[1]!.length;
-        const endIdx = startIdx + match[0].length - match[1]!.length - match[2]!.length;
+        const [startIdx, endIdx] = braceRange;
         const newCoords = `${payload.newPosition[0].toFixed(2)}, ${payload.newPosition[1].toFixed(2)}, ${payload.newPosition[2].toFixed(2)}`;
         const startPos = doc.positionAt(startIdx);
         const endPos = doc.positionAt(endIdx);
@@ -370,6 +369,64 @@ export class PolyglotVisualizerPanel extends BaseWebviewPanel {
         await vscode.workspace.applyEdit(edit);
       }
     }
+  }
+
+  private async findModelicaComponentSpan(
+    doc: vscode.TextDocument,
+    source: string,
+    shapeName: string,
+  ): Promise<[number, number] | null> {
+    if (!shapeName) return null;
+
+    // 1. Prefer LSP textDocument/documentSymbol when LanguageClient is available
+    if (this._client) {
+      try {
+        interface LspRange {
+          start: { line: number; character: number };
+          end: { line: number; character: number };
+        }
+        interface LspSymbol {
+          name: string;
+          range?: LspRange;
+          location?: { range: LspRange };
+          children?: LspSymbol[];
+        }
+        const symbols = await this._client.sendRequest<LspSymbol[] | null>("textDocument/documentSymbol", {
+          textDocument: { uri: doc.uri.toString() },
+        });
+        if (Array.isArray(symbols)) {
+          const matchedRange = findLspSymbolRange(symbols, shapeName);
+          if (matchedRange) {
+            const startOffset = doc.offsetAt(
+              new vscode.Position(matchedRange.start.line, matchedRange.start.character),
+            );
+            const endOffset = doc.offsetAt(new vscode.Position(matchedRange.end.line, matchedRange.end.character));
+            return [startOffset, endOffset];
+          }
+        }
+      } catch {
+        // Fall through to VS Code symbol provider / identifier fallback
+      }
+    }
+
+    // 2. Fallback to VS Code's registered document symbol provider
+    try {
+      const vscodeSymbols = await vscode.commands.executeCommand<
+        (vscode.DocumentSymbol | vscode.SymbolInformation)[] | undefined
+      >("vscode.executeDocumentSymbolProvider", doc.uri);
+      if (Array.isArray(vscodeSymbols)) {
+        const matchedRange = findVscodeSymbolRange(vscodeSymbols, shapeName);
+        if (matchedRange) {
+          return [doc.offsetAt(matchedRange.start), doc.offsetAt(matchedRange.end)];
+        }
+      }
+    } catch {
+      // Fall through to zero-regex identifier-boundary scan
+    }
+
+    // 3. Zero-regex identifier-boundary fallback
+    const idx = findIdentifierOffset(source, shapeName, 0, source.length);
+    return idx >= 0 ? [idx, source.length] : null;
   }
 
   public override dispose(): void {
@@ -1333,4 +1390,160 @@ export class PolyglotVisualizerPanel extends BaseWebviewPanel {
 </body>
 </html>`;
   }
+}
+
+interface LspRangeLike {
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+}
+
+interface LspSymbolLike {
+  name: string;
+  range?: LspRangeLike | undefined;
+  location?: { range: LspRangeLike } | undefined;
+  children?: LspSymbolLike[] | undefined;
+}
+
+function findLspSymbolRange(symbols: LspSymbolLike[], targetName: string): LspRangeLike | null {
+  for (const sym of symbols) {
+    if (sym.name === targetName || sym.name.endsWith("." + targetName)) {
+      const range = sym.range ?? sym.location?.range;
+      if (range) return range;
+    }
+    if (Array.isArray(sym.children) && sym.children.length > 0) {
+      const nested = findLspSymbolRange(sym.children, targetName);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function findVscodeSymbolRange(
+  symbols: (vscode.DocumentSymbol | vscode.SymbolInformation)[],
+  targetName: string,
+): vscode.Range | null {
+  for (const sym of symbols) {
+    if (sym.name === targetName || sym.name.endsWith("." + targetName)) {
+      if ("range" in sym && sym.range) {
+        return sym.range;
+      }
+      if ("location" in sym && sym.location?.range) {
+        return sym.location.range;
+      }
+    }
+    if ("children" in sym && Array.isArray(sym.children) && sym.children.length > 0) {
+      const nested = findVscodeSymbolRange(sym.children, targetName);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function isIdentCharCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 // _
+  );
+}
+
+function isWhitespaceCode(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13;
+}
+
+function skipWhitespace(source: string, pos: number, limit: number): number {
+  let i = pos;
+  while (i < limit && isWhitespaceCode(source.charCodeAt(i))) {
+    i++;
+  }
+  return i;
+}
+
+function findIdentifierOffset(source: string, ident: string, fromOffset: number, toOffset: number): number {
+  if (!ident) return -1;
+  let pos = Math.max(0, fromOffset);
+  const limit = Math.min(source.length, toOffset);
+  while (pos < limit) {
+    const idx = source.indexOf(ident, pos);
+    if (idx < 0 || idx + ident.length > limit) return -1;
+    const end = idx + ident.length;
+    const leftOk = idx === 0 || !isIdentCharCode(source.charCodeAt(idx - 1));
+    const rightOk = end === source.length || !isIdentCharCode(source.charCodeAt(end));
+    if (leftOk && rightOk) return idx;
+    pos = idx + 1;
+  }
+  return -1;
+}
+
+function findMatchingParen(source: string, openParenIdx: number, limit: number): number {
+  let depth = 0;
+  for (let i = openParenIdx; i < limit; i++) {
+    const ch = source.charCodeAt(i);
+    if (ch === 40) {
+      depth++;
+    } else if (ch === 41) {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function findCadPositionBraces(source: string, fromOffset: number, toOffset: number): [number, number] | null {
+  const limit = Math.min(source.length, toOffset);
+  let scan = Math.max(0, fromOffset);
+
+  while (scan < limit) {
+    const annIdx = findIdentifierOffset(source, "annotation", scan, limit);
+    if (annIdx < 0) return null;
+
+    const annParen = skipWhitespace(source, annIdx + 10, limit);
+    if (annParen >= limit || source.charCodeAt(annParen) !== 40) {
+      scan = annIdx + 10;
+      continue;
+    }
+
+    const annEnd = findMatchingParen(source, annParen, limit);
+    const annLimit = annEnd >= 0 ? annEnd : limit;
+
+    let cadScan = annParen + 1;
+    while (cadScan < annLimit) {
+      const cadIdx = findIdentifierOffset(source, "CAD", cadScan, annLimit);
+      if (cadIdx < 0) break;
+
+      const cadParen = skipWhitespace(source, cadIdx + 3, annLimit);
+      if (cadParen >= annLimit || source.charCodeAt(cadParen) !== 40) {
+        cadScan = cadIdx + 3;
+        continue;
+      }
+
+      const cadEnd = findMatchingParen(source, cadParen, annLimit);
+      const cadLimit = cadEnd >= 0 ? cadEnd : annLimit;
+
+      let posScan = cadParen + 1;
+      while (posScan < cadLimit) {
+        const posIdx = findIdentifierOffset(source, "position", posScan, cadLimit);
+        if (posIdx < 0) break;
+
+        let cur = skipWhitespace(source, posIdx + 8, cadLimit);
+        if (cur < cadLimit && source.charCodeAt(cur) === 61) {
+          cur = skipWhitespace(source, cur + 1, cadLimit);
+          if (cur < cadLimit && source.charCodeAt(cur) === 123) {
+            const closeBrace = source.indexOf("}", cur + 1);
+            if (closeBrace >= 0 && closeBrace < cadLimit) {
+              return [cur + 1, closeBrace];
+            }
+          }
+        }
+        posScan = posIdx + 8;
+      }
+
+      cadScan = cadEnd >= 0 ? cadEnd + 1 : cadParen + 1;
+    }
+
+    scan = annEnd >= 0 ? annEnd + 1 : annParen + 1;
+  }
+
+  return null;
 }

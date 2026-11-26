@@ -3,6 +3,7 @@
 export * from "./ad-codegen.js";
 export * from "./archive.js";
 export * from "./binary-introspect.js";
+export * from "./certified-wam-fmu.js";
 export * from "./compile-wasm.js";
 export * from "./fmi-ls-bus.js";
 export * from "./fmi-ls-emt.js";

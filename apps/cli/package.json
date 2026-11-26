@@ -33,7 +33,8 @@
     "dist/**/*.js",
     "dist/**/*.js.map",
     "dist/**/*.d.ts",
-    "dist/**/*.d.ts.map"
+    "dist/**/*.d.ts.map",
+    "dist/vendor/**"
   ],
   "scripts": {
     "build": "tsc && mkdir -p dist/vendor && cp -r src/vendor/* dist/vendor/ && chmod +x dist/main.js",
@@ -203,7 +204,8 @@
     "@npmcli/package-json": "^7.0.0",
     "adm-zip": "^0.6.1",
     "assemblyscript": "^0.28.19",
-    "better-sqlite3": "^12.8.0",
+    "esbuild": "^0.28.1",
+    "express": "^5.1.0",
     "jiti": "^2.6.1",
     "lz-string": "^1.5.0",
     "semver": "^7.7.1",
@@ -229,6 +231,9 @@
     "rimraf": "^6.1.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.3"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^12.8.0"
   },
   "engines": {
     "node": ">=24"

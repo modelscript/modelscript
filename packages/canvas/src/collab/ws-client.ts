@@ -46,6 +46,10 @@ export class CanvasWebSocketClient {
   private disposed = false;
   private pendingDeltas: CanvasCrdtDelta[] = [];
   private unsubLocalDelta: (() => void) | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempt = 0;
+  private static readonly MAX_RECONNECT_DELAY_MS = 30_000;
+  private static readonly MAX_PENDING_DELTAS = 2_000;
 
   constructor(options: CanvasWsClientOptions) {
     this.url = options.url;
@@ -69,13 +73,30 @@ export class CanvasWebSocketClient {
     return this.pendingDeltas.length;
   }
 
+  private scheduleReconnect(): void {
+    if (this.disposed || this.reconnectTimer !== null) return;
+    const delay = Math.min(1000 * 2 ** this.reconnectAttempt, CanvasWebSocketClient.MAX_RECONNECT_DELAY_MS);
+    this.reconnectAttempt += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.disposed) {
+        this.connect();
+      }
+    }, delay);
+  }
+
   public connect(): void {
     if (this.disposed) return;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     const ws = this.createSocket(this.url);
     this.socket = ws;
 
     ws.addEventListener("open", () => {
       if (this.disposed) return;
+      this.reconnectAttempt = 0;
       this.connected = true;
       this.onConnectionChange?.(true);
 
@@ -105,13 +126,18 @@ export class CanvasWebSocketClient {
     });
 
     ws.addEventListener("close", () => {
+      if (this.socket === ws) {
+        this.socket = null;
+      }
       this.connected = false;
       this.onConnectionChange?.(false);
+      this.scheduleReconnect();
     });
 
     ws.addEventListener("error", () => {
       this.connected = false;
       this.onConnectionChange?.(false);
+      this.scheduleReconnect();
     });
   }
 
@@ -129,6 +155,10 @@ export class CanvasWebSocketClient {
 
   public dispose(): void {
     this.disposed = true;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.unsubLocalDelta?.();
     this.unsubLocalDelta = null;
     if (this.socket) {
@@ -142,6 +172,9 @@ export class CanvasWebSocketClient {
     if (this.connected && this.socket && this.socket.readyState === 1) {
       this.rawSend({ type: "delta", boardId: this.boardId, delta });
     } else {
+      if (this.pendingDeltas.length >= CanvasWebSocketClient.MAX_PENDING_DELTAS) {
+        this.pendingDeltas.shift();
+      }
       this.pendingDeltas.push(delta);
     }
   }

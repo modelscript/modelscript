@@ -1,6 +1,6 @@
 ---
 title: "ModelScript Algorithms Catalog"
-description: "ModelScript is powered by a comprehensive foundation of peer-reviewed mathematical, compiler, and formal verification algorithms. Rather than relying on opaque external black boxes, ModelScript imp..."
+description: "Catalog of peer-reviewed mathematical, compiler, and formal verification algorithms implemented natively in WebAssembly and TypeScript by ModelScript."
 ---
 
 # ModelScript Algorithms Catalog

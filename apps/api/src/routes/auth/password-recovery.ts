@@ -226,7 +226,7 @@ export function createPasswordRecoveryRouter(database: LibraryDatabase): Router 
    * Changes or initial-sets account password.
    * Increments token_version to invalidate all existing sessions and returns a refreshed token.
    */
-  router.put("/password", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  router.put("/password", authRateLimiter, requireAuth, async (req: Request, res: Response): Promise<void> => {
     if (isScopedApiToken(req)) {
       res.status(403).json({ error: "Personal access tokens cannot change account passwords" });
       return;

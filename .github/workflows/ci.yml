@@ -486,6 +486,45 @@ jobs:
           npm run verify:dist
           npm run verify:pack
 
+  e2e_smoke:
+    name: E2E & CLI Roundtrip Smoke Tests
+    needs: [build_prereqs]
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-workspace
+        with:
+          nx-cache-prefix: "e2e-smoke"
+          cache-wasm: "true"
+          build-dsl-templates: "true"
+      - name: Download Pre-built Prerequisites
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: prereqs-build
+      - name: Extract Pre-built Dist & WASM
+        run: tar -xf prereqs-build.tar && rm prereqs-build.tar
+      - name: Build CLI & API Prerequisites
+        run: npx nx run-many -t build --projects=@modelscript/cli,@modelscript/api --parallel=3
+      - name: Run CLI Polyglot Publish/Install Roundtrip Smoke Test
+        run: npx tsx --test apps/cli/tests/polyglot-publish-install-roundtrip.test.ts
+      - name: Cache Playwright Chromium
+        id: cache-playwright
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Playwright Chromium
+        run: |
+          if [ "${{ steps.cache-playwright.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+      - name: Run Chromium Unified Canvas E2E Smoke Test
+        run: npx tsx --test packages/canvas/tests/chromium-canvas-e2e.test.ts
+
   docker_build:
     name: Build Docker Images
     needs: [build, lint]
@@ -515,7 +554,7 @@ jobs:
         id: check-affected
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            AFFECTED=$(npx nx show projects --affected --projects=@modelscript/api,@modelscript/web,@modelscript/cli,@modelscript/docs,ee || true)
+            AFFECTED=$(npx nx show projects --affected --projects=@modelscript/api,@modelscript/web,@modelscript/cli,@modelscript/docs,@modelscript/ide,@modelscript/ee || true)
             DOCKER_CHANGED=$(git diff --name-only ${{ steps.set-shas.outputs.base || 'HEAD~1' }} HEAD | grep -E '(^Dockerfile|^docker-compose|\.dockerignore)' || true)
             if [ -n "$AFFECTED" ] || [ -n "$DOCKER_CHANGED" ]; then
               echo "Docker targets affected: $AFFECTED $DOCKER_CHANGED"
@@ -560,7 +599,7 @@ jobs:
           fi
       - name: Rebuild Unified Site & Docs with PDF Manual
         if: steps.check-affected.outputs.run_docker == 'true'
-        run: npx nx build @modelscript/docs
+        run: npx nx build @modelscript/docs --skip-nx-cache
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
         if: steps.check-affected.outputs.run_docker == 'true'
       - name: Log in to GHCR
@@ -603,6 +642,7 @@ jobs:
       - test
       - modelica_testsuite
       - cross_os_smoke
+      - e2e_smoke
       - polyglot_benchmarks
     runs-on: ubuntu-latest
     steps:
@@ -616,12 +656,13 @@ jobs:
           echo "  test: ${{ needs.test.result }}"
           echo "  modelica_testsuite: ${{ needs.modelica_testsuite.result }}"
           echo "  cross_os_smoke: ${{ needs.cross_os_smoke.result }}"
+          echo "  e2e_smoke: ${{ needs.e2e_smoke.result }}"
           echo "  polyglot_benchmarks: ${{ needs.polyglot_benchmarks.result }}"
           IS_RELEASE_COMMIT=false
           case "$HEAD_COMMIT_MESSAGE" in
             "chore(release):"*) IS_RELEASE_COMMIT=true ;;
           esac
-          for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.polyglot_benchmarks.result }}"; do
+          for res in "${{ needs.lint.result }}" "${{ needs.build.result }}" "${{ needs.test.result }}" "${{ needs.modelica_testsuite.result }}" "${{ needs.e2e_smoke.result }}" "${{ needs.polyglot_benchmarks.result }}"; do
             if [ "$res" != "success" ] && { [ "$IS_RELEASE_COMMIT" != "true" ] || [ "$res" != "skipped" ]; }; then
               echo "Error: Required job finished with status '$res'"
               exit 1
@@ -668,6 +709,14 @@ jobs:
       OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
       GITLAB_CLIENT_ID: ${{ secrets.GITLAB_CLIENT_ID || secrets.OAUTH_GITLAB_CLIENT_ID }}
       GITLAB_CLIENT_SECRET: ${{ secrets.GITLAB_CLIENT_SECRET || secrets.OAUTH_GITLAB_CLIENT_SECRET }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      STRIPE_PRICE_PRO_MONTHLY: ${{ secrets.STRIPE_PRICE_PRO_MONTHLY }}
+      STRIPE_PRICE_PRO_ANNUAL: ${{ secrets.STRIPE_PRICE_PRO_ANNUAL }}
+      STRIPE_PRICE_TEAM_MONTHLY: ${{ secrets.STRIPE_PRICE_TEAM_MONTHLY || secrets.STRIPE_PRICE_TEAM_SEAT_MONTHLY }}
+      STRIPE_PRICE_TEAM_ANNUAL: ${{ secrets.STRIPE_PRICE_TEAM_ANNUAL }}
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/deploy-production

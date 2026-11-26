@@ -47,23 +47,42 @@ export const useTheme = () => useContext(ThemeContext);
 export function hydrateDisplayAccessibilityPreferences(targetRoot?: HTMLElement): void {
   try {
     if (typeof localStorage === "undefined") return;
+    const root = targetRoot || (typeof document !== "undefined" ? document.documentElement : null);
+    if (!root) return;
     const raw = localStorage.getItem("modelscript_display_accessibility");
-    if (!raw) return;
+    if (!raw) {
+      root.style.fontSize = "";
+      root.style.removeProperty("--ui-font-scale");
+      root.removeAttribute("data-density");
+      root.removeAttribute("data-reduced-motion");
+      root.removeAttribute("data-high-contrast");
+      return;
+    }
     const parsed = JSON.parse(raw) as {
       fontScale?: number;
       compactDensity?: boolean;
       reducedMotion?: boolean;
       highContrast?: boolean;
     };
-    const root = targetRoot || (typeof document !== "undefined" ? document.documentElement : null);
-    if (!root) return;
     if (parsed.fontScale === 90 || parsed.fontScale === 100 || parsed.fontScale === 110 || parsed.fontScale === 120) {
       root.style.fontSize = `${parsed.fontScale}%`;
       root.style.setProperty("--ui-font-scale", String(parsed.fontScale / 100));
     }
-    if (parsed.compactDensity) root.setAttribute("data-density", "compact");
-    if (parsed.reducedMotion) root.setAttribute("data-reduced-motion", "true");
-    if (parsed.highContrast) root.setAttribute("data-high-contrast", "true");
+    if (parsed.compactDensity) {
+      root.setAttribute("data-density", "compact");
+    } else {
+      root.removeAttribute("data-density");
+    }
+    if (parsed.reducedMotion) {
+      root.setAttribute("data-reduced-motion", "true");
+    } else {
+      root.removeAttribute("data-reduced-motion");
+    }
+    if (parsed.highContrast) {
+      root.setAttribute("data-high-contrast", "true");
+    } else {
+      root.removeAttribute("data-high-contrast");
+    }
   } catch {
     // Ignore storage parse errors
   }
@@ -136,6 +155,8 @@ export function ThemeContextProvider({ children }: { children: React.ReactNode }
         } else if (!e.newValue) {
           setThemeOverride(null);
         }
+      } else if (e.key === "modelscript_display_accessibility") {
+        hydrateDisplayAccessibilityPreferences();
       }
     };
     window.addEventListener("storage", handleStorage);

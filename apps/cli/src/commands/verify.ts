@@ -19,7 +19,6 @@ import sysml2LangFallback from "@modelscript/sysml2/language";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Argv, CommandModule } from "yargs";
 import { NodeFileSystem } from "../util/filesystem.js";
 import { Profiler } from "../util/timing.js";
@@ -259,9 +258,6 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       paths.unshift(target);
       target = undefined;
     }
-
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
 
     const hasPolyglotCaeFiles = paths.some((p) => /\.(scad|inp|cfd|urdf|step|stp)$/i.test(p));
     const cliUniqueExts = new Set(paths.map((p) => path.extname(p).toLowerCase()).filter(Boolean));
@@ -570,7 +566,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
     Context.registerParser(".mo", modelicaParser as unknown as Parameters<typeof Context.registerParser>[1]);
     const context = Context.createBatch(new NodeFileSystem());
 
-    const wasmPath = path.resolve(__dirname, "../../../../languages/sysml2/dist/parser.wasm");
+    const wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
     const sysmlResult = await createWasmParser(wasmPath);
     const sysmlParser = sysmlResult.parser;
 

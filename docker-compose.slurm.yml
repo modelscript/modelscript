@@ -1,13 +1,14 @@
-# Optional standalone single-node Slurm dev cluster with slurmrestd and MinIO S3 object staging
+# DEV-ONLY: Standalone single-node Slurm dev cluster with slurmrestd and MinIO S3 object staging.
+# Do NOT deploy this compose file or its default credentials in production.
 services:
   slurm:
     image: giovtorres/slurm-docker-cluster:latest
     container_name: modelscript-slurm-dev
     hostname: slurm-dev
     ports:
-      - "6817:6817" # slurmctld
-      - "6818:6818" # slurmd
-      - "6819:6819" # slurmdbd
+      - "127.0.0.1:6817:6817" # slurmctld
+      - "127.0.0.1:6818:6818" # slurmd
+      - "127.0.0.1:6819:6819" # slurmdbd
     volumes:
       - ./data/shared-slurm-workspace:/workspace:rw
     environment:
@@ -19,7 +20,7 @@ services:
     container_name: modelscript-slurmrestd-dev
     command: ["slurmrestd", "-a", "rest_auth/jwt", "0.0.0.0:6820"]
     ports:
-      - "6820:6820"
+      - "127.0.0.1:6820:6820"
     environment:
       - SLURM_JWT=daemon
     depends_on:
@@ -31,11 +32,12 @@ services:
     container_name: modelscript-minio-dev
     command: ["server", "/data", "--console-address", ":9001"]
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     environment:
-      - MINIO_ROOT_USER=minioadmin
-      - MINIO_ROOT_PASSWORD=minioadmin
+      # DEV-ONLY defaults; override via environment variables
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
     volumes:
       - ./data/minio-dev-data:/data
     restart: unless-stopped

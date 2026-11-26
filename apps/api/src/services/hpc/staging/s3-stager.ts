@@ -29,6 +29,14 @@ function getAmzDates(date = new Date()): { dateStamp: string; amzDate: string } 
   return { dateStamp, amzDate };
 }
 
+const MAX_S3_BUFFER_BYTES = 512 * 1024 * 1024; // 512 MB cap for staged artifacts
+const MAX_S3_PRESIGNED_TTL_SECONDS = 7 * 24 * 3600; // S3 SigV4 7-day maximum
+const S3_FETCH_TIMEOUT_MS = 30_000;
+
+function encodeRfc3986(segment: string): string {
+  return encodeURIComponent(segment).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 /**
  * Generates AWS Signature Version 4 (SigV4) presigned URLs and authenticated requests.
  * Fully compatible with AWS S3, MinIO, Ceph, and Cloudflare R2 without external dependencies.
@@ -44,8 +52,22 @@ export class S3ObjectStager implements ObjectStager {
   private readonly fetchFn: typeof fetch;
 
   constructor(options: S3StagerOptions) {
+    let parsedEndpoint: URL;
+    try {
+      parsedEndpoint = new URL(options.endpoint);
+    } catch {
+      throw new Error(`Invalid S3 endpoint URL: ${options.endpoint}`);
+    }
+    if (parsedEndpoint.protocol !== "http:" && parsedEndpoint.protocol !== "https:") {
+      throw new Error(`S3 endpoint must use http:// or https:// protocol (got ${parsedEndpoint.protocol})`);
+    }
+    const bucket = String(options.bucket || "").trim();
+    if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(bucket) || bucket.includes("..")) {
+      throw new Error(`Invalid S3 bucket name: ${options.bucket}`);
+    }
+
     this.endpoint = options.endpoint.replace(/\/+$/, "");
-    this.bucket = options.bucket;
+    this.bucket = bucket;
     this.region = options.region || "us-east-1";
     this.accessKeyId = options.accessKeyId;
     this.secretAccessKey = options.secretAccessKey;
@@ -61,15 +83,29 @@ export class S3ObjectStager implements ObjectStager {
   }
 
   private buildUrlPath(remoteKey: string): { url: URL; canonicalPath: string } {
-    const cleanKey = remoteKey.replace(/^\/+/, "");
+    if (typeof remoteKey !== "string" || remoteKey.includes("\0")) {
+      throw new Error("Invalid S3 remote key");
+    }
+    const rawSegments = remoteKey
+      .replace(/^\/+/, "")
+      .split("/")
+      .filter((s) => s.length > 0);
+    if (rawSegments.length === 0 || rawSegments.some((s) => s === ".." || s === ".")) {
+      throw new Error(`Invalid S3 remote key (path traversal rejected): ${remoteKey}`);
+    }
+    const encodedKey = rawSegments.map(encodeRfc3986).join("/");
+
     if (this.forcePathStyle) {
-      const url = new URL(`${this.endpoint}/${this.bucket}/${cleanKey}`);
-      return { url, canonicalPath: `/${this.bucket}/${cleanKey}` };
+      const encodedBucket = encodeRfc3986(this.bucket);
+      const canonicalPath = `/${encodedBucket}/${encodedKey}`;
+      const url = new URL(`${this.endpoint}${canonicalPath}`);
+      return { url, canonicalPath };
     } else {
       const parsed = new URL(this.endpoint);
       parsed.hostname = `${this.bucket}.${parsed.hostname}`;
-      parsed.pathname = `/${cleanKey}`;
-      return { url: parsed, canonicalPath: `/${cleanKey}` };
+      const canonicalPath = `/${encodedKey}`;
+      parsed.pathname = canonicalPath;
+      return { url: parsed, canonicalPath };
     }
   }
 
@@ -78,6 +114,7 @@ export class S3ObjectStager implements ObjectStager {
     remoteKey: string,
     expiresInSeconds = 7200,
   ): Promise<string> {
+    const clampedTtl = Math.min(MAX_S3_PRESIGNED_TTL_SECONDS, Math.max(60, Math.floor(expiresInSeconds)));
     const { url, canonicalPath } = this.buildUrlPath(remoteKey);
     const { dateStamp, amzDate } = getAmzDates();
     const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`;
@@ -86,15 +123,13 @@ export class S3ObjectStager implements ObjectStager {
       "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
       "X-Amz-Credential": `${this.accessKeyId}/${credentialScope}`,
       "X-Amz-Date": amzDate,
-      "X-Amz-Expires": String(expiresInSeconds),
+      "X-Amz-Expires": String(clampedTtl),
       "X-Amz-SignedHeaders": "host",
     };
 
     // Sort query params
     const sortedKeys = Object.keys(queryParams).sort();
-    const canonicalQuery = sortedKeys
-      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k]!)}`)
-      .join("&");
+    const canonicalQuery = sortedKeys.map((k) => `${encodeRfc3986(k)}=${encodeRfc3986(queryParams[k]!)}`).join("&");
 
     const host = url.port ? `${url.hostname}:${url.port}` : url.hostname;
     const canonicalHeaders = `host:${host}\n`;
@@ -130,8 +165,15 @@ export class S3ObjectStager implements ObjectStager {
     const putUrl = await this.getUploadUrl(remoteKey);
     let body: Buffer;
     if (typeof localPathOrBuffer === "string") {
+      const stat = fs.statSync(localPathOrBuffer);
+      if (stat.size > MAX_S3_BUFFER_BYTES) {
+        throw new Error(`Artifact exceeds maximum upload size (${MAX_S3_BUFFER_BYTES} bytes): ${localPathOrBuffer}`);
+      }
       body = fs.readFileSync(localPathOrBuffer);
     } else {
+      if (localPathOrBuffer.byteLength > MAX_S3_BUFFER_BYTES) {
+        throw new Error(`Buffer exceeds maximum upload size (${MAX_S3_BUFFER_BYTES} bytes)`);
+      }
       body = localPathOrBuffer;
     }
 
@@ -139,6 +181,7 @@ export class S3ObjectStager implements ObjectStager {
       method: "PUT",
       headers: { "Content-Type": contentType },
       body,
+      signal: AbortSignal.timeout(S3_FETCH_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -151,51 +194,114 @@ export class S3ObjectStager implements ObjectStager {
 
   public async downloadFile(remoteKey: string, localDestinationPath: string): Promise<void> {
     const getUrl = await this.getDownloadUrl(remoteKey);
-    const res = await this.fetchFn(getUrl, { method: "GET" });
+    const res = await this.fetchFn(getUrl, {
+      method: "GET",
+      signal: AbortSignal.timeout(S3_FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) {
       throw new Error(`Failed to download from S3 (${remoteKey}): HTTP ${res.status}`);
     }
 
-    const arrayBuffer = await res.arrayBuffer();
     fs.mkdirSync(path.dirname(localDestinationPath), { recursive: true });
+    if (res.body && typeof (res.body as ReadableStream<Uint8Array>).getReader === "function") {
+      const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+      const ws = fs.createWriteStream(localDestinationPath);
+      let totalBytes = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            totalBytes += value.byteLength;
+            if (totalBytes > MAX_S3_BUFFER_BYTES) {
+              ws.destroy();
+              throw new Error(`Downloaded artifact exceeds maximum size (${MAX_S3_BUFFER_BYTES} bytes): ${remoteKey}`);
+            }
+            if (!ws.write(Buffer.from(value))) {
+              await new Promise<void>((resolve, reject) => {
+                ws.once("drain", resolve);
+                ws.once("error", reject);
+              });
+            }
+          }
+        }
+        await new Promise<void>((resolve, reject) => {
+          ws.end(() => resolve());
+          ws.once("error", reject);
+        });
+      } catch (err) {
+        ws.destroy();
+        try {
+          if (fs.existsSync(localDestinationPath)) fs.unlinkSync(localDestinationPath);
+        } catch {
+          // ignore cleanup failure
+        }
+        throw err;
+      }
+      return;
+    }
+
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_S3_BUFFER_BYTES) {
+      throw new Error(`Downloaded artifact exceeds maximum size (${MAX_S3_BUFFER_BYTES} bytes): ${remoteKey}`);
+    }
     fs.writeFileSync(localDestinationPath, Buffer.from(arrayBuffer));
   }
 
   public async hasObject(remoteKey: string): Promise<boolean> {
     try {
       const headUrl = await this.getPresignedUrl("HEAD", remoteKey, 300);
-      const res = await this.fetchFn(headUrl, { method: "HEAD" });
+      const res = await this.fetchFn(headUrl, {
+        method: "HEAD",
+        signal: AbortSignal.timeout(S3_FETCH_TIMEOUT_MS),
+      });
       return res.ok;
     } catch {
       return false;
     }
   }
 
-  private sanitizeStagingIdentifier(value: string, label: string): string {
-    const clean = path.basename(value);
-    if (!clean || clean !== value || clean === "." || clean === ".." || !/^[a-zA-Z0-9._-]+$/.test(clean)) {
+  private sanitizeStagingIdentifier(value: string, label: string, allowSubpaths = false): string {
+    if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
       throw new Error(`Invalid HPC staging ${label}: ${value}`);
     }
-    return clean;
+    const normalized = value.replace(/\\/g, "/");
+    if (!allowSubpaths) {
+      const clean = path.basename(normalized);
+      if (!clean || clean !== normalized || clean === "." || clean === ".." || !/^[a-zA-Z0-9._-]+$/.test(clean)) {
+        throw new Error(`Invalid HPC staging ${label}: ${value}`);
+      }
+      return clean;
+    }
+    const segments = normalized.split("/");
+    for (const seg of segments) {
+      if (!seg || seg === "." || seg === ".." || !/^[a-zA-Z0-9._-]+$/.test(seg)) {
+        throw new Error(`Invalid HPC staging ${label}: ${value}`);
+      }
+    }
+    return segments.join("/");
   }
 
   public async createJobStagingManifest(
     jobId: string,
     inputFiles: Record<string, string>,
     expectedOutputs: string[],
+    options?: { maxWalltimeSeconds?: number | undefined },
   ): Promise<JobStagingManifest> {
-    const safeJobId = this.sanitizeStagingIdentifier(jobId, "jobId");
+    const safeJobId = this.sanitizeStagingIdentifier(jobId, "jobId", false);
+    const maxWalltimeSeconds = options?.maxWalltimeSeconds ?? 3600;
+    const putTtlSeconds = Math.min(MAX_S3_PRESIGNED_TTL_SECONDS, Math.max(7200, Math.ceil(maxWalltimeSeconds) + 3600));
     const inputDownloads: StagedDownloadSpec[] = [];
     const outputUploads: StagedUploadSpec[] = [];
 
     // 1. Stage each input file
     for (const [filename, localPath] of Object.entries(inputFiles)) {
-      const safeFile = this.sanitizeStagingIdentifier(filename, "input filename");
+      const safeFile = this.sanitizeStagingIdentifier(filename, "input filename", true);
       const remoteKey = `jobs/${safeJobId}/inputs/${safeFile}`;
       if (fs.existsSync(localPath)) {
         await this.uploadFile(remoteKey, localPath);
       }
-      const downloadUrl = await this.getDownloadUrl(remoteKey);
+      const downloadUrl = await this.getDownloadUrl(remoteKey, putTtlSeconds);
       inputDownloads.push({
         remoteKey,
         downloadUrl,
@@ -205,9 +311,9 @@ export class S3ObjectStager implements ObjectStager {
 
     // 2. Prepare pre-signed upload URLs for expected output files
     for (const filename of expectedOutputs) {
-      const safeFile = this.sanitizeStagingIdentifier(filename, "output filename");
+      const safeFile = this.sanitizeStagingIdentifier(filename, "output filename", false);
       const remoteKey = `jobs/${safeJobId}/outputs/${safeFile}`;
-      const uploadUrl = await this.getUploadUrl(remoteKey);
+      const uploadUrl = await this.getUploadUrl(remoteKey, putTtlSeconds);
       outputUploads.push({
         remoteKey,
         uploadUrl,
@@ -222,7 +328,11 @@ export class S3ObjectStager implements ObjectStager {
     const prologueLines = [
       `# --- MODELScript HPC Prologue (Input Staging) ---`,
       `echo "[HPC-Prologue] Staging input files for Job #${safeJobId}..."`,
-      ...inputDownloads.map((inSpec) => `curl -s -f -o "${inSpec.localFilename}" "${inSpec.downloadUrl}"`),
+      ...inputDownloads.map((inSpec) =>
+        inSpec.localFilename.includes("/")
+          ? `mkdir -p "$(dirname "${inSpec.localFilename}")" && curl -s -f -o "${inSpec.localFilename}" --retry 3 --max-time 60 "${inSpec.downloadUrl}"`
+          : `curl -s -f -o "${inSpec.localFilename}" --retry 3 --max-time 60 "${inSpec.downloadUrl}"`,
+      ),
       `echo "[HPC-Prologue] All inputs staged successfully."`,
     ];
 
@@ -234,7 +344,7 @@ export class S3ObjectStager implements ObjectStager {
         `    sleep 2`,
         `    for logfile in slurm-*.out pbs-*.out output.log; do`,
         `      if [ -f "$logfile" ] && [ -s "$logfile" ]; then`,
-        `        curl -s -f -X PUT --data-binary @"$logfile" "${logUploadUrl}" 2>/dev/null || true`,
+        `        curl -s -f -X PUT --data-binary @"$logfile" --max-time 30 "${logUploadUrl}" 2>/dev/null || true`,
         `        break`,
         `      fi`,
         `    done`,
@@ -252,7 +362,7 @@ export class S3ObjectStager implements ObjectStager {
       `for f in slurm-*.out pbs-*.out; do if [ -f "$f" ] && [ ! -f "output.log" ]; then cp "$f" "output.log"; break; fi; done`,
       ...outputUploads.map(
         (outSpec) =>
-          `if [ -f "${outSpec.targetFilename}" ]; then curl -s -f -X PUT --data-binary @"${outSpec.targetFilename}" "${outSpec.uploadUrl}"; fi`,
+          `if [ -f "${outSpec.targetFilename}" ]; then curl -s -f -X PUT --data-binary @"${outSpec.targetFilename}" --retry 3 --max-time 60 "${outSpec.uploadUrl}"; fi`,
       ),
       `echo "[HPC-Epilogue] Output publishing completed."`,
     ];
@@ -276,7 +386,11 @@ export class S3ObjectStager implements ObjectStager {
       if (startByte > 0) {
         headers["Range"] = `bytes=${startByte}-`;
       }
-      const res = await this.fetchFn(getUrl, { method: "GET", headers });
+      const res = await this.fetchFn(getUrl, {
+        method: "GET",
+        headers,
+        signal: AbortSignal.timeout(S3_FETCH_TIMEOUT_MS),
+      });
       if (res.status === 416) {
         return null;
       }

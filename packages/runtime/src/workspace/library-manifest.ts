@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { AiGovernancePolicy, MlPackageManifestExtension } from "../ml/schemas.js";
 import type { SymbolEntry, SymbolId, SymbolIndex } from "../runtime.js";
 
 /**
@@ -63,12 +64,21 @@ export interface StandardPackMetadata {
 }
 
 /**
- * Metadata declared in `package.json#modelscript` for a library or standard-pack package.
+ * Metadata declared in `package.json#modelscript` for a library, standard-pack, or ML dataset/model package.
  * Allows any language (SysML2, Modelica, PSCAD, SPICE, etc.) to distribute symbols,
- * compliance rules, diagram geometry, lookup tables, and WASM/FMU runtimes.
+ * compliance rules, diagram geometry, lookup tables, WASM/FMU runtimes, and ML training recipes.
  */
 export interface ModelscriptLibraryManifest {
-  category: "library" | "standard-pack";
+  category:
+    | "library"
+    | "standard-pack"
+    | "dataset-pretrain"
+    | "dataset-posttrain"
+    | "training-recipe"
+    | "memory-shard"
+    | "model-core"
+    | "lora-adapter"
+    | "projection-head";
   language?: string | undefined;
   languages?: string[] | undefined;
   /** Relative path to a JSON file containing `LibrarySymbolStub[]`. */
@@ -77,6 +87,10 @@ export interface ModelscriptLibraryManifest {
   diagrams?: string | undefined;
   /** Optional standard-pack compliance metadata. */
   standard?: StandardPackMetadata | undefined;
+  /** Optional AI training & RAG governance consent flags. */
+  aiGovernance?: AiGovernancePolicy | undefined;
+  /** Optional ML dataset, training-recipe, model-core, LoRA, or projection-head manifest metadata. */
+  ml?: MlPackageManifestExtension | undefined;
   /** Optional sandboxed runtime implementations (WASM module, lookup tables, or FMI 3.0 FMUs). */
   runtime?:
     | {

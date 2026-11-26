@@ -134,6 +134,12 @@ function isTrustedGitHubHost(hostname: string): boolean {
   return hostname === "token.actions.githubusercontent.com";
 }
 
+function isTrustedCircleCiIssuer(url: URL): boolean {
+  return (
+    url.protocol === "https:" && url.hostname === "oidc.circleci.com" && /^\/org\/[a-zA-Z0-9-]+$/.test(url.pathname)
+  );
+}
+
 /**
  * Fetches and caches JWKS from an OIDC provider using SSRF-safe public fetch.
  */
@@ -149,8 +155,35 @@ async function fetchJwks(issuerUrl: string): Promise<JwksCacheEntry["keys"]> {
   }
 
   const normalizedIssuer = issuerUrl.replace(/\/+$/, "");
-  const isGitLab = isTrustedGitLabHost(parsed.hostname);
-  const jwksUrl = isGitLab ? `${normalizedIssuer}/-/jwks` : `${normalizedIssuer}/.well-known/jwks.json`;
+  let jwksUrl: string | null = null;
+
+  // Prefer OIDC Discovery (/.well-known/openid-configuration) to obtain the canonical jwks_uri
+  try {
+    const discoveryRes = await safePublicFetch(`${normalizedIssuer}/.well-known/openid-configuration`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (discoveryRes.ok) {
+      const discovery = (await discoveryRes.json()) as { jwks_uri?: unknown };
+      if (typeof discovery.jwks_uri === "string") {
+        const parsedJwks = new URL(discovery.jwks_uri);
+        if (parsedJwks.protocol === "https:") {
+          jwksUrl = discovery.jwks_uri;
+        }
+      }
+    }
+  } catch {
+    // Fall back to provider-specific conventional JWKS paths below
+  }
+
+  if (!jwksUrl) {
+    if (isTrustedGitLabHost(parsed.hostname)) {
+      jwksUrl = `${normalizedIssuer}/-/jwks`;
+    } else if (isTrustedGitHubHost(parsed.hostname)) {
+      jwksUrl = `${normalizedIssuer}/.well-known/jwks`;
+    } else {
+      jwksUrl = `${normalizedIssuer}/.well-known/jwks.json`;
+    }
+  }
 
   const res = await safePublicFetch(jwksUrl, { signal: AbortSignal.timeout(3000) });
   if (!res.ok) {
@@ -225,7 +258,8 @@ export async function verifyOidcToken(token: string, options?: OidcVerifyOptions
       allowed === issuer ||
       (parsedIssuerUrl?.protocol === "https:" &&
         isTrustedGitLabHost(parsedIssuerUrl.hostname) &&
-        allowed === "https://gitlab.com"),
+        allowed === "https://gitlab.com") ||
+      (parsedIssuerUrl !== null && isTrustedCircleCiIssuer(parsedIssuerUrl) && allowed === "https://oidc.circleci.com"),
   );
 
   if (!isAllowedIssuer && (isProdEnv || !isTestEnv)) {

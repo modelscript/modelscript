@@ -4,10 +4,79 @@ import { ArrowLeftIcon, CheckCircleIcon, CodeIcon, GlobeIcon, RepoIcon, ShieldCh
 import { Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import { getConnectedAccounts, initiateOAuthLink, unlinkConnectedAccount, type ConnectedAccount } from "../../../api";
+import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { getApiErrorMessage } from "../../../util/error";
 import { DangerButton, DetailSubtitle, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
+
+export const SETTINGS_STATUS_MESSAGES: {
+  readonly success: Readonly<Record<string, string>>;
+  readonly error: Readonly<Record<string, string>>;
+} = {
+  success: {
+    linkedgithub: "Successfully linked your GitHub account.",
+    linkedgitlab: "Successfully linked your GitLab account.",
+    linkedoidc: "Successfully linked your Enterprise SSO (OIDC) account.",
+    linkedtwitter: "Successfully linked your X (Twitter) account.",
+    linkedfediverse: "Successfully linked your Fediverse account.",
+    linkedgoogle: "Successfully linked your Google account.",
+    linkedorcid: "Successfully linked your ORCID account.",
+    account_linked: "Successfully linked your external account.",
+    account_unlinked: "Successfully disconnected your external account.",
+    billing_updated: "Your billing settings have been updated.",
+    checkout_success: "Your payment completed successfully.",
+    email_verified: "Your email address has been verified.",
+    password_updated: "Your password has been updated.",
+  },
+  error: {
+    missingtoken: "Authentication token was missing. Please try again.",
+    invalidtoken: "Your authentication session is invalid or expired. Please try again.",
+    invalidstate: "The sign-in or linking request could not be verified. Please try again.",
+    oauthnotconfigured: "This OAuth provider is not configured on this instance.",
+    usernotfound: "Your user account could not be found. Please sign in again.",
+    oauthexchangefailed: "Failed to complete authentication with the external provider. Please try again.",
+    oauthfailed: "External account authentication failed. Please try again.",
+    missingoauthcode: "Authorization code was missing from the OAuth callback. Please try again.",
+    disallowedfediversedomain: "That Fediverse instance domain is not permitted on this server.",
+    accountalreadyexists: "An account with this identity already exists.",
+    accountexistswithpassword: "An account with this email already exists. Please sign in with your password.",
+    registrationrestricted: "Account registration is currently restricted on this instance.",
+  },
+};
+
+export const GENERIC_SETTINGS_ERROR_MESSAGE = "An error occurred while updating your settings.";
+
+export function resolveSettingsBannerMessage(
+  kind: "success" | "error",
+  rawValue: string | null | undefined,
+): string | null {
+  if (!rawValue) return null;
+  const normalized = rawValue.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (kind === "success") {
+    return Object.prototype.hasOwnProperty.call(SETTINGS_STATUS_MESSAGES.success, normalized)
+      ? SETTINGS_STATUS_MESSAGES.success[normalized]!
+      : null;
+  }
+
+  return Object.prototype.hasOwnProperty.call(SETTINGS_STATUS_MESSAGES.error, normalized)
+    ? SETTINGS_STATUS_MESSAGES.error[normalized]!
+    : GENERIC_SETTINGS_ERROR_MESSAGE;
+}
+
+export function validateOAuthRedirectUrl(redirectUrl: string, baseOrigin: string): string | null {
+  try {
+    const parsed = new URL(redirectUrl, baseOrigin);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return null;
+    }
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
 
 export interface ConnectedAccountsTabProps {
   onBack: () => void;
@@ -16,7 +85,9 @@ export interface ConnectedAccountsTabProps {
 export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBack }) => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
+  const { user } = useAuth();
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
+  const [supportedProviders, setSupportedProviders] = useState<string[]>(["github", "gitlab"]);
   const [confirmingDisconnectId, setConfirmingDisconnectId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -27,29 +98,43 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
       const params = new URLSearchParams(window.location.search);
       const successParam = params.get("success");
       const errorParam = params.get("error");
-      if (successParam) {
-        if (successParam.startsWith("Linked")) {
-          const linkedProvider = successParam.replace(/^Linked/i, "");
-          setSuccess(`Successfully linked your ${linkedProvider} account.`);
-        } else {
-          setSuccess(successParam);
-        }
+      const resolvedSuccess = resolveSettingsBannerMessage("success", successParam);
+      const resolvedError = resolvedSuccess ? null : resolveSettingsBannerMessage("error", errorParam);
+      if (resolvedSuccess) {
+        setSuccess(resolvedSuccess);
       }
-      if (errorParam) {
-        setError(`Account linking failed: ${errorParam}`);
+      if (resolvedError) {
+        setError(resolvedError);
+      }
+      if (params.has("success") || params.has("error")) {
+        params.delete("success");
+        params.delete("error");
+        const nextSearch = params.toString();
+        const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+        window.history.replaceState(window.history.state, "", nextUrl);
       }
     }
 
     setIsLoading(true);
     getConnectedAccounts()
       .then((res) => {
-        if (res && Array.isArray(res.providers)) {
-          setAccounts(res.providers);
+        const payload = res as { providers?: ConnectedAccount[]; supportedProviders?: string[] } | null;
+        if (payload && Array.isArray(payload.providers)) {
+          setAccounts(payload.providers);
+        }
+        if (payload && Array.isArray(payload.supportedProviders)) {
+          setSupportedProviders(payload.supportedProviders.map((p) => p.toLowerCase()));
+        } else {
+          setSupportedProviders(["github", "gitlab"]);
         }
       })
       .catch(() => {})
       .finally(() => setIsLoading(false));
   }, []);
+
+  const connectedAccounts = accounts.filter((a) => a.connected);
+  const isLastLoginMethod = !user?.has_password && connectedAccounts.length <= 1;
+  const lockoutHelperText = "Set a password in Your Account settings before disconnecting your only sign-in method.";
 
   const providers = [
     {
@@ -94,6 +179,7 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
 
         {success && (
           <Box
+            role="status"
             mb={3}
             p={3}
             style={{ background: "var(--color-success-subtle)", color: "var(--color-success-fg)", borderRadius: "6px" }}
@@ -103,6 +189,7 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
         )}
         {error && (
           <Box
+            role="alert"
             mb={3}
             p={3}
             style={{ background: "var(--color-danger-subtle)", color: "var(--color-danger-fg)", borderRadius: "6px" }}
@@ -115,6 +202,7 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
           {providers.map((prov) => {
             const account = accounts.find((a) => a.provider.toLowerCase() === prov.id.toLowerCase());
             const isConnected = Boolean(account?.connected);
+            const isSupported = supportedProviders.includes(prov.id.toLowerCase());
             const Icon = prov.icon;
 
             return (
@@ -168,11 +256,16 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                     <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
                       {isConnected && account?.identifier ? `Linked as: ${account.identifier}` : prov.desc}
                     </DetailSubtitle>
+                    {isConnected && isLastLoginMethod && (
+                      <DetailSubtitle style={{ display: "block", marginTop: "4px", fontSize: "12px" }}>
+                        {lockoutHelperText}
+                      </DetailSubtitle>
+                    )}
                   </Box>
                 </Box>
 
                 {isConnected ? (
-                  confirmingDisconnectId === prov.id ? (
+                  confirmingDisconnectId === prov.id && !isLastLoginMethod ? (
                     <Box display="flex" alignItems="center" gap={2}>
                       <SecondaryButton
                         type="button"
@@ -207,12 +300,26 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                   ) : (
                     <SecondaryButton
                       type="button"
-                      style={{ borderColor: "rgba(239, 68, 68, 0.4)", color: "var(--color-danger-fg, #ef4444)" }}
-                      onClick={() => setConfirmingDisconnectId(prov.id)}
+                      disabled={isLastLoginMethod}
+                      title={isLastLoginMethod ? lockoutHelperText : undefined}
+                      style={{
+                        borderColor: "rgba(239, 68, 68, 0.4)",
+                        color: "var(--color-danger-fg, #ef4444)",
+                        opacity: isLastLoginMethod ? 0.5 : 1,
+                        cursor: isLastLoginMethod ? "not-allowed" : "pointer",
+                      }}
+                      onClick={() => {
+                        if (isLastLoginMethod) return;
+                        setConfirmingDisconnectId(prov.id);
+                      }}
                     >
                       Disconnect
                     </SecondaryButton>
                   )
+                ) : !isSupported ? (
+                  <SecondaryButton type="button" disabled style={{ opacity: 0.6, cursor: "not-allowed" }}>
+                    Coming Soon (Not Enabled)
+                  </SecondaryButton>
                 ) : (
                   <SaveButton
                     type="button"
@@ -222,7 +329,12 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                       setSuccess(null);
                       try {
                         const redirectUrl = await initiateOAuthLink(prov.id);
-                        window.location.href = redirectUrl;
+                        const safeRedirectUrl = validateOAuthRedirectUrl(redirectUrl, window.location.origin);
+                        if (!safeRedirectUrl) {
+                          setError(`Refused to redirect to unsupported URL for ${prov.name}.`);
+                          return;
+                        }
+                        window.location.href = safeRedirectUrl;
                       } catch (err: unknown) {
                         setError(
                           getApiErrorMessage(

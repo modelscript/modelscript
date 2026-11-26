@@ -13,7 +13,13 @@ import {
   resolveNearestNodePortId,
   scheduleUpdateSolderDots,
 } from "./canvas-edge-routing.js";
-import { enqueueDiagramAction, getIsRenderingDiagram, getReadOnlyForGraph, toSchemaY } from "./canvas-state.js";
+import {
+  enqueueDiagramAction,
+  getIsRenderingDiagram,
+  getOptionsForGraph,
+  getReadOnlyForGraph,
+  toSchemaY,
+} from "./canvas-state.js";
 import type { CanvasInteractionFlags, Cell, Edge, EdgeTerminal, Graph, Node } from "./canvas-types.js";
 import { isEphemeralDiagramNode } from "./drop-placeholder.js";
 import {
@@ -433,6 +439,33 @@ export function attachDiagramMutationHandlers(params: {
     const points = simplifyCollinearPoints([roundedSrc, ...roundedHealed, roundedTgt], 0.05);
 
     if (isNew) {
+      const lspValidator = getOptionsForGraph(g)?.onValidateConnection;
+      if (lspValidator && sourceCell?.isNode() && targetCell?.isNode()) {
+        const res = lspValidator({
+          sourceNode: source.cell,
+          sourcePort: sourcePortId ?? "",
+          targetNode: target.cell,
+          targetPort: targetPortId ?? "",
+        });
+        if (res && typeof (res as Promise<unknown>).then === "function") {
+          void (res as Promise<{ compatible: boolean }>)
+            .then((r) => {
+              if (!r.compatible) {
+                g.removeCell(edge);
+                return;
+              }
+              enqueueDiagramAction({ type: "connect", source: srcStr, target: tgtStr, points }, g);
+            })
+            .catch(() => {
+              enqueueDiagramAction({ type: "connect", source: srcStr, target: tgtStr, points }, g);
+            });
+          return;
+        }
+        if (res && (res as { compatible?: boolean }).compatible === false) {
+          g.removeCell(edge);
+          return;
+        }
+      }
       enqueueDiagramAction(
         {
           type: "connect",

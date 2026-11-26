@@ -58,6 +58,7 @@ import {
 } from "@modelscript/cad";
 
 import type { UnifiedWorkspace } from "@modelscript/runtime";
+import type { ScadModifierChar } from "./feature-tree.js";
 import { resolveScadDependencyInfo } from "./indexing.js";
 import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
 
@@ -596,6 +597,8 @@ export class ScadEvaluator {
   private currentUri?: string | undefined;
   private activeDirectiveStack = new Set<string>();
   private callDepth = 0;
+  private isolatedSolids: Solid[] = [];
+  private ghostSolids: Solid[] = [];
 
   constructor(options?: ScadEvaluationOptions) {
     this.globalScope = new Scope();
@@ -620,12 +623,31 @@ export class ScadEvaluator {
   }
 
   /**
+   * Returns debug (`#`) and background (`%`) ghost solids collected during the most recent evaluation.
+   */
+  public getGhostSolids(): Solid[] {
+    return [...this.ghostSolids];
+  }
+
+  /**
+   * Returns true if any `!` (root/isolate) modifier was encountered during the most recent evaluation.
+   */
+  public hasIsolatedRoot(): boolean {
+    return this.isolatedSolids.length > 0;
+  }
+
+  /**
    * Evaluates a parsed SourceFile CST root node into a list of top-level Solid parts.
    */
   public evaluateParts(rootNode: ScadCstNode): Solid[] {
+    this.isolatedSolids = [];
+    this.ghostSolids = [];
     const solids: Solid[] = [];
     this.evaluateStatements(rootNode, this.globalScope, solids);
-    if (solids.length === 0 && this.globalScope.modules.size > 0) {
+    if (this.isolatedSolids.length > 0) {
+      return [...this.isolatedSolids];
+    }
+    if (solids.length === 0 && this.ghostSolids.length === 0 && this.globalScope.modules.size > 0) {
       for (const [modName, modDef] of this.globalScope.modules) {
         const modScope = new Scope(modDef.scope);
         for (const pName of modDef.params) {
@@ -638,6 +660,9 @@ export class ScadEvaluator {
         }
         const modSolids: Solid[] = [];
         this.evaluateStatement(modDef.bodyNode, modScope, modSolids);
+        if (this.isolatedSolids.length > 0) {
+          return [...this.isolatedSolids];
+        }
         for (const s of modSolids) {
           solids.push(s.name ? s : (Object.freeze({ ...s, name: modName }) as Solid));
         }
@@ -750,16 +775,34 @@ export class ScadEvaluator {
 
     // Pass 2: Evaluate variable assignments, include statements, control flow, and geometry statements in order
     const pendingPortTags: { portName: string; portType: BoundaryPatchType; normal?: Vec3 | undefined }[] = [];
+    let pendingModifier: ScadModifierChar | null = null;
     for (let i = 0; i < containerNode.childCount; i++) {
       const stmt = containerNode.child(i);
       if (!stmt) continue;
+      const modChar = this.extractModifierChar(stmt);
+      if (modChar) {
+        pendingModifier = modChar;
+        continue;
+      }
+      if (
+        stmt.type === "{" ||
+        stmt.type === "}" ||
+        stmt.type === "Comment" ||
+        stmt.type === "LINE_COMMENT" ||
+        stmt.type === "BLOCK_COMMENT"
+      ) {
+        continue;
+      }
       const standaloneTag = this.tryExtractStandaloneTagPort(stmt, scope);
       if (standaloneTag) {
         pendingPortTags.push(standaloneTag);
+        pendingModifier = null;
         continue;
       }
+      const activeMod = pendingModifier;
+      pendingModifier = null;
       const prevLen = outSolids.length;
-      this.evaluateStatement(stmt, scope, outSolids);
+      this.evaluateStatement(stmt, scope, outSolids, activeMod);
       if (pendingPortTags.length > 0 && outSolids.length > prevLen) {
         let tagged = outSolids[prevLen]!;
         for (const tag of pendingPortTags) {
@@ -777,6 +820,49 @@ export class ScadEvaluator {
       }
       outSolids[lastIdx] = tagged;
     }
+  }
+
+  /**
+   * Returns the OpenSCAD modifier character (`*`, `!`, `#`, `%`) if `node` is a modifier CST token
+   * or parser-recovered `ERROR` node representing a single modifier prefix, otherwise `null`.
+   */
+  private extractModifierChar(node: ScadCstNode | null | undefined): ScadModifierChar | null {
+    if (!node) return null;
+    const txt = node.text.trim();
+    if (txt === "*" || txt === "!" || txt === "#" || txt === "%") {
+      if (node.type === "Modifier" || node.type === "ERROR" || node.type === txt) {
+        return txt;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Checks whether `targetChild` is immediately preceded inside `parent` by an OpenSCAD modifier token.
+   */
+  private findPrecedingModifier(parent: ScadCstNode, targetChild: ScadCstNode): ScadModifierChar | null {
+    const targetStart = targetChild.startIndex ?? targetChild.startOffset;
+    let targetIdx = -1;
+    for (let i = 0; i < parent.childCount; i++) {
+      const ch = parent.child(i);
+      if (!ch) continue;
+      if (
+        ch === targetChild ||
+        (targetStart !== undefined && (ch.startIndex ?? ch.startOffset) === targetStart && ch.type === targetChild.type)
+      ) {
+        targetIdx = i;
+        break;
+      }
+    }
+    for (let i = targetIdx - 1; i >= 0; i--) {
+      const prev = parent.child(i);
+      if (!prev) continue;
+      if (prev.type === "Comment" || prev.type === "LINE_COMMENT" || prev.type === "BLOCK_COMMENT") {
+        continue;
+      }
+      return this.extractModifierChar(prev);
+    }
+    return null;
   }
 
   /**
@@ -826,16 +912,64 @@ export class ScadEvaluator {
   }
 
   /**
-   * Dispatches evaluation for a single statement node (declarations, control flow, prefix or chained solids).
+   * Dispatches evaluation for a single statement node (declarations, control flow, prefix or chained solids),
+   * applying OpenSCAD modifier prefixes (`*`, `!`, `#`, `%`) when present.
    */
-  private evaluateStatement(stmtNode: ScadCstNode, scope: Scope, outSolids: Solid[]): void {
+  private evaluateStatement(
+    stmtNode: ScadCstNode,
+    scope: Scope,
+    outSolids: Solid[],
+    modifier?: ScadModifierChar | null,
+  ): void {
+    if (this.extractModifierChar(stmtNode)) {
+      return;
+    }
+
     const type = stmtNode.type;
 
     if (type === "Statement" || type === "OperatorChildStatement") {
-      const inner = stmtNode.child(0);
-      if (inner) this.evaluateStatement(inner, scope, outSolids);
+      let effectiveMod: ScadModifierChar | null = modifier ?? null;
+      let inner: ScadCstNode | null = null;
+      for (let i = 0; i < stmtNode.childCount; i++) {
+        const ch = stmtNode.child(i);
+        if (!ch) continue;
+        const chMod = this.extractModifierChar(ch);
+        if (chMod) {
+          effectiveMod = chMod;
+          continue;
+        }
+        if (!inner) {
+          inner = ch;
+        }
+      }
+      if (inner) this.evaluateStatement(inner, scope, outSolids, effectiveMod);
       return;
     }
+
+    if (modifier === "*") {
+      return;
+    }
+
+    if (modifier === "!" || modifier === "#" || modifier === "%") {
+      const localSolids: Solid[] = [];
+      this.evaluateStatementInner(stmtNode, scope, localSolids);
+      if (modifier === "!") {
+        this.isolatedSolids.push(...localSolids);
+        outSolids.push(...localSolids);
+      } else if (modifier === "#") {
+        this.ghostSolids.push(...localSolids);
+        outSolids.push(...localSolids);
+      } else if (modifier === "%") {
+        this.ghostSolids.push(...localSolids);
+      }
+      return;
+    }
+
+    this.evaluateStatementInner(stmtNode, scope, outSolids);
+  }
+
+  private evaluateStatementInner(stmtNode: ScadCstNode, scope: Scope, outSolids: Solid[]): void {
+    const type = stmtNode.type;
 
     if (type === "UseStatement") {
       return;
@@ -887,9 +1021,11 @@ export class ScadEvaluator {
         if (c && (c.type === "Statement" || c.type === "BlockStatement")) stmts.push(c);
       }
       if (condVal && stmts[0]) {
-        this.evaluateStatement(stmts[0], scope, outSolids);
+        const branchMod = this.findPrecedingModifier(stmtNode, stmts[0]);
+        this.evaluateStatement(stmts[0], scope, outSolids, branchMod);
       } else if (!condVal && stmts[1]) {
-        this.evaluateStatement(stmts[1], scope, outSolids);
+        const branchMod = this.findPrecedingModifier(stmtNode, stmts[1]);
+        this.evaluateStatement(stmts[1], scope, outSolids, branchMod);
       }
       return;
     }
@@ -899,12 +1035,13 @@ export class ScadEvaluator {
       const exprNode = this.findChildByType(stmtNode, "Expression");
       const bodyNode = this.findChildByType(stmtNode, "Statement") ?? this.findChildByType(stmtNode, "BlockStatement");
       if (varNode && exprNode && bodyNode) {
+        const bodyMod = this.findPrecedingModifier(stmtNode, bodyNode);
         const rangeOrList = this.evaluateExpression(exprNode, scope);
         const loopScope = new Scope(scope);
         if (Array.isArray(rangeOrList)) {
           for (const item of rangeOrList) {
             loopScope.setVar(varNode.text.trim(), item);
-            this.evaluateStatement(bodyNode, loopScope, outSolids);
+            this.evaluateStatement(bodyNode, loopScope, outSolids, bodyMod);
           }
         }
       }
@@ -1327,7 +1464,12 @@ export class ScadEvaluator {
 
     if (!opNode || !childNode) return null;
 
+    const childMod = this.findPrecedingModifier(prefixNode, childNode);
+
     if (opNode.type === "ModuleInstantiation") {
+      if (childMod === "*") {
+        return this.tryEvaluateSolid(opNode, scope);
+      }
       return this.tryEvaluateSolid(opNode, scope, childNode);
     }
 
@@ -1343,7 +1485,7 @@ export class ScadEvaluator {
       const center = Boolean(args.named.get("center") ?? false);
 
       const childSolids: Solid[] = [];
-      this.evaluateStatement(childNode, scope, childSolids);
+      this.evaluateStatement(childNode, scope, childSolids, childMod);
       if (childSolids.length > 0) {
         let combined = childSolids[0]!;
         for (let i = 1; i < childSolids.length; i++) {
@@ -1363,7 +1505,7 @@ export class ScadEvaluator {
       const fn = Math.max(8, Number(args.named.get("$fn") ?? scope.getVar("$fn") ?? 24));
 
       const childSolids: Solid[] = [];
-      this.evaluateStatement(childNode, scope, childSolids);
+      this.evaluateStatement(childNode, scope, childSolids, childMod);
       if (childSolids.length > 0) {
         const first = childSolids[0]!;
         const profile = extract2DProfile(first);
@@ -1379,13 +1521,14 @@ export class ScadEvaluator {
       return null;
     }
 
-    // Collect child solids
+    // Collect child solids (recording ghost range so transforms also position nested #/% ghosts)
+    const ghostStart = this.ghostSolids.length;
     const childSolids: Solid[] = [];
-    this.evaluateStatement(childNode, scope, childSolids);
-    if (childSolids.length === 0) return null;
+    this.evaluateStatement(childNode, scope, childSolids, childMod);
 
     // 1. TagPortOp: tag_port("name", "type", normal)
     if (opNode.type === "TagPortOp" || opText.startsWith("tag_port")) {
+      if (childSolids.length === 0) return null;
       const argListNode = this.findChildByType(opNode, "ArgumentList");
       const args = this.evaluateArgumentList(argListNode, scope);
       const portName = String(args.positional[0] ?? args.named.get("name") ?? "port");
@@ -1404,6 +1547,7 @@ export class ScadEvaluator {
 
     // 2. BooleanOp: union, difference, intersection, hull, minkowski
     if (opNode.type === "BooleanOp" || /^(union|difference|intersection|hull|minkowski)/.test(opText)) {
+      if (childSolids.length === 0) return null;
       if (opText.startsWith("union")) {
         let acc = childSolids[0]!;
         for (let i = 1; i < childSolids.length; i++) {
@@ -1466,15 +1610,18 @@ export class ScadEvaluator {
     }
 
     // 3. TransformOp: translate, rotate, scale, resize, mirror, multmatrix, color, offset
+    const hasNewGhosts = this.ghostSolids.length > ghostStart;
+    if (childSolids.length === 0 && !hasNewGhosts) return null;
+
     const argListNode = this.findChildByType(opNode, "ArgumentList");
     const args = this.evaluateArgumentList(argListNode, scope);
 
-    let combinedChild = childSolids[0]!;
-    for (let i = 1; i < childSolids.length; i++) {
-      combinedChild = union(combinedChild, childSolids[i]!);
-    }
-
     if (opText.startsWith("color")) {
+      if (childSolids.length === 0) return null;
+      let combinedChild = childSolids[0]!;
+      for (let i = 1; i < childSolids.length; i++) {
+        combinedChild = union(combinedChild, childSolids[i]!);
+      }
       const cArg = args.positional[0] ?? args.named.get("c");
       const alphaArg = args.positional[1] ?? args.named.get("alpha");
       return withSolidColor(combinedChild, parseScadColor(cArg, alphaArg));
@@ -1504,42 +1651,54 @@ export class ScadEvaluator {
       scaleRange: transformMethod === "scale" ? { startOffset, endOffset, isFluent: false } : undefined,
     };
 
-    if (opText.startsWith("translate")) {
-      const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 0];
-      const vec: Vec3 = Array.isArray(v)
-        ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)]
-        : [Number(v), 0, 0];
-      return translate(combinedChild, vec, { ...sourceMeta, translation: vec });
-    }
-    if (opText.startsWith("rotate")) {
-      return this.applyScadRotation(combinedChild, args, sourceMeta);
-    }
-    if (opText.startsWith("scale")) {
-      const v = args.positional[0] ?? args.named.get("v") ?? [1, 1, 1];
-      const vec: Vec3 = Array.isArray(v)
-        ? [Number(v[0] ?? 1), Number(v[1] ?? 1), Number(v[2] ?? 1)]
-        : [Number(v), Number(v), Number(v)];
-      return scale(combinedChild, vec, { ...sourceMeta, scale: vec });
-    }
-    if (opText.startsWith("resize")) {
-      return this.applyResize(combinedChild, args, sourceMeta);
-    }
-    if (opText.startsWith("mirror")) {
-      const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 1];
-      const vec: Vec3 = Array.isArray(v)
-        ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 1)]
-        : [Number(v), 0, 0];
-      return mirror(combinedChild, vec, sourceMeta);
-    }
-    if (opText.startsWith("multmatrix")) {
-      return this.applyMultmatrix(combinedChild, args, sourceMeta);
-    }
-    if (opText.startsWith("offset")) {
-      const d = Number(args.positional[0] ?? args.named.get("r") ?? args.named.get("delta") ?? 0);
-      return this.applyOffsetToTree(combinedChild, d);
+    const applyTransform = (target: Solid): Solid => {
+      if (opText.startsWith("translate")) {
+        const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 0];
+        const vec: Vec3 = Array.isArray(v)
+          ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 0)]
+          : [Number(v), 0, 0];
+        return translate(target, vec, { ...sourceMeta, translation: vec });
+      }
+      if (opText.startsWith("rotate")) {
+        return this.applyScadRotation(target, args, sourceMeta);
+      }
+      if (opText.startsWith("scale")) {
+        const v = args.positional[0] ?? args.named.get("v") ?? [1, 1, 1];
+        const vec: Vec3 = Array.isArray(v)
+          ? [Number(v[0] ?? 1), Number(v[1] ?? 1), Number(v[2] ?? 1)]
+          : [Number(v), Number(v), Number(v)];
+        return scale(target, vec, { ...sourceMeta, scale: vec });
+      }
+      if (opText.startsWith("resize")) {
+        return this.applyResize(target, args, sourceMeta);
+      }
+      if (opText.startsWith("mirror")) {
+        const v = args.positional[0] ?? args.named.get("v") ?? [0, 0, 1];
+        const vec: Vec3 = Array.isArray(v)
+          ? [Number(v[0] ?? 0), Number(v[1] ?? 0), Number(v[2] ?? 1)]
+          : [Number(v), 0, 0];
+        return mirror(target, vec, sourceMeta);
+      }
+      if (opText.startsWith("multmatrix")) {
+        return this.applyMultmatrix(target, args, sourceMeta);
+      }
+      if (opText.startsWith("offset")) {
+        const d = Number(args.positional[0] ?? args.named.get("r") ?? args.named.get("delta") ?? 0);
+        return this.applyOffsetToTree(target, d);
+      }
+      return target;
+    };
+
+    for (let g = ghostStart; g < this.ghostSolids.length; g++) {
+      this.ghostSolids[g] = applyTransform(this.ghostSolids[g]!);
     }
 
-    return combinedChild;
+    if (childSolids.length === 0) return null;
+    let combinedChild = childSolids[0]!;
+    for (let i = 1; i < childSolids.length; i++) {
+      combinedChild = union(combinedChild, childSolids[i]!);
+    }
+    return applyTransform(combinedChild);
   }
 
   /**
@@ -1902,14 +2061,20 @@ export class ScadEvaluator {
               ? (childStmt.child(0) ?? childStmt)
               : childStmt;
           if (unwrappedChild.type === "BlockStatement") {
+            let pendingMod: ScadModifierChar | null = null;
             for (let i = 0; i < unwrappedChild.childCount; i++) {
               const ch = unwrappedChild.child(i);
-              if (ch && ch.type !== "{" && ch.type !== "}") {
-                this.evaluateStatement(ch, scope, instChildren);
+              if (!ch || ch.type === "{" || ch.type === "}") continue;
+              const modChar = this.extractModifierChar(ch);
+              if (modChar) {
+                pendingMod = modChar;
+                continue;
               }
+              this.evaluateStatement(ch, scope, instChildren, pendingMod);
+              pendingMod = null;
             }
           } else {
-            this.evaluateStatement(unwrappedChild, scope, instChildren);
+            this.evaluateStatement(childStmt, scope, instChildren);
           }
         }
         return instChildren;
@@ -2846,8 +3011,8 @@ function tokenizeScad(source: string): ScadToken[] {
       i += 2;
       continue;
     }
-    // Single-character operators
-    if ("+-*/%^<>!?=".includes(ch)) {
+    // Single-character operators (including OpenSCAD modifiers *, !, #, %)
+    if ("+-*/%^<>!?=#".includes(ch)) {
       tokens.push({ type: "op", text: ch, start: i, end: i + 1 });
       i++;
       continue;
@@ -3333,9 +3498,20 @@ export function parseScadSource(source: string): ScadCstNode {
     const tok = peek();
     if (tok.type === "eof" || tok.text === "}") return null;
 
-    // Strip OpenSCAD debug/background/root modifiers (!, #, %, *) before statements
-    if (tok.type === "op" && (tok.text === "!" || tok.text === "*")) {
-      next();
+    // Preserve OpenSCAD suppress/root/debug/background modifiers (*, !, #, %) before statements
+    if (tok.type === "op" && (tok.text === "*" || tok.text === "!" || tok.text === "#" || tok.text === "%")) {
+      const modTok = next();
+      const modNode = new SyntheticScadCstNode("Modifier", modTok.text, [], modTok.start, modTok.end);
+      const innerStmt = parseStatement();
+      if (!innerStmt) return null;
+      const endPos = innerStmt.endIndex ?? modTok.end;
+      return new SyntheticScadCstNode(
+        "Statement",
+        source.slice(modTok.start, endPos),
+        [modNode, innerStmt],
+        modTok.start,
+        endPos,
+      );
     }
 
     if (peek().type === "directive") {

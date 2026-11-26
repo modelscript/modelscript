@@ -182,9 +182,11 @@ export async function createStripePaymentIntent(
       client_secret?: string;
       status?: string;
     };
-    const paymentIntentId = stripeIntent.id ?? `pi_${crypto.randomBytes(12).toString("hex")}`;
-    const clientSecret =
-      stripeIntent.client_secret ?? `${paymentIntentId}_secret_${crypto.randomBytes(16).toString("hex")}`;
+    if (!stripeIntent.id || !stripeIntent.client_secret) {
+      throw new Error("Stripe PaymentIntent response missing id or client_secret.");
+    }
+    const paymentIntentId = stripeIntent.id;
+    const clientSecret = stripeIntent.client_secret;
     return {
       clientSecret,
       paymentIntentId,
@@ -239,6 +241,7 @@ export async function verifyStripePaymentIntent(
   paymentIntentId: string,
   expectedUserId: number,
   expectedAmountCredits: number,
+  expectedOrgId?: number | undefined,
 ): Promise<{ verified: boolean; reason?: string | undefined }> {
   if (!paymentIntentId || !paymentIntentId.startsWith("pi_")) {
     return { verified: false, reason: "Invalid PaymentIntent ID format." };
@@ -261,8 +264,9 @@ export async function verifyStripePaymentIntent(
         id?: string;
         status?: string;
         amount?: number;
+        amount_received?: number;
         currency?: string;
-        metadata?: { userId?: string };
+        metadata?: { userId?: string; orgId?: string };
       };
       if (pi.status !== "succeeded") {
         return {
@@ -273,10 +277,14 @@ export async function verifyStripePaymentIntent(
       if (pi.currency && pi.currency.toLowerCase() !== "usd") {
         return { verified: false, reason: `Unsupported PaymentIntent currency '${pi.currency}'.` };
       }
-      if (pi.metadata?.userId && String(pi.metadata.userId) !== String(expectedUserId)) {
-        return { verified: false, reason: "PaymentIntent userId metadata mismatch." };
+      if (!pi.metadata?.userId || String(pi.metadata.userId) !== String(expectedUserId)) {
+        return { verified: false, reason: "PaymentIntent userId metadata missing or mismatch." };
       }
-      if (typeof pi.amount === "number" && pi.amount !== expectedCents) {
+      if (expectedOrgId !== undefined && String(pi.metadata?.orgId ?? "") !== String(expectedOrgId)) {
+        return { verified: false, reason: "PaymentIntent orgId metadata missing or mismatch." };
+      }
+      const settledCents = typeof pi.amount_received === "number" ? pi.amount_received : pi.amount;
+      if (typeof settledCents !== "number" || settledCents < expectedCents) {
         return { verified: false, reason: "PaymentIntent amount mismatch." };
       }
       return { verified: true };
@@ -382,7 +390,14 @@ export async function createStripeCheckoutSession(
       "line_items[0][quantity]": "1",
       "metadata[userId]": String(userId),
       "metadata[amountCredits]": String(amountCredits),
-      ...(orgId ? { "metadata[orgId]": String(orgId) } : {}),
+      "payment_intent_data[metadata][userId]": String(userId),
+      "payment_intent_data[metadata][amountCredits]": String(amountCredits),
+      ...(orgId
+        ? {
+            "metadata[orgId]": String(orgId),
+            "payment_intent_data[metadata][orgId]": String(orgId),
+          }
+        : {}),
     });
 
     const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -399,10 +414,12 @@ export async function createStripeCheckoutSession(
       throw new Error(`Stripe Checkout Session creation failed (${response.status}): ${errBody}`);
     }
     const session = (await response.json()) as { id?: string; url?: string };
-    const sessionId = session.id ?? `cs_live_${crypto.randomBytes(12).toString("hex")}`;
+    if (!session.id || !session.url) {
+      throw new Error("Stripe Checkout Session response missing id or url.");
+    }
     return {
-      sessionId,
-      checkoutUrl: session.url ?? `https://checkout.stripe.com/c/pay/${sessionId}`,
+      sessionId: session.id,
+      checkoutUrl: session.url,
       amountCredits,
       amountCents,
       automaticTax: true,
@@ -429,11 +446,214 @@ export async function createStripeCheckoutSession(
   };
 }
 
+export type SubscriptionTier = "pro" | "team";
+export type SubscriptionBillingCycle = "monthly" | "annual";
+
+export const SUBSCRIPTION_PLANS: Record<
+  SubscriptionTier,
+  Record<
+    SubscriptionBillingCycle,
+    {
+      amountCents: number;
+      interval: "month" | "year";
+      envPriceId: string;
+      displayName: string;
+    }
+  >
+> = {
+  pro: {
+    monthly: {
+      amountCents: 2900,
+      interval: "month",
+      envPriceId: "STRIPE_PRICE_PRO_MONTHLY",
+      displayName: "Ansatz Pro Subscription (Monthly)",
+    },
+    annual: {
+      amountCents: 28800,
+      interval: "year",
+      envPriceId: "STRIPE_PRICE_PRO_ANNUAL",
+      displayName: "Ansatz Pro Subscription (Annual)",
+    },
+  },
+  team: {
+    monthly: {
+      amountCents: 9900,
+      interval: "month",
+      envPriceId: "STRIPE_PRICE_TEAM_MONTHLY",
+      displayName: "Ansatz Team Subscription (Monthly)",
+    },
+    annual: {
+      amountCents: 94800,
+      interval: "year",
+      envPriceId: "STRIPE_PRICE_TEAM_ANNUAL",
+      displayName: "Ansatz Team Subscription (Annual)",
+    },
+  },
+};
+
+export interface CreateSubscriptionCheckoutSessionOptions {
+  userId: number;
+  orgId?: number | undefined;
+  tier: SubscriptionTier;
+  billingCycle: SubscriptionBillingCycle;
+  clientIp?: string | undefined;
+  successUrl?: string | undefined;
+  cancelUrl?: string | undefined;
+  idempotencyKey?: string | undefined;
+}
+
+export interface SubscriptionCheckoutSessionResult {
+  sessionId: string;
+  checkoutUrl: string;
+  mode: "subscription";
+  tier: SubscriptionTier;
+  billingCycle: SubscriptionBillingCycle;
+  interval: "month" | "year";
+  amountCents: number;
+  currency: "usd";
+  automaticTax: boolean;
+  taxIdCollection: boolean;
+}
+
+/**
+ * Creates a Stripe Subscription Checkout Session in recurring mode ("subscription")
+ * with exact USD pricing ($29/$288 for Pro, $99/$948 for Team) and optional Stripe Price IDs.
+ */
+export async function createStripeSubscriptionCheckoutSession(
+  options: CreateSubscriptionCheckoutSessionOptions,
+  guard: PaymentFraudGuard = defaultPaymentGuard,
+): Promise<SubscriptionCheckoutSessionResult> {
+  const {
+    userId,
+    orgId,
+    tier,
+    billingCycle,
+    clientIp = "127.0.0.1",
+    successUrl = "https://hub.modelscript.org/settings?tab=billing&checkout=success",
+    cancelUrl = "https://hub.modelscript.org/settings?tab=billing&checkout=cancelled",
+    idempotencyKey,
+  } = options;
+
+  if (tier !== "pro" && tier !== "team") {
+    throw new Error(`Invalid subscription tier: '${String(tier)}'. Allowed tiers are 'pro' and 'team'.`);
+  }
+  if (billingCycle !== "monthly" && billingCycle !== "annual") {
+    throw new Error(`Invalid billing cycle: '${String(billingCycle)}'. Allowed cycles are 'monthly' and 'annual'.`);
+  }
+
+  const userKey = `user:${userId}`;
+  const ipKey = `ip:${clientIp}`;
+  if (guard.isLocked(userKey) || guard.isLocked(ipKey)) {
+    throw new Error("Billing actions temporarily locked due to excessive failed payment attempts.");
+  }
+
+  const plan = SUBSCRIPTION_PLANS[tier][billingCycle];
+  const configuredPriceId =
+    process.env[plan.envPriceId]?.trim() ||
+    (tier === "team" && billingCycle === "monthly" ? process.env["STRIPE_PRICE_TEAM_SEAT_MONTHLY"]?.trim() : undefined);
+  const stripeKey = process.env["STRIPE_SECRET_KEY"];
+
+  if (stripeKey) {
+    const bodyParams = new URLSearchParams({
+      mode: "subscription",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      "automatic_tax[enabled]": "true",
+      "tax_id_collection[enabled]": "true",
+      "line_items[0][quantity]": "1",
+      "metadata[userId]": String(userId),
+      "metadata[tier]": tier,
+      "metadata[billingCycle]": billingCycle,
+      "metadata[kind]": "subscription",
+      "subscription_data[metadata][userId]": String(userId),
+      "subscription_data[metadata][tier]": tier,
+      "subscription_data[metadata][billingCycle]": billingCycle,
+      "subscription_data[metadata][kind]": "subscription",
+      ...(orgId
+        ? {
+            "metadata[orgId]": String(orgId),
+            "subscription_data[metadata][orgId]": String(orgId),
+          }
+        : {}),
+    });
+
+    if (configuredPriceId) {
+      bodyParams.set("line_items[0][price]", configuredPriceId);
+    } else {
+      bodyParams.set("line_items[0][price_data][currency]", "usd");
+      bodyParams.set("line_items[0][price_data][unit_amount]", String(plan.amountCents));
+      bodyParams.set("line_items[0][price_data][recurring][interval]", plan.interval);
+      bodyParams.set("line_items[0][price_data][product_data][name]", plan.displayName);
+      bodyParams.set("line_items[0][price_data][product_data][tax_code]", "txcd_10103001");
+    }
+
+    const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${stripeKey}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Idempotency-Key": idempotencyKey || crypto.randomUUID(),
+      },
+      body: bodyParams.toString(),
+    });
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => "");
+      throw new Error(`Stripe Subscription Checkout Session creation failed (${response.status}): ${errBody}`);
+    }
+    const session = (await response.json()) as { id?: string; url?: string };
+    if (!session.id || !session.url) {
+      throw new Error("Stripe Subscription Checkout Session response missing id or url.");
+    }
+    return {
+      sessionId: session.id,
+      checkoutUrl: session.url,
+      mode: "subscription",
+      tier,
+      billingCycle,
+      interval: plan.interval,
+      amountCents: plan.amountCents,
+      currency: "usd",
+      automaticTax: true,
+      taxIdCollection: true,
+    };
+  }
+
+  if (
+    process.env["NODE_ENV"] === "production" &&
+    process.env["ALLOW_SANDBOX_TOPUP"] !== "true" &&
+    process.env["ALLOW_BILLING_SIMULATION"] !== "true"
+  ) {
+    throw new Error(
+      "Stripe Subscription Checkout Session creation is disabled without STRIPE_SECRET_KEY in production.",
+    );
+  }
+
+  const sessionId = `cs_sub_test_${crypto.randomBytes(12).toString("hex")}`;
+  return {
+    sessionId,
+    checkoutUrl: `${successUrl}${successUrl.includes("?") ? "&" : "?"}session_id=${sessionId}`,
+    mode: "subscription",
+    tier,
+    billingCycle,
+    interval: plan.interval,
+    amountCents: plan.amountCents,
+    currency: "usd",
+    automaticTax: true,
+    taxIdCollection: true,
+  };
+}
+
 export interface StripeWebhookObject {
   id?: string | undefined;
+  mode?: string | undefined;
+  status?: string | undefined;
+  subscription?: string | undefined;
+  customer?: string | undefined;
   amount?: number | undefined;
+  amount_received?: number | undefined;
   amount_subtotal?: number | undefined;
   amount_total?: number | undefined;
+  payment_status?: string | undefined;
   payment_intent?: string | undefined;
   reason?: string | undefined;
   customer_id?: number | undefined;
@@ -442,6 +662,9 @@ export interface StripeWebhookObject {
         userId?: string | undefined;
         orgId?: string | undefined;
         amountCredits?: string | undefined;
+        tier?: string | undefined;
+        billingCycle?: string | undefined;
+        kind?: string | undefined;
       }
     | undefined;
   [key: string]: unknown;
@@ -449,14 +672,30 @@ export interface StripeWebhookObject {
 
 export interface StripeWebhookEvent {
   id?: string | undefined;
+  livemode?: boolean | undefined;
   type: string;
   data: {
     object: StripeWebhookObject;
   };
 }
 
+function normalizeWebhookTier(raw: unknown): "free" | "pro" | "team" | "enterprise" {
+  if (raw === "pro" || raw === "team" || raw === "enterprise") {
+    return raw;
+  }
+  return "free";
+}
+
+function normalizeWebhookCycle(raw: unknown): "monthly" | "annual" | null {
+  if (raw === "monthly" || raw === "annual") {
+    return raw;
+  }
+  return null;
+}
+
 /**
- * Handles incoming Stripe webhooks for instant chargeback quarantine and automated ledger settlement.
+ * Handles incoming Stripe webhooks for instant chargeback quarantine, subscription lifecycle,
+ * and automated credit ledger settlement.
  */
 export function handleStripeWebhookEvent(
   event: StripeWebhookEvent,
@@ -524,7 +763,30 @@ export function handleStripeWebhookEvent(
       }
 
       const paymentIntentId = typeof obj["id"] === "string" && obj["id"].trim() ? obj["id"].trim() : undefined;
-      if (database.hasProcessedStripeEvent(eventId, paymentIntentId)) {
+      const rawCents = typeof obj["amount_received"] === "number" ? obj["amount_received"] : (obj["amount"] ?? 0);
+      const credits = Math.round(rawCents) / 100;
+      if (!Number.isFinite(credits) || Math.round(credits * 100) <= 0) {
+        return { handled: false, action: "invalid_amount" };
+      }
+
+      const settleEventId =
+        eventId || (paymentIntentId ? `pi_evt_${paymentIntentId}` : `pi_evt_${crypto.randomUUID()}`);
+      const settlement = database.billing.settleStripeCreditGrant({
+        eventId: settleEventId,
+        paymentIntentId: paymentIntentId ?? null,
+        userId: userId ?? null,
+        orgId: orgId ?? null,
+        amount: credits,
+        type: "top_up",
+        description: orgId ? `Stripe Organization Top-Up (${obj["id"]})` : `Stripe Top-Up (${obj["id"]})`,
+        metadata: {
+          paymentIntentId: obj["id"],
+          ...(eventId ? { webhookEventId: eventId } : {}),
+          "3dsVerified": true,
+        },
+      });
+
+      if (settlement.duplicate) {
         return {
           handled: true,
           action: "duplicate_event_ignored",
@@ -532,39 +794,6 @@ export function handleStripeWebhookEvent(
           orgId,
           details: { duplicate: true, eventId, paymentIntentId },
         };
-      }
-
-      const credits = Math.round(((obj["amount"] || 0) / 100) * 100) / 100;
-      if (eventId || paymentIntentId) {
-        const recorded = database.recordProcessedStripeEvent(
-          eventId || `pi_evt_${paymentIntentId}`,
-          paymentIntentId ?? null,
-          userId ?? null,
-          credits,
-        );
-        if (!recorded) {
-          return {
-            handled: true,
-            action: "duplicate_event_ignored",
-            userId,
-            orgId,
-            details: { duplicate: true, eventId, paymentIntentId },
-          };
-        }
-      }
-
-      if (orgId) {
-        database.grantOrgCredits(orgId, credits, userId ?? null, `Stripe Organization Top-Up (${obj["id"]})`, {
-          paymentIntentId: obj["id"],
-          ...(eventId ? { webhookEventId: eventId } : {}),
-          "3dsVerified": true,
-        });
-      } else if (userId) {
-        database.grantUserCredits(userId, credits, "top_up", `Stripe Top-Up (${obj["id"]})`, {
-          paymentIntentId: obj["id"],
-          ...(eventId ? { webhookEventId: eventId } : {}),
-          "3dsVerified": true,
-        });
       }
 
       // Clear any prior failure counters on success
@@ -575,16 +804,64 @@ export function handleStripeWebhookEvent(
         action: "credits_granted",
         userId,
         orgId,
-        details: { credits, paymentIntentId: obj["id"], ...(orgId ? { orgId } : {}) },
+        details: {
+          credits: settlement.amountGranted ?? credits,
+          paymentIntentId: obj["id"],
+          ...(orgId ? { orgId } : {}),
+        },
       };
     }
 
-    // 2b. Successful Stripe Checkout Session (with Stripe Tax)
+    // 2b. Successful Stripe Checkout Session (Subscription OR One-Time Credit Top-Up)
     case "checkout.session.completed": {
       if (!userId && !orgId) {
         return { handled: false, action: "missing_user_id" };
       }
-      if (typeof obj["payment_status"] === "string" && obj["payment_status"] !== "paid") {
+
+      const isSubscriptionSession = obj["mode"] === "subscription" || obj["metadata"]?.kind === "subscription";
+
+      if (isSubscriptionSession) {
+        const payStatus = obj["payment_status"];
+        if (payStatus && payStatus !== "paid" && payStatus !== "no_payment_required") {
+          return { handled: false, action: "payment_not_paid" };
+        }
+        const sessionId = typeof obj["id"] === "string" && obj["id"].trim() ? obj["id"].trim() : undefined;
+        const stripeSubscriptionId =
+          typeof obj["subscription"] === "string" && obj["subscription"].trim() ? obj["subscription"].trim() : null;
+        const stripeCustomerId =
+          typeof obj["customer"] === "string" && obj["customer"].trim() ? obj["customer"].trim() : null;
+        const requestedTier = normalizeWebhookTier(obj["metadata"]?.tier);
+        const activeTier = requestedTier === "free" ? "pro" : requestedTier;
+        const billingCycle = normalizeWebhookCycle(obj["metadata"]?.billingCycle);
+
+        database.billing.upsertSubscriptionState({
+          userId: userId ?? null,
+          orgId: orgId ?? null,
+          activeTier,
+          subscriptionStatus: "active",
+          billingCycle,
+          stripeSubscriptionId,
+          stripeCustomerId,
+        });
+
+        if (userId) guard.clear(`user:${userId}`);
+
+        return {
+          handled: true,
+          action: "subscription_activated",
+          userId,
+          orgId,
+          details: {
+            activeTier,
+            subscriptionStatus: "active",
+            billingCycle,
+            subscriptionId: stripeSubscriptionId,
+            sessionId,
+          },
+        };
+      }
+
+      if (obj["payment_status"] !== "paid") {
         return { handled: false, action: "payment_not_paid" };
       }
       if (typeof obj["currency"] === "string" && obj["currency"].toLowerCase() !== "usd") {
@@ -597,7 +874,42 @@ export function handleStripeWebhookEvent(
           ? obj["payment_intent"].trim()
           : sessionId;
 
-      if (database.hasProcessedStripeEvent(eventId, paymentIntentRef)) {
+      let credits: number;
+      if (typeof obj["amount_subtotal"] === "number") {
+        if (!Number.isFinite(obj["amount_subtotal"]) || obj["amount_subtotal"] <= 0) {
+          return { handled: false, action: "invalid_amount" };
+        }
+        credits = Math.round(obj["amount_subtotal"]) / 100;
+      } else if (typeof obj["amount_total"] === "number" && obj["amount_total"] > 0) {
+        credits = Math.round(obj["amount_total"]) / 100;
+      } else if (typeof obj["amount"] === "number" && obj["amount"] > 0) {
+        credits = Math.round(obj["amount"]) / 100;
+      } else {
+        const metaCredits = obj["metadata"]?.amountCredits ? parseFloat(obj["metadata"].amountCredits) : NaN;
+        if (!Number.isFinite(metaCredits) || Math.round(metaCredits * 100) <= 0) {
+          return { handled: false, action: "invalid_amount" };
+        }
+        credits = Math.round(metaCredits * 100) / 100;
+      }
+
+      const settleEventId = eventId || (sessionId ? `cs_evt_${sessionId}` : `cs_evt_${crypto.randomUUID()}`);
+      const settlement = database.billing.settleStripeCreditGrant({
+        eventId: settleEventId,
+        paymentIntentId: paymentIntentRef ?? null,
+        userId: userId ?? null,
+        orgId: orgId ?? null,
+        amount: credits,
+        type: "top_up",
+        description: `Stripe Checkout Top-Up (${sessionId})`,
+        metadata: {
+          checkoutSessionId: sessionId,
+          paymentIntentId: paymentIntentRef,
+          ...(eventId ? { webhookEventId: eventId } : {}),
+          automaticTax: true,
+        },
+      });
+
+      if (settlement.duplicate) {
         return {
           handled: true,
           action: "duplicate_event_ignored",
@@ -607,45 +919,6 @@ export function handleStripeWebhookEvent(
         };
       }
 
-      const metaCredits = obj["metadata"]?.amountCredits ? parseFloat(obj["metadata"].amountCredits) : NaN;
-      const cents = obj["amount_subtotal"] ?? obj["amount_total"] ?? obj["amount"] ?? 0;
-      const credits =
-        Number.isFinite(metaCredits) && metaCredits > 0 ? metaCredits : Math.round((cents / 100) * 100) / 100;
-
-      if (eventId || paymentIntentRef) {
-        const recorded = database.recordProcessedStripeEvent(
-          eventId || `cs_evt_${sessionId}`,
-          paymentIntentRef ?? null,
-          userId ?? null,
-          credits,
-        );
-        if (!recorded) {
-          return {
-            handled: true,
-            action: "duplicate_event_ignored",
-            userId,
-            orgId,
-            details: { duplicate: true, eventId, sessionId },
-          };
-        }
-      }
-
-      if (orgId) {
-        database.grantOrgCredits(orgId, credits, userId ?? null, `Stripe Checkout Top-Up (${sessionId})`, {
-          checkoutSessionId: sessionId,
-          paymentIntentId: paymentIntentRef,
-          ...(eventId ? { webhookEventId: eventId } : {}),
-          automaticTax: true,
-        });
-      } else if (userId) {
-        database.grantUserCredits(userId, credits, "top_up", `Stripe Checkout Top-Up (${sessionId})`, {
-          checkoutSessionId: sessionId,
-          paymentIntentId: paymentIntentRef,
-          ...(eventId ? { webhookEventId: eventId } : {}),
-          automaticTax: true,
-        });
-      }
-
       if (userId) guard.clear(`user:${userId}`);
 
       return {
@@ -653,7 +926,83 @@ export function handleStripeWebhookEvent(
         action: "credits_granted",
         userId,
         orgId,
-        details: { credits, sessionId, ...(orgId ? { orgId } : {}) },
+        details: { credits: settlement.amountGranted ?? credits, sessionId, ...(orgId ? { orgId } : {}) },
+      };
+    }
+
+    // 2c. Subscription Updated
+    case "customer.subscription.updated": {
+      const stripeSubscriptionId = typeof obj["id"] === "string" && obj["id"].trim() ? obj["id"].trim() : null;
+      const stripeCustomerId =
+        typeof obj["customer"] === "string" && obj["customer"].trim() ? obj["customer"].trim() : null;
+      const existing = stripeSubscriptionId ? database.billing.findSubscriptionByStripeId(stripeSubscriptionId) : null;
+
+      const targetOrgId = orgId ?? (existing?.scopeType === "org" ? existing.scopeId : undefined);
+      const targetUserId = userId ?? (existing?.scopeType === "user" ? existing.scopeId : undefined);
+      if (!targetUserId && !targetOrgId) {
+        return { handled: false, action: "missing_user_id" };
+      }
+
+      const subStatus = typeof obj["status"] === "string" && obj["status"].trim() ? obj["status"].trim() : "active";
+      const inactiveStatuses = new Set(["canceled", "unpaid", "incomplete_expired"]);
+      const metaTier = obj["metadata"]?.tier ? normalizeWebhookTier(obj["metadata"].tier) : null;
+      const activeTier = inactiveStatuses.has(subStatus)
+        ? "free"
+        : metaTier && metaTier !== "free"
+          ? metaTier
+          : existing?.activeTier && existing.activeTier !== "free"
+            ? existing.activeTier
+            : "pro";
+      const billingCycle = normalizeWebhookCycle(obj["metadata"]?.billingCycle) ?? existing?.billingCycle ?? null;
+
+      database.billing.upsertSubscriptionState({
+        userId: targetUserId ?? null,
+        orgId: targetOrgId ?? null,
+        activeTier,
+        subscriptionStatus: subStatus,
+        billingCycle,
+        stripeSubscriptionId,
+        stripeCustomerId,
+      });
+
+      return {
+        handled: true,
+        action: "subscription_updated",
+        userId: targetUserId,
+        orgId: targetOrgId,
+        details: { activeTier, subscriptionStatus: subStatus, billingCycle, subscriptionId: stripeSubscriptionId },
+      };
+    }
+
+    // 2d. Subscription Deleted / Canceled
+    case "customer.subscription.deleted": {
+      const stripeSubscriptionId = typeof obj["id"] === "string" && obj["id"].trim() ? obj["id"].trim() : null;
+      const stripeCustomerId =
+        typeof obj["customer"] === "string" && obj["customer"].trim() ? obj["customer"].trim() : null;
+      const existing = stripeSubscriptionId ? database.billing.findSubscriptionByStripeId(stripeSubscriptionId) : null;
+
+      const targetOrgId = orgId ?? (existing?.scopeType === "org" ? existing.scopeId : undefined);
+      const targetUserId = userId ?? (existing?.scopeType === "user" ? existing.scopeId : undefined);
+      if (!targetUserId && !targetOrgId) {
+        return { handled: false, action: "missing_user_id" };
+      }
+
+      database.billing.upsertSubscriptionState({
+        userId: targetUserId ?? null,
+        orgId: targetOrgId ?? null,
+        activeTier: "free",
+        subscriptionStatus: "canceled",
+        billingCycle: null,
+        stripeSubscriptionId,
+        stripeCustomerId,
+      });
+
+      return {
+        handled: true,
+        action: "subscription_canceled",
+        userId: targetUserId,
+        orgId: targetOrgId,
+        details: { activeTier: "free", subscriptionStatus: "canceled", subscriptionId: stripeSubscriptionId },
       };
     }
 

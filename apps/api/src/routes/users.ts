@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import bcrypt from "bcryptjs";
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import jwt from "jsonwebtoken";
@@ -13,10 +14,12 @@ import {
   requireAuth,
   requireTokenScope,
 } from "../middleware/auth-middleware.js";
+import { authRateLimiter } from "../middleware/rate-limiter.js";
 import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
+import { verifyTotpCode } from "../util/totp.js";
 import { publicErrorMessage } from "../utils/http-error.js";
 import { normalizeSolutionBundleUrl } from "./solutions.js";
 
@@ -83,6 +86,97 @@ export function resolveUserActorUrl(
     return `${baseUrl}/users/${username}`;
   }
   return storedActorUrl;
+}
+
+function normalizeComparableUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    const pathname = stripTrailingSlashes(parsed.pathname) || "/";
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}${pathname}${parsed.search}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Validates a 16-character ORCID identifier (e.g., "0000-0002-1825-0097")
+ * using the ISO/IEC 7064:2003 (MOD 11-2) checksum algorithm.
+ */
+export function isValidOrcidChecksum(orcid: string): boolean {
+  const digits = orcid.replace(/-/g, "").toUpperCase();
+  if (!/^\d{15}[\dX]$/.test(digits)) return false;
+  let total = 0;
+  for (let i = 0; i < 15; i++) {
+    const digit = digits.charCodeAt(i) - 48;
+    total = (total + digit) * 2;
+  }
+  const remainder = total % 11;
+  const result = (12 - remainder) % 11;
+  const expectedCheck = result === 10 ? "X" : String(result);
+  return digits[15] === expectedCheck;
+}
+
+const REL_ME_ATTR_RE = /\brel\s*=\s*(?:"[^"]*\bme\b[^"]*"|'[^']*\bme\b[^']*'|me(?:\s|>|\/|$))/i;
+const HREF_ATTR_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i;
+
+/**
+ * Verifies that HTML contains a single <a> or <link> element with BOTH
+ * a `rel` attribute containing the token `me` AND an `href` attribute
+ * matching one of the target profile/actor URLs.
+ */
+export function hasMatchingRelMeTag(html: string, targetUrls: string[]): boolean {
+  const normalizedTargets = new Set(
+    targetUrls.map((u) => normalizeComparableUrl(u)).filter((u): u is string => Boolean(u)),
+  );
+  if (normalizedTargets.size === 0) return false;
+
+  const tagRegex = /<(?:a|link)\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = tagRegex.exec(html)) !== null) {
+    const tag = match[0];
+    if (!REL_ME_ATTR_RE.test(tag)) continue;
+    const hrefMatch = HREF_ATTR_RE.exec(tag);
+    const rawHref = hrefMatch?.[1] ?? hrefMatch?.[2] ?? hrefMatch?.[3] ?? "";
+    if (!rawHref) continue;
+    const decodedHref = rawHref.replace(/&amp;/gi, "&").trim();
+    const normalizedHref = normalizeComparableUrl(decodedHref);
+    if (normalizedHref && normalizedTargets.has(normalizedHref)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks whether an ORCID public API `/researcher-urls` JSON payload contains
+ * a researcher URL pointing back to one of the user's profile/actor URLs.
+ */
+export function hasMatchingOrcidResearcherUrl(payload: unknown, targetUrls: string[]): boolean {
+  const normalizedTargets = new Set(
+    targetUrls.map((u) => normalizeComparableUrl(u)).filter((u): u is string => Boolean(u)),
+  );
+  if (normalizedTargets.size === 0 || !payload || typeof payload !== "object") return false;
+
+  const list = (payload as { "researcher-url"?: unknown })["researcher-url"];
+  if (!Array.isArray(list)) return false;
+
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const urlObj = (item as { url?: unknown }).url;
+    const rawUrl =
+      typeof urlObj === "string"
+        ? urlObj
+        : urlObj && typeof urlObj === "object" && typeof (urlObj as { value?: unknown }).value === "string"
+          ? (urlObj as { value: string }).value
+          : "";
+    if (!rawUrl) continue;
+    const normalized = normalizeComparableUrl(rawUrl);
+    if (normalized && normalizedTargets.has(normalized)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function usersRouter(
@@ -606,7 +700,8 @@ export function usersRouter(
     const baseUrl = getRequestBaseUrl(req);
     const actorUrl = resolveUserActorUrl(req, user.username, fedInfo?.actor_url, user.remote_domain);
     const profilePageUrl = `${baseUrl}/@${user.username}`;
-    const canonicalProfileUrl = `${baseUrl}/@${user.username}`;
+    const canonicalProfileUrl = `${baseUrl}/users/${user.username}`;
+    const targetProfileUrls = [actorUrl, profilePageUrl, canonicalProfileUrl].filter(Boolean);
     const orcidRegex = /^(?:https?:\/\/orcid\.org\/)?(\d{4}-\d{4}-\d{4}-\d{3}[\dX])$/i;
 
     const rawCandidates = fields.slice(0, 8);
@@ -622,11 +717,49 @@ export function usersRouter(
 
         let verifiedAt: string | null = null;
 
-        // 1. Check ORCID format
-        if (orcidRegex.test(value)) {
-          verifiedAt = new Date().toISOString();
+        // 1. Check ORCID format, ISO 7064 (MOD 11-2) checksum, and public backlink
+        const orcidMatch = orcidRegex.exec(value);
+        if (orcidMatch) {
+          const orcidId = orcidMatch[1]!.toUpperCase();
+          if (isValidOrcidChecksum(orcidId)) {
+            let orcidVerified = false;
+            try {
+              const apiResp = await safePublicFetch(`https://pub.orcid.org/v3.0/${orcidId}/researcher-urls`, {
+                headers: { Accept: "application/json" },
+              });
+              if (apiResp.ok) {
+                const payload = (await apiResp.json()) as unknown;
+                if (hasMatchingOrcidResearcherUrl(payload, targetProfileUrls)) {
+                  orcidVerified = true;
+                }
+              }
+            } catch {
+              // Network or SSRF rejection falls through to HTML check / unverified
+            }
+
+            if (!orcidVerified) {
+              try {
+                const pageResp = await safePublicFetch(`https://orcid.org/${orcidId}`, {
+                  headers: { Accept: "text/html,application/xhtml+xml" },
+                });
+                if (pageResp.ok) {
+                  const fullText = await pageResp.text();
+                  const html = fullText.slice(0, 512 * 1024);
+                  if (hasMatchingRelMeTag(html, targetProfileUrls)) {
+                    orcidVerified = true;
+                  }
+                }
+              } catch {
+                // Network or SSRF rejection leaves verifiedAt null
+              }
+            }
+
+            if (orcidVerified) {
+              verifiedAt = new Date().toISOString();
+            }
+          }
         } else if (/^https?:\/\//i.test(value)) {
-          // 2. Check rel="me" backlink on remote HTML page
+          // 2. Check rel="me" backlink on a single <a> or <link> tag on the remote HTML page
           try {
             const resp = await safePublicFetch(value, {
               headers: { Accept: "text/html,application/xhtml+xml" },
@@ -634,14 +767,7 @@ export function usersRouter(
             if (resp.ok) {
               const fullText = await resp.text();
               const html = fullText.slice(0, 512 * 1024);
-              const hasRelMe =
-                (html.includes(actorUrl) ||
-                  html.includes(profilePageUrl) ||
-                  html.includes(canonicalProfileUrl) ||
-                  html.includes(`/@${user.username}`) ||
-                  html.includes(`/users/${user.username}`)) &&
-                /rel=["'][^"']*\bme\b[^"']*["']/i.test(html);
-              if (hasRelMe) {
+              if (hasMatchingRelMeTag(html, targetProfileUrls)) {
                 verifiedAt = new Date().toISOString();
               }
             }
@@ -764,63 +890,121 @@ export function usersRouter(
   /**
    * POST /api/v1/users/me/move
    * Initiates an outbound ActivityPub `Move` migration to a target account URI.
+   * Requires server-side re-authentication (password and/or 2FA TOTP, or confirmUsername for SSO-only accounts).
    */
-  router.post("/me/move", requireAuth, requireAccountWriteScope, (req: Request, res: Response) => {
-    const userId = req.user!.id;
-    const targetActorUrl = String(req.body?.targetActorUrl || req.body?.target_actor_url || "").trim();
-    if (!targetActorUrl) {
-      res.status(400).json({ error: "targetActorUrl is required" });
-      return;
-    }
+  router.post(
+    "/me/move",
+    requireAuth,
+    requireAccountWriteScope,
+    authRateLimiter,
+    async (req: Request, res: Response): Promise<void> => {
+      const userId = req.user!.id;
+      const user = database.getUserById(userId);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
 
-    try {
-      const fedInfo = database.getUserFederationInfo(userId);
-      const result = database.initiateLocalUserMove(userId, targetActorUrl);
+      const targetActorUrl = String(req.body?.targetActorUrl || req.body?.target_actor_url || "").trim();
+      if (!targetActorUrl) {
+        res.status(400).json({ error: "targetActorUrl is required" });
+        return;
+      }
 
-      if (fedInfo?.actor_url) {
-        const moveActivity = {
-          "@context": "https://www.w3.org/ns/activitystreams",
-          id: `${fedInfo.actor_url}#move-${Date.now()}`,
-          type: "Move",
-          actor: fedInfo.actor_url,
-          object: fedInfo.actor_url,
-          target: targetActorUrl,
-          to: ["https://www.w3.org/ns/activitystreams#Public"],
-          cc: [`${fedInfo.actor_url}/followers`],
-        };
-        if (worker) {
-          worker.enqueueActivityBroadcast(moveActivity, userId);
-        } else {
-          const remoteFollowers = database.getRemoteFollowersInboxes(userId);
-          for (const f of remoteFollowers) {
-            database.enqueueFederationDelivery(
-              "Move",
-              moveActivity.id,
-              moveActivity,
-              f.shared_inbox_url || f.inbox_url,
-              f.remote_domain || (f.inbox_url ? new URL(f.inbox_url).hostname : "remote"),
-            );
-          }
+      const body = (req.body && typeof req.body === "object" ? req.body : {}) as {
+        password?: unknown;
+        totpCode?: unknown;
+        confirmUsername?: unknown;
+      };
+
+      const passwordHash = database.getPasswordHash(userId);
+      if (passwordHash) {
+        const password = body.password;
+        if (typeof password !== "string" || !password || Buffer.byteLength(password, "utf8") > 72) {
+          res.status(400).json({ error: "Current password is required to migrate your account" });
+          return;
+        }
+        if (!(await bcrypt.compare(password, passwordHash))) {
+          res.status(401).json({ error: "Incorrect password" });
+          return;
         }
       }
 
-      database.logAudit({
-        actorId: userId,
-        action: "user_account_moved",
-        resourceType: "user",
-        resourceId: String(userId),
-        details: { targetActorUrl, migratedLocalFollowers: result.migratedLocalFollowers },
-      });
+      const state2FA = database.getUser2FAState(userId);
+      const has2FA = Boolean(state2FA?.totp_enabled && state2FA.totp_secret);
+      if (has2FA && state2FA?.totp_secret) {
+        const totpCode = typeof body.totpCode === "string" ? body.totpCode.trim() : "";
+        if (!totpCode) {
+          res.status(401).json({ error: "Two-factor authentication code is required to migrate your account" });
+          return;
+        }
+        if (
+          !verifyTotpCode(state2FA.totp_secret, totpCode, {
+            preventReplay: process.env["NODE_ENV"] === "production",
+          })
+        ) {
+          res.status(401).json({ error: "Invalid two-factor authentication code" });
+          return;
+        }
+      }
 
-      res.json({
-        success: true,
-        movedToActorUrl: result.movedToActorUrl,
-        migratedLocalFollowers: result.migratedLocalFollowers,
-      });
-    } catch (err: unknown) {
-      res.status(400).json({ error: err instanceof Error ? err.message : "Failed to initiate account move" });
-    }
-  });
+      if (!passwordHash && !has2FA) {
+        const confirmUsername = typeof body.confirmUsername === "string" ? body.confirmUsername.trim() : "";
+        if (!confirmUsername || confirmUsername.toLowerCase() !== user.username.toLowerCase()) {
+          res.status(400).json({ error: "Username confirmation is required to migrate your account" });
+          return;
+        }
+      }
+
+      try {
+        const fedInfo = database.getUserFederationInfo(userId);
+        const result = database.initiateLocalUserMove(userId, targetActorUrl);
+
+        if (fedInfo?.actor_url) {
+          const moveActivity = {
+            "@context": "https://www.w3.org/ns/activitystreams",
+            id: `${fedInfo.actor_url}#move-${Date.now()}`,
+            type: "Move",
+            actor: fedInfo.actor_url,
+            object: fedInfo.actor_url,
+            target: targetActorUrl,
+            to: ["https://www.w3.org/ns/activitystreams#Public"],
+            cc: [`${fedInfo.actor_url}/followers`],
+          };
+          if (worker) {
+            worker.enqueueActivityBroadcast(moveActivity, userId);
+          } else {
+            const remoteFollowers = database.getRemoteFollowersInboxes(userId);
+            for (const f of remoteFollowers) {
+              database.enqueueFederationDelivery(
+                "Move",
+                moveActivity.id,
+                moveActivity,
+                f.shared_inbox_url || f.inbox_url,
+                f.remote_domain || (f.inbox_url ? new URL(f.inbox_url).hostname : "remote"),
+              );
+            }
+          }
+        }
+
+        database.logAudit({
+          actorId: userId,
+          action: "user_account_moved",
+          resourceType: "user",
+          resourceId: String(userId),
+          details: { targetActorUrl, migratedLocalFollowers: result.migratedLocalFollowers },
+        });
+
+        res.json({
+          success: true,
+          movedToActorUrl: result.movedToActorUrl,
+          migratedLocalFollowers: result.migratedLocalFollowers,
+        });
+      } catch (err: unknown) {
+        res.status(400).json({ error: err instanceof Error ? err.message : "Failed to initiate account move" });
+      }
+    },
+  );
 
   /**
    * GET /api/v1/users/me/social-graph/export
@@ -829,7 +1013,8 @@ export function usersRouter(
   router.get("/me/social-graph/export", requireAuth, (req: Request, res: Response) => {
     const graph = database.exportUserSocialGraph(req.user!.id);
     const format = String(req.query["format"] || "json").toLowerCase();
-    const listType = String(req.query["type"] || "following").toLowerCase();
+    const rawType = req.query["type"];
+    const listType = String(rawType || "following").toLowerCase();
 
     if (format === "csv") {
       const sanitizeCsvCell = (val: string): string => {
@@ -857,6 +1042,28 @@ export function usersRouter(
       ];
       res.send(lines.join("\n"));
       return;
+    }
+
+    if (rawType !== undefined && String(rawType).trim() !== "") {
+      const requestedType = String(rawType).trim().toLowerCase();
+      if (requestedType === "following") {
+        res.json({ type: "following", following: graph.following });
+        return;
+      }
+      if (requestedType === "blocks") {
+        res.json({ type: "blocks", blocks: graph.blocks });
+        return;
+      }
+      if (requestedType === "mutes") {
+        res.json({ type: "mutes", mutes: graph.mutes });
+        return;
+      }
+      if (requestedType !== "all") {
+        res
+          .status(400)
+          .json({ error: "Invalid social graph export type. Must be one of: following, blocks, mutes, all." });
+        return;
+      }
     }
 
     res.json(graph);
@@ -934,6 +1141,13 @@ export function usersRouter(
       res.status(400).json({ error: "endpoint, keys.p256dh, and keys.auth are required" });
       return;
     }
+    try {
+      assertSafePublicUrl(String(endpoint));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid push subscription endpoint URL";
+      res.status(400).json({ error: msg });
+      return;
+    }
     const subscription = database.upsertPushSubscription(
       req.user!.id,
       String(endpoint),
@@ -948,7 +1162,12 @@ export function usersRouter(
    * DELETE /api/v1/users/me/push-subscriptions/:id
    */
   router.delete("/me/push-subscriptions/:id", requireAuth, (req: Request, res: Response) => {
-    const deleted = database.deletePushSubscription(Number(req.params["id"]), req.user!.id);
+    const subId = Number(req.params["id"]);
+    if (!Number.isInteger(subId) || subId <= 0) {
+      res.status(400).json({ error: "Invalid push subscription ID" });
+      return;
+    }
+    const deleted = database.deletePushSubscription(req.user!.id, subId);
     if (!deleted) {
       res.status(404).json({ error: "Push subscription not found" });
       return;
@@ -959,10 +1178,11 @@ export function usersRouter(
   /**
    * DELETE /api/v1/users/me
    * GDPR Article 17: Right to Erasure / Account Deletion.
+   * Requires server-side re-authentication (password and/or 2FA TOTP, or confirmUsername for SSO-only accounts).
    * Redacts personal data, deletes tokens & relationships, logs compliance audit,
    * and enqueues ActivityPub Delete tombstone if federated.
    */
-  router.delete("/me", requireAuth, (req: Request, res: Response) => {
+  router.delete("/me", requireAuth, authRateLimiter, async (req: Request, res: Response): Promise<void> => {
     if (req.tokenScopes && !req.tokenScopes.includes("*") && !req.tokenScopes.includes("admin")) {
       res.status(403).json({ error: "Restricted personal access tokens cannot delete user accounts" });
       return;
@@ -972,6 +1192,63 @@ export function usersRouter(
       return;
     }
     const userId = req.user!.id;
+    const user = database.getUserById(userId);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const body = (req.body && typeof req.body === "object" ? req.body : {}) as {
+      password?: unknown;
+      totpCode?: unknown;
+      confirmUsername?: unknown;
+    };
+
+    const passwordHash = database.getPasswordHash(userId);
+    if (passwordHash) {
+      const password = body.password;
+      if (typeof password !== "string" || !password || Buffer.byteLength(password, "utf8") > 72) {
+        res.status(400).json({ error: "Current password is required to delete your account" });
+        return;
+      }
+      if (!(await bcrypt.compare(password, passwordHash))) {
+        res.status(401).json({ error: "Incorrect password" });
+        return;
+      }
+    }
+
+    const state2FA = database.getUser2FAState(userId);
+    const has2FA = Boolean(state2FA?.totp_enabled && state2FA.totp_secret);
+    if (has2FA && state2FA?.totp_secret) {
+      const totpCode = typeof body.totpCode === "string" ? body.totpCode.trim() : "";
+      if (!totpCode) {
+        res.status(401).json({ error: "Two-factor authentication code is required to delete your account" });
+        return;
+      }
+      if (
+        !verifyTotpCode(state2FA.totp_secret, totpCode, {
+          preventReplay: process.env["NODE_ENV"] === "production",
+        })
+      ) {
+        res.status(401).json({ error: "Invalid two-factor authentication code" });
+        return;
+      }
+    }
+
+    if (!passwordHash && !has2FA) {
+      const confirmUsername = typeof body.confirmUsername === "string" ? body.confirmUsername.trim() : "";
+      if (!confirmUsername || confirmUsername.toLowerCase() !== user.username.toLowerCase()) {
+        res.status(400).json({ error: "Username confirmation is required to delete your account" });
+        return;
+      }
+    }
+
+    // Snapshot followers, actor URI, and signing key BEFORE anonymizeUser() wipes follows and keys
+    const followersSnapshot = database.getUserFollowers(userId);
+    const actorUrlSnapshot =
+      user.actor_url || resolveUserActorUrl(req, user.username, user.actor_url, user.remote_domain);
+    const rsaPrivateKeySnapshot = user.rsa_private_key ?? null;
+
     const { success, actorUrl } = database.anonymizeUser(userId);
     if (!success) {
       res.status(404).json({ error: "User not found" });
@@ -984,23 +1261,25 @@ export function usersRouter(
       // Archive purge is best-effort during account deletion
     }
 
-    if (actorUrl && worker && process.env["NODE_ENV"] !== "test") {
+    const effectiveActorUrl = actorUrl || actorUrlSnapshot;
+    if (effectiveActorUrl && worker && process.env["NODE_ENV"] !== "test") {
       try {
-        const followers = database.getUserFollowers(userId);
-        for (const f of followers) {
-          if (f.actor_url && f.remote_domain && f.inbox_url) {
+        void rsaPrivateKeySnapshot;
+        for (const f of followersSnapshot) {
+          const targetInbox = f.inbox_url;
+          if (f.actor_url && f.remote_domain && targetInbox) {
             const deleteActivity = {
               "@context": "https://www.w3.org/ns/activitystreams",
-              id: `${actorUrl}#delete-${Date.now()}`,
+              id: `${effectiveActorUrl}#delete-${Date.now()}`,
               type: "Delete",
-              actor: actorUrl,
-              object: actorUrl,
+              actor: effectiveActorUrl,
+              object: effectiveActorUrl,
             };
             database.enqueueFederationDelivery(
               "Delete",
               deleteActivity.id,
               deleteActivity,
-              f.inbox_url,
+              targetInbox,
               f.remote_domain,
             );
           }
@@ -1383,12 +1662,45 @@ export function usersRouter(
     res.json({ success: true, blocked: true });
   });
 
+  const resolveTargetUserForSafetyAction = (req: Request) => {
+    const rawUserId = req.query["userId"] ?? req.body?.userId;
+    if (rawUserId !== undefined && rawUserId !== null && String(rawUserId).trim() !== "") {
+      const parsedId = Number(rawUserId);
+      if (Number.isInteger(parsedId) && parsedId > 0) {
+        return database.getUserById(parsedId);
+      }
+      return undefined;
+    }
+
+    const rawParam = String(req.params["username"] || "").trim();
+    if (!rawParam) return undefined;
+    const clean = rawParam.replace(/^@/, "");
+    if (clean.includes("@")) {
+      const direct = database.getUserByUsername(clean);
+      if (direct) return direct;
+      const atIdx = clean.lastIndexOf("@");
+      const uname = clean.slice(0, atIdx);
+      const domain = clean.slice(atIdx + 1);
+      if (uname && domain) {
+        const row = database.db
+          .prepare(`SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND LOWER(remote_domain) = LOWER(?) LIMIT 1`)
+          .get(uname, domain) as { id: number } | undefined;
+        if (row) {
+          return database.getUserById(row.id);
+        }
+      }
+      return undefined;
+    }
+
+    return database.getUserByUsername(rawParam);
+  };
+
   /**
    * DELETE /api/v1/users/:username/block
    */
   const handleUnblockUser = (req: Request, res: Response) => {
     const blockerId = req.user!.id;
-    const targetUser = database.getUserByUsername(req.params["username"] as string);
+    const targetUser = resolveTargetUserForSafetyAction(req);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;
@@ -1456,7 +1768,7 @@ export function usersRouter(
 
   const handleUnmuteUser = (req: Request, res: Response) => {
     const muterId = req.user!.id;
-    const targetUser = database.getUserByUsername(req.params["username"] as string);
+    const targetUser = resolveTargetUserForSafetyAction(req);
     if (!targetUser) {
       res.status(404).json({ error: "User not found" });
       return;

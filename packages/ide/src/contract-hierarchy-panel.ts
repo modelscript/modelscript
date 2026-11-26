@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { extractSysML2ContractHierarchy } from "@modelscript/sysml2";
+import { collectCstLeaves, extractSysML2ContractHierarchy, parseSysmlSource } from "@modelscript/sysml2";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
@@ -215,34 +215,107 @@ export class ContractHierarchyPanel extends BaseWebviewPanel {
     const doc = this._resolveTargetDocument();
     if (!doc) return false;
 
-    const cleanName = rawName.includes(".") ? rawName.split(".").pop()! : rawName.replace(/\s*\(.*\)$/, "").trim();
-    const escaped = cleanName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const text = doc.getText();
-    const lines = text.split(/\r?\n/);
+    const parenIdx = rawName.indexOf("(");
+    const withoutParams = parenIdx >= 0 ? rawName.slice(0, parenIdx) : rawName;
+    const cleanName = (withoutParams.includes(".") ? withoutParams.split(".").pop()! : withoutParams).trim();
+    if (!cleanName) return false;
 
-    const patterns = [
-      new RegExp(
-        `\\b(?:part|requirement|action|state|use\\s+case|port|constraint|analysis|verification|calc|package)\\s+def\\s+(${escaped})\\b`,
-      ),
-      new RegExp(`\\b(?:transition|part|port|action|state|constraint|satisfy|verify)\\s+(${escaped})\\b`),
-      new RegExp(`\\b(${escaped})\\b`),
-    ];
+    interface SymbolRangeLike {
+      start: { line: number; character: number };
+      end: { line: number; character: number };
+    }
+    interface SymbolNodeLike {
+      name: string;
+      selectionRange?: SymbolRangeLike | undefined;
+      range?: SymbolRangeLike | undefined;
+      location?: { range: SymbolRangeLike } | undefined;
+      children?: SymbolNodeLike[] | undefined;
+    }
 
-    for (const pat of patterns) {
-      for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-        const line = lines[lineIdx]!;
-        const m = pat.exec(line);
-        if (m) {
-          const symText = m[1] ?? m[0];
-          const col = line.indexOf(symText, m.index);
-          const range = new vscode.Range(lineIdx, Math.max(0, col), lineIdx, Math.max(0, col) + symText.length);
-          const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
-          editor.selection = new vscode.Selection(range.start, range.end);
-          editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
-          return true;
+    const toVscodeRange = (r: SymbolRangeLike): vscode.Range =>
+      new vscode.Range(r.start.line, r.start.character, r.end.line, r.end.character);
+
+    const findSymbolRange = (
+      symbols: readonly SymbolNodeLike[] | undefined,
+      exactOnly: boolean,
+    ): vscode.Range | undefined => {
+      if (!symbols) return undefined;
+      for (const sym of symbols) {
+        const matches = exactOnly
+          ? sym.name === cleanName
+          : sym.name === cleanName || sym.name.endsWith(`.${cleanName}`);
+        if (matches) {
+          const r = sym.selectionRange ?? sym.range ?? sym.location?.range;
+          if (r) return toVscodeRange(r);
         }
+        const nested = findSymbolRange(sym.children, exactOnly);
+        if (nested) return nested;
+      }
+      return undefined;
+    };
+
+    const revealRange = async (range: vscode.Range): Promise<boolean> => {
+      const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One });
+      editor.selection = new vscode.Selection(range.start, range.end);
+      editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+      return true;
+    };
+
+    // 1. Query LSP textDocument/documentSymbol directly when LanguageClient is available
+    if (this._client) {
+      try {
+        const lspSymbols = await this._client.sendRequest<SymbolNodeLike[]>("textDocument/documentSymbol", {
+          textDocument: { uri: doc.uri.toString() },
+        });
+        if (Array.isArray(lspSymbols)) {
+          const matchedRange = findSymbolRange(lspSymbols, true) ?? findSymbolRange(lspSymbols, false);
+          if (matchedRange) return revealRange(matchedRange);
+        }
+      } catch {
+        // Fall through to VS Code document symbol provider
       }
     }
+
+    // 2. Query VS Code document symbol provider (covers registered DocumentSymbolProvider instances)
+    try {
+      const vsSymbols = await vscode.commands.executeCommand<SymbolNodeLike[]>(
+        "vscode.executeDocumentSymbolProvider",
+        doc.uri,
+      );
+      if (Array.isArray(vsSymbols)) {
+        const matchedRange = findSymbolRange(vsSymbols, true) ?? findSymbolRange(vsSymbols, false);
+        if (matchedRange) return revealRange(matchedRange);
+      }
+    } catch {
+      // Fall through to local CST / non-regex fallback
+    }
+
+    // 3. Local CST leaf lookup via @modelscript/sysml2 (when WASM parser is available in-process)
+    const text = doc.getText();
+    const cstLeaves = collectCstLeaves(parseSysmlSource(text));
+    if (cstLeaves.length > 0) {
+      const leaf = cstLeaves.find((l) => l.text === cleanName);
+      if (leaf) {
+        return revealRange(new vscode.Range(doc.positionAt(leaf.start), doc.positionAt(leaf.end)));
+      }
+    }
+
+    // 4. Simple non-regex identifier boundary fallback if no LSP/CST symbols were returned
+    const isIdentChar = (code: number): boolean =>
+      (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+    let searchFrom = 0;
+    while (searchFrom < text.length) {
+      const idx = text.indexOf(cleanName, searchFrom);
+      if (idx < 0) break;
+      const beforeOk = idx === 0 || !isIdentChar(text.charCodeAt(idx - 1));
+      const afterIdx = idx + cleanName.length;
+      const afterOk = afterIdx >= text.length || !isIdentChar(text.charCodeAt(afterIdx));
+      if (beforeOk && afterOk) {
+        return revealRange(new vscode.Range(doc.positionAt(idx), doc.positionAt(afterIdx)));
+      }
+      searchFrom = idx + 1;
+    }
+
     return false;
   }
 

@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
+import { getApiBaseUrl } from "./utils/config.js";
 import { getNonce } from "./utils/nonce.js";
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -645,8 +646,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
-      // 2. Fallback: Check if local proxy or IDE backend endpoint is reachable
-      const serverUrl = process.env["MODELSCRIPT_API_URL"] || "http://localhost:8000/api/llm/chat";
+      // 2. Fallback: Check if configured proxy or Ansatz IDE backend endpoint is reachable
+      const configuredApiUrl =
+        (typeof process !== "undefined" ? process.env["MODELSCRIPT_API_URL"] : undefined) || getApiBaseUrl();
+      const normalizedApiUrl = configuredApiUrl.trim().replace(/\/+$/, "");
+      const serverUrl =
+        normalizedApiUrl.endsWith("/ai/ansatz/chat") || normalizedApiUrl.endsWith("/llm/chat")
+          ? normalizedApiUrl
+          : normalizedApiUrl.endsWith("/api/v1")
+            ? `${normalizedApiUrl}/ai/ansatz/chat`
+            : `${normalizedApiUrl}/api/v1/ai/ansatz/chat`;
       try {
         const llmApiKey = await this.resolveLlmApiKey();
         const headers: Record<string, string> = { "Content-Type": "application/json" };

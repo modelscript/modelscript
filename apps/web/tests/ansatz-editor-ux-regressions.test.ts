@@ -23,6 +23,10 @@ describe("Ansatz Editor UX & Stability Regressions", () => {
 
     assert.ok(treeSrc.includes("clearPlacement()"), "Tree.tsx onDragEnd must call clearPlacement()");
     assert.ok(
+      !treeSrc.includes("startPlacement("),
+      "Tree.tsx must not start a duplicate canvas placement ghost alongside setDragPreview in Ansatz Editor",
+    );
+    assert.ok(
       !treeSrc.includes('new KeyboardEvent("keydown", { key: "Escape" })'),
       "Tree.tsx must not dispatch synthetic window Escape KeyboardEvent on drag end",
     );

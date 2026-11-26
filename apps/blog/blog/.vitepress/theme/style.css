@@ -1,0 +1,79 @@
+/* ModelScript Blog — editorial styling aligned with @modelscript/design-tokens */
+
+html,
+body {
+  overflow-x: clip;
+}
+
+:root {
+  --vp-c-brand-1: var(--ms-brand);
+  --vp-c-brand-2: var(--ms-brand-hover);
+  --vp-c-brand-3: var(--ms-brand-hover);
+  --vp-c-brand-soft: var(--ms-brand-soft);
+
+  --vp-font-family-base: var(--ms-font-sans);
+  --vp-font-family-mono: var(--ms-font-mono);
+
+  --vp-button-brand-bg: var(--ms-brand);
+  --vp-button-brand-hover-bg: var(--ms-brand-hover);
+  --vp-button-brand-active-bg: var(--ms-brand-active);
+
+  --vp-c-divider: var(--ms-divider);
+  --vp-c-border: var(--ms-border);
+}
+
+.dark {
+  --vp-c-bg: var(--ms-bg);
+  --vp-c-bg-alt: var(--ms-bg-alt);
+  --vp-c-bg-elv: var(--ms-bg-elv);
+  --vp-c-bg-soft: var(--ms-bg-soft);
+  --vp-c-divider: var(--ms-divider);
+  --vp-c-border: var(--ms-border);
+  --vp-c-gutter: #050810;
+
+  --vp-c-brand-1: var(--ms-link);
+  --vp-c-brand-2: var(--ms-brand-hover);
+  --vp-c-brand-3: var(--ms-brand);
+}
+
+.ms-nav-blog-badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border: 1px solid color-mix(in srgb, var(--vp-c-brand-1) 28%, transparent);
+}
+
+/* Editorial measure for blog post content, with wider breakout for interactive Ansatz artifacts */
+.VPDoc .content-container {
+  max-width: 780px !important;
+}
+
+.vp-doc p,
+.vp-doc li {
+  font-size: 1.04rem;
+  line-height: 1.76;
+}
+
+.vp-doc h1:first-child {
+  display: none;
+}
+
+.vp-doc .ms-artifact-figure {
+  width: min(920px, calc(100vw - 48px));
+  max-width: 100%;
+}
+
+@media (min-width: 1120px) {
+  .vp-doc .ms-artifact-figure {
+    width: calc(100% + 120px);
+    max-width: none;
+    margin-left: -60px;
+  }
+}

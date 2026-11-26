@@ -16,16 +16,19 @@ import { Button, IconButton, Label } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_ANSATZ_AI_SETTINGS,
+  escalateAnsatzTurnToArena,
   fallbackTaskTitle,
   fetchAnsatzProvidersInfo,
   generateAnsatzTaskTitle,
   loadAnsatzAiSettings,
   runAnsatzAiTurn,
   saveAnsatzAiSettings,
+  submitAnsatzTurnFeedback,
   type AnsatzAiProviderMode,
   type AnsatzAiSettings,
   type AnsatzChatMessage,
   type AnsatzCustomProtocol,
+  type AnsatzMemoryRetrievalEvent,
   type AnsatzProvidersInfo,
 } from "../util/ansatz-ai-client";
 import type {
@@ -34,6 +37,8 @@ import type {
   AnsatzToolHost,
   AnsatzToolResult,
 } from "../util/ansatz-tool-bridge";
+
+import type { ComputeDialPreset } from "./AnsatzTrainingStudioPanel";
 
 export interface AnsatzAiPanelProps {
   isOpen: boolean;
@@ -50,6 +55,9 @@ export interface AnsatzAiPanelProps {
   bottomOffset?: number | undefined;
   isNarrow?: boolean | undefined;
   width?: number | undefined;
+  computeDial?: ComputeDialPreset | undefined;
+  onChangeComputeDial?: ((preset: ComputeDialPreset) => void) | undefined;
+  packagePins?: Record<string, string> | undefined;
 }
 
 interface UiTurn {
@@ -58,7 +66,12 @@ interface UiTurn {
   content: string;
   model?: string | undefined;
   providerUsed?: AnsatzAiProviderMode | undefined;
+  traceId?: string | undefined;
+  userRating?: "up" | "down" | undefined;
+  escalatedUrl?: string | undefined;
+  feedbackMessage?: string | undefined;
   toolCalls: { call: AnsatzToolCall; result?: AnsatzToolResult | undefined }[];
+  memoryRetrieval?: AnsatzMemoryRetrievalEvent | undefined;
   error?: string | undefined;
 }
 
@@ -105,10 +118,14 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
   bottomOffset = 44,
   isNarrow = false,
   width = 380,
+  computeDial,
+  onChangeComputeDial,
+  packagePins,
 }) => {
   const [settings, setSettings] = useState<AnsatzAiSettings>(() => loadAnsatzAiSettings());
   const [providersInfo, setProvidersInfo] = useState<AnsatzProvidersInfo | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [localComputeDial, setLocalComputeDial] = useState<ComputeDialPreset>(computeDial ?? "auto-escalate");
   const [tasks, setTasks] = useState<AnsatzAiTask[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isTasksDrawerOpen, setIsTasksDrawerOpen] = useState(false);
@@ -117,6 +134,15 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
   const tasksRef = useRef<AnsatzAiTask[]>(tasks);
   tasksRef.current = tasks;
   const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const activeComputeDial: ComputeDialPreset = computeDial ?? localComputeDial;
+  const handleSelectComputeDial = useCallback(
+    (preset: ComputeDialPreset) => {
+      setLocalComputeDial(preset);
+      onChangeComputeDial?.(preset);
+    },
+    [onChangeComputeDial],
+  );
 
   const isDark = colorMode === "dark";
   const errorCount = diagnostics.filter((d) => d.severity === "error").length;
@@ -250,7 +276,23 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
       try {
         const res = await runAnsatzAiTurn(history, toolHost, settings, {
           signal: controller.signal,
+          computeDial: activeComputeDial,
+          packagePins,
           onLocalProgress: (msg) => updateTask(taskId, (t) => ({ ...t, localProgress: msg })),
+          onMemoryRetrieval: (evt) => {
+            updateTask(taskId, (t) => ({
+              ...t,
+              updatedAt: Date.now(),
+              turns: t.turns.map((turn) => (turn.id === assistantId ? { ...turn, memoryRetrieval: evt } : turn)),
+            }));
+          },
+          onTraceCreated: (evt) => {
+            updateTask(taskId, (t) => ({
+              ...t,
+              updatedAt: Date.now(),
+              turns: t.turns.map((turn) => (turn.id === assistantId ? { ...turn, traceId: evt.traceId } : turn)),
+            }));
+          },
           onTextDelta: (delta) => {
             updateTask(taskId, (t) => ({
               ...t,
@@ -298,6 +340,8 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
                   content: turn.content || res.content,
                   model: res.model,
                   providerUsed: res.providerUsed,
+                  memoryRetrieval: turn.memoryRetrieval ?? res.memoryRetrieval,
+                  traceId: turn.traceId ?? res.traceId,
                 }
               : turn,
           ),
@@ -316,7 +360,7 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
         abortControllersRef.current.delete(taskId);
       }
     },
-    [activeTaskId, settings, toolHost, updateTask],
+    [activeComputeDial, activeTaskId, packagePins, settings, toolHost, updateTask],
   );
 
   useEffect(() => {
@@ -486,6 +530,93 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
             </select>
           </div>
 
+          {/* Test-Time Compute Dial (m=0 <-> 32) */}
+          <div
+            data-testid="ansatz-ai-compute-dial"
+            role="group"
+            aria-label="Test-Time Compute Dial (m=0 to 32)"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 6,
+            }}
+          >
+            <span
+              title="Dynamic-m Relational Zonotope Test-Time Compute Dial"
+              style={{
+                opacity: 0.75,
+                fontSize: 10.5,
+                fontFamily: "var(--ms-font-mono, ui-monospace, monospace)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              m=0↔32
+            </span>
+            <div
+              style={{
+                flex: 1,
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 2,
+                padding: 2,
+                borderRadius: 999,
+                background: isDark ? "rgba(13, 17, 23, 0.85)" : "rgba(234, 238, 242, 0.9)",
+                border: `1px solid ${isDark ? "rgba(48, 54, 61, 0.9)" : "rgba(208, 215, 222, 0.9)"}`,
+              }}
+            >
+              {(
+                [
+                  ["fast-m0", "Fast (m=0)", "Fast point mode (m=0) — lowest latency"],
+                  ["auto-escalate", "Auto (Δ_t>τ)", "Auto-escalate zonotope generators when spread Δ_t > τ"],
+                  ["certified-m32", "Certified (m=32)", "Certified relational zonotope mode (m=32)"],
+                ] as const
+              ).map(([preset, label, title]) => {
+                const isSelected = activeComputeDial === preset;
+                return (
+                  <button
+                    key={preset}
+                    type="button"
+                    title={title}
+                    aria-pressed={isSelected}
+                    onClick={() => handleSelectComputeDial(preset)}
+                    style={{
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "3px 5px",
+                      fontSize: 10.5,
+                      fontWeight: isSelected ? 600 : 500,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      transition: "background 140ms ease, color 140ms ease",
+                      background: isSelected
+                        ? isDark
+                          ? "rgba(56, 189, 248, 0.22)"
+                          : "rgba(9, 105, 218, 0.14)"
+                        : "transparent",
+                      color: isSelected
+                        ? isDark
+                          ? "#7dd3fc"
+                          : "#0969da"
+                        : isDark
+                          ? "rgba(230, 237, 243, 0.72)"
+                          : "rgba(31, 35, 40, 0.72)",
+                      boxShadow: isSelected
+                        ? isDark
+                          ? "inset 0 0 0 1px rgba(56, 189, 248, 0.45)"
+                          : "inset 0 0 0 1px rgba(9, 105, 218, 0.35)"
+                        : "none",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
             <span style={{ opacity: 0.75, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {fileName} · {dialect}
@@ -645,6 +776,53 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
                 wordBreak: "break-word",
               }}
             >
+              {turn.memoryRetrieval && turn.memoryRetrieval.chunkCount > 0 && (
+                <div
+                  data-testid="ansatz-ai-memory-badge"
+                  title={turn.memoryRetrieval.sources
+                    .map((s) => `${s.sourceUri} (score=${s.score.toFixed(2)}${s.formalVerified ? ", verified" : ""})`)
+                    .join("\n")}
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: 4,
+                    marginBottom: 6,
+                    padding: "3px 7px",
+                    borderRadius: 6,
+                    fontSize: 10.5,
+                    background: isDark ? "rgba(56, 189, 248, 0.12)" : "rgba(9, 105, 218, 0.08)",
+                    border: `1px solid ${isDark ? "rgba(56, 189, 248, 0.3)" : "rgba(9, 105, 218, 0.22)"}`,
+                    color: isDark ? "#7dd3fc" : "#0969da",
+                  }}
+                >
+                  <span style={{ fontWeight: 600 }}>
+                    DiskANN · {turn.memoryRetrieval.chunkCount} source
+                    {turn.memoryRetrieval.chunkCount === 1 ? "" : "s"} ({turn.memoryRetrieval.latencyMs.toFixed(1)} ms)
+                  </span>
+                  {turn.memoryRetrieval.sources.slice(0, 3).map((src) => (
+                    <span
+                      key={src.chunkId}
+                      style={{
+                        fontSize: 10,
+                        padding: "1px 5px",
+                        borderRadius: 4,
+                        fontFamily: "var(--ms-font-mono, ui-monospace, monospace)",
+                        background: isDark ? "rgba(13, 17, 23, 0.55)" : "rgba(255, 255, 255, 0.7)",
+                        maxWidth: 180,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {src.packageName
+                        ? `${src.packageName}${src.packageVersion ? `@${src.packageVersion}` : ""}`
+                        : src.sourceUri}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {turn.toolCalls.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 6 }}>
                   {turn.toolCalls.map((tc, idx) => (
@@ -674,6 +852,9 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
                             type="button"
                             onClick={() => {
                               toolHost.applyCodeEdit(tc.result!.previousCode!, "Ansatz AI revert");
+                              if (turn.traceId) {
+                                void submitAnsatzTurnFeedback(turn.traceId, { editOutcome: "reverted" });
+                              }
                             }}
                             style={{
                               fontSize: 10,
@@ -738,6 +919,148 @@ export const AnsatzAiPanel: React.FC<AnsatzAiPanelProps> = ({
               {turn.model && (
                 <div style={{ fontSize: 10, opacity: 0.65, marginTop: 4 }}>
                   {turn.providerUsed} · {turn.model}
+                </div>
+              )}
+
+              {turn.role === "assistant" && turn.traceId && activeTask && (
+                <div
+                  data-testid="ansatz-ai-feedback-bar"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    marginTop: 6,
+                    paddingTop: 5,
+                    borderTop: "1px solid var(--borderColor-muted, rgba(128,128,128,0.2))",
+                    fontSize: 10,
+                  }}
+                >
+                  <button
+                    type="button"
+                    title="Helpful response"
+                    onClick={() => {
+                      const tid = turn.traceId!;
+                      const taskId = activeTask.id;
+                      updateTask(taskId, (t) => ({
+                        ...t,
+                        turns: t.turns.map((u) => (u.id === turn.id ? { ...u, userRating: "up" } : u)),
+                      }));
+                      void submitAnsatzTurnFeedback(tid, { userRating: "up", editOutcome: "accepted" });
+                    }}
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                      border: "1px solid var(--borderColor-default, #30363d)",
+                      background: turn.userRating === "up" ? "rgba(46,160,67,0.2)" : "transparent",
+                      color: "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Helpful
+                  </button>
+                  <button
+                    type="button"
+                    title="Needs work"
+                    onClick={() => {
+                      const tid = turn.traceId!;
+                      const taskId = activeTask.id;
+                      updateTask(taskId, (t) => ({
+                        ...t,
+                        turns: t.turns.map((u) => (u.id === turn.id ? { ...u, userRating: "down" } : u)),
+                      }));
+                      void submitAnsatzTurnFeedback(tid, { userRating: "down" });
+                    }}
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                      border: "1px solid var(--borderColor-default, #30363d)",
+                      background: turn.userRating === "down" ? "rgba(248,81,73,0.2)" : "transparent",
+                      color: "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Needs Fix
+                  </button>
+                  <button
+                    type="button"
+                    title="Contribute your current verified editor code as a Gate 1-4 fix (+15 credits)"
+                    onClick={() => {
+                      const tid = turn.traceId!;
+                      const taskId = activeTask.id;
+                      const currentCode = toolHost.getCode();
+                      void submitAnsatzTurnFeedback(tid, {
+                        editOutcome: "manual_fixed",
+                        userFixedCode: currentCode,
+                        allowTrainingOptIn: true,
+                      }).then((fb) => {
+                        updateTask(taskId, (t) => ({
+                          ...t,
+                          turns: t.turns.map((u) =>
+                            u.id === turn.id
+                              ? {
+                                  ...u,
+                                  feedbackMessage: fb?.harvestedToDiskAnn
+                                    ? `Verified fix indexed (+${fb.creditsAwarded ?? 0} cr)`
+                                    : "Feedback recorded",
+                                }
+                              : u,
+                          ),
+                        }));
+                      });
+                    }}
+                    style={{
+                      fontSize: 10,
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                      border: "1px solid var(--borderColor-default, #30363d)",
+                      background: "transparent",
+                      color: "inherit",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Contribute Fix
+                  </button>
+                  {turn.escalatedUrl ? (
+                    <a
+                      href={turn.escalatedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: "var(--fgColor-accent, #58a6ff)", textDecoration: "underline" }}
+                    >
+                      Open Arena Challenge
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      title="Escalate to Social RLHF Arena for community engineers"
+                      onClick={() => {
+                        const tid = turn.traceId!;
+                        const taskId = activeTask.id;
+                        void escalateAnsatzTurnToArena(tid, { challengeType: "fix_it_bounty" }).then((esc) => {
+                          if (!esc) return;
+                          updateTask(taskId, (t) => ({
+                            ...t,
+                            turns: t.turns.map((u) => (u.id === turn.id ? { ...u, escalatedUrl: esc.annotateUrl } : u)),
+                          }));
+                        });
+                      }}
+                      style={{
+                        fontSize: 10,
+                        padding: "1px 6px",
+                        borderRadius: 4,
+                        border: "1px solid var(--borderColor-default, #30363d)",
+                        background: "transparent",
+                        color: "inherit",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Escalate to Arena
+                    </button>
+                  )}
+                  {turn.feedbackMessage && <span style={{ opacity: 0.8 }}>{turn.feedbackMessage}</span>}
                 </div>
               )}
             </div>

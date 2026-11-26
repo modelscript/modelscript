@@ -261,6 +261,7 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         const srcPortMeta = sPort ? sourceCell.getPort?.(sPort) : undefined;
         const tgtPortMeta = tPort ? targetCell.getPort?.(tPort) : undefined;
 
+        const graphOpts = getOptionsForGraph(g);
         const compat = evaluateModelScriptPortCompatibility(
           {
             nodeId: sourceCell.id,
@@ -304,9 +305,50 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
                   : undefined,
             nodeLabel: typeof tgtData["label"] === "string" ? tgtData["label"] : undefined,
           },
-          { allowSameNode: true },
+          { allowSameNode: true, languageId: graphOpts?.language },
         );
-        return compat.compatible;
+        if (!compat.compatible) return false;
+
+        // Consult LSP-backed validator if provided (sync or cached async)
+        const lspValidator = graphOpts?.onValidateConnection;
+        if (lspValidator) {
+          const cacheKey = `${sourceCell.id}.${sPort}->${targetCell.id}.${tPort}`;
+          let cache = (g as unknown as { __lspCompatCache?: Map<string, boolean> }).__lspCompatCache;
+          if (!cache) {
+            cache = new Map<string, boolean>();
+            (g as unknown as { __lspCompatCache?: Map<string, boolean> }).__lspCompatCache = cache;
+          }
+          if (cache.has(cacheKey)) {
+            return cache.get(cacheKey)!;
+          }
+          const inFlight =
+            (g as unknown as { __lspCompatInFlight?: Set<string> }).__lspCompatInFlight ?? new Set<string>();
+          (g as unknown as { __lspCompatInFlight?: Set<string> }).__lspCompatInFlight = inFlight;
+          if (!inFlight.has(cacheKey)) {
+            const res = lspValidator({
+              sourceNode: sourceCell.id,
+              sourcePort: sPort,
+              targetNode: targetCell.id,
+              targetPort: tPort,
+            });
+            if (res && typeof (res as Promise<unknown>).then === "function") {
+              inFlight.add(cacheKey);
+              void (res as Promise<{ compatible: boolean }>)
+                .then((r) => {
+                  inFlight.delete(cacheKey);
+                  cache!.set(cacheKey, r.compatible);
+                })
+                .catch(() => {
+                  inFlight.delete(cacheKey);
+                });
+            } else if (res && typeof (res as { compatible?: boolean }).compatible === "boolean") {
+              const ok = (res as { compatible: boolean }).compatible;
+              cache.set(cacheKey, ok);
+              return ok;
+            }
+          }
+        }
+        return true;
       },
       validateEdge: () => true,
       createEdge: (): ReturnType<Graph["createEdge"]> => {
@@ -540,10 +582,10 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
     editing.syncAlignmentToolbar();
     scheduleMinimapUpdate();
     if (!container) return;
-    if (sx < 0.25) {
+    if (sx < 0.12) {
       container.classList.add("ms-lod-minimal");
       container.classList.add("ms-lod-low");
-    } else if (sx < 0.5) {
+    } else if (sx < 0.2) {
       container.classList.remove("ms-lod-minimal");
       container.classList.add("ms-lod-low");
     } else {

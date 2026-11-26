@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import { parseSsd } from "@modelscript/ssp";
 import { inflateRaw } from "pako";
-import { parseSsd } from "./ssp-parser";
 
 /**
  * Extract a file from a ZIP archive by name.
@@ -165,35 +166,51 @@ export function fmuBytesToModelica(name: string, fmuBytes: Uint8Array): string {
   }
 }
 
+function getXmlAttr(el: XmlElement | null | undefined, name: string): string {
+  return el?.attributes.find((a) => a.name === name)?.value ?? "";
+}
+
+function collectElementsByName(el: XmlElement | null | undefined, name: string, out: XmlElement[] = []): XmlElement[] {
+  if (!el) return out;
+  if (el.name === name) out.push(el);
+  for (const child of el.children) {
+    collectElementsByName(child, name, out);
+  }
+  return out;
+}
+
+const FMI_SCALAR_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+
 function parseModelDescription(xml: string) {
-  const attr = (s: string, name: string): string => s.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`))?.[1] ?? "";
+  const doc = parseXmlSync(xml);
+  const root = doc.root;
+  const headerEl = root && root.name === "fmiModelDescription" ? root : null;
 
-  const headerMatch = xml.match(/<fmiModelDescription([^>]*)>/);
-  const header = headerMatch?.[1] ?? "";
-  const modelName = attr(header, "modelName") || "FMU";
-  const description = attr(header, "description");
-  const guid = attr(header, "guid");
-  const generationTool = attr(header, "generationTool");
+  const modelName = getXmlAttr(headerEl, "modelName") || "FMU";
+  const description = getXmlAttr(headerEl, "description");
+  const guid = getXmlAttr(headerEl, "guid");
+  const generationTool = getXmlAttr(headerEl, "generationTool");
 
-  const variables = [];
-  const scalarRegex =
-    /<ScalarVariable\b([^>]*)\/?>([\s\S]*?)(?:<\/ScalarVariable>|(?=<ScalarVariable|<\/ModelVariables))/g;
-  let match: RegExpExecArray | null;
+  const variables: {
+    name: string;
+    causality: string;
+    type: string;
+    description: string;
+    start: string | undefined;
+    unit: string | undefined;
+  }[] = [];
 
-  while ((match = scalarRegex.exec(xml)) !== null) {
-    const headerAttrs = match[1] ?? "";
-    const body = match[0] ?? "";
-    const name = attr(headerAttrs, "name");
+  for (const sv of collectElementsByName(headerEl ?? root, "ScalarVariable")) {
+    const name = getXmlAttr(sv, "name");
     if (!name) continue;
 
-    const causality = attr(headerAttrs, "causality") || "local";
-    const typeMatch = body.match(/<(Real|Integer|Boolean|String)\b([^>]*)/);
-    const type = typeMatch?.[1] ?? "Real";
-    const typeAttrs = typeMatch?.[2] ?? "";
-    const start = attr(typeAttrs, "start") || undefined;
-    const unit = attr(typeAttrs, "unit") || undefined;
+    const causality = getXmlAttr(sv, "causality") || "local";
+    const typeEl = sv.children.find((c) => FMI_SCALAR_TYPES.has(c.name));
+    const type = typeEl?.name ?? "Real";
+    const start = getXmlAttr(typeEl, "start") || undefined;
+    const unit = getXmlAttr(typeEl, "unit") || undefined;
 
-    variables.push({ name, causality, type, description: attr(headerAttrs, "description"), start, unit });
+    variables.push({ name, causality, type, description: getXmlAttr(sv, "description"), start, unit });
   }
 
   return { modelName, description, guid, generationTool, variables };

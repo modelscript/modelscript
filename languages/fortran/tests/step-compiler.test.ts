@@ -445,4 +445,41 @@ $OutStep = STEP_VAL
     });
     assert.equal(outMap.get("OutStep"), -1.0);
   });
+
+  test("simulateFortranRoutine: rejects invalid Fortran syntax instead of silently ignoring it", async () => {
+    const validDroop = `subroutine bess_droop_ctrl(p_meas, q_meas, p_ref, q_ref, mp, nq, f_nom, v_nom, f_cmd, v_cmd)
+  implicit none
+  double precision, intent(in)  :: p_meas, q_meas, p_ref, q_ref
+  double precision, intent(in)  :: mp, nq, f_nom, v_nom
+  double precision, intent(out) :: f_cmd, v_cmd
+
+  f_cmd = f_nom - mp * (p_meas - p_ref) * f_nom
+  v_cmd = v_nom - nq * (q_meas - q_ref) * v_nom
+end subroutine bess_droop_ctrl
+`;
+    const okRes = await simulateFortranRoutine(validDroop, {
+      startTime: 0,
+      stopTime: 0.1,
+      dt: 0.05,
+      inputs: { p_meas: 1.0, p_ref: 0.5, q_meas: 0.2, q_ref: 0.0, mp: 0.04, nq: 0.05, f_nom: 60.0, v_nom: 13.8 },
+    });
+    assert.equal(okRes.routineName, "bess_droop_ctrl");
+    assert.ok(Math.abs((okRes.finalLocals["f_cmd"] ?? 0) - 58.8) < 1e-6);
+
+    const invalidDroop = `subroutine bess_droop_ctrl(p_meas, q_meas, p_ref, q_ref, mp, nq, f_nom, v_nom, f_cmd, v_cmd)
+  implicit none
+  double precision, intent(in)  :: p_meas, q_meas, p_ref, q_ref
+  double precision, intent(in)  :: mp, nq, f_nom, v_nom
+  double precision, intent(out) :: f_cmd, v_cmd
+
+  f_cmd = f_nom - mp * (p_meas - p_ref) * f_nom
+  v_cmd = v_nom - nq * (q_meas - q_ref) * v_nom
+  1
+end subroutine bess_droop_ctrl
+`;
+    await assert.rejects(
+      () => simulateFortranRoutine(invalidDroop, { startTime: 0, stopTime: 0.1, dt: 0.05 }),
+      /Fortran compilation failed \(line 9\): Syntax error in Fortran statement: unrecognized Fortran statement '1'\./,
+    );
+  });
 });

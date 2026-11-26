@@ -336,8 +336,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
         let evaluatedExpr = expr;
         for (const v of vars) {
           if (!isNaN(Number(v.value))) {
-            const varPattern = new RegExp(`\\b${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g");
-            evaluatedExpr = evaluatedExpr.replace(varPattern, v.value);
+            evaluatedExpr = replaceIdentifierToken(evaluatedExpr, v.name, v.value);
           }
         }
         if (/^[\d.\s+\-*/()]+$/.test(evaluatedExpr)) {
@@ -375,3 +374,36 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
 }
 
 export { ModelScriptDebugSession as SimulationDebugSession };
+
+function isWordCharCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 // _
+  );
+}
+
+function replaceIdentifierToken(text: string, identifier: string, replacement: string): string {
+  if (!identifier) return text;
+  let result = "";
+  let cursor = 0;
+  let pos = 0;
+
+  while (pos < text.length) {
+    const idx = text.indexOf(identifier, pos);
+    if (idx < 0) break;
+    const end = idx + identifier.length;
+    const leftOk = idx === 0 || !isWordCharCode(text.charCodeAt(idx - 1));
+    const rightOk = end === text.length || !isWordCharCode(text.charCodeAt(end));
+    if (leftOk && rightOk) {
+      result += text.slice(cursor, idx) + replacement;
+      cursor = end;
+      pos = end;
+    } else {
+      pos = idx + 1;
+    }
+  }
+
+  return cursor === 0 ? text : result + text.slice(cursor);
+}

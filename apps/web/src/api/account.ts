@@ -4,6 +4,7 @@ import { api } from "./client";
 
 export const updateAccount = async (data: {
   password?: string | undefined;
+  totpCode?: string | undefined;
   username?: string | undefined;
   email?: string | undefined;
   display_name?: string | undefined;
@@ -64,8 +65,12 @@ export const exportUserDataArchive = async (format: "zip" | "json" = "zip"): Pro
   return response.data;
 };
 
-export const deleteAccount = async () => {
-  const { data } = await api.delete("/users/me");
+export const deleteAccount = async (payload?: {
+  password?: string | undefined;
+  totpCode?: string | undefined;
+  confirmUsername?: string | undefined;
+}) => {
+  const { data } = await api.delete("/users/me", payload ? { data: payload } : undefined);
   return data;
 };
 
@@ -197,6 +202,26 @@ export const updateNotificationSettings = async (
       // ignore storage quota errors
     }
   }
+  return data;
+};
+
+export interface UserUiPreferences {
+  theme?: string | undefined;
+  display?: Record<string, unknown> | undefined;
+  modeling?: Record<string, unknown> | undefined;
+}
+
+export const getUserPreferences = async (): Promise<UserUiPreferences> => {
+  const { data } = await api.get<{ preferences?: UserUiPreferences }>("/auth/preferences");
+  return data?.preferences ?? {};
+};
+
+export const updateUserPreferences = async (patch: {
+  theme?: string | undefined;
+  display?: Record<string, unknown> | undefined;
+  modeling?: Record<string, unknown> | undefined;
+}): Promise<{ success: boolean; preferences: UserUiPreferences }> => {
+  const { data } = await api.put<{ success: boolean; preferences: UserUiPreferences }>("/auth/preferences", patch);
   return data;
 };
 
@@ -509,15 +534,15 @@ export const migrateAccountToActor = async (
 export const exportSocialGraph = async (
   format: "json" | "csv" = "json",
   type: "following" | "blocks" | "mutes" = "following",
-): Promise<Blob | { following: string[]; blocks: string[]; mutes: string[] }> => {
+): Promise<Blob | { type?: string; following?: string[]; blocks?: string[]; mutes?: string[] }> => {
   if (format === "csv") {
-    const response = await api.get(`/users/me/social-graph/export?format=csv&type=${type}`, {
+    const response = await api.get(`/users/me/social-graph/export?format=csv&type=${encodeURIComponent(type)}`, {
       responseType: "blob",
     });
     return response.data;
   }
-  const { data } = await api.get<{ following: string[]; blocks: string[]; mutes: string[] }>(
-    "/users/me/social-graph/export?format=json",
+  const { data } = await api.get<{ type?: string; following?: string[]; blocks?: string[]; mutes?: string[] }>(
+    `/users/me/social-graph/export?format=json&type=${encodeURIComponent(type)}`,
   );
   return data;
 };

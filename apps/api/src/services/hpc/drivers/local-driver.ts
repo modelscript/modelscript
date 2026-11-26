@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { calculateCostCredits, getComputeProfile } from "../compute-profiles.js";
@@ -13,7 +13,7 @@ import type {
   HpcSubmissionResult,
   HpcUsageMetrics,
 } from "../hpc-types.js";
-import { generateSbatchScript } from "../sbatch-generator.js";
+import { generateSbatchScript, sanitizeUserEnv } from "../sbatch-generator.js";
 
 export interface LocalDriverOptions {
   defaultSandbox?: HpcSandboxConfig | undefined;
@@ -29,8 +29,6 @@ interface LocalJobRecord {
   state: HpcJobState;
   startTime: number;
   endTime?: number | undefined;
-  startCpuUsage: NodeJS.CpuUsage;
-  totalCpuMicroseconds?: number | undefined;
   childCpuMicroseconds?: number | undefined;
   peakMemoryMb?: number | undefined;
   exitCode?: number | undefined;
@@ -38,6 +36,64 @@ interface LocalJobRecord {
   suspiciousActivity?: "potential_cryptomining" | "timeout" | "credit_exhausted" | undefined;
   networkIsolationEnforced?: boolean | undefined;
   sandboxRuntime?: string | undefined;
+  containerName?: string | undefined;
+  cleanupTimers?: (() => void) | undefined;
+}
+
+const BASE_ENV_ALLOWLIST = [
+  "PATH",
+  "LANG",
+  "LC_ALL",
+  "TZ",
+  "TMPDIR",
+  "HOME",
+  "OMP_NUM_THREADS",
+  "OPENBLAS_NUM_THREADS",
+] as const;
+
+const MINIMAL_BWRAP_RO_BINDS = [
+  "/usr",
+  "/lib",
+  "/lib64",
+  "/bin",
+  "/etc/alternatives",
+  "/etc/ld.so.cache",
+  "/etc/ssl",
+] as const;
+
+const DEFAULT_SANDBOX_IMAGE = "ghcr.io/modelscript/cli-ee:v1.0.0";
+
+function sanitizeContainerNameSuffix(jobId: string): string {
+  const safe = path
+    .basename(String(jobId))
+    .replace(/[^a-zA-Z0-9_.-]/g, "_")
+    .replace(/^[._-]+/, "")
+    .slice(0, 48);
+  return safe || "job";
+}
+
+function validateSandboxImage(image: string): string {
+  const trimmed = image.trim();
+  if (
+    !trimmed ||
+    trimmed.length > 256 ||
+    trimmed.startsWith("-") ||
+    trimmed.includes("..") ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._/@:-]*$/.test(trimmed)
+  ) {
+    throw new Error(`Invalid sandbox container image reference: ${image}`);
+  }
+  const allowedEnv = process.env["HPC_SANDBOX_ALLOWED_IMAGES"];
+  if (allowedEnv && allowedEnv.trim().length > 0) {
+    const allowlist = allowedEnv
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!allowlist.includes(trimmed)) {
+      throw new Error(`Sandbox image '${trimmed}' is not in HPC_SANDBOX_ALLOWED_IMAGES allowlist.`);
+    }
+  }
+  return trimmed;
 }
 
 /**
@@ -94,7 +150,7 @@ function sampleChildProcessMetrics(pid: number | undefined): {
  * Local process execution driver.
  * Emulates Slurm's execution model and accounting on developer workstations
  * and single-node instances with optional containerized (Docker/Podman) or
- * kernel namespace (unshare) zero-egress sandboxing.
+ * bubblewrap (bwrap) zero-egress sandboxing.
  */
 export class LocalProcessDriver implements HpcDriver {
   readonly type = "local" as const;
@@ -113,6 +169,7 @@ export class LocalProcessDriver implements HpcDriver {
     execArgs: string[];
     runtime: string;
     networkIsolation: boolean;
+    containerName?: string | undefined;
   } {
     const totalTasks = (spec.resources.nodes ?? 1) * (spec.resources.tasksPerNode ?? 1);
     let execCmd = spec.command;
@@ -126,6 +183,7 @@ export class LocalProcessDriver implements HpcDriver {
     const sandboxConfig = spec.sandbox || this.options.defaultSandbox;
     let networkIsolation = false;
     let runtime = "none";
+    let containerName: string | undefined;
 
     const requestedRuntime =
       sandboxConfig?.runtime ||
@@ -134,8 +192,11 @@ export class LocalProcessDriver implements HpcDriver {
 
     const isSandboxRequested =
       sandboxConfig?.enabled === true ||
+      sandboxConfig?.networkIsolation === true ||
       spec.resources.networkIsolation === true ||
       process.env["HPC_SANDBOX_ENABLED"] === "true";
+
+    const allowTestFallback = process.env["NODE_ENV"] === "test" && sandboxConfig?.allowUnsandboxedFallback === true;
 
     let effectiveRuntime = requestedRuntime;
     if (requestedRuntime === "auto") {
@@ -146,14 +207,22 @@ export class LocalProcessDriver implements HpcDriver {
           effectiveRuntime = "docker";
         } else if (process.platform === "linux" && this.isExecutableInPath("bwrap")) {
           effectiveRuntime = "bwrap";
-        } else if (process.platform === "linux" && this.isExecutableInPath("unshare")) {
-          effectiveRuntime = "unshare";
-        } else {
+        } else if (allowTestFallback) {
           effectiveRuntime = "none";
+        } else {
+          throw new Error(
+            "HPC sandboxing was requested, but no compliant sandbox runtime (podman, docker, bwrap) is available.",
+          );
         }
       } else {
         effectiveRuntime = "none";
       }
+    } else if (
+      (effectiveRuntime === "docker" || effectiveRuntime === "podman" || effectiveRuntime === "bwrap") &&
+      process.env["NODE_ENV"] !== "test" &&
+      !this.isExecutableInPath(effectiveRuntime)
+    ) {
+      throw new Error(`Requested HPC sandbox runtime '${effectiveRuntime}' is not installed on this host.`);
     }
 
     if (effectiveRuntime === "docker" || effectiveRuntime === "podman") {
@@ -161,10 +230,20 @@ export class LocalProcessDriver implements HpcDriver {
       networkIsolation = sandboxConfig?.networkIsolation !== false;
       const readOnly = sandboxConfig?.readOnlyRoot !== false;
       const tmpfsMb = sandboxConfig?.tmpfsSizeMb ?? 2048;
-      const image = sandboxConfig?.image || process.env["HPC_SANDBOX_IMAGE"] || "ghcr.io/modelscript/cli-ee:latest";
+      const rawImage = sandboxConfig?.image || process.env["HPC_SANDBOX_IMAGE"] || DEFAULT_SANDBOX_IMAGE;
+      const image = validateSandboxImage(rawImage);
       const absWorkingDir = path.resolve(spec.workingDir);
+      containerName = `msx-${sanitizeContainerNameSuffix(spec.jobId)}`;
 
-      const containerArgs: string[] = ["run", "--rm"];
+      const containerArgs: string[] = [
+        "run",
+        "--rm",
+        "--name",
+        containerName,
+        "--pids-limit=256",
+        "--user",
+        "65534:65534",
+      ];
       if (networkIsolation) {
         containerArgs.push("--network", "none");
       }
@@ -175,45 +254,72 @@ export class LocalProcessDriver implements HpcDriver {
       containerArgs.push("-v", `${absWorkingDir}:${absWorkingDir}:rw`);
       containerArgs.push("-w", absWorkingDir);
 
-      const cpus = spec.resources.cpusPerTask ?? 4;
-      containerArgs.push("--cpus", String(cpus));
+      const baseCpus = spec.resources.cpusPerTask ?? 4;
+      const effectiveCpus =
+        spec.resources.cpuMaxLimitPercent && spec.resources.cpuMaxLimitPercent > 0
+          ? Math.max(0.1, Math.round(((baseCpus * spec.resources.cpuMaxLimitPercent) / 100) * 100) / 100)
+          : baseCpus;
+      containerArgs.push("--cpus", String(effectiveCpus));
 
-      const memMb = spec.resources.memoryMb ?? 1024;
-      containerArgs.push("--memory", `${memMb}m`);
+      const memMb = spec.resources.memoryMaxMb ?? spec.resources.memoryMb ?? 1024;
+      containerArgs.push("--memory", `${Math.floor(memMb)}m`);
 
       if (sandboxConfig?.dropCapabilities !== false) {
         containerArgs.push("--cap-drop=ALL", "--security-opt=no-new-privileges");
       }
 
+      if (sandboxConfig?.seccompProfile) {
+        const seccomp = sandboxConfig.seccompProfile.trim();
+        if (/[\s\0\r\n]/.test(seccomp)) {
+          throw new Error("Invalid seccompProfile path.");
+        }
+        containerArgs.push("--security-opt", `seccomp=${seccomp}`);
+      }
+
       containerArgs.push(image, execCmd, ...execArgs);
       execCmd = effectiveRuntime;
       execArgs = containerArgs;
-    } else if (effectiveRuntime === "bwrap" && process.platform === "linux") {
-      runtime = "bwrap";
-      networkIsolation = sandboxConfig?.networkIsolation !== false;
-      const absWorkingDir = path.resolve(spec.workingDir);
-      const bwrapArgs: string[] = [
-        "--ro-bind",
-        "/",
-        "/",
-        "--dev",
-        "/dev",
-        "--proc",
-        "/proc",
-        "--tmpfs",
-        "/tmp",
-        "--bind",
-        absWorkingDir,
-        absWorkingDir,
-        "--chdir",
-        absWorkingDir,
-      ];
-      if (networkIsolation) {
-        bwrapArgs.push("--unshare-net");
+    } else if (effectiveRuntime === "bwrap") {
+      if (process.platform !== "linux") {
+        if (!allowTestFallback && process.env["NODE_ENV"] !== "test") {
+          throw new Error("bwrap sandbox runtime is only supported on Linux.");
+        }
+      } else {
+        runtime = "bwrap";
+        networkIsolation = sandboxConfig?.networkIsolation !== false;
+        const absWorkingDir = path.resolve(spec.workingDir);
+        const bwrapArgs: string[] = [
+          "--unshare-pid",
+          "--unshare-ipc",
+          "--unshare-uts",
+          "--die-with-parent",
+          "--new-session",
+        ];
+        for (const sysPath of MINIMAL_BWRAP_RO_BINDS) {
+          if (fs.existsSync(sysPath)) {
+            bwrapArgs.push("--ro-bind", sysPath, sysPath);
+          }
+        }
+        bwrapArgs.push(
+          "--dev",
+          "/dev",
+          "--proc",
+          "/proc",
+          "--tmpfs",
+          "/tmp",
+          "--bind",
+          absWorkingDir,
+          absWorkingDir,
+          "--chdir",
+          absWorkingDir,
+        );
+        if (networkIsolation) {
+          bwrapArgs.push("--unshare-net");
+        }
+        bwrapArgs.push("--", execCmd, ...execArgs);
+        execCmd = "bwrap";
+        execArgs = bwrapArgs;
       }
-      bwrapArgs.push("--", execCmd, ...execArgs);
-      execCmd = "bwrap";
-      execArgs = bwrapArgs;
     } else if (effectiveRuntime === "unshare" && process.platform === "linux") {
       runtime = "unshare";
       networkIsolation = true;
@@ -221,7 +327,49 @@ export class LocalProcessDriver implements HpcDriver {
       execCmd = "unshare";
     }
 
-    return { execCmd, execArgs, runtime, networkIsolation };
+    return { execCmd, execArgs, runtime, networkIsolation, containerName };
+  }
+
+  /**
+   * Sends SIGTERM to the entire process group, escalates to SIGKILL if still alive,
+   * and force-removes any backing container runtime instance.
+   */
+  private terminateJobProcess(record: LocalJobRecord): void {
+    const { child, sandboxRuntime, containerName } = record;
+    const pid = child.pid;
+
+    const sendSignal = (sig: NodeJS.Signals) => {
+      if (pid && process.platform !== "win32") {
+        try {
+          process.kill(-pid, sig);
+          return;
+        } catch {
+          // Process group may already be gone; fall back to direct child signal
+        }
+      }
+      try {
+        child.kill(sig);
+      } catch {
+        // Process already exited
+      }
+    };
+
+    sendSignal("SIGTERM");
+
+    const killTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        sendSignal("SIGKILL");
+      }
+    }, 2000);
+    killTimer.unref?.();
+
+    if (containerName && (sandboxRuntime === "docker" || sandboxRuntime === "podman")) {
+      execFile(sandboxRuntime, ["rm", "-f", containerName], { timeout: 5000 }, (err) => {
+        if (err) {
+          console.warn(`[HPC Local Driver] Failed to force-remove container ${containerName}: ${err.message}`);
+        }
+      });
+    }
   }
 
   public async submit(spec: HpcJobSpec): Promise<HpcSubmissionResult> {
@@ -240,72 +388,25 @@ export class LocalProcessDriver implements HpcDriver {
     });
 
     // 3. Resolve command, MPI, and Sandboxing
-    const { execCmd, execArgs, runtime, networkIsolation } = this.resolveSandboxCommand(spec);
+    const { execCmd, execArgs, runtime, networkIsolation, containerName } = this.resolveSandboxCommand(spec);
 
-    const startCpuUsage = process.cpuUsage();
     const startTime = Date.now();
 
-    // 4. Spawn child process with sensitive server secrets stripped from environment
-    const SENSITIVE_SECRETS = new Set([
-      "JWT_SECRET",
-      "STRIPE_SECRET_KEY",
-      "STRIPE_WEBHOOK_SECRET",
-      "AWS_SECRET_ACCESS_KEY",
-      "S3_SECRET_KEY",
-      "TURNSTILE_SECRET_KEY",
-      "GITLAB_TOKEN",
-      "GITHUB_TOKEN",
-      "OPENAI_API_KEY",
-      "GEMINI_API_KEY",
-      "SLURM_JWT_TOKEN",
-      "OIDC_CLIENT_SECRET",
-      "SMTP_PASSWORD",
-      "AUDIT_HMAC_SECRET",
-      "TOTP_ENCRYPTION_KEY",
-      "CLOUDFLARE_TUNNEL_TOKEN",
-    ]);
-    const SENSITIVE_KEY_PATTERN = /_(SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|ENCRYPTION_KEY)$/i;
-    const BLOCKED_USER_ENV_KEYS = new Set([
-      "LD_PRELOAD",
-      "LD_LIBRARY_PATH",
-      "LD_AUDIT",
-      "DYLD_INSERT_LIBRARIES",
-      "DYLD_LIBRARY_PATH",
-      "BASH_ENV",
-      "ENV",
-      "PROMPT_COMMAND",
-      "NODE_OPTIONS",
-      "PYTHONPATH",
-      "PYTHONSTARTUP",
-      "PERL5OPT",
-      "RUBYOPT",
-      "PATH",
-      "HOME",
-      "SHELL",
-      "IFS",
-    ]);
-    const sanitizedEnv: NodeJS.ProcessEnv = Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => !SENSITIVE_SECRETS.has(k) && !SENSITIVE_KEY_PATTERN.test(k)),
-    );
-    const safeUserEnv: Record<string, string> = {};
-    if (spec.env && typeof spec.env === "object") {
-      for (const [k, v] of Object.entries(spec.env)) {
-        const upperKey = k.trim().toUpperCase();
-        if (
-          /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) &&
-          !BLOCKED_USER_ENV_KEYS.has(upperKey) &&
-          !SENSITIVE_SECRETS.has(upperKey) &&
-          typeof v === "string"
-        ) {
-          safeUserEnv[k] = v;
-        }
+    // 4. Spawn child process with strict allowlist base environment merged with sanitized user env
+    const baseEnv: Record<string, string> = {};
+    for (const key of BASE_ENV_ALLOWLIST) {
+      const val = process.env[key];
+      if (typeof val === "string") {
+        baseEnv[key] = val;
       }
     }
+    const safeUserEnv = sanitizeUserEnv(spec.env);
 
     const child = spawn(execCmd, execArgs, {
       cwd: spec.workingDir,
+      detached: process.platform !== "win32",
       env: {
-        ...sanitizedEnv,
+        ...baseEnv,
         ...safeUserEnv,
         OMP_NUM_THREADS: String(spec.resources.cpusPerTask ?? 4),
       },
@@ -320,10 +421,10 @@ export class LocalProcessDriver implements HpcDriver {
       child,
       state: "RUNNING",
       startTime,
-      startCpuUsage,
       logPath,
       networkIsolationEnforced: networkIsolation,
       sandboxRuntime: runtime,
+      containerName,
     };
 
     const updateChildMetrics = () => {
@@ -355,16 +456,15 @@ export class LocalProcessDriver implements HpcDriver {
           if (record.state === "RUNNING") {
             record.state = "FAILED";
             record.exitCode = 124; // Standard timeout code
+            record.endTime = Date.now();
             record.suspiciousActivity = "timeout";
             logStream.write(`\n[HPC Local Driver]: Job exceeded time limit of ${maxTimeMinutes}m\n`);
-            child.kill("SIGTERM");
-            setTimeout(() => {
-              if (!child.killed) child.kill("SIGKILL");
-            }, 2000);
+            this.terminateJobProcess(record);
           }
         },
         maxTimeMinutes * 60 * 1000,
       );
+      timeoutTimer.unref?.();
     }
 
     // 6. Credit drain & Anomaly Watchdog
@@ -389,16 +489,17 @@ export class LocalProcessDriver implements HpcDriver {
           if (balance - currentCost < 0) {
             record.state = "FAILED";
             record.exitCode = 402;
+            record.endTime = Date.now();
             record.suspiciousActivity = "credit_exhausted";
             logStream.write(
               `\n[HPC Security Watchdog]: Job terminated due to compute credit exhaustion (balance: ${balance.toFixed(2)} cr).\n`,
             );
-            child.kill("SIGTERM");
+            this.terminateJobProcess(record);
             if (watchdogTimer) clearInterval(watchdogTimer);
             return;
           }
-        } catch {
-          // ignore checker errors
+        } catch (err) {
+          console.warn(`[HPC Local Driver] Wallet balance checker error for job ${spec.jobId}:`, err);
         }
       }
 
@@ -416,19 +517,22 @@ export class LocalProcessDriver implements HpcDriver {
             );
             record.state = "FAILED";
             record.exitCode = 137;
-            child.kill("SIGTERM");
+            record.endTime = Date.now();
+            this.terminateJobProcess(record);
             if (watchdogTimer) clearInterval(watchdogTimer);
           }
-        } catch {
-          // ignore
+        } catch (err) {
+          console.warn(`[HPC Local Driver] Anomaly check error for job ${spec.jobId}:`, err);
         }
       }
     }, 1000);
+    watchdogTimer.unref?.();
 
     const cleanupTimers = () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
       if (watchdogTimer) clearInterval(watchdogTimer);
     };
+    record.cleanupTimers = cleanupTimers;
 
     const pruneOldJobs = () => {
       if (this.jobs.size <= 500) return;
@@ -443,9 +547,7 @@ export class LocalProcessDriver implements HpcDriver {
     child.on("close", (code) => {
       updateChildMetrics();
       cleanupTimers();
-      const diffCpu = process.cpuUsage(record.startCpuUsage);
-      record.totalCpuMicroseconds = diffCpu.user + diffCpu.system;
-      record.endTime = Date.now();
+      record.endTime = record.endTime ?? Date.now();
       if (record.exitCode === undefined) {
         record.exitCode = code ?? -1;
       }
@@ -460,7 +562,7 @@ export class LocalProcessDriver implements HpcDriver {
 
     child.on("error", (err) => {
       cleanupTimers();
-      record.endTime = Date.now();
+      record.endTime = record.endTime ?? Date.now();
       record.state = "FAILED";
       record.exitCode = -1;
       logStream.write(`\n[HPC Local Driver Spawn Error]: ${err.message}\n`);
@@ -488,13 +590,10 @@ export class LocalProcessDriver implements HpcDriver {
   public async cancel(nativeJobId: string): Promise<boolean> {
     const record = this.jobs.get(nativeJobId);
     if (record && record.state === "RUNNING") {
-      record.child.kill("SIGTERM");
       record.state = "CANCELLED";
-      setTimeout(() => {
-        if (!record.child.killed) {
-          record.child.kill("SIGKILL");
-        }
-      }, 2000);
+      record.endTime = Date.now();
+      record.cleanupTimers?.();
+      this.terminateJobProcess(record);
       return true;
     }
     return false;
@@ -502,20 +601,17 @@ export class LocalProcessDriver implements HpcDriver {
 
   public async getMetrics(nativeJobId: string, _workingDir: string, profile: ComputeProfile): Promise<HpcUsageMetrics> {
     const record = this.jobs.get(nativeJobId);
-    const wallClockSeconds = record?.endTime ? Math.max(1, Math.round((record.endTime - record.startTime) / 1000)) : 1;
+    const endTs = record?.endTime ?? Date.now();
+    const wallClockSeconds = record ? Math.max(1, Math.round((endTs - record.startTime) / 1000)) : 0;
 
-    // CPU core-seconds from child process /proc/<pid>/stat, parent CPU delta fallback, or core allocation
+    // CPU core-seconds from child process /proc/<pid>/stat, or wallClockSeconds * allocated CPUs
     const cpus = record?.spec.resources.cpusPerTask ?? profile.cpus;
-    const cpuMicros =
+    const measuredCpuSec =
       record?.childCpuMicroseconds && record.childCpuMicroseconds > 0
-        ? record.childCpuMicroseconds
-        : record?.totalCpuMicroseconds;
-    const measuredCpuSec = cpuMicros ? Math.round(cpuMicros / 1000) / 1000 : wallClockSeconds * cpus;
+        ? Math.round(record.childCpuMicroseconds / 1000) / 1000
+        : wallClockSeconds * cpus;
 
-    const memoryMb =
-      record?.peakMemoryMb && record.peakMemoryMb > 0
-        ? record.peakMemoryMb
-        : Math.round(process.memoryUsage().rss / (1024 * 1024));
+    const memoryMb = record?.peakMemoryMb && record.peakMemoryMb > 0 ? record.peakMemoryMb : 0;
     const costCredits = calculateCostCredits(wallClockSeconds, profile);
 
     return {
@@ -535,6 +631,28 @@ export class LocalProcessDriver implements HpcDriver {
   public getLogPath(nativeJobId: string, workingDir: string): string {
     const safeId = path.basename(String(nativeJobId)).replace(/[^a-zA-Z0-9_.-]/g, "_");
     return path.join(workingDir, `slurm-${safeId}.out`);
+  }
+
+  public async healthCheck(): Promise<{ ok: boolean; details?: string | undefined }> {
+    let runningCount = 0;
+    for (const rec of this.jobs.values()) {
+      if (rec.state === "RUNNING") runningCount++;
+    }
+    return {
+      ok: true,
+      details: `LocalProcessDriver healthy (${runningCount} running, ${this.jobs.size} tracked)`,
+    };
+  }
+
+  public async shutdown(): Promise<void> {
+    for (const record of this.jobs.values()) {
+      if (record.state === "RUNNING") {
+        record.state = "CANCELLED";
+        record.endTime = Date.now();
+        record.cleanupTimers?.();
+        this.terminateJobProcess(record);
+      }
+    }
   }
 
   private isExecutableInPath(name: string): boolean {

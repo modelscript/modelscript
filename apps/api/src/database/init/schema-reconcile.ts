@@ -210,6 +210,66 @@ function reconcileLegacyColumns(db: Database.Database): void {
   } catch {
     // Idempotent space_issues column migration
   }
+
+  try {
+    const txCols = (db.prepare(`PRAGMA table_info(credit_transactions)`).all() as { name: string }[]).map(
+      (c) => c.name,
+    );
+    if (txCols.length > 0) {
+      if (!txCols.includes("org_id")) {
+        db.exec(
+          `ALTER TABLE credit_transactions ADD COLUMN org_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL;`,
+        );
+        db.exec(`
+          UPDATE credit_transactions
+          SET org_id = CAST(json_extract(metadata, '$.orgId') AS INTEGER)
+          WHERE org_id IS NULL
+            AND json_valid(metadata)
+            AND json_extract(metadata, '$.orgId') IS NOT NULL;
+        `);
+      }
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_credit_transactions_org_id ON credit_transactions(org_id, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_personal ON credit_transactions(user_id, org_id, id DESC);
+      `);
+    }
+  } catch {
+    // Idempotent credit_transactions org_id column migration
+  }
+
+  try {
+    const holdCols = (db.prepare(`PRAGMA table_info(credit_escrow_holds)`).all() as { name: string }[]).map(
+      (c) => c.name,
+    );
+    if (holdCols.length > 0) {
+      if (!holdCols.includes("org_id")) {
+        db.exec(
+          `ALTER TABLE credit_escrow_holds ADD COLUMN org_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL;`,
+        );
+        db.exec(`
+          UPDATE credit_escrow_holds
+          SET org_id = CAST(json_extract(metadata, '$.orgId') AS INTEGER)
+          WHERE org_id IS NULL
+            AND json_valid(metadata)
+            AND json_extract(metadata, '$.orgId') IS NOT NULL;
+        `);
+      }
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_credit_escrow_holds_org_status ON credit_escrow_holds(org_id, job_id, status);
+      `);
+      try {
+        db.exec(`
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_escrow_holds_active_unique
+          ON credit_escrow_holds(job_id, COALESCE(org_id, 0), user_id)
+          WHERE status = 'held' AND job_id IS NOT NULL;
+        `);
+      } catch {
+        // Skip unique active-hold index if legacy duplicate held rows exist
+      }
+    }
+  } catch {
+    // Idempotent credit_escrow_holds org_id column migration
+  }
 }
 
 function sanitizeLegacyDescriptionsAndModifiers(db: Database.Database): void {

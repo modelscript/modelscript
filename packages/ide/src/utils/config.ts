@@ -369,7 +369,7 @@ export function getApiBaseUrl(): string {
   } catch {
     // Fallback if running outside VS Code extension host (e.g. unit tests)
   }
-  return "http://localhost:3000/api/v1";
+  return "https://ansatz.social/api/v1";
 }
 
 /**
@@ -410,7 +410,10 @@ export function getCloudPollIntervalMs(): number {
 export function getMqttWsUrl(): string {
   try {
     const cosimCfg = vscode.workspace?.getConfiguration?.("modelscript.cosim");
-    const customCosim = cosimCfg?.get<string>("mqttBrokerUrl") || cosimCfg?.get<string>("brokerUrl");
+    const customCosim =
+      cosimCfg?.get<string>("mqttWsUrl") ||
+      cosimCfg?.get<string>("mqttBrokerUrl") ||
+      cosimCfg?.get<string>("brokerUrl");
     if (customCosim && typeof customCosim === "string" && customCosim.trim().length > 0) {
       return customCosim.trim();
     }
@@ -422,7 +425,7 @@ export function getMqttWsUrl(): string {
   } catch {
     // Fallback
   }
-  return "ws://localhost:9001";
+  return "wss://ansatz.social/mqtt";
 }
 
 /**

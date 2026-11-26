@@ -291,6 +291,7 @@ export interface CaeSimulationTreeProps {
   onSelectField?: ((field: string) => void) | undefined;
   onOpenPostView?: ((view: "convergence" | "log" | "fields", runId: string) => void) | undefined;
   onTriggerRun?: (() => void) | undefined;
+  onTriggerHpcRun?: (() => void) | undefined;
   pickedTargetSet?: string | undefined;
   onGenerateMesh?: ((fineness: "coarse" | "moderate" | "fine") => void) | undefined;
 }
@@ -371,6 +372,7 @@ export const CaeSimulationTree: React.FC<CaeSimulationTreeProps> = ({
   onSelectField,
   onOpenPostView,
   onTriggerRun,
+  onTriggerHpcRun,
   pickedTargetSet,
   onGenerateMesh,
 }) => {
@@ -498,6 +500,19 @@ export const CaeSimulationTree: React.FC<CaeSimulationTreeProps> = ({
     fontWeight: 700,
     lineHeight: 1,
     padding: "0 4px",
+  };
+
+  const hpcBtnStyle: React.CSSProperties = {
+    background: activeBg,
+    border: `1px solid ${border}`,
+    borderRadius: 4,
+    color: dark ? "#38bdf8" : "#0284c7",
+    cursor: "pointer",
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: 0.3,
+    lineHeight: 1.2,
+    padding: "1px 4px",
   };
 
   return (
@@ -744,6 +759,19 @@ export const CaeSimulationTree: React.FC<CaeSimulationTreeProps> = ({
                   }}
                 >
                   +
+                </button>
+              )}
+              {onTriggerHpcRun && (
+                <button
+                  type="button"
+                  style={hpcBtnStyle}
+                  title="Dispatch study to Slurm / Cloud HPC Cluster"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTriggerHpcRun();
+                  }}
+                >
+                  HPC
                 </button>
               )}
             </div>

@@ -77,8 +77,7 @@ export const objLanguage = language({
       seq(
         "vt",
         field("u", $["NumberLiteral"]!),
-        optional(field("v", $["NumberLiteral"]!)),
-        optional(field("w", $["NumberLiteral"]!)),
+        optional(seq(field("v", $["NumberLiteral"]!), optional(field("w", $["NumberLiteral"]!)))),
       ),
 
     NormalStatement: ($) =>
@@ -88,8 +87,7 @@ export const objLanguage = language({
       seq(
         "vp",
         field("u", $["NumberLiteral"]!),
-        optional(field("v", $["NumberLiteral"]!)),
-        optional(field("w", $["NumberLiteral"]!)),
+        optional(seq(field("v", $["NumberLiteral"]!), optional(field("w", $["NumberLiteral"]!)))),
       ),
 
     FaceStatement: ($) =>

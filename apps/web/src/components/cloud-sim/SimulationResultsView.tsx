@@ -104,7 +104,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({ jo
             CPU Runtime
           </Text>
           <Text fontSize="16px" fontWeight="bold" color="var(--color-fg-default)">
-            {(jobStatus?.usage?.cpuSeconds ?? 0.42).toFixed(2)}s
+            {typeof jobStatus?.usage?.cpuSeconds === "number" ? `${jobStatus.usage.cpuSeconds.toFixed(2)}s` : "—"}
           </Text>
         </StatCard>
         <StatCard>
@@ -112,7 +112,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({ jo
             Cost Charged
           </Text>
           <Text fontSize="16px" fontWeight="bold" color="var(--color-accent-purple, #8b5cf6)">
-            {(jobStatus?.usage?.costCredits ?? 0.01).toFixed(4)} cr
+            {typeof jobStatus?.usage?.costCredits === "number" ? `${jobStatus.usage.costCredits.toFixed(4)} cr` : "—"}
           </Text>
         </StatCard>
         <StatCard>
@@ -120,7 +120,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({ jo
             Time Points
           </Text>
           <Text fontSize="16px" fontWeight="bold" color="var(--color-fg-default)">
-            {parsedCsv?.totalRows ?? 0}
+            {parsedCsv?.totalRows ?? "—"}
           </Text>
         </StatCard>
         <StatCard>
@@ -128,7 +128,7 @@ export const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({ jo
             Exit Code
           </Text>
           <Text fontSize="16px" fontWeight="bold" color="#10b981">
-            {jobStatus?.usage?.exitCode ?? 0}
+            {typeof jobStatus?.usage?.exitCode === "number" ? jobStatus.usage.exitCode : "—"}
           </Text>
         </StatCard>
       </Box>

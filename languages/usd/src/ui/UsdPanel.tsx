@@ -2,11 +2,13 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import React, { useMemo, useState } from "react";
@@ -71,6 +73,28 @@ export const UsdPanel: React.FC<LanguagePanelProps> = ({
 
   const physicsPrims = useMemo(() => primRows.filter((p) => p.hasPhysics), [primRows]);
 
+  const primColumns = useMemo<PanelDataGridColumn<FlatPrimRow>[]>(
+    () => [
+      {
+        key: "path",
+        label: "Prim Path",
+        mono: true,
+        sortValue: (p) => p.path,
+        render: (p) => <span style={{ paddingLeft: `${p.depth * 12}px`, fontWeight: 600 }}>{p.path}</span>,
+      },
+      {
+        key: "typeName",
+        label: "Type",
+        mono: true,
+        sortValue: (p) => p.typeName,
+        render: (p) => (
+          <span style={{ color: p.hasPhysics ? "var(--ms-success)" : "var(--ms-text-2)" }}>{p.typeName}</span>
+        ),
+      },
+    ],
+    [],
+  );
+
   const kpis = useMemo<PanelKpiItem[]>(
     () => [
       { label: "Prims", value: primRows.length, tone: "info" },
@@ -90,7 +114,7 @@ export const UsdPanel: React.FC<LanguagePanelProps> = ({
         actions={
           mode === "artifact" && host.openInAnsatzEditor && code ? (
             <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "usd", title)}>
-              Open in Ansatz Editor
+              Open in Editor
             </PanelButton>
           ) : undefined
         }
@@ -109,31 +133,13 @@ export const UsdPanel: React.FC<LanguagePanelProps> = ({
       />
 
       {activeTab === "hierarchy" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>Prim Path</th>
-                <th style={{ padding: "5px 6px" }}>Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              {primRows.slice(0, 250).map((p, idx) => (
-                <tr
-                  key={`${p.path}-${idx}`}
-                  style={{ borderBottom: "1px solid var(--ms-divider)", fontFamily: "var(--ms-font-mono)" }}
-                >
-                  <td style={{ padding: "4px 6px", paddingLeft: `${6 + p.depth * 14}px`, fontWeight: 600 }}>
-                    {p.path}
-                  </td>
-                  <td style={{ padding: "4px 6px", color: p.hasPhysics ? "var(--ms-success)" : "var(--ms-text-2)" }}>
-                    {p.typeName}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={primRows}
+          columns={primColumns}
+          rowKey={(p, idx) => `${p.path}-${idx}`}
+          searchPlaceholder="Filter USD prims by path or type…"
+          emptyMessage={computed.error ?? "No USD prims parsed."}
+        />
       )}
 
       {activeTab === "physics" && (

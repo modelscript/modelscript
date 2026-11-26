@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CopyIcon, DownloadIcon, KeyIcon, ShieldCheckIcon } from "@primer/octicons-react";
-import React, { useEffect, useState } from "react";
-import {
-  addPublicKey,
-  getPublicKeys,
-  regenerateBackupCodes2FA,
-  revokeAllSessions,
-  revokePublicKey,
-  type PublicKeyInfo,
-} from "../../../api";
+import { ArrowLeftIcon, KeyIcon, ShieldCheckIcon } from "@primer/octicons-react";
+import React, { useEffect, useRef, useState } from "react";
+import { addPublicKey, getPublicKeys, revokeAllSessions, revokePublicKey, type PublicKeyInfo } from "../../../api";
 import { useAuth } from "../../../AuthContext";
 import TwoFactorModal from "../../../components/auth/TwoFactorModal";
 import Box from "../../../components/Box";
+import { CircleIconButton } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { getApiErrorMessage } from "../../../util/error";
@@ -36,7 +30,7 @@ interface BackupCodesUserFields {
   backup_codes_remaining?: number | undefined;
 }
 
-export const SecurityTab: React.FC<SecurityTabProps> = () => {
+export const SecurityTab: React.FC<SecurityTabProps> = ({ onBack }) => {
   const { user, updateToken, refreshUser } = useAuth();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
@@ -46,23 +40,20 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   const [twoFactorModalMode, setTwoFactorModalMode] = useState<"manage" | "regenerate">("manage");
   const [is2FAEnabled, setIs2FAEnabled] = useState(Boolean(user?.totp_enabled));
   const initialBackupCodes = (user as (typeof user & BackupCodesUserFields) | null)?.backup_codes_remaining;
-  const [backupCodesRemaining, setBackupCodesRemaining] = useState<number>(
-    typeof initialBackupCodes === "number" ? initialBackupCodes : 10,
+  const [backupCodesRemaining, setBackupCodesRemaining] = useState<number | undefined>(
+    typeof initialBackupCodes === "number" ? initialBackupCodes : undefined,
   );
-  const [backupCodes, setBackupCodes] = useState<string[]>([]);
-  const [showInlineRegenerate, setShowInlineRegenerate] = useState(false);
-  const [regenPassword, setRegenPassword] = useState("");
-  const [regenCode, setRegenCode] = useState("");
-  const [regeneratingCodes, setRegeneratingCodes] = useState(false);
 
   const [sessionRevokeSuccess, setSessionRevokeSuccess] = useState(false);
   const [sessionRevoking, setSessionRevoking] = useState(false);
   const [confirmingSessionRevoke, setConfirmingSessionRevoke] = useState(false);
+  const sessionRevokeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [keys, setKeys] = useState<PublicKeyInfo[]>([]);
   const [localKeyIds, setLocalKeyIds] = useState<Set<string>>(new Set());
   const [newDeviceName, setNewDeviceName] = useState("Browser WebCrypto Key");
   const [confirmingKeyId, setConfirmingKeyId] = useState<number | null>(null);
+  const [revokingKeyId, setRevokingKeyId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,23 +61,49 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
     if (user) {
       setIs2FAEnabled(Boolean(user.totp_enabled));
       const remaining = (user as typeof user & BackupCodesUserFields).backup_codes_remaining;
-      if (typeof remaining === "number") {
-        setBackupCodesRemaining(remaining);
-      }
+      setBackupCodesRemaining(typeof remaining === "number" ? remaining : undefined);
     }
   }, [user]);
 
   useEffect(() => {
+    let cancelled = false;
     getPublicKeys()
-      .then((data) => setKeys(data))
-      .catch(() => {});
+      .then((data) => {
+        if (!cancelled) {
+          setKeys(data);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(getApiErrorMessage(err, "Failed to load authorized device keys."));
+        }
+      });
     migrateLegacyKeys()
       .then(() => getAllPrivateKeyIds())
-      .then((ids) => setLocalKeyIds(new Set(ids)))
-      .catch(() => {});
+      .then((ids) => {
+        if (!cancelled) {
+          setLocalKeyIds(new Set(ids));
+        }
+      })
+      .catch(() => {
+        // IndexedDB keystore may be unavailable in restricted/private contexts
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (sessionRevokeTimerRef.current) {
+        clearTimeout(sessionRevokeTimerRef.current);
+        sessionRevokeTimerRef.current = null;
+      }
+    };
   }, []);
 
   const handleRevokeAllSessions = async () => {
+    if (sessionRevoking) return;
     setConfirmingSessionRevoke(false);
     setSessionRevoking(true);
     setError(null);
@@ -97,7 +114,13 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       }
       setSessionRevokeSuccess(true);
       toast.success("All other active sessions have been signed out.", "Sessions Revoked");
-      setTimeout(() => setSessionRevokeSuccess(false), 5000);
+      if (sessionRevokeTimerRef.current) {
+        clearTimeout(sessionRevokeTimerRef.current);
+      }
+      sessionRevokeTimerRef.current = setTimeout(() => {
+        setSessionRevokeSuccess(false);
+        sessionRevokeTimerRef.current = null;
+      }, 5000);
     } catch (err: unknown) {
       const errMsg = getApiErrorMessage(err, "Failed to revoke sessions");
       setError(errMsg);
@@ -108,6 +131,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   };
 
   const handleGenerateKey = async () => {
+    if (loading) return;
     const deviceName = newDeviceName.trim() || "Browser WebCrypto Key";
     setLoading(true);
     setError(null);
@@ -119,7 +143,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
           publicExponent: new Uint8Array([1, 0, 1]),
           hash: "SHA-256",
         },
-        true,
+        false,
         ["sign", "verify"],
       );
 
@@ -128,12 +152,32 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       const base64 = btoa(String.fromCharCode(...new Uint8Array(spki)));
       const pem = `-----BEGIN PUBLIC KEY-----\n${base64.match(/.{1,64}/g)?.join("\n")}\n-----END PUBLIC KEY-----\n`;
 
-      const keyIdString = `key-${Date.now()}`;
+      const keySuffix =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const keyIdString = `key-${keySuffix}`;
 
-      await addPublicKey(keyIdString, pem, deviceName);
+      // Store non-extractable private key securely in IndexedDB keystore before registering on server
+      try {
+        await savePrivateKey(keyIdString, keyPair.privateKey);
+      } catch (storeErr: unknown) {
+        const msg =
+          storeErr instanceof Error && storeErr.message
+            ? `Failed to save private key to browser keystore: ${storeErr.message}`
+            : "Failed to save private key to browser keystore. Check browser storage permissions.";
+        setError(msg);
+        toast.error(msg, "Keystore Error");
+        return;
+      }
 
-      // Store non-extractable private key securely in IndexedDB keystore
-      await savePrivateKey(keyIdString, keyPair.privateKey);
+      try {
+        await addPublicKey(keyIdString, pem, deviceName);
+      } catch (apiErr: unknown) {
+        await deletePrivateKey(keyIdString).catch(() => {});
+        throw apiErr;
+      }
+
       const currentLocalIds = await getAllPrivateKeyIds();
       setLocalKeyIds(new Set(currentLocalIds));
 
@@ -141,7 +185,6 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       setNewDeviceName("Browser WebCrypto Key");
       toast.success(`Registered key for "${deviceName}".`, "Device Key Created");
     } catch (err: unknown) {
-      console.error(err);
       const errMsg = getApiErrorMessage(err, "Failed to generate key");
       setError(errMsg);
     } finally {
@@ -150,11 +193,12 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   };
 
   const handleRevokeKey = async (k: PublicKeyInfo) => {
-    setConfirmingKeyId(null);
+    if (revokingKeyId === k.id) return;
+    setRevokingKeyId(k.id);
     setError(null);
     try {
       await revokePublicKey(k.id);
-      await deletePrivateKey(k.key_id_string);
+      await deletePrivateKey(k.key_id_string).catch(() => {});
       const currentLocalIds = await getAllPrivateKeyIds();
       setLocalKeyIds(new Set(currentLocalIds));
       setKeys(await getPublicKeys());
@@ -163,53 +207,22 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       const errMsg = getApiErrorMessage(err, "Failed to revoke public key");
       setError(errMsg);
       toast.error(errMsg, "Revocation Failed");
-    }
-  };
-
-  const handleRegenerateBackupCodesInline = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setRegeneratingCodes(true);
-    setError(null);
-    try {
-      const res = await regenerateBackupCodes2FA(regenPassword || undefined, regenCode || undefined);
-      const newCodes = res.backupCodes || [];
-      setBackupCodes(newCodes);
-      setBackupCodesRemaining(newCodes.length || 10);
-      setShowInlineRegenerate(false);
-      setRegenPassword("");
-      setRegenCode("");
-      void refreshUser();
-      toast.success("Generated 10 new backup recovery codes.");
-    } catch (err: unknown) {
-      const errMsg = getApiErrorMessage(err, "Failed to regenerate backup codes.");
-      setError(errMsg);
-      toast.error(errMsg);
     } finally {
-      setRegeneratingCodes(false);
+      setRevokingKeyId(null);
+      setConfirmingKeyId(null);
     }
-  };
-
-  const handleCopyBackupCodes = () => {
-    if (backupCodes.length === 0) return;
-    navigator.clipboard.writeText(backupCodes.join("\n"));
-    toast.success("Backup codes copied to clipboard!");
-  };
-
-  const handleDownloadBackupCodes = () => {
-    if (backupCodes.length === 0) return;
-    const text = `${brandName} Two-Factor Authentication Backup Codes\nGenerated: ${new Date().toISOString()}\n\nEach code can only be used once:\n${backupCodes.join("\n")}\n\nKeep these codes in a safe place.`;
-    const blob = new Blob([text], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${brandName.toLowerCase()}-backup-codes-${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
     <>
-      <Header>Security and account access</Header>
+      <Header>
+        {onBack && (
+          <CircleIconButton onClick={onBack} aria-label="Go back" style={{ marginRight: "8px" }}>
+            <ArrowLeftIcon size={20} />
+          </CircleIconButton>
+        )}
+        Security and account access
+      </Header>
       <Box px={3} pb={3}>
         {/* Two-Factor Authentication Section */}
         <Box
@@ -242,7 +255,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
                 >
                   {is2FAEnabled ? "Active & Protected" : "Not Configured"}
                 </span>
-                {is2FAEnabled && (
+                {is2FAEnabled && typeof backupCodesRemaining === "number" && (
                   <span
                     style={{
                       fontSize: "11px",
@@ -303,119 +316,6 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
               )}
             </Box>
           </Box>
-
-          {showInlineRegenerate && is2FAEnabled && (
-            <form
-              onSubmit={handleRegenerateBackupCodesInline}
-              style={{
-                marginTop: "16px",
-                paddingTop: "16px",
-                borderTop: "1px solid var(--color-border-default)",
-              }}
-            >
-              <FormLabel style={{ marginBottom: "8px" }}>
-                Confirm credentials to generate 10 new single-use backup codes:
-              </FormLabel>
-              <Box display="flex" gap={2} flexWrap="wrap" alignItems="center">
-                {user?.has_password !== false && (
-                  <FormInput
-                    type="password"
-                    placeholder="Account password"
-                    value={regenPassword}
-                    onChange={(e) => setRegenPassword(e.target.value)}
-                    style={{ margin: 0, maxWidth: "220px", padding: "8px 12px", fontSize: "13px" }}
-                    required
-                  />
-                )}
-                <FormInput
-                  type="text"
-                  placeholder="6-digit 2FA or backup code"
-                  value={regenCode}
-                  onChange={(e) => setRegenCode(e.target.value)}
-                  style={{ margin: 0, maxWidth: "220px", padding: "8px 12px", fontSize: "13px" }}
-                  required
-                />
-                <SaveButton
-                  type="submit"
-                  disabled={regeneratingCodes}
-                  style={{ padding: "8px 14px", fontSize: "13px" }}
-                >
-                  {regeneratingCodes ? "Generating…" : "Generate Codes"}
-                </SaveButton>
-                <SecondaryButton
-                  type="button"
-                  onClick={() => setShowInlineRegenerate(false)}
-                  style={{ padding: "8px 14px", fontSize: "13px" }}
-                >
-                  Cancel
-                </SecondaryButton>
-              </Box>
-            </form>
-          )}
-
-          {backupCodes.length > 0 && (
-            <Box
-              mt={3}
-              p={3}
-              style={{
-                border: "1px solid var(--color-border-default)",
-                borderRadius: "8px",
-                background: "var(--color-canvas-default)",
-              }}
-            >
-              <FormLabel style={{ display: "block", marginBottom: "6px" }}>
-                Recovery Backup Codes (Single-Use)
-              </FormLabel>
-              <DetailSubtitle style={{ display: "block", marginBottom: "12px" }}>
-                Store these codes in a password manager or safe location. Each code can be used once if you lose your
-                authenticator device.
-              </DetailSubtitle>
-              <Box
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                  gap: "8px",
-                  fontFamily: "var(--font-mono, monospace)",
-                  fontSize: "13px",
-                  marginBottom: "12px",
-                }}
-              >
-                {backupCodes.map((code, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: "4px",
-                      border: "1px solid var(--color-border-subtle)",
-                      textAlign: "center",
-                      fontWeight: 600,
-                      color: "var(--color-accent-cyan, #06b6d4)",
-                    }}
-                  >
-                    {code}
-                  </div>
-                ))}
-              </Box>
-              <Box display="flex" gap={2} flexWrap="wrap">
-                <SecondaryButton
-                  type="button"
-                  onClick={handleCopyBackupCodes}
-                  style={{ padding: "6px 14px", fontSize: "13px" }}
-                >
-                  <CopyIcon size={14} />
-                  Copy Backup Codes
-                </SecondaryButton>
-                <SecondaryButton
-                  type="button"
-                  onClick={handleDownloadBackupCodes}
-                  style={{ padding: "6px 14px", fontSize: "13px" }}
-                >
-                  <DownloadIcon size={14} />
-                  Download .txt
-                </SecondaryButton>
-              </Box>
-            </Box>
-          )}
         </Box>
 
         {/* Active Sessions & Revocation Section */}
@@ -456,6 +356,7 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
                 <SecondaryButton
                   type="button"
                   style={{ padding: "8px 14px", fontSize: "13px" }}
+                  disabled={sessionRevoking}
                   onClick={() => setConfirmingSessionRevoke(false)}
                 >
                   Cancel
@@ -490,23 +391,29 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
           stored locally in this browser.
         </DetailSubtitle>
 
-        {error && <p style={{ color: "var(--color-error)", marginBottom: "16px" }}>{error}</p>}
+        {error && (
+          <p role="alert" style={{ color: "var(--color-error)", marginBottom: "16px" }}>
+            {error}
+          </p>
+        )}
 
         <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
           <FormInput
             placeholder="Enter a name for this device (e.g. Work Laptop)"
             value={newDeviceName}
+            disabled={loading}
             onChange={(e) => setNewDeviceName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
+                if (loading) return;
                 void handleGenerateKey();
               }
             }}
             style={{ margin: 0, maxWidth: "340px", padding: "8px 12px", fontSize: "14px", borderRadius: "8px" }}
             aria-label="Device name"
           />
-          <SaveButton onClick={handleGenerateKey} disabled={loading} style={{ alignSelf: "center" }}>
+          <SaveButton type="button" onClick={handleGenerateKey} disabled={loading} style={{ alignSelf: "center" }}>
             {loading ? "Generating..." : "Generate New Device Key"}
           </SaveButton>
         </Box>
@@ -528,70 +435,76 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
               <FormLabel style={{ display: "block", fontSize: "15px", marginBottom: "6px" }}>
                 No cryptographic device keys registered yet
               </FormLabel>
-              <DetailSubtitle style={{ display: "block", maxWidth: "560px", margin: "0 auto", lineHeight: "1.5" }}>
+              <DetailSubtitle style={{ display: "block", maxWidth: "560px", margin: "0 auto", lineHeight: 1.5 }}>
                 Ed25519 and RSA public keys are used to verify ActivityPub HTTP signatures for decentralized federation
                 and to sign ModelScript CLI packages. Generate a device key above to store a non-extractable private key
                 in this browser&apos;s WebCrypto keystore.
               </DetailSubtitle>
             </Box>
           ) : (
-            keys.map((k) => (
-              <Box
-                key={k.id}
-                display="flex"
-                justifyContent="space-between"
-                alignItems="center"
-                p={3}
-                mb={3}
-                style={{ border: "1px solid var(--color-border-default)", borderRadius: "8px" }}
-              >
-                <Box>
-                  <FormLabel style={{ display: "block" }}>{k.device_name || "Unnamed Device"}</FormLabel>
-                  <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
-                    Key ID: {k.key_id_string}
-                  </DetailSubtitle>
-                  <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
-                    Created: {new Date(k.created_at).toLocaleDateString()}
-                  </DetailSubtitle>
-                  {localKeyIds.has(k.key_id_string) && (
-                    <DetailSubtitle style={{ display: "block", marginTop: "4px", color: "var(--color-success)" }}>
-                      ✓ Private key present on this device
+            keys.map((k) => {
+              const isRevoking = revokingKeyId === k.id;
+              return (
+                <Box
+                  key={k.id}
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="center"
+                  p={3}
+                  mb={3}
+                  style={{ border: "1px solid var(--color-border-default)", borderRadius: "8px" }}
+                >
+                  <Box>
+                    <FormLabel style={{ display: "block" }}>{k.device_name || "Unnamed Device"}</FormLabel>
+                    <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                      Key ID: {k.key_id_string}
                     </DetailSubtitle>
-                  )}
-                </Box>
-                {confirmingKeyId === k.id ? (
-                  <Box display="flex" alignItems="center" gap={2}>
-                    <SecondaryButton
-                      type="button"
-                      style={{ padding: "6px 12px", fontSize: "13px" }}
-                      onClick={() => setConfirmingKeyId(null)}
-                    >
-                      Cancel
-                    </SecondaryButton>
+                    <DetailSubtitle style={{ display: "block", marginTop: "4px" }}>
+                      Created: {new Date(k.created_at).toLocaleDateString()}
+                    </DetailSubtitle>
+                    {localKeyIds.has(k.key_id_string) && (
+                      <DetailSubtitle style={{ display: "block", marginTop: "4px", color: "var(--color-success)" }}>
+                        ✓ Private key present on this device
+                      </DetailSubtitle>
+                    )}
+                  </Box>
+                  {confirmingKeyId === k.id ? (
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <SecondaryButton
+                        type="button"
+                        disabled={isRevoking}
+                        style={{ padding: "6px 12px", fontSize: "13px" }}
+                        onClick={() => setConfirmingKeyId(null)}
+                      >
+                        Cancel
+                      </SecondaryButton>
+                      <DangerButton
+                        type="button"
+                        disabled={isRevoking}
+                        style={{ padding: "6px 14px", fontSize: "13px" }}
+                        onClick={() => void handleRevokeKey(k)}
+                      >
+                        {isRevoking ? "Revoking…" : "Confirm Revoke?"}
+                      </DangerButton>
+                    </Box>
+                  ) : (
                     <DangerButton
                       type="button"
+                      disabled={revokingKeyId !== null}
                       style={{ padding: "6px 14px", fontSize: "13px" }}
-                      onClick={() => handleRevokeKey(k)}
+                      onClick={() => setConfirmingKeyId(k.id)}
                     >
-                      Confirm Revoke?
+                      Revoke
                     </DangerButton>
-                  </Box>
-                ) : (
-                  <DangerButton
-                    type="button"
-                    style={{ padding: "6px 14px", fontSize: "13px" }}
-                    onClick={() => setConfirmingKeyId(k.id)}
-                  >
-                    Revoke
-                  </DangerButton>
-                )}
-              </Box>
-            ))
+                  )}
+                </Box>
+              );
+            })
           )}
         </Box>
-      </Box>
 
-      <SigningKeysSection />
+        <SigningKeysSection />
+      </Box>
 
       <TwoFactorModal
         isOpen={is2FAModalOpen}

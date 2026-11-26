@@ -527,10 +527,10 @@ body {
 .VPHome .VPHero::before {
   content: "";
   position: absolute;
-  inset: -80px 0 -40px 0;
+  inset: -80px 0 -440px 0;
   background-image:
-    radial-gradient(ellipse 55% 60% at 72% 42%, var(--ms-glow-cyan), transparent 70%),
-    radial-gradient(ellipse 45% 50% at 22% 24%, var(--ms-glow-indigo), transparent 70%),
+    radial-gradient(ellipse 55% 50% at 72% 30%, var(--ms-glow-cyan), transparent 70%),
+    radial-gradient(ellipse 45% 45% at 22% 20%, var(--ms-glow-indigo), transparent 70%),
     linear-gradient(var(--ms-grid-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--ms-grid-line) 1px, transparent 1px),
     linear-gradient(var(--ms-grid-sub) 1px, transparent 1px),
@@ -542,8 +542,8 @@ body {
     64px 64px,
     16px 16px,
     16px 16px;
-  mask-image: radial-gradient(ellipse 90% 80% at 50% 38%, #000 35%, transparent 82%);
-  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 38%, #000 35%, transparent 82%);
+  mask-image: radial-gradient(ellipse 92% 78% at 50% 34%, #000 35%, transparent 84%);
+  -webkit-mask-image: radial-gradient(ellipse 92% 78% at 50% 34%, #000 35%, transparent 84%);
   pointer-events: none;
   z-index: -1;
 }
@@ -801,41 +801,61 @@ body {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
 }
 
-/* Allow hero 3D turbine model to overflow parent containers cleanly */
-.VPHero,
-.VPHero .container,
-.VPHero .image,
-.VPHero .image-container {
-  overflow: visible !important;
+/* Compact centered hero above the full-width Verification Playground */
+.VPHome .VPHero:not(.has-image) {
+  padding-top: calc(var(--vp-nav-height) + var(--vp-layout-top-height, 0px) + 28px) !important;
+  padding-bottom: 22px !important;
+  text-align: center;
 }
 
-/* Override VitePress's negative mobile/tablet image margins so the 3D turbine
-   and its bottom toolbar never collide with the hero heading below it */
-@media (max-width: 959px) {
-  .VPHero .image {
-    margin: -16px auto 24px !important;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+.VPHome .VPHero:not(.has-image) .container {
+  justify-content: center;
+}
 
-  .VPHero .image-container {
-    width: 100% !important;
-    max-width: 520px !important;
-    height: 380px !important;
-    transform: none !important;
-  }
+.VPHome .VPHero:not(.has-image) .main {
+  max-width: 860px !important;
+  margin: 0 auto;
+}
+
+.VPHome .VPHero:not(.has-image) .name,
+.VPHome .VPHero:not(.has-image) .text {
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.VPHome .VPHero:not(.has-image) .name {
+  font-size: clamp(2rem, 3.6vw, 3rem);
+  line-height: 1.12;
+}
+
+.VPHome .VPHero:not(.has-image) .text {
+  font-size: clamp(1.75rem, 3.2vw, 2.75rem);
+  line-height: 1.14;
+  margin-top: 4px;
+}
+
+.VPHome .VPHero:not(.has-image) .tagline {
+  max-width: 740px;
+  margin: 12px auto 0;
+  font-size: clamp(0.95rem, 1.3vw, 1.1rem);
+  line-height: 1.55;
+  text-wrap: balance;
+}
+
+.VPHome .VPHero:not(.has-image) .actions {
+  justify-content: center;
+  padding-top: 20px;
 }
 
 @media (max-width: 640px) {
-  .VPHero .image {
-    margin: -12px auto 20px !important;
+  .VPHome .VPHero:not(.has-image) {
+    padding-top: calc(var(--vp-nav-height) + var(--vp-layout-top-height, 0px) + 20px) !important;
+    padding-bottom: 18px !important;
   }
 
-  .VPHero .image-container {
-    max-width: 100% !important;
-    height: 320px !important;
+  .VPHome .VPHero:not(.has-image) .actions {
+    padding-top: 16px;
   }
 }
 
@@ -850,10 +870,6 @@ body {
     max-width: calc(var(--vp-layout-max-width) - 64px) !important;
   }
 
-  .VPHero.has-image .main {
-    max-width: 640px !important;
-  }
-
   .VPFeatures {
     padding-left: 32px !important;
     padding-right: 32px !important;
@@ -861,59 +877,6 @@ body {
 
   .VPFeatures .container {
     max-width: calc(var(--vp-layout-max-width) - 64px) !important;
-  }
-
-  .VPHero .image {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .VPHero .image-container {
-    width: 100%;
-    max-width: 620px;
-    height: 560px;
-    transform: none;
-  }
-}
-
-/* SSR Fallback for Hero 3D Engine */
-.turbine-ssr-fallback {
-  position: relative;
-  width: 100%;
-  height: 560px;
-  min-height: 460px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto;
-}
-
-.turbine-ssr-fallback .fallback-img {
-  position: relative;
-  max-height: 320px;
-  width: auto;
-  filter: drop-shadow(0 16px 36px rgba(6, 182, 212, 0.35));
-  z-index: 1;
-}
-
-@media (max-width: 959px) {
-  .turbine-ssr-fallback {
-    height: 380px;
-    min-height: 340px;
-  }
-  .turbine-ssr-fallback .fallback-img {
-    max-height: 260px;
-  }
-}
-
-@media (max-width: 640px) {
-  .turbine-ssr-fallback {
-    height: 320px;
-    min-height: 280px;
-  }
-  .turbine-ssr-fallback .fallback-img {
-    max-height: 200px;
   }
 }
 

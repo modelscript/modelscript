@@ -19,6 +19,8 @@ export const datcomLanguage = language({
   },
   errorCodes: DatcomErrorCode,
 
+  conflicts: ($) => [[$["ValueList"]!]],
+
   rules: {
     Deck: ($) => repeat(choice($["NamelistBlock"]!, $["ControlCard"]!, $["Comment"]!)),
 

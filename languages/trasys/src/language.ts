@@ -20,22 +20,20 @@ export const trasysLanguage = language({
   },
   errorCodes: TrasysErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
+  conflicts: ($) => [
+    [$["SurfaceSection"]!, $["SurfaceDeclaration"]!, $["SurfaceAttribute"]!, $["VertexTuple"]!, $["Identifier"]!],
+  ],
+
   rules: {
     Deck: ($) =>
       seq(
-        repeat(
-          choice(
-            $["OptionsSection"]!,
-            $["SurfaceSection"]!,
-            $["OrbitSection"]!,
-            $["OperationsSection"]!,
-            $["Comment"]!,
-          ),
-        ),
+        repeat(choice($["OptionsSection"]!, $["SurfaceSection"]!, $["OrbitSection"]!, $["OperationsSection"]!)),
         optional($["EndOfData"]!),
       ),
 
-    OptionsSection: ($) => seq("HEADER", "OPTIONS", "DATA", repeat(choice($["OptionAssignment"]!, $["Comment"]!))),
+    OptionsSection: ($) => seq("HEADER", "OPTIONS", "DATA", repeat($["OptionAssignment"]!)),
 
     OptionAssignment: ($) =>
       seq(
@@ -45,7 +43,7 @@ export const trasysLanguage = language({
       ),
 
     SurfaceSection: ($) =>
-      seq("HEADER", "SURFACE", "DATA", repeat(choice($["SurfaceDeclaration"]!, $["SurfaceAttribute"]!, $["Comment"]!))),
+      seq("HEADER", "SURFACE", "DATA", repeat(choice($["SurfaceDeclaration"]!, $["SurfaceAttribute"]!))),
 
     SurfaceDeclaration: ($) =>
       seq(
@@ -94,7 +92,7 @@ export const trasysLanguage = language({
         ")",
       ),
 
-    OrbitSection: ($) => seq("HEADER", "ORBIT", "DATA", repeat(choice($["OrbitParameter"]!, $["Comment"]!))),
+    OrbitSection: ($) => seq("HEADER", "ORBIT", "DATA", repeat($["OrbitParameter"]!)),
 
     OrbitParameter: ($) =>
       choice(
@@ -106,7 +104,7 @@ export const trasysLanguage = language({
         ),
       ),
 
-    OperationsSection: ($) => seq("HEADER", "OPERATIONS", "DATA", repeat(choice($["OperationCall"]!, $["Comment"]!))),
+    OperationsSection: ($) => seq("HEADER", "OPERATIONS", "DATA", repeat($["OperationCall"]!)),
 
     OperationCall: ($) =>
       seq(

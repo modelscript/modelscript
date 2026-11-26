@@ -259,7 +259,7 @@ test("Package Supply Chain Security & OFAC Compliance", async (t) => {
 
   await t.test("GDPR Article 17 Right to Erasure and Article 20 Data Portability", async () => {
     // Create a user to test GDPR workflows
-    const gdprUser = db.createUser("gdpr_user", "gdpr@test.org", "pwd_hash", { emailVerified: true });
+    const gdprUser = db.createUser("gdpr_user", "gdpr@test.org", "", { emailVerified: true });
     const gdprToken = jwt.sign({ id: gdprUser.id, username: gdprUser.username, email: gdprUser.email }, JWT_SECRET, {
       expiresIn: "1h",
     });
@@ -287,6 +287,7 @@ test("Package Supply Chain Security & OFAC Compliance", async (t) => {
     const deleteRes = await request(app)
       .delete("/api/v1/users/me")
       .set("Authorization", `Bearer ${gdprToken}`)
+      .send({ confirmUsername: "gdpr_user" })
       .expect(200);
 
     assert.strictEqual(deleteRes.body.success, true);

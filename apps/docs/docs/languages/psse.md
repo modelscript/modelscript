@@ -1,6 +1,6 @@
 ---
 title: "PSS/E-Compatible Transmission Power Flow (.raw)"
-description: "The @modelscript/psse language package (languages/psse) provides native support for PSS/E-compatible RAW (.raw) transmission grid power flow base cases (Revisions 30 through 35). It delivers stream..."
+description: "@modelscript/psse provides streaming RAW parsing, AC power flow solving, topological linting, and Modelica/PSCAD projections for PSS/E transmission grids."
 ---
 
 # PSS/E-Compatible Transmission Power Flow (`.raw`)

@@ -167,6 +167,10 @@ export const cLanguage = language({
       $["PostfixExpression"]!,
       $["PrimaryExpression"]!,
     ],
+    [$["_PointerPrefix"]!, $["IDENTIFIER"]!],
+    [$["_OptStorageClass"]!, $["IDENTIFIER"]!],
+    [$["TypedefName"]!, $["PrimaryExpression"]!],
+    [$["_OptionalElse"]!],
   ],
 
   extras: () => [/[ \t\r\n]+/, /\/\/[^\n]*/, /\/\*([^*]|\*+[^*/])*\*+\//],
@@ -180,11 +184,13 @@ export const cLanguage = language({
 
     Declaration: ($) =>
       seq(
-        optional(field("storage", $["StorageClassSpecifier"]!)),
+        field("storage", $["_OptStorageClass"]!),
         field("type", $["TypeSpecifier"]!),
         optional(field("declarators", $["InitDeclaratorList"]!)),
         ";",
       ),
+
+    _OptStorageClass: ($) => optional($["StorageClassSpecifier"]!),
 
     StorageClassSpecifier: () => choice("typedef", "extern", "static", "auto", "register"),
 
@@ -275,7 +281,9 @@ export const cLanguage = language({
       ),
 
     Declarator: ($) =>
-      seq(repeat("*"), choice($["FunctionDeclarator"]!, $["ArrayDeclarator"]!, $["VariableDeclarator"]!)),
+      seq($["_PointerPrefix"]!, choice($["FunctionDeclarator"]!, $["ArrayDeclarator"]!, $["VariableDeclarator"]!)),
+
+    _PointerPrefix: () => repeat("*"),
 
     VariableDeclarator: ($) => field("name", $["IDENTIFIER"]!),
 
@@ -296,7 +304,7 @@ export const cLanguage = language({
     FunctionDefinition: ($) =>
       def({
         syntax: seq(
-          optional(field("storage", $["StorageClassSpecifier"]!)),
+          field("storage", $["_OptStorageClass"]!),
           field("returnType", $["TypeSpecifier"]!),
           field("declarator", $["FunctionDeclarator"]!),
           field("body", $["CompoundStatement"]!),
@@ -334,9 +342,11 @@ export const cLanguage = language({
           field("condition", $["Expression"]!),
           ")",
           field("consequence", $["Statement"]!),
-          optional(seq("else", field("alternative", $["Statement"]!))),
+          $["_OptionalElse"]!,
         ),
       ),
+
+    _OptionalElse: ($) => optional(seq("else", field("alternative", $["Statement"]!))),
 
     WhileStatement: ($) => seq("while", "(", field("condition", $["Expression"]!), ")", field("body", $["Statement"]!)),
 

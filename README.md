@@ -360,6 +360,7 @@ ModelScript is managed with **Nx** and **pnpm workspaces**:
 | [`@modelscript/ide`](./apps/ide/)   | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling                              |
 | [`@modelscript/web`](./apps/web/)   | Ansatz (`ansatz.social`) web platform — package registry, federated engineering network, scholarly citations, Git vault, Cloud HPC, & `/editor`   |
 | [`@modelscript/docs`](./apps/docs/) | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                                           |
+| [`@modelscript/blog`](./apps/blog/) | Statically generated `blog.modelscript.org` engineering blog (VitePress) with interactive Ansatz artifacts and Twitter/LinkedIn social packs      |
 
 ### Enterprise Edition (`ee/`)
 
@@ -511,32 +512,40 @@ pnpm run format
 
 ## Docker Deployment
 
-Pre-built multi-arch images are published to the GitHub Container Registry on pushes to `main`.
+Pre-built images with SLSA provenance and SBOM attestations are published to the GitHub Container Registry (`ghcr.io/modelscript/*`) on releases and pushes to `main`.
 
-Run the complete multi-service stack with a single command:
+Run a self-hosted **Federated Node** (Community Edition, ActivityPub enabled):
 
 ```bash
-docker compose pull    # Pull latest images from ghcr.io/modelscript/*
-docker compose up -d   # Start all services
-docker compose down    # Stop containers
-docker compose logs -f # Tail logs
+export PUBLIC_DOMAIN=localhost
+export JWT_SECRET=$(openssl rand -hex 32)
+docker compose -f docker-compose.federated.yml pull
+docker compose -f docker-compose.federated.yml up -d
+```
+
+Or run the **Hardened Enterprise Intranet Appliance** (requires `MSX_LICENSE_KEY`):
+
+```bash
+export MSX_LICENSE_KEY=msx_lic_...
+export JWT_SECRET=$(openssl rand -hex 32)
+docker compose -f ee/deploy/docker-compose.yml up -d
 ```
 
 To build and run locally from source:
 
 ```bash
-pnpm run docker:build
-pnpm run docker:up
+docker compose --profile standalone up -d --build
 ```
 
 ### Deployed Services & Ports
 
-| Service         | Port           | Protocol | Description                                                                     |
-| --------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
-| **API**         | `3000`         | HTTP     | Backend simulation, GraphQL, SPARQL, verification API, and VS Code Web IDE host |
-| **Web**         | `3001`         | HTTP     | Unified library registry, hub, `/editor`, `/ide`, and VitePress docs (`/docs`)  |
-| **MQTT**        | `1883`, `9001` | TCP, WS  | Eclipse Mosquitto broker for event bus & telemetry streaming                    |
-| **TimescaleDB** | `5432`         | TCP      | Time-series database for telemetry historian & simulation trajectories          |
+| Service         | Port           | Protocol | Description                                                                                   |
+| --------------- | -------------- | -------- | --------------------------------------------------------------------------------------------- |
+| **Caddy**       | `80`, `443`    | HTTP(S)  | Automatic TLS reverse proxy (`config/Caddyfile.federated` or `config/Caddyfile`)              |
+| **API**         | `3000`         | HTTP     | Backend simulation, GraphQL, SPARQL, verification API, and VS Code Web IDE host               |
+| **Web**         | `3001`         | HTTP     | Unified library registry, hub, `/editor`, `/studio`, and VitePress docs                       |
+| **MQTT**        | `1883`, `9001` | TCP, WS  | Optional (`--profile historian`): Eclipse Mosquitto broker for event bus & telemetry          |
+| **TimescaleDB** | `5432`         | TCP      | Optional (`--profile historian`): Time-series database for telemetry historian & trajectories |
 
 ---
 

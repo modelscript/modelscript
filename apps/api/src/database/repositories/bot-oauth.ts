@@ -19,8 +19,25 @@ export class BotOAuthRepository extends BaseRepository {
     model: string = "gemini-1.5-flash",
     apiKey: string = "",
     endpointUrl: string = "",
-  ): { id: number; username: string } {
+  ): {
+    id: number;
+    username: string;
+    display_name: string;
+    bio: string;
+    avatar_url: string;
+    bot_model: string;
+    bot_endpoint_url: string;
+    bot_system_prompt: string;
+    bot_scopes: string;
+    has_api_key: boolean;
+    has_bot_api_key: boolean;
+    bot_last_used_at: string | null;
+    created_at: string;
+  } {
     const email = `${username}@bots.modelscript.org`; // dummy email for bots
+    const resolvedAvatarUrl =
+      avatarUrl ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || username)}&background=random&color=fff`;
     const bannerUrl = `https://images.unsplash.com/photo-1557682250-33bd709cbe85?auto=format&fit=crop&w=1200&q=80`;
 
     const keys = generateRSAKeys();
@@ -38,8 +55,7 @@ export class BotOAuthRepository extends BaseRepository {
         email,
         displayName,
         bio,
-        avatarUrl ||
-          `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName || username)}&background=random&color=fff`,
+        resolvedAvatarUrl,
         bannerUrl,
         ownerId,
         tokenHash,
@@ -54,7 +70,26 @@ export class BotOAuthRepository extends BaseRepository {
         inboxUrl,
         outboxUrl,
       );
-    return { id: result.lastInsertRowid as number, username };
+    const id = Number(result.lastInsertRowid);
+    const createdRow = this.db.prepare(`SELECT created_at FROM users WHERE id = ?`).get(id) as
+      { created_at: string } | undefined;
+    const hasApiKey = Boolean(apiKey);
+
+    return {
+      id,
+      username,
+      display_name: displayName,
+      bio,
+      avatar_url: resolvedAvatarUrl,
+      bot_model: model,
+      bot_endpoint_url: endpointUrl,
+      bot_system_prompt: systemPrompt,
+      bot_scopes: scopes,
+      has_api_key: hasApiKey,
+      has_bot_api_key: hasApiKey,
+      bot_last_used_at: null,
+      created_at: createdRow?.created_at ?? new Date().toISOString(),
+    };
   }
 
   getUserBots(ownerId: number): {

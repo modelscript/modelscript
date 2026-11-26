@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { scanModelicaStructure } from "@modelscript/modelica/structure-scanner";
 import type {
   BltBlock,
   BltBlockTearing,
@@ -9,7 +10,6 @@ import type {
   BltVariable,
   DependencyKind,
 } from "./blt-types.js";
-import { scanModelicaStructure } from "./modelica-scanner.js";
 
 const NONLINEAR_FUNCTIONS = new Set([
   "sin",

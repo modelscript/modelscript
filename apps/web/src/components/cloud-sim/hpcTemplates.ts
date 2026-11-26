@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export type HpcTemplateDomain = "modelica" | "cfd" | "fea" | "monte-carlo";
+export type HpcTemplateDomain = "modelica" | "cfd" | "fea" | "monte-carlo" | "sweep" | "optimization";
 
 export type HpcTemplateCategory =
-  | "System Dynamics"
-  | "Design & UQ"
-  | "Fluid Dynamics (CFD)"
-  | "Structural & Thermal FEA"
-  | "Verification & V&V";
+  "System Dynamics" | "Design & UQ" | "Fluid Dynamics (CFD)" | "Structural & Thermal FEA" | "Verification & V&V";
 
 export interface HpcTemplateFieldOption {
   label: string;
@@ -57,7 +53,7 @@ export interface HpcWizardTemplate {
   recommendedProfile: "standard" | "high-memory" | "gpu-a100" | "hpc-mpi-64";
   estimatedDuration: string;
   estimatedCredits: string;
-  pipelineSteps: { title: string; detail: string }[];
+  pipelineSteps: { title: string; detail: string; command?: string | undefined }[];
   defaultExperiment: {
     startTime: number;
     stopTime: number;

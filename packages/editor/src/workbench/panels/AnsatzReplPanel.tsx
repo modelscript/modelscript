@@ -82,7 +82,7 @@ export const AnsatzReplPanel: React.FC<AnsatzReplPanelProps> = ({ documentUri, d
   const [actions, setActions] = useState<AnsatzLspActionInfo[]>([]);
   const [actionsLoading, setActionsLoading] = useState(false);
   const [actionsError, setActionsError] = useState<string | null>(null);
-  const [actionsExpanded, setActionsExpanded] = useState(true);
+  const [actionsExpanded, setActionsExpanded] = useState(false);
   const [runningActionId, setRunningActionId] = useState<string | null>(null);
   const actionsRequestSeqRef = useRef<number>(0);
 
@@ -122,7 +122,9 @@ export const AnsatzReplPanel: React.FC<AnsatzReplPanelProps> = ({ documentUri, d
     try {
       const list = await listLspActionsInAnsatz(documentUri, dialect);
       if (actionsRequestSeqRef.current !== seq) return;
-      setActions(Array.isArray(list) ? list : []);
+      const resolved = Array.isArray(list) ? list : [];
+      setActions(resolved);
+      if (resolved.length > 0) setActionsExpanded(true);
     } catch (err) {
       if (actionsRequestSeqRef.current !== seq) return;
       setActions([]);
@@ -161,7 +163,8 @@ export const AnsatzReplPanel: React.FC<AnsatzReplPanelProps> = ({ documentUri, d
         const errText = res.error?.trim() || formatUnknownValue(res.result) || "Evaluation error.";
         appendEntry("error", errText);
       } else if (res.status === "incomplete") {
-        appendEntry("info", res.output?.trim() || "Incomplete expression.");
+        appendEntry("info", res.output?.trim() || "Incomplete block — continue entering expression.");
+        setInput(`${code} `);
       } else {
         const hasOutput = typeof res.output === "string" && res.output.length > 0;
         const formattedResult = res.result !== undefined ? formatUnknownValue(res.result) : "";

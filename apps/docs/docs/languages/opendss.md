@@ -1,6 +1,6 @@
 ---
 title: "OpenDSS Distribution Grids & DERs (.dss)"
-description: "@modelscript/opendss (languages/opendss) provides zero-regex parsing, unbalanced multi-phase power flow solving, distributed energy resource (DER) hosting capacity analysis, linear DAE lowering, an..."
+description: "@modelscript/opendss provides zero-regex parsing, unbalanced multi-phase power flow, DER hosting analysis, DAE lowering, and Modelica projection for OpenDSS."
 ---
 
 # OpenDSS Distribution Grids & DERs (`.dss`)
@@ -21,7 +21,7 @@ description: "@modelscript/opendss (languages/opendss) provides zero-regex parsi
 
 ### 1. Multi-Phase Unbalanced AC Power Flow
 
-- Solves unbalanced radial and weakly meshed 3-phase/4-wire distribution networks via the **nodal admittance matrix ($Y_{\text{bus}}$)** formulation and **Forward-Backward Sweep (FBS)**, relating bus current injections to bus voltages and computing constant-power load currents:
+- Solves unbalanced radial and weakly meshed 3-phase/4-wire distribution networks via the **nodal admittance matrix ($Y\_{\text{bus}}$)** formulation and **Forward-Backward Sweep (FBS)**, relating bus current injections to bus voltages and computing constant-power load currents:
   $$I_{\text{inj}}(V) = Y_{\text{bus}} V$$
   $$I_i(V_i) = \left( \frac{P_i + j Q_i}{V_i} \right)^*$$
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { DiagramMarkupNode } from "@modelscript/canvas/engine";
 import { adaptSvgColors } from "./color-inversion.js";
 
 export interface DropPlaceholderOptions {
@@ -207,9 +208,11 @@ export function ensureDiagramStyles(): void {
 
     [data-cell-id="__drop_placeholder__"],
     [data-cell-id="__drop_placeholder__"] image,
+    [data-cell-id="__drop_placeholder__"] svg,
     [data-cell-id="__drop_placeholder__"] rect,
     [data-cell-id="placement-ghost"],
     [data-cell-id="placement-ghost"] image,
+    [data-cell-id="placement-ghost"] svg,
     [data-cell-id="placement-ghost"] rect {
       transform-box: fill-box !important;
       transform-origin: center center !important;
@@ -318,39 +321,62 @@ export function ensureDiagramStyles(): void {
       display: none !important;
     }
 
-    /* Port Proximity Magnet Glow & Target Snap Rings */
-    .ms-port:hover circle[magnet="true"] {
-      stroke: var(--ms-brand, #0891b2) !important;
-      stroke-width: 2.5px !important;
-      filter: drop-shadow(0 0 5px var(--ms-brand, #0891b2)) !important;
+    /* Port Proximity Magnet Glow & Target Snap Rings.
+       Classes are applied to the <g class="ms-port"> group, so rules target the group
+       (filter) and its children (scale), which works for any port markup. */
+    .ms-port {
       cursor: crosshair;
+      transition: opacity 0.12s ease, filter 0.12s ease;
+    }
+    .ms-port:hover,
+    .ms-port.ms-port-hover {
+      filter: drop-shadow(0 0 5px var(--ms-brand, #0891b2)) drop-shadow(0 0 2px var(--ms-brand, #0891b2));
+    }
+    .ms-port:hover > *,
+    .ms-port.ms-port-hover > * {
+      transform-box: fill-box;
+      transform-origin: center;
+      transform: scale(1.3);
+      transition: transform 0.1s ease;
     }
 
-    circle.ms-magnet-available {
-      stroke: var(--ms-brand, #0891b2) !important;
-      stroke-width: 3px !important;
-      fill: var(--ms-bg, #ffffff) !important;
-      filter: drop-shadow(0 0 6px var(--ms-brand, #0891b2)) !important;
+    .ms-port.ms-magnet-source {
+      filter: drop-shadow(0 0 7px var(--ms-accent-cyan, #22d3ee));
+    }
+    .ms-port.ms-magnet-source > * {
+      transform-box: fill-box;
+      transform-origin: center;
+      transform: scale(1.35);
+    }
+
+    .ms-port.ms-magnet-available {
+      filter: drop-shadow(0 0 6px var(--ms-brand, #0891b2));
       animation: ms-magnet-pulse 1.4s infinite ease-in-out;
     }
 
-    circle.ms-magnet-adsorbed {
-      stroke: var(--ms-accent-cyan, #22d3ee) !important;
-      stroke-width: 5px !important;
-      fill: var(--ms-brand, #0891b2) !important;
-      filter: drop-shadow(0 0 10px var(--ms-accent-cyan, #22d3ee)) !important;
+    .ms-port.ms-magnet-incompatible {
+      opacity: 0.25;
+      filter: grayscale(1);
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    .ms-port.ms-magnet-adsorbed {
+      filter: drop-shadow(0 0 12px var(--ms-accent-cyan, #22d3ee)) drop-shadow(0 0 5px var(--ms-accent-cyan, #22d3ee));
+      animation: none;
+    }
+    .ms-port.ms-magnet-adsorbed > * {
+      transform-box: fill-box;
       transform-origin: center;
-      transform: scale(1.4);
+      transform: scale(1.65);
       transition: transform 0.12s ease;
     }
 
     @keyframes ms-magnet-pulse {
       0%, 100% {
-        stroke-width: 2.5px;
-        opacity: 0.9;
+        opacity: 0.85;
       }
       50% {
-        stroke-width: 4px;
         opacity: 1;
       }
     }
@@ -519,6 +545,178 @@ export function ensureDiagramStyles(): void {
   document.head.appendChild(style);
 }
 
+function decodeBasicXmlEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_m, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&amp;/g, "&");
+}
+
+function normalizeRootSvgMarkup(root: DiagramMarkupNode, width: number, height: number): DiagramMarkupNode[] {
+  const srcAttrs = root.attrs ?? {};
+  const attrs: Record<string, string | number> = {};
+  let viewBox: string | undefined;
+  let origW: number | undefined;
+  let origH: number | undefined;
+
+  for (const [rawKey, val] of Object.entries(srcAttrs)) {
+    const lower = rawKey.toLowerCase();
+    if (lower.startsWith("on") || lower === "xmlns" || lower.startsWith("xmlns:")) continue;
+    if (lower === "viewbox") {
+      viewBox = String(val);
+      continue;
+    }
+    if (lower === "width") {
+      const parsed = parseFloat(String(val));
+      if (Number.isFinite(parsed) && parsed > 0 && !String(val).includes("%")) origW = parsed;
+      continue;
+    }
+    if (lower === "height") {
+      const parsed = parseFloat(String(val));
+      if (Number.isFinite(parsed) && parsed > 0 && !String(val).includes("%")) origH = parsed;
+      continue;
+    }
+    if (lower === "x" || lower === "y" || lower === "preserveaspectratio") continue;
+    attrs[rawKey] = val;
+  }
+
+  attrs["x"] = 0;
+  attrs["y"] = 0;
+  attrs["width"] = width;
+  attrs["height"] = height;
+  attrs["viewBox"] = viewBox ?? (origW && origH ? `0 0 ${origW} ${origH}` : "0 0 64 64");
+  attrs["preserveAspectRatio"] = "xMidYMid meet";
+
+  return [
+    {
+      tagName: "svg",
+      selector: "image",
+      attrs,
+      ...(root.children && root.children.length > 0 ? { children: root.children } : {}),
+    },
+  ];
+}
+
+function parseSvgStringFallback(svgMarkup: string): DiagramMarkupNode | null {
+  const cleaned = svgMarkup
+    .replace(/<\?[\s\S]*?\?>/g, "")
+    .replace(/<!DOCTYPE[\s\S]*?>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
+  const tokenRe = /<\/([a-zA-Z][\w:-]*)\s*>|<([a-zA-Z][\w:-]*)((?:\s+[^<>]*?)?)(\/?)>|([^<]+)/g;
+  const attrRe = /([a-zA-Z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  const stack: DiagramMarkupNode[] = [];
+  let root: DiagramMarkupNode | null = null;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenRe.exec(cleaned)) !== null) {
+    const [, closeTag, openTag, rawAttrs, selfClose, textChunk] = match;
+    if (openTag) {
+      const attrs: Record<string, string | number> = {};
+      if (rawAttrs) {
+        attrRe.lastIndex = 0;
+        let am: RegExpExecArray | null;
+        while ((am = attrRe.exec(rawAttrs)) !== null) {
+          const name = am[1]!;
+          const lower = name.toLowerCase();
+          if (lower.startsWith("on")) continue;
+          const canonical =
+            lower === "viewbox" ? "viewBox" : lower === "preserveaspectratio" ? "preserveAspectRatio" : name;
+          attrs[canonical] = decodeBasicXmlEntities(am[2] ?? am[3] ?? "");
+        }
+      }
+      const node: DiagramMarkupNode = {
+        tagName: openTag,
+        ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
+      };
+      const parent = stack[stack.length - 1];
+      if (parent) {
+        if (!parent.children) parent.children = [];
+        parent.children.push(node);
+      } else if (openTag.toLowerCase() === "svg") {
+        root = node;
+      }
+      if (!selfClose) {
+        stack.push(node);
+      }
+    } else if (closeTag) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i]!.tagName.toLowerCase() === closeTag.toLowerCase()) {
+          stack.length = i;
+          break;
+        }
+      }
+    } else if (textChunk !== undefined && stack.length > 0) {
+      const trimmed = textChunk.trim();
+      if (trimmed.length > 0) {
+        const parent = stack[stack.length - 1]!;
+        const decoded = decodeBasicXmlEntities(textChunk);
+        parent.textContent = (parent.textContent ?? "") + decoded;
+      }
+    }
+  }
+
+  return root;
+}
+
+/**
+ * Parses an inline `<svg>...</svg>` component icon string into a `@modelscript/canvas`
+ * `DiagramMarkupNode[]` tree rooted at `<svg selector="image">` so it renders directly
+ * through `compileGlyphMarkup` / `materializeGlyphToSvg` without relying on `data:image/svg+xml`
+ * URLs (which are intentionally blocked by SVG href sanitization).
+ */
+export function parseIconSvgToMarkup(
+  iconSvg: string | null | undefined,
+  width: number,
+  height: number,
+): DiagramMarkupNode[] | null {
+  if (!iconSvg || !iconSvg.includes("<svg")) return null;
+
+  if (typeof DOMParser !== "undefined") {
+    try {
+      const doc = new DOMParser().parseFromString(iconSvg, "image/svg+xml");
+      const rootEl = doc.documentElement;
+      if (rootEl && rootEl.tagName.toLowerCase() === "svg" && !doc.querySelector("parsererror")) {
+        const convertEl = (el: Element): DiagramMarkupNode => {
+          const attrs: Record<string, string | number> = {};
+          for (let i = 0; i < el.attributes.length; i++) {
+            const attr = el.attributes[i]!;
+            if (attr.name.toLowerCase().startsWith("on")) continue;
+            attrs[attr.name] = attr.value;
+          }
+          const children: DiagramMarkupNode[] = [];
+          let directText = "";
+          for (let i = 0; i < el.childNodes.length; i++) {
+            const child = el.childNodes[i]!;
+            if (child.nodeType === 1) {
+              children.push(convertEl(child as Element));
+            } else if (child.nodeType === 3 && child.textContent) {
+              directText += child.textContent;
+            }
+          }
+          const node: DiagramMarkupNode = {
+            tagName: el.tagName,
+            ...(Object.keys(attrs).length > 0 ? { attrs } : {}),
+            ...(children.length > 0 ? { children } : {}),
+            ...(children.length === 0 && directText.trim().length > 0 ? { textContent: directText } : {}),
+          };
+          return node;
+        };
+        return normalizeRootSvgMarkup(convertEl(rootEl), width, height);
+      }
+    } catch {
+      // Fall through to lightweight XML parser
+    }
+  }
+
+  const parsed = parseSvgStringFallback(iconSvg);
+  return parsed ? normalizeRootSvgMarkup(parsed, width, height) : null;
+}
+
 const dropSafetyTimersByGraph = new WeakMap<object, ReturnType<typeof setTimeout>>();
 
 export function dropComponentGhost(
@@ -574,8 +772,10 @@ export function dropComponentGhost(
   const halfW = w / 2;
   const halfH = h / 2;
 
-  if (iconSvg) {
-    const displaySvg = isDark ? adaptSvgColors(iconSvg, isDark) : iconSvg;
+  const displaySvg = iconSvg ? (isDark ? adaptSvgColors(iconSvg, isDark) : iconSvg) : null;
+  const iconMarkup = displaySvg ? parseIconSvgToMarkup(displaySvg, w, h) : null;
+
+  if (displaySvg && iconMarkup) {
     const dataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(displaySvg)}`;
     return g.addNode({
       id: "__drop_placeholder__",
@@ -586,18 +786,7 @@ export function dropComponentGhost(
       width: w,
       height: h,
       zIndex: 9999,
-      markup: [
-        {
-          tagName: "image",
-          selector: "image",
-          attrs: {
-            href: dataUrl,
-            width: w,
-            height: h,
-            preserveAspectRatio: "xMidYMid meet",
-          },
-        },
-      ],
+      markup: iconMarkup,
       attrs: {
         image: {
           preserveAspectRatio: "xMidYMid meet",

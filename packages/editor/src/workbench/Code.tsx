@@ -10,13 +10,35 @@ import debounce from "lodash/debounce";
 import * as monaco from "monaco-editor";
 import { editor, type IDisposable } from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styledImport from "styled-components";
 import { useEditorModelingPreferences as useModelingPreferences } from "../host";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../internal/monaco-theme";
-import { didChange, didChangeVisibleRanges, didOpen, didSave } from "./util/lsp-bridge";
+import {
+  buildHypergraphMonacoDecorations,
+  buildPerturbationGutterDecorations,
+  buildXRayHeatmapMonacoDecorations,
+  type AnsatzXRayTokenHeat,
+} from "./util/hypergraph-overlay";
+import {
+  didChange,
+  didChangeVisibleRanges,
+  didOpen,
+  didSave,
+  getRelationalHypergraphInAnsatz,
+  type AnsatzHypergraphTokenOverride,
+  type AnsatzRelationalHypergraphRecord,
+  type AnsatzRelationalTokenSpan,
+} from "./util/lsp-bridge";
 import { getLsp, startLsp } from "./util/lsp-worker";
 import { registerAllModelscriptLanguages, setupMonacoLspAdapter } from "./util/monaco-lsp-adapter";
+import { buildIsomorphicRenameScramble } from "./util/zonotope-feasibility";
+import {
+  parseLinearConstraintExpression,
+  type LinearConstraintSpec,
+  type ZonotopeBrushMode,
+  type ZonotopePendingOverride,
+} from "./util/zonotope-workbench-state";
 
 const styled: typeof styledImport =
   (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
@@ -35,6 +57,86 @@ const EditorSurfaceWrapper = styled.div`
   min-height: 0;
   width: 100%;
   position: relative;
+`;
+
+const ZonotopeConstraintBar = styled.form`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-panel, rgba(15, 23, 42, 0.95));
+  border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+  color: var(--color-text-primary, #e2e8f0);
+  font-size: 12px;
+  flex-shrink: 0;
+  z-index: 6;
+`;
+
+const ZonotopeConstraintInput = styled.input`
+  flex: 1;
+  min-width: 180px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  outline: none;
+
+  &:focus {
+    border-color: #38bdf8;
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
+  }
+`;
+
+const ZonotopeMiniButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(56, 189, 248, 0.16);
+  color: #e0f2fe;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(56, 189, 248, 0.28);
+  }
+`;
+
+const ScramblePreviewBanner = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--surface-panel, rgba(15, 23, 42, 0.96));
+  border-bottom: 1px solid rgba(52, 211, 153, 0.4);
+  color: var(--color-text-primary, #e2e8f0);
+  font-size: 12px;
+  flex-shrink: 0;
+  z-index: 6;
+`;
+
+const ScrambleCodePre = styled.pre`
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 150px;
+  overflow: auto;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(2, 6, 23, 0.72);
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  white-space: pre;
 `;
 
 const MobileAccessoryBar = styled.div`
@@ -165,6 +267,9 @@ interface CodeEditorProps {
   onDiagnostics?: ((markers: editor.IMarkerData[], uri?: string) => void) | undefined;
   onStatusChange?: ((state: string, message: string) => void) | undefined;
   onSimulate?: (() => void | Promise<void>) | undefined;
+  onExecuteCommand?:
+    | ((commandId: string, args: unknown[]) => boolean | Promise<boolean | undefined> | Promise<void> | undefined)
+    | undefined;
   onSave?: ((value: string) => void) | undefined;
   theme: Theme;
   embed: boolean;
@@ -172,6 +277,58 @@ interface CodeEditorProps {
   hideMinimap?: boolean | undefined;
   externalErrors?: string[] | undefined;
   externalMarkers?: editor.IMarkerData[] | undefined;
+  /** Toggle live 4-column Relational Hypergraph `group_id` (ε_k) decorations in Monaco. */
+  showHypergraphOverlay?: boolean | undefined;
+  /** Optional interactive annotator overrides applied on top of the compiled hypergraph. */
+  hypergraphOverrides?: AnsatzHypergraphTokenOverride[] | undefined;
+  /** Optional active generator group_id to isolate/highlight in the overlay. */
+  activeHypergraphGroupId?: number | null | undefined;
+  /** Callback fired whenever the 4-column hypergraph is recomputed. */
+  onHypergraphComputed?: ((record: AnsatzRelationalHypergraphRecord) => void) | undefined;
+  /** Callback fired when a user clicks a token while the relational hypergraph overlay is active. */
+  onHypergraphTokenClick?: ((span: AnsatzRelationalTokenSpan) => void) | undefined;
+  /** Optional token-level Δ_t / worst-case loss X-Ray heatmap decorations in Monaco. */
+  xrayTokenHeat?: AnsatzXRayTokenHeat[] | undefined;
+  /** Optional active zonotope generator group_id (ε_k) highlighted across modalities. */
+  zonotopeActiveGroupId?: number | null | undefined;
+  /** Active direct-manipulation zonotope labeling brush mode. */
+  zonotopeBrush?: ZonotopeBrushMode | undefined;
+  /** Controlled toggle for live isomorphic rename scramble ghost preview. */
+  zonotopeScramblePreview?: boolean | undefined;
+  /** Callback fired when the user toggles isomorphic rename scramble preview. */
+  onToggleZonotopeScramble?: ((enabled: boolean) => void) | undefined;
+  /** Callback fired when a user emits a direct-manipulation token override (lock / flip sign). */
+  onAddZonotopeOverride?: ((override: ZonotopePendingOverride) => void) | undefined;
+  /** Callback fired when a user submits a linear constraint from the inline Monaco mini-bar. */
+  onAddZonotopeConstraint?: ((constraint: LinearConstraintSpec) => void) | undefined;
+  /** Callback fired whenever the compiled relational hypergraph record changes or clears. */
+  onHypergraphRecordChange?: ((record: AnsatzRelationalHypergraphRecord | null) => void) | undefined;
+}
+
+function makeCodeOverrideId(prefix: string, seed: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `${prefix}_${(hash >>> 0).toString(16).padStart(8, "0")}_${Date.now().toString(36)}`;
+}
+
+function findHypergraphSpanAtPosition(
+  record: AnsatzRelationalHypergraphRecord | null,
+  lineNumber: number,
+  column: number,
+): AnsatzRelationalTokenSpan | undefined {
+  if (!record || record.spans.length === 0) return undefined;
+  const matchesPosition = (span: AnsatzRelationalTokenSpan, inclusiveEnd: boolean): boolean => {
+    if (lineNumber < span.startLine || lineNumber > span.endLine) return false;
+    if (lineNumber === span.startLine && column < span.startColumn) return false;
+    if (lineNumber === span.endLine && (inclusiveEnd ? column > span.endColumn : column >= span.endColumn)) {
+      return false;
+    }
+    return true;
+  };
+  return record.spans.find((s) => matchesPosition(s, false)) ?? record.spans.find((s) => matchesPosition(s, true));
 }
 
 export interface CodeEditorHandle {
@@ -199,8 +356,20 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const bracketPairColorization = modelingPrefs.bracketPairColorization ?? true;
   const lintOnType = modelingPrefs.lintOnType ?? true;
 
+  const [editorMounted, setEditorMounted] = useState(false);
+  const [hypergraphRecord, setHypergraphRecord] = useState<AnsatzRelationalHypergraphRecord | null>(null);
+  const [localScramblePreview, setLocalScramblePreview] = useState(false);
+  const [liveSource, setLiveSource] = useState(props.content);
+  const [constraintBarOpen, setConstraintBarOpen] = useState(false);
+  const [constraintDraft, setConstraintDraft] = useState("");
+  const [constraintError, setConstraintError] = useState<string | null>(null);
+  const constraintInputRef = useRef<HTMLInputElement | null>(null);
   const editorRef = useRef<editor.ICodeEditor>(null);
   const adapterDisposableRef = useRef<IDisposable | null>(null);
+  const mouseDownDisposableRef = useRef<IDisposable | null>(null);
+  const zonotopeActionsRef = useRef<IDisposable[]>([]);
+  const gutterDecorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
+  const latestHypergraphRef = useRef<AnsatzRelationalHypergraphRecord | null>(null);
   const didOpenSentRef = useRef(false);
   const lastValueRef = useRef<string | undefined>(undefined);
   const uriRef = useRef(props.uri);
@@ -209,14 +378,41 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const onPasteRef = useRef(props.onPaste);
   const onParsedRef = useRef(props.onParsed);
   const onSimulateRef = useRef(props.onSimulate);
+  const onExecuteCommandRef = useRef(props.onExecuteCommand);
   const onSaveRef = useRef(props.onSave);
+  const showHypergraphOverlayRef = useRef(Boolean(props.showHypergraphOverlay));
+  const onHypergraphTokenClickRef = useRef(props.onHypergraphTokenClick);
+  const zonotopeBrushRef = useRef(props.zonotopeBrush);
+  const onAddZonotopeOverrideRef = useRef(props.onAddZonotopeOverride);
+  const onAddZonotopeConstraintRef = useRef(props.onAddZonotopeConstraint);
+  const onToggleZonotopeScrambleRef = useRef(props.onToggleZonotopeScramble);
+  const onHypergraphRecordChangeRef = useRef(props.onHypergraphRecordChange);
+  const xrayDecorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
+  const xrayTokenHeatRef = useRef(props.xrayTokenHeat);
+
+  const effectiveActiveGroupId =
+    props.zonotopeActiveGroupId !== undefined ? props.zonotopeActiveGroupId : props.activeHypergraphGroupId;
+  const effectiveScramblePreview =
+    props.zonotopeScramblePreview !== undefined ? props.zonotopeScramblePreview : localScramblePreview;
+  const effectiveScramblePreviewRef = useRef(effectiveScramblePreview);
+
   uriRef.current = props.uri;
   languageIdRef.current = props.languageId ?? "modelica";
   lintOnTypeRef.current = lintOnType;
   onPasteRef.current = props.onPaste;
   onParsedRef.current = props.onParsed;
   onSimulateRef.current = props.onSimulate;
+  onExecuteCommandRef.current = props.onExecuteCommand;
   onSaveRef.current = props.onSave;
+  showHypergraphOverlayRef.current = Boolean(props.showHypergraphOverlay);
+  onHypergraphTokenClickRef.current = props.onHypergraphTokenClick;
+  zonotopeBrushRef.current = props.zonotopeBrush;
+  onAddZonotopeOverrideRef.current = props.onAddZonotopeOverride;
+  onAddZonotopeConstraintRef.current = props.onAddZonotopeConstraint;
+  onToggleZonotopeScrambleRef.current = props.onToggleZonotopeScramble;
+  onHypergraphRecordChangeRef.current = props.onHypergraphRecordChange;
+  effectiveScramblePreviewRef.current = effectiveScramblePreview;
+  xrayTokenHeatRef.current = props.xrayTokenHeat;
 
   const overflowWidgetsDomNode = useMemo(() => {
     if (typeof document === "undefined") return undefined;
@@ -255,10 +451,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       lineNumbers: editorLineNumbers,
       minimap: { enabled: editorMinimap },
       bracketPairColorization: { enabled: bracketPairColorization },
+      glyphMargin: Boolean(props.showHypergraphOverlay),
     });
     editorRef.current.getModel()?.updateOptions({ tabSize: editorTabSize });
   }, [
+    editorMounted,
     props.embed,
+    props.showHypergraphOverlay,
     editorFontSize,
     editorTabSize,
     editorWordWrap,
@@ -266,6 +465,13 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     editorMinimap,
     bracketPairColorization,
   ]);
+
+  useEffect(() => {
+    if (!editorRef.current) return;
+    editorRef.current.updateOptions({
+      glyphMargin: Boolean(props.showHypergraphOverlay),
+    });
+  }, [editorMounted, props.showHypergraphOverlay]);
 
   // ── LSP adapter setup (runs once on mount) ──
   useEffect(() => {
@@ -286,7 +492,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
         onStatus: (state, message) => {
           props.onStatusChange?.(state, message);
         },
-        onExecuteCommand: async (commandId) => {
+        onExecuteCommand: async (commandId, args) => {
+          const handled = await onExecuteCommandRef.current?.(commandId, args);
+          if (handled) return true;
           if (
             commandId === "modelscript.action.simulate" ||
             /^modelscript\.[^.]+\.simulate(?:_.*)?$/i.test(commandId) ||
@@ -344,12 +552,23 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   // ── Handler: editor mounted ──
   const handleEditorDidMount = (ed: editor.ICodeEditor) => {
     editorRef.current = ed;
+    setEditorMounted(true);
     props.setEditor(ed);
 
     // Apply initial external markers if any exist at mount time
     const model = ed.getModel();
     if (model && props.externalMarkers && props.externalMarkers.length > 0) {
       monaco.editor.setModelMarkers(model, "external", props.externalMarkers);
+    }
+
+    // Apply initial X-Ray heatmap decorations if already populated at mount time
+    if (xrayTokenHeatRef.current && xrayTokenHeatRef.current.length > 0) {
+      const decorations = buildXRayHeatmapMonacoDecorations(xrayTokenHeatRef.current);
+      if (!xrayDecorationsRef.current) {
+        xrayDecorationsRef.current = ed.createDecorationsCollection(decorations);
+      } else {
+        xrayDecorationsRef.current.set(decorations);
+      }
     }
 
     // Send initial didOpen
@@ -373,6 +592,37 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     }, 150);
 
     ed.onDidScrollChange(sendVisibleRanges);
+    mouseDownDisposableRef.current?.dispose();
+    mouseDownDisposableRef.current = ed.onMouseDown((event) => {
+      if (!showHypergraphOverlayRef.current) return;
+      const onTokenClick = onHypergraphTokenClickRef.current;
+      const onAddOverride = onAddZonotopeOverrideRef.current;
+      const brush = zonotopeBrushRef.current;
+      const record = latestHypergraphRef.current;
+      if (!record || record.spans.length === 0) return;
+      if (!onTokenClick && !(brush === "lock-zero" && onAddOverride)) return;
+      if (event.target.type !== monaco.editor.MouseTargetType.CONTENT_TEXT) return;
+      const pos = event.target.position;
+      if (!pos) return;
+      const matchedSpan = findHypergraphSpanAtPosition(record, pos.lineNumber, pos.column);
+      if (matchedSpan) {
+        if (brush === "lock-zero" && onAddOverride) {
+          const override: ZonotopePendingOverride = {
+            id: makeCodeOverrideId("code_lock", `${matchedSpan.index}:${matchedSpan.text}`),
+            tokenIndex: matchedSpan.index,
+            symbolName: matchedSpan.symbolName ?? matchedSpan.text,
+            textSnippet: matchedSpan.text,
+            groupId: 0,
+            relTypeId: 0,
+            relSign: 0,
+            modality: "code",
+            note: "Locked via lock-zero brush click",
+          };
+          onAddOverride(override);
+        }
+        onTokenClick?.(matchedSpan);
+      }
+    });
     ed.onDidPaste((pasteEvent) => {
       const handler = onPasteRef.current;
       if (!handler) return;
@@ -402,6 +652,9 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   // ── Sync external content changes without wiping undo/redo stack ──
   useEffect(() => {
     const code = props.content;
+    if (code !== undefined) {
+      setLiveSource(code);
+    }
     const model = editorRef.current?.getModel();
     if (!model || code === undefined) return;
     const echoIdx = pendingEchoesRef.current.indexOf(code);
@@ -457,6 +710,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   const handleDidChangeContent = (value: string | undefined) => {
     if (value === undefined) return;
     lastValueRef.current = value;
+    setLiveSource(value);
     pendingEchoesRef.current.push(value);
     if (pendingEchoesRef.current.length > 64) {
       pendingEchoesRef.current.shift();
@@ -522,6 +776,263 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     getEditor: () => editorRef.current,
   }));
 
+  const hypergraphDecorationsRef = useRef<editor.IEditorDecorationsCollection | null>(null);
+  const onHypergraphComputedRef = useRef(props.onHypergraphComputed);
+  onHypergraphComputedRef.current = props.onHypergraphComputed;
+
+  useEffect(() => {
+    const ed = editorRef.current;
+    if (!ed) return;
+
+    if (!props.showHypergraphOverlay) {
+      latestHypergraphRef.current = null;
+      setHypergraphRecord(null);
+      onHypergraphRecordChangeRef.current?.(null);
+      hypergraphDecorationsRef.current?.clear();
+      gutterDecorationsRef.current?.clear();
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      getRelationalHypergraphInAnsatz(props.uri, {
+        source: props.content,
+        dialect: props.languageId ?? "modelica",
+        overrides: props.hypergraphOverrides,
+      })
+        .then((res) => {
+          if (cancelled || !res?.success || !res.record || !editorRef.current) return;
+          latestHypergraphRef.current = res.record;
+          setHypergraphRecord(res.record);
+          onHypergraphComputedRef.current?.(res.record);
+          onHypergraphRecordChangeRef.current?.(res.record);
+          const decorations = buildHypergraphMonacoDecorations(res.record, effectiveActiveGroupId);
+          if (!hypergraphDecorationsRef.current) {
+            hypergraphDecorationsRef.current = editorRef.current.createDecorationsCollection(decorations);
+          } else {
+            hypergraphDecorationsRef.current.set(decorations);
+          }
+        })
+        .catch(() => {
+          // Non-fatal: LSP worker may still be initializing
+        });
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [
+    editorMounted,
+    props.showHypergraphOverlay,
+    props.uri,
+    props.content,
+    props.languageId,
+    props.hypergraphOverrides,
+    effectiveActiveGroupId,
+  ]);
+
+  // ── Perturbation & Δ_t Margin Gutter decorations ──
+  useEffect(() => {
+    const ed = editorRef.current;
+    if (!ed) return;
+
+    if (!props.showHypergraphOverlay || !hypergraphRecord) {
+      gutterDecorationsRef.current?.clear();
+      return;
+    }
+
+    const gutterDecorations = buildPerturbationGutterDecorations(
+      hypergraphRecord,
+      props.xrayTokenHeat ?? undefined,
+      effectiveActiveGroupId,
+    );
+    if (!gutterDecorationsRef.current) {
+      gutterDecorationsRef.current = ed.createDecorationsCollection(gutterDecorations);
+    } else {
+      gutterDecorationsRef.current.set(gutterDecorations);
+    }
+  }, [editorMounted, props.showHypergraphOverlay, hypergraphRecord, props.xrayTokenHeat, effectiveActiveGroupId]);
+
+  // ── Monaco Context-Menu Semantic Labeling Actions (disposed on toggle/unmount) ──
+  useEffect(() => {
+    for (const d of zonotopeActionsRef.current) {
+      d.dispose();
+    }
+    zonotopeActionsRef.current = [];
+
+    const ed = editorRef.current as editor.IStandaloneCodeEditor | null;
+    if (!ed || !props.showHypergraphOverlay || typeof ed.addAction !== "function") return;
+
+    const resolveCursorToken = (
+      targetEditor: editor.ICodeEditor,
+    ): {
+      span?: AnsatzRelationalTokenSpan | undefined;
+      text: string;
+    } => {
+      const pos = targetEditor.getPosition();
+      if (!pos) return { text: "" };
+      const span = findHypergraphSpanAtPosition(latestHypergraphRef.current, pos.lineNumber, pos.column);
+      if (span) {
+        return { span, text: span.symbolName ?? span.text };
+      }
+      const word = targetEditor.getModel()?.getWordAtPosition(pos);
+      return { text: word?.word ?? "" };
+    };
+
+    const actions: IDisposable[] = [
+      ed.addAction({
+        id: "ms.zonotope.lockToken",
+        label: "Zonotope: Lock Token (group_id = 0)",
+        contextMenuGroupId: "zonotope",
+        contextMenuOrder: 1,
+        run: (targetEditor: editor.ICodeEditor) => {
+          const { span, text } = resolveCursorToken(targetEditor);
+          if (!text && !span) return;
+          const override: ZonotopePendingOverride = {
+            id: makeCodeOverrideId("ctx_lock", `${span?.index ?? 0}:${text}`),
+            groupId: 0,
+            relTypeId: 0,
+            relSign: 0,
+            modality: "code",
+            textSnippet: span?.text ?? text,
+            symbolName: text || span?.text,
+            note: "Locked via Monaco context menu",
+          };
+          if (span !== undefined) {
+            override.tokenIndex = span.index;
+          }
+          onAddZonotopeOverrideRef.current?.(override);
+        },
+      }),
+      ed.addAction({
+        id: "ms.zonotope.flipSign",
+        label: "Zonotope: Flip Coupling Sign (±1)",
+        contextMenuGroupId: "zonotope",
+        contextMenuOrder: 2,
+        run: (targetEditor: editor.ICodeEditor) => {
+          const { span, text } = resolveCursorToken(targetEditor);
+          if (!text && !span) return;
+          const nextSign = (span?.relSign ?? 1) < 0 ? 1 : -1;
+          const nextRelType = nextSign < 0 ? 2 : 1;
+          const nextGroupId = span && span.groupId > 0 ? span.groupId : 1;
+          const override: ZonotopePendingOverride = {
+            id: makeCodeOverrideId("ctx_flip", `${span?.index ?? 0}:${text}:${nextSign}`),
+            groupId: nextGroupId,
+            relTypeId: nextRelType,
+            relSign: nextSign,
+            modality: "code",
+            textSnippet: span?.text ?? text,
+            symbolName: text || span?.text,
+            note: `Coupling sign flipped to ${nextSign > 0 ? "+1" : "-1"} via Monaco context menu`,
+          };
+          if (span !== undefined) {
+            override.tokenIndex = span.index;
+          }
+          onAddZonotopeOverrideRef.current?.(override);
+        },
+      }),
+      ed.addAction({
+        id: "ms.zonotope.addConstraint",
+        label: "Zonotope: Add Linear Constraint (Cξ ≤ d)",
+        contextMenuGroupId: "zonotope",
+        contextMenuOrder: 3,
+        run: (targetEditor: editor.ICodeEditor) => {
+          const { text } = resolveCursorToken(targetEditor);
+          const tokenText = text.trim() || "x";
+          setConstraintDraft(`${tokenText} >= 0`);
+          setConstraintError(null);
+          setConstraintBarOpen(true);
+          setTimeout(() => {
+            constraintInputRef.current?.focus();
+            constraintInputRef.current?.select();
+          }, 0);
+        },
+      }),
+      ed.addAction({
+        id: "ms.zonotope.toggleScramble",
+        label: "Zonotope: Toggle Live Isomorphic Rename Scramble",
+        contextMenuGroupId: "zonotope",
+        contextMenuOrder: 4,
+        run: () => {
+          const next = !effectiveScramblePreviewRef.current;
+          setLocalScramblePreview(next);
+          onToggleZonotopeScrambleRef.current?.(next);
+        },
+      }),
+    ];
+
+    zonotopeActionsRef.current = actions;
+    return () => {
+      for (const d of actions) {
+        d.dispose();
+      }
+      if (zonotopeActionsRef.current === actions) {
+        zonotopeActionsRef.current = [];
+      }
+    };
+  }, [editorMounted, props.showHypergraphOverlay]);
+
+  useEffect(() => {
+    const ed = editorRef.current;
+    if (!ed) return;
+
+    if (!props.xrayTokenHeat || props.xrayTokenHeat.length === 0) {
+      xrayDecorationsRef.current?.clear();
+      return;
+    }
+
+    const decorations = buildXRayHeatmapMonacoDecorations(props.xrayTokenHeat);
+    if (!xrayDecorationsRef.current) {
+      xrayDecorationsRef.current = ed.createDecorationsCollection(decorations);
+    } else {
+      xrayDecorationsRef.current.set(decorations);
+    }
+  }, [props.xrayTokenHeat, props.uri]);
+
+  useEffect(() => {
+    return () => {
+      for (const d of zonotopeActionsRef.current) {
+        d.dispose();
+      }
+      zonotopeActionsRef.current = [];
+      mouseDownDisposableRef.current?.dispose();
+      mouseDownDisposableRef.current = null;
+      hypergraphDecorationsRef.current?.clear();
+      hypergraphDecorationsRef.current = null;
+      gutterDecorationsRef.current?.clear();
+      gutterDecorationsRef.current = null;
+      latestHypergraphRef.current = null;
+      xrayDecorationsRef.current?.clear();
+      xrayDecorationsRef.current = null;
+    };
+  }, []);
+
+  const scrambleResult = useMemo(() => {
+    if (!effectiveScramblePreview || !hypergraphRecord) return null;
+    return buildIsomorphicRenameScramble(liveSource, hypergraphRecord);
+  }, [effectiveScramblePreview, hypergraphRecord, liveSource]);
+
+  const handleConstraintSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      const parsed = parseLinearConstraintExpression(constraintDraft, "code");
+      if (!parsed) {
+        setConstraintError("Enter a valid linear inequality (e.g. R1 >= 0 or 2*R1 + R2 <= 10)");
+        return;
+      }
+      onAddZonotopeConstraintRef.current?.(parsed);
+      setConstraintError(null);
+      setConstraintBarOpen(false);
+    },
+    [constraintDraft],
+  );
+
+  const handleCloseScramble = useCallback(() => {
+    setLocalScramblePreview(false);
+    onToggleZonotopeScrambleRef.current?.(false);
+  }, []);
+
   const handleInsertSymbol = useCallback((sym: QuickSymbol) => {
     const ed = editorRef.current;
     if (!ed) return;
@@ -557,6 +1068,117 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
 
   return (
     <CodeEditorContainer>
+      {constraintBarOpen && (
+        <ZonotopeConstraintBar onSubmit={handleConstraintSubmit} aria-label="Add linear zonotope constraint">
+          <span
+            style={{
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontWeight: 700,
+              color: "#7dd3fc",
+            }}
+          >
+            Cξ ≤ d
+          </span>
+          <ZonotopeConstraintInput
+            ref={constraintInputRef}
+            type="text"
+            value={constraintDraft}
+            placeholder="e.g. R1 >= 0 or 2*wall_thickness + bore <= 20"
+            onChange={(e) => {
+              setConstraintDraft(e.target.value);
+              if (constraintError) setConstraintError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setConstraintBarOpen(false);
+                setConstraintError(null);
+                editorRef.current?.focus();
+              }
+            }}
+          />
+          <ZonotopeMiniButton type="submit">Add Constraint</ZonotopeMiniButton>
+          <ZonotopeMiniButton
+            type="button"
+            onClick={() => {
+              setConstraintBarOpen(false);
+              setConstraintError(null);
+              editorRef.current?.focus();
+            }}
+          >
+            ×
+          </ZonotopeMiniButton>
+          {constraintError && <span style={{ width: "100%", color: "#fda4af", fontSize: 11 }}>{constraintError}</span>}
+        </ZonotopeConstraintBar>
+      )}
+      {scrambleResult && (
+        <ScramblePreviewBanner role="region" aria-label="Live isomorphic rename scramble ghost preview">
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 700, color: "#e2e8f0" }}>
+                Isomorphic Rename Scramble (Read-Only Ghost Preview)
+              </span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  background: scrambleResult.invariant ? "rgba(52, 211, 153, 0.18)" : "rgba(251, 191, 36, 0.2)",
+                  border: scrambleResult.invariant
+                    ? "1px solid rgba(52, 211, 153, 0.55)"
+                    : "1px solid rgba(251, 191, 36, 0.55)",
+                  color: scrambleResult.invariant ? "#6ee7b7" : "#fcd34d",
+                }}
+              >
+                {scrambleResult.invariant ? "✓ 4-Column Topology 100% Invariant" : "⚠ Topology Drift Detected"}
+              </span>
+              <span
+                style={{
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  fontSize: 11,
+                  color: "#94a3b8",
+                }}
+              >
+                {scrambleResult.scrambledGroupCount} groups scrambled · {scrambleResult.preservedLockedCount} locked
+              </span>
+            </div>
+            <ZonotopeMiniButton type="button" onClick={handleCloseScramble}>
+              Close Preview
+            </ZonotopeMiniButton>
+          </div>
+          {Object.keys(scrambleResult.renameMap).length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {Object.entries(scrambleResult.renameMap).map(([orig, synth]) => (
+                <span
+                  key={orig}
+                  style={{
+                    padding: "1px 7px",
+                    borderRadius: 999,
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                    fontSize: 11,
+                    background: "rgba(56, 189, 248, 0.14)",
+                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                    color: "#7dd3fc",
+                  }}
+                >
+                  {orig} → {synth}
+                </span>
+              ))}
+            </div>
+          )}
+          <ScrambleCodePre>{scrambleResult.scrambledSource}</ScrambleCodePre>
+        </ScramblePreviewBanner>
+      )}
       {showMobileAccessoryBar && (
         <MobileAccessoryBar role="toolbar" aria-label="Engineering symbols and shortcuts">
           <AccessoryKeyButton
@@ -625,6 +1247,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
                   tabSize: editorTabSize,
                   wordWrap: editorWordWrap,
                   lineNumbers: editorLineNumbers,
+                  glyphMargin: Boolean(props.showHypergraphOverlay),
                   minimap: { enabled: editorMinimap },
                   bracketPairColorization: { enabled: bracketPairColorization },
                   insertSpaces: true,
@@ -641,7 +1264,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
                   overflowWidgetsDomNode,
                   codeLens: false,
                   folding: false,
-                  glyphMargin: false,
+                  glyphMargin: Boolean(props.showHypergraphOverlay),
                   lineDecorationsWidth: 0,
                   lineNumbers: "off",
                   lineNumbersMinChars: 0,

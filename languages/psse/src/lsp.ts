@@ -2483,38 +2483,6 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
     return newId;
   };
 
-  const findNearestBus = (predicate?: (busId: number) => boolean): number => {
-    const candidates = predicate ? existingBusIds.filter(predicate) : existingBusIds;
-    const pool = candidates.length > 0 ? candidates : existingBusIds;
-    if (hasPos) {
-      let bestId: number | undefined;
-      let bestDist = Infinity;
-      for (const id of pool) {
-        const pos = psseCase.buses.get(id)?.position;
-        if (!pos) continue;
-        const d = Math.hypot(pos.x - rx, pos.y - ry);
-        if (d < bestDist) {
-          bestDist = d;
-          bestId = id;
-        }
-      }
-      if (bestId !== undefined) return bestId;
-    }
-    return pool[0] ?? defaultBusId;
-  };
-
-  const findNearestBuses = (count: number): number[] => {
-    if (hasPos) {
-      const withPos = existingBusIds
-        .map((id) => ({ id, pos: psseCase.buses.get(id)?.position }))
-        .filter((item): item is { id: number; pos: { x: number; y: number } } => Boolean(item.pos))
-        .sort((a, b) => Math.hypot(a.pos.x - rx, a.pos.y - ry) - Math.hypot(b.pos.x - rx, b.pos.y - ry))
-        .map((item) => item.id);
-      if (withPos.length >= count) return withPos.slice(0, count);
-    }
-    return existingBusIds.slice(0, count);
-  };
-
   if (lower === "psse:bus_pq" || lower === "psse:bus_pv" || lower === "psse:bus_slack" || lower === "bus") {
     const newBusId = maxBusId + 1;
     const ide = lower === "psse:bus_slack" ? 3 : lower === "psse:bus_pv" ? 2 : 1;
@@ -2525,8 +2493,8 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
   }
 
   if (lower === "psse:load" || lower === "load") {
-    const targetBus =
-      existingBusIds.length > 0 ? findNearestBus((id) => psseCase.buses.get(id)?.ide === 1) : ensureBus(1, rx, ry - 82);
+    // Dropped components get their own fresh bus so they wait to be connected by the user.
+    const targetBus = ensureBus(1, rx, ry - 82);
     const existingIds = new Set(psseCase.loads.filter((l) => l.i === targetBus).map((l) => l.id.trim()));
     let ckt = 1;
     while (existingIds.has(String(ckt))) ckt++;
@@ -2536,7 +2504,7 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
   }
 
   if (lower === "psse:fixed_shunt" || lower === "fixed_shunt" || lower.includes("svc") || lower.includes("shunt")) {
-    const targetBus = existingBusIds.length > 0 ? findNearestBus() : ensureBus(1, rx, ry - 82);
+    const targetBus = ensureBus(1, rx, ry - 82);
     if (lower === "psse:switched_shunt" || lower === "switched_shunt") {
       const posSuffix = posTag ? ` / ${posTag}` : "";
       const record = `${targetBus}, 1, 1, 1, 1.0200, 0.9800, 0, 100.0, '', 0.000, 1, 25.000${posSuffix}`;
@@ -2558,12 +2526,8 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
   }
 
   if (lower === "psse:branch" || lower === "branch") {
-    while (existingBusIds.length < 2) {
-      ensureBus(existingBusIds.length === 0 ? 3 : 1, rx + (existingBusIds.length === 0 ? -100 : 100), ry);
-    }
-    const near = findNearestBuses(2);
-    const busA = near[0] ?? 1;
-    const busB = near[1] ?? busA + 1;
+    const busA = ensureBus(1, rx - 100, ry);
+    const busB = ensureBus(1, rx + 100, ry);
     const existingCkts = new Set(
       psseCase.branches.filter((b) => b.i === busA && Math.abs(b.j) === busB).map((b) => b.ckt.trim()),
     );
@@ -2581,15 +2545,9 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
 
   if (lower === "psse:xfmr_2w" || lower === "psse:xfmr_3w") {
     const needed = lower === "psse:xfmr_3w" ? 3 : 2;
-    while (existingBusIds.length < needed) {
-      const offset = existingBusIds.length === 0 ? -100 : existingBusIds.length === 1 ? 100 : 0;
-      const offsetY = existingBusIds.length === 2 ? 120 : 0;
-      ensureBus(existingBusIds.length === 0 ? 3 : 1, rx + offset, ry + offsetY);
-    }
-    const near = findNearestBuses(needed);
-    const busA = near[0] ?? 1;
-    const busB = near[1] ?? busA + 1;
-    const busK = lower === "psse:xfmr_3w" ? (near[2] ?? busB + 1) : 0;
+    const busA = ensureBus(1, rx - 100, ry);
+    const busB = ensureBus(1, rx + 100, ry);
+    const busK = needed === 3 ? ensureBus(1, rx, ry + 120) : 0;
     const recordLines = [
       `${busA}, ${busB}, ${busK}, '1 ', 1, 1, 1, 0.00000, 0.00000, 2, 'XFMR_${busA}_${busB}', 1, 1, 1.0000`,
       `0.00200, 0.08000, 100.00`,
@@ -2609,13 +2567,7 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
   }
 
   // Default for `psse:generator` or any PSSEDynamics.* model: add a generator on the nearest Slack/PV bus
-  const targetBus =
-    existingBusIds.length > 0
-      ? findNearestBus((id) => {
-          const ide = psseCase.buses.get(id)?.ide;
-          return ide === 3 || ide === 2;
-        })
-      : ensureBus(3, rx, ry + 82);
+  const targetBus = ensureBus(psseCase.buses.size === 0 ? 3 : 2, rx, ry + 82);
   const existingIds = new Set(psseCase.generators.filter((g) => g.i === targetBus).map((g) => g.id.trim()));
   let ckt = 1;
   while (existingIds.has(String(ckt))) ckt++;

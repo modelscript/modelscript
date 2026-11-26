@@ -79,6 +79,10 @@
     "./ui": {
       "types": "./dist/src/ui/AmplPanel.d.ts",
       "default": "./dist/src/ui/AmplPanel.js"
+    },
+    "./ui/AmplOptimizationResults": {
+      "types": "./dist/src/ui/AmplOptimizationResults.d.ts",
+      "default": "./dist/src/ui/AmplOptimizationResults.js"
     }
   },
   "files": [

@@ -2,9 +2,38 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { HpcJobArtifactSummary, JobRow, JobStepRow } from "../../database.js";
 import { BaseRepository } from "./base.js";
+
+function resolveSafeResultDir(resultDir: string | undefined): string | null {
+  if (!resultDir || typeof resultDir !== "string" || resultDir.includes("\0")) return null;
+  if (resultDir.split(/[/\\]+/).some((seg) => seg === "..")) return null;
+  try {
+    const resolved = path.resolve(resultDir);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) return null;
+    const realDir = fs.realpathSync(resolved);
+
+    const allowedRoots = [process.cwd(), os.tmpdir(), process.env["HPC_WORK_DIR"], process.env["DATA_DIR"]]
+      .filter((r): r is string => Boolean(r))
+      .map((r) => {
+        try {
+          return fs.realpathSync(path.resolve(r));
+        } catch {
+          return path.resolve(r);
+        }
+      });
+
+    const isContained = allowedRoots.some((root) => {
+      const rootWithSep = root.endsWith(path.sep) ? root : root + path.sep;
+      return realDir === root || realDir.startsWith(rootWithSep);
+    });
+    return isContained ? realDir : null;
+  } catch {
+    return null;
+  }
+}
 
 export class JobsRepository extends BaseRepository {
   // ── Ansatz Snippets ─────────────────────────────────────────────
@@ -61,13 +90,15 @@ export class JobsRepository extends BaseRepository {
       return undefined;
     }
     return this.db
-      .prepare(`SELECT * FROM jobs WHERE metadata LIKE ? ORDER BY id DESC LIMIT 1`)
-      .get(`%"jobId":"${strId}"%`) as JobRow | undefined;
+      .prepare(
+        `SELECT * FROM jobs WHERE json_valid(metadata) AND json_extract(metadata, '$.jobId') = ? ORDER BY id DESC LIMIT 1`,
+      )
+      .get(strId) as JobRow | undefined;
   }
 
   getUserCompletedHpcJobs(userId: number, limit = 20): HpcJobArtifactSummary[] {
-    const isProd = process.env["NODE_ENV"] === "production";
-    const whereUser = isProd ? "user_id = ?" : "(user_id = ? OR user_id IS NULL OR user_id = 1)";
+    const isTest = process.env["NODE_ENV"] === "test";
+    const whereUser = isTest ? "(user_id = ? OR user_id IS NULL OR user_id = 1)" : "user_id = ?";
     const jobs = this.db
       .prepare(
         `SELECT id, name, status, type, metadata, started_at, completed_at,
@@ -107,12 +138,13 @@ export class JobsRepository extends BaseRepository {
 
       let hasVtu = false;
       let hasScalars = false;
+      const safeResultDir = resolveSafeResultDir(resultDir);
 
-      if (resultDir && fs.existsSync(resultDir)) {
-        const vtuPath = path.join(resultDir, "result.vtu");
+      if (safeResultDir) {
+        const vtuPath = path.join(safeResultDir, "result.vtu");
         hasVtu = fs.existsSync(vtuPath);
 
-        const scalarsPath = path.join(resultDir, "scalars.json");
+        const scalarsPath = path.join(safeResultDir, "scalars.json");
         if (fs.existsSync(scalarsPath)) {
           hasScalars = true;
           try {
@@ -153,6 +185,10 @@ export class JobsRepository extends BaseRepository {
     if (!job) {
       throw new Error(`Job #${jobId} not found`);
     }
+    const isTest = process.env["NODE_ENV"] === "test";
+    if (job.user_id !== userId && !(isTest && job.user_id === null)) {
+      throw new Error(`Forbidden: Job #${jobId} does not belong to user ${userId}`);
+    }
 
     let resultDir: string | undefined;
     let solver = "general";
@@ -176,9 +212,13 @@ export class JobsRepository extends BaseRepository {
     }
 
     let scalars: Record<string, unknown> = {};
-    if (resultDir && fs.existsSync(path.join(resultDir, "scalars.json"))) {
+    const safeResultDir = resolveSafeResultDir(resultDir);
+    if (safeResultDir && fs.existsSync(path.join(safeResultDir, "scalars.json"))) {
       try {
-        scalars = JSON.parse(fs.readFileSync(path.join(resultDir, "scalars.json"), "utf8")) as Record<string, unknown>;
+        scalars = JSON.parse(fs.readFileSync(path.join(safeResultDir, "scalars.json"), "utf8")) as Record<
+          string,
+          unknown
+        >;
       } catch {
         // Optional scalars.json unreadable or malformed
       }

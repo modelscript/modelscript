@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { AmplOptimizationResults, type AmplGeomInfo } from "@modelscript/ampl/ui/AmplOptimizationResults";
 import type { DynamicBindingConfig, GdtOverlayPayload } from "@modelscript/cad";
 import type { ComponentPropertyData } from "@modelscript/diagram";
 import {
@@ -24,35 +25,78 @@ import {
   useEditorFeatureFlag as useFeatureFlag,
 } from "../../host";
 import Spinner from "../../internal/Spinner";
-import type {
-  CadComponent,
-  CommitAssemblyJointPayload,
-  CommitDimensionPayload,
-  CommitFaceTagPayload,
-  GizmoCommitPayload,
+import {
+  computeCadSafeInsets,
+  type CadComponent,
+  type CommitAssemblyJointPayload,
+  type CommitDimensionPayload,
+  type CommitFaceTagPayload,
+  type GizmoCommitPayload,
 } from "../cad-viewer";
 import type { AnimationController } from "../cad-viewer/animation-controller";
 import { getLanguageInfo } from "../constants";
 import { CosimPanel, type HistorianSession } from "../CosimPanel";
 import DiagramEditor, { type DiagramDataProp, type DiagramEditorHandle } from "../Diagram";
 import PropertiesWidget from "../Properties";
+import type { AnsatzXRayTokenHeat } from "../util/hypergraph-overlay";
 import type { Translations } from "../util/i18n";
-import { getDiagramPalette } from "../util/lsp-bridge";
+import {
+  executeLspAction,
+  getDiagramPalette,
+  getDocumentParameters,
+  type AnsatzRelationalHypergraphRecord,
+  type DocumentScalarParameter,
+} from "../util/lsp-bridge";
+import type {
+  FaultGeneratorSpec,
+  LinearConstraintSpec,
+  ModalityPerturbationBudgets,
+  ZonotopePendingOverride,
+  ZonotopeWorkbenchState,
+} from "../util/zonotope-workbench-state";
 import {
   buildRotundaCanvasDocument,
+  type RotundaActiveView,
   type RotundaCadPartInput,
   type RotundaModelEntry,
   type RotundaModelKind,
 } from "../vr-rotunda/types";
-import { AmplOptimizationResults } from "./AmplOptimizationResults";
+import { AmplConstraints2D } from "./ampl-viz/AmplConstraints2D";
+import { AmplFitnessLandscape } from "./ampl-viz/AmplFitnessLandscape";
+import { AmplParetoFront } from "./ampl-viz/AmplParetoFront";
 import { AnsatzCalibrationPanel } from "./AnsatzCalibrationPanel";
 import { AnsatzDigitalThreadPanel } from "./AnsatzDigitalThreadPanel";
 import type { MobileTab } from "./AnsatzMobileTabBar";
+import type { ComputeDialPreset } from "./AnsatzTrainingStudioPanel";
+import { getAvailableInspectorSubtabs, type InspectorSubtabId } from "./inspector-capabilities";
+import { InspectorErrorBoundary, InspectorLoadingSkeleton } from "./InspectorErrorBoundary";
 import { IconPrimitiveInspector } from "./inspectors/IconPrimitiveInspector";
 import { PolyglotDomainPanel } from "./PolyglotDomainPanel";
-import { PscadComponentWizardModal } from "./PscadComponentWizardModal";
 import { AnsatzView } from "./types";
 
+const AmplConstraints3D = React.lazy(() =>
+  import("./ampl-viz/AmplConstraints3D").then((m) => ({ default: m.AmplConstraints3D })),
+);
+
+const inspectAmplGeometry = async (params: {
+  documentUri: string;
+  documentText: string;
+  dataText?: string;
+  projectFiles?: Record<string, string>;
+}): Promise<AmplGeomInfo | null> => {
+  const geo = await executeLspAction("ampl_inspect_geometry", "ampl", params.documentUri, {
+    documentText: params.documentText,
+    ...(params.dataText ? { dataText: params.dataText } : {}),
+    ...(params.projectFiles ? { projectFiles: params.projectFiles } : {}),
+  });
+  return (geo as AmplGeomInfo | null | undefined) ?? null;
+};
+
+const PscadComponentWizardModal = React.lazy(() =>
+  import("@modelscript/pscad/ui/PscadComponentWizardModal").then((m) => ({
+    default: m.PscadComponentWizardModal,
+  })),
+);
 const CadViewerPanel = React.lazy(() => import("../cad-viewer").then((m) => ({ default: m.CadViewer })));
 const EngineeringRotundaPanel = React.lazy(() => import("../vr-rotunda/EngineeringRotunda"));
 const SimulationResults = React.lazy(() =>
@@ -65,6 +109,9 @@ const AnsatzOptimizationUqPanel = React.lazy(() =>
   import("./AnsatzOptimizationUqPanel").then((m) => ({ default: m.AnsatzOptimizationUqPanel })),
 );
 const AnsatzReplPanel = React.lazy(() => import("./AnsatzReplPanel").then((m) => ({ default: m.AnsatzReplPanel })));
+const AnsatzTrainingStudioPanel = React.lazy(() =>
+  import("./AnsatzTrainingStudioPanel").then((m) => ({ default: m.AnsatzTrainingStudioPanel })),
+);
 
 import { getDslStencilsForDialect } from "../util/LanguagePanelHost";
 
@@ -212,6 +259,24 @@ export interface AnsatzVisualizerPaneProps {
   splitOrientation?: "columns" | "rows" | undefined;
   onSelectView?: ((target: "diagram" | "3d" | "simulation" | "inspector" | "code") => void) | undefined;
   onToggleSplit?: (() => void) | undefined;
+  isVrMode?: boolean | undefined;
+  onVrModeChange?: ((enabled: boolean) => void) | undefined;
+  vrQuickEditOpen?: boolean | undefined;
+  onToggleVrQuickEdit?: (() => void) | undefined;
+  cadPartOverrides?:
+    Record<string, { visible?: boolean; ghost?: boolean; color?: string; material?: string }> | undefined;
+  onCadPartOverridesChange?:
+    | React.Dispatch<
+        React.SetStateAction<Record<string, { visible?: boolean; ghost?: boolean; color?: string; material?: string }>>
+      >
+    | undefined;
+  diagnostics?:
+    | readonly {
+        readonly severity: "error" | "warning" | "info";
+        readonly line: number;
+        readonly message: string;
+      }[]
+    | undefined;
   treeWidth?: number | undefined;
   diagnosticsBottomOffset?: number | undefined;
   projectFiles?: Record<string, string> | undefined;
@@ -234,6 +299,26 @@ export interface AnsatzVisualizerPaneProps {
         }>
       >
     | undefined;
+  showHypergraphOverlay?: boolean | undefined;
+  onToggleHypergraphOverlay?: ((enabled: boolean) => void) | undefined;
+  computeDial?: ComputeDialPreset | undefined;
+  onChangeComputeDial?: ((preset: ComputeDialPreset) => void) | undefined;
+  onXRayTokenHeatChange?: ((heat: AnsatzXRayTokenHeat[] | null) => void) | undefined;
+  onLoadExampleSource?: ((source: string, dialect: string, uri?: string) => void) | undefined;
+  zonotopeWorkbenchState?: ZonotopeWorkbenchState | undefined;
+  hypergraphRecord?: AnsatzRelationalHypergraphRecord | null | undefined;
+  onSelectZonotopeGroup?: ((groupId: number | null) => void) | undefined;
+  onAddZonotopeOverride?: ((override: ZonotopePendingOverride) => void) | undefined;
+  onAddZonotopeConstraint?: ((constraint: LinearConstraintSpec) => void) | undefined;
+  onToggleFaultGenerator?: ((spec: FaultGeneratorSpec) => void) | undefined;
+  onUpdateZonotopeBudgets?: ((patch: Partial<ModalityPerturbationBudgets>) => void) | undefined;
+  onClearPendingOverrides?: (() => void) | undefined;
+  onWorstCaseXiChange?: ((xiMap: Record<number, number>) => void) | undefined;
+  onStudioActiveChange?: ((active: boolean) => void) | undefined;
+  zonotopeViolatingComponents?: string[] | undefined;
+  onChangeCadToleranceFraction?: ((nextFraction: number) => void) | undefined;
+  /** Optional sync group identifier to synchronize 3D CAD OrbitControls cameras across side-by-side panes. */
+  cameraSyncGroup?: string | undefined;
 }
 
 const isSplit = (v: AnsatzView) => v === AnsatzView.SPLIT_COLUMNS || v === AnsatzView.SPLIT_ROWS;
@@ -312,7 +397,7 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
   setView: _setView,
   onAutoLayout,
   onSimulate,
-  onOpenCloudModal: _onOpenCloudModal,
+  onOpenCloudModal,
   onFlatten: _onFlatten,
   hideCenterFloatingToolbar = false,
   showAnalysisView: controlledShowAnalysisView,
@@ -320,11 +405,18 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
   documentUri,
   loadingProgress,
   onLoadStarterExample,
-  isSplitActive: _isSplitActive,
+  isSplitActive,
   canSplit: _canSplit = true,
   splitOrientation: _splitOrientation = "columns",
-  onSelectView: _onSelectView,
-  onToggleSplit: _onToggleSplit,
+  onSelectView,
+  onToggleSplit,
+  isVrMode: controlledIsVrMode,
+  onVrModeChange,
+  vrQuickEditOpen,
+  onToggleVrQuickEdit,
+  cadPartOverrides,
+  onCadPartOverridesChange,
+  diagnostics,
   treeWidth = 260,
   diagnosticsBottomOffset = 12,
   projectFiles,
@@ -333,6 +425,25 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
   onUpdateProjectFile,
   psseDiagramOptions,
   onPsseDiagramOptionsChange,
+  showHypergraphOverlay = false,
+  onToggleHypergraphOverlay,
+  computeDial = "auto-escalate",
+  onChangeComputeDial,
+  onXRayTokenHeatChange,
+  onLoadExampleSource,
+  zonotopeWorkbenchState,
+  hypergraphRecord,
+  onSelectZonotopeGroup,
+  onAddZonotopeOverride,
+  onAddZonotopeConstraint,
+  onToggleFaultGenerator,
+  onUpdateZonotopeBudgets,
+  onClearPendingOverrides,
+  onWorstCaseXiChange,
+  onStudioActiveChange,
+  zonotopeViolatingComponents,
+  onChangeCadToleranceFraction,
+  cameraSyncGroup,
 }) => {
   const { hasCapability } = useCapabilities();
   const _isCaeComputeEnabled = useFeatureFlag("cae_cloud_solver");
@@ -343,10 +454,58 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
   const [isPropResizerHovered, setIsPropResizerHovered] = useState(false);
   const [isPropResizerDragging, setIsPropResizerDragging] = useState(false);
   const [isEmptyStateDismissed, setIsEmptyStateDismissed] = useState(false);
+  const [createdCaeStudySource, setCreatedCaeStudySource] = useState<string | null>(null);
+  const [companionCadComponents, setCompanionCadComponents] = useState<CadComponent[]>([]);
+  useEffect(() => {
+    if (cadComponents.length > 0) {
+      setCompanionCadComponents(cadComponents);
+    }
+  }, [cadComponents]);
+  const hasActiveCaeFile =
+    /\.(inp|bdf|dat|fem|su2|cfg|foam)$/i.test(activeFileName || "") ||
+    Boolean(createdCaeStudySource) ||
+    Boolean(vtkBuffer);
   const hasMultiFileProject = Boolean(projectFiles && Object.keys(projectFiles).length >= 2);
-  const [inspectorSubtab, setInspectorSubtab] = useState<"domain" | "thread" | "calibrate" | "rtm" | "uq" | "repl">(
-    "domain",
-  );
+  const availableInspectorSubtabs = useMemo(() => {
+    const base = getAvailableInspectorSubtabs(dialect, projectFiles);
+    if (onToggleHypergraphOverlay || onChangeComputeDial || onXRayTokenHeatChange || onLoadExampleSource) {
+      return [...base, { id: "studio" as const, label: "RLVR Studio" }];
+    }
+    return base;
+  }, [
+    dialect,
+    projectFiles,
+    onToggleHypergraphOverlay,
+    onChangeComputeDial,
+    onXRayTokenHeatChange,
+    onLoadExampleSource,
+  ]);
+  const [inspectorSubtab, setInspectorSubtab] = useState<InspectorSubtabId>("domain");
+
+  useEffect(() => {
+    if (!availableInspectorSubtabs.some((t) => t.id === inspectorSubtab)) {
+      setInspectorSubtab("domain");
+    }
+  }, [availableInspectorSubtabs, inspectorSubtab]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const subtab = (event as CustomEvent<{ subtab?: string }>).detail?.subtab;
+      if (
+        subtab === "domain" ||
+        subtab === "thread" ||
+        subtab === "calibrate" ||
+        subtab === "rtm" ||
+        subtab === "uq" ||
+        subtab === "repl" ||
+        subtab === "studio"
+      ) {
+        setInspectorSubtab(subtab);
+      }
+    };
+    window.addEventListener("ansatz:select-inspector-subtab", handler);
+    return () => window.removeEventListener("ansatz:select-inspector-subtab", handler);
+  }, []);
 
   useEffect(() => {
     setIsEmptyStateDismissed(false);
@@ -355,16 +514,21 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
   const [internalShowAnalysisView, setInternalShowAnalysisView] = useState(false);
   const showAnalysisView = controlledShowAnalysisView ?? internalShowAnalysisView;
   const setShowAnalysisView = controlledSetShowAnalysisView ?? setInternalShowAnalysisView;
-  const [showVrRotunda, setShowVrRotunda] = useState(false);
-  const [capturedDiagramSvgUrl, setCapturedDiagramSvgUrl] = useState<string | null>(null);
-  const prevCenterPaneKeyRef = useRef(`${showResultsView ? 1 : 0}:${showCadView ? 1 : 0}:${showAnalysisView ? 1 : 0}`);
+  const [internalShowVrRotunda, setInternalShowVrRotunda] = useState(false);
+  const showVrRotunda = controlledIsVrMode ?? internalShowVrRotunda;
   useEffect(() => {
-    const nextKey = `${showResultsView ? 1 : 0}:${showCadView ? 1 : 0}:${showAnalysisView ? 1 : 0}`;
-    if (prevCenterPaneKeyRef.current !== nextKey) {
-      prevCenterPaneKeyRef.current = nextKey;
-      setShowVrRotunda(false);
-    }
-  }, [showResultsView, showCadView, showAnalysisView]);
+    onStudioActiveChange?.(Boolean(showAnalysisView && !showVrRotunda && inspectorSubtab === "studio"));
+  }, [onStudioActiveChange, showAnalysisView, showVrRotunda, inspectorSubtab]);
+  const setShowVrRotunda = useCallback(
+    (next: boolean) => {
+      if (controlledIsVrMode === undefined) {
+        setInternalShowVrRotunda(next);
+      }
+      onVrModeChange?.(next);
+    },
+    [controlledIsVrMode, onVrModeChange],
+  );
+  const [capturedDiagramSvgUrl, setCapturedDiagramSvgUrl] = useState<string | null>(null);
   const [showPalette, setShowPalette] = useState(false);
   const [showComponentWizard, setShowComponentWizard] = useState(false);
   const [lspPaletteCategories, setLspPaletteCategories] = useState<
@@ -802,6 +966,30 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
 
   const rotundaTitle = selectedTreeClassName || activeFileName || activeLangInfo.name || dialect || "Model";
 
+  const [cstDocParameters, setCstDocParameters] = useState<DocumentScalarParameter[]>([]);
+
+  useEffect(() => {
+    if (!showVrRotunda || !documentUri || !editorValue?.trim()) {
+      setCstDocParameters([]);
+      return;
+    }
+    let cancelled = false;
+    void getDocumentParameters(documentUri, editorValue)
+      .then((list) => {
+        if (!cancelled) {
+          setCstDocParameters(Array.isArray(list) ? list : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCstDocParameters([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showVrRotunda, documentUri, editorValue]);
+
   const rotundaParameters = useMemo(() => {
     const params: Array<{ name: string; value: string | number; unit?: string | undefined }> = [];
     const rawParams = selectedComponentProperties?.parameters;
@@ -829,8 +1017,51 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
         params.push({ name: k, value: val });
       }
     }
+    if (params.length === 0 && cstDocParameters.length > 0) {
+      for (const p of cstDocParameters.slice(0, 16)) {
+        params.push({ name: p.name, value: p.value, unit: p.unit });
+      }
+    }
     return params.length > 0 ? params : undefined;
-  }, [selectedComponentProperties]);
+  }, [selectedComponentProperties, cstDocParameters]);
+
+  const handleModifyRotundaParameter = useCallback(
+    (paramName: string, nextValue: string) => {
+      const hasComponentParam =
+        Boolean(selectedComponent) &&
+        Array.isArray(selectedComponentProperties?.parameters) &&
+        selectedComponentProperties.parameters.some((p) => p?.name === paramName);
+      if (hasComponentParam && selectedComponent) {
+        enqueueDiagramAction({
+          type: "updateParameter",
+          name: selectedComponent,
+          parameter: paramName,
+          value: nextValue,
+        });
+        return;
+      }
+      const monacoEditor = editorRef?.current ?? editor;
+      const model = monacoEditor?.getModel?.();
+      if (!monacoEditor || !model) return;
+      const cstParam = cstDocParameters.find((p) => p.name === paramName);
+      if (!cstParam || cstParam.valueEndOffset < cstParam.valueStartOffset) return;
+      const startPos = model.getPositionAt(cstParam.valueStartOffset);
+      const endPos = model.getPositionAt(cstParam.valueEndOffset);
+      monacoEditor.executeEdits("vr-inspector", [
+        {
+          range: {
+            startLineNumber: startPos.lineNumber,
+            startColumn: startPos.column,
+            endLineNumber: endPos.lineNumber,
+            endColumn: endPos.column,
+          },
+          text: nextValue,
+          forceMoveMarkers: true,
+        },
+      ]);
+    },
+    [selectedComponent, selectedComponentProperties, enqueueDiagramAction, editorRef, editor, cstDocParameters],
+  );
 
   const rotundaSimulationSeries = useMemo(() => {
     if (!localSimulationData || localSimulationData.length < 2) return undefined;
@@ -1157,7 +1388,17 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
   useEffect(() => {
     if (cosimDataSource !== "historian-replay") return;
     let cancelled = false;
-    fetch("/api/v1/historian/sessions")
+    let authHeaders: Record<string, string> = {};
+    try {
+      const token =
+        window.localStorage.getItem("modelscript-auth-token") ||
+        window.localStorage.getItem("token") ||
+        window.localStorage.getItem("auth_token");
+      if (token) authHeaders = { Authorization: `Bearer ${token}` };
+    } catch {
+      // ignore storage errors
+    }
+    fetch("/api/v1/historian/sessions", { headers: authHeaders })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled || !data) return;
@@ -1201,6 +1442,28 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
     simulationVariables,
   ]);
 
+  const paneContainerRef = useRef<HTMLDivElement>(null);
+  const [paneSize, setPaneSize] = useState<{ width: number; height: number }>(() => ({
+    width: typeof window !== "undefined" ? window.innerWidth : 1200,
+    height: typeof window !== "undefined" ? window.innerHeight : 800,
+  }));
+
+  useEffect(() => {
+    const el = paneContainerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const sync = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (w > 0 && h > 0) {
+        setPaneSize((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+      }
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [showCadView, view, showVrRotunda]);
+
   const isFullScreenSplitCanvas = !isNarrow && (hideCenterFloatingToolbar || isAnsatzEditorRoute) && isSplit(view);
   const isFloatingLayout =
     !isNarrow && (hideCenterFloatingToolbar || isAnsatzEditorRoute) && (!isSplit(view) || isFullScreenSplitCanvas);
@@ -1208,23 +1471,29 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
 
   const cadFitInsets = useMemo(
     () =>
-      isFloatingLayout
-        ? {
-            top: 84,
-            left: floatingLeftOffset + 12,
-            right:
-              24 +
-              (isFullScreenSplitCanvas && view === AnsatzView.SPLIT_COLUMNS
-                ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerWidth : 1200))
-                : 0),
-            bottom:
-              56 +
-              (isFullScreenSplitCanvas && view === AnsatzView.SPLIT_ROWS
-                ? Math.round((1 - splitRatio) * (typeof window !== "undefined" ? window.innerHeight : 800))
-                : 0),
-          }
-        : undefined,
-    [isFloatingLayout, floatingLeftOffset, isFullScreenSplitCanvas, view, splitRatio],
+      computeCadSafeInsets({
+        isFloatingLayout,
+        containerWidth: paneSize.width,
+        containerHeight: paneSize.height,
+        treeVisible: Boolean(treeVisible),
+        treeWidth,
+        isFullScreenSplitCanvas,
+        splitDirection:
+          view === AnsatzView.SPLIT_COLUMNS ? "columns" : view === AnsatzView.SPLIT_ROWS ? "rows" : "none",
+        splitRatio,
+        diagnosticsBottomOffset,
+      }),
+    [
+      isFloatingLayout,
+      paneSize.width,
+      paneSize.height,
+      treeVisible,
+      treeWidth,
+      isFullScreenSplitCanvas,
+      view,
+      splitRatio,
+      diagnosticsBottomOffset,
+    ],
   );
 
   // When full-bleed VR Rotunda is active in Ansatz/floating mode, suppress
@@ -1254,7 +1523,7 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
     };
   }, [showVrRotunda, isAnsatzEditorRoute, isFloatingLayout]);
 
-  if (!((view === AnsatzView.DIAGRAM || isSplit(view)) && (!isNarrow || mobileTab !== "code"))) {
+  if (!showVrRotunda && !((view === AnsatzView.DIAGRAM || isSplit(view)) && (!isNarrow || mobileTab !== "code"))) {
     return null;
   }
 
@@ -1265,6 +1534,7 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
 
   return (
     <div
+      ref={paneContainerRef}
       style={{
         display: "flex",
         flex: isNarrow || isFullScreenSplitCanvas ? 1 : isSplit(view) ? "none" : 1,
@@ -1300,6 +1570,8 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
         <UnderlineNav
           aria-label="Models"
           style={{
+            position: "relative",
+            zIndex: 5,
             flexShrink: 0,
             backgroundColor: "var(--bgColor-muted, var(--ms-bg-elv))",
             borderBottom: "1px solid var(--borderColor-muted, var(--ms-divider))",
@@ -2245,6 +2517,13 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
                   onAutoLayout={onAutoLayout}
                   onFetchArtifactBytes={handleFetchArtifactBytes}
                   onTessellateStep={handleTessellateStep}
+                  showZonotopeOverlay={showHypergraphOverlay}
+                  zonotopeWorkbenchState={zonotopeWorkbenchState}
+                  hypergraphRecord={hypergraphRecord}
+                  onSelectZonotopeGroup={onSelectZonotopeGroup}
+                  onAddZonotopeOverride={onAddZonotopeOverride}
+                  onAddZonotopeConstraint={onAddZonotopeConstraint}
+                  onToggleFaultGenerator={onToggleFaultGenerator}
                 />
               </Suspense>
 
@@ -3621,7 +3900,9 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
           >
             <Suspense fallback={null}>
               <CadViewerPanel
-                components={cadComponents}
+                components={
+                  cadComponents.length > 0 ? cadComponents : hasActiveCaeFile ? companionCadComponents : cadComponents
+                }
                 selectedName={selectedComponent}
                 onSelect={(name) => {
                   setSelectedComponent(name || null);
@@ -3635,11 +3916,30 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
                 onCommitFaceTag={handleCommitCadFaceTag}
                 onCommitAssemblyJoint={handleCommitCadAssemblyJoint}
                 sourceCode={editorValue}
+                activeFileName={activeFileName}
                 vtkBuffer={vtkBuffer ?? undefined}
                 gdtOverlay={gdtOverlay}
                 caeSourceCode={
-                  /\.(inp|bdf|dat|fem|su2|cfg|foam)$/i.test(activeFileName || "") || vtkBuffer ? editorValue : undefined
+                  /\.(inp|bdf|dat|fem|su2|cfg|foam)$/i.test(activeFileName || "") || vtkBuffer
+                    ? editorValue
+                    : (createdCaeStudySource ?? undefined)
                 }
+                onCreateCaeStudy={(study) => {
+                  if (cadComponents.length > 0) {
+                    setCompanionCadComponents(cadComponents);
+                  }
+                  setCreatedCaeStudySource(study.content);
+                  if (onUpdateProjectFile) {
+                    onUpdateProjectFile(study.fileName, study.content);
+                    onSelectProjectFile?.(study.fileName);
+                  } else {
+                    const targetEditor = editorRef.current ?? editor;
+                    if (targetEditor) {
+                      targetEditor.setValue(study.content);
+                    }
+                  }
+                }}
+                onTriggerHpcRun={onOpenCloudModal}
                 onRevealLine={onRevealLine}
                 onInsertCaeSnippet={(snippet) => {
                   const targetEditor = editorRef.current ?? editor;
@@ -3648,134 +3948,190 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
                     targetEditor.setValue(nextCode);
                   }
                 }}
-                onOpenVrRotunda={openVrRotunda}
+                onOpenVrRotunda={hideCenterFloatingToolbar || isAnsatzEditorRoute ? undefined : openVrRotunda}
                 fitInsets={cadFitInsets}
+                partOverrides={cadPartOverrides}
+                onPartOverridesChange={onCadPartOverridesChange}
+                cameraSyncGroup={cameraSyncGroup}
+                showZonotopeOverlay={showHypergraphOverlay}
+                zonotopeWorkbenchState={zonotopeWorkbenchState}
+                hypergraphRecord={hypergraphRecord}
+                onSelectZonotopeGroup={onSelectZonotopeGroup}
+                onAddZonotopeOverride={onAddZonotopeOverride}
+                onAddZonotopeConstraint={onAddZonotopeConstraint}
+                zonotopeViolatingComponents={zonotopeViolatingComponents}
+                onChangeCadToleranceFraction={onChangeCadToleranceFraction}
               />
             </Suspense>
           </div>
         )}
 
         {/* Engineering VR Rotunda Workstation Pane */}
-        {showVrRotunda && (
-          <div
-            data-testid="ansatz-vr-rotunda-pane"
-            style={
-              isAnsatzEditorRoute || isFloatingLayout
-                ? {
-                    position: "fixed",
-                    inset: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                    minHeight: 0,
-                    zIndex: 38,
-                    backgroundColor: "#050914",
+        {showVrRotunda &&
+          (() => {
+            const isHostedWorkbench = Boolean(hideCenterFloatingToolbar || isAnsatzEditorRoute);
+            const activeVrView: RotundaActiveView =
+              view === AnsatzView.CODE
+                ? "code"
+                : showResultsView
+                  ? "simulation"
+                  : showCadView
+                    ? "3d"
+                    : showAnalysisView
+                      ? "inspector"
+                      : "diagram";
+            const vrAvailableViews: RotundaActiveView[] = [
+              ...(activeLangInfo.supportsDiagram !== false ? (["diagram"] as const) : []),
+              ...(activeLangInfo.supports3d ? (["3d"] as const) : []),
+              ...(activeLangInfo.supportsSimulation !== false ? (["simulation"] as const) : []),
+              "inspector",
+              "code",
+            ];
+            const isVrSplitOpen = Boolean((isSplitActive ?? isSplit(view)) && activeVrView !== "code");
+            return (
+              <div
+                data-testid="ansatz-vr-rotunda-pane"
+                style={
+                  isAnsatzEditorRoute || isFloatingLayout
+                    ? {
+                        position: "fixed",
+                        inset: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                        minHeight: 0,
+                        zIndex: 38,
+                        backgroundColor: "#050914",
+                      }
+                    : {
+                        position: "absolute",
+                        inset: 0,
+                        paddingTop: hideCenterFloatingToolbar ? 0 : 56,
+                        boxSizing: "border-box",
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                        minHeight: 0,
+                        zIndex: 35,
+                        backgroundColor: "#050914",
+                      }
+                }
+              >
+                <Suspense
+                  fallback={
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: "#050914",
+                      }}
+                    >
+                      <Spinner />
+                    </div>
                   }
-                : {
-                    position: "absolute",
-                    inset: 0,
-                    paddingTop: hideCenterFloatingToolbar ? 0 : 56,
-                    boxSizing: "border-box",
-                    display: "flex",
-                    flexDirection: "column",
-                    overflow: "hidden",
-                    minHeight: 0,
-                    zIndex: 35,
-                    backgroundColor: "#050914",
-                  }
-            }
-          >
-            <Suspense
-              fallback={
-                <div
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: "#050914",
-                  }}
                 >
-                  <Spinner />
-                </div>
-              }
-            >
-              <EngineeringRotundaPanel
-                document={rotundaDocument}
-                models={rotundaModels}
-                mode="spatial-3d"
-                title={rotundaTitle}
-                languageId={dialect || "modelica"}
-                diagramType={diagramType}
-                sourceCode={editorValue}
-                initialActiveView={
-                  showResultsView
-                    ? "simulation"
-                    : showCadView
-                      ? "3d"
-                      : showAnalysisView
-                        ? "inspector"
-                        : view === AnsatzView.CODE
-                          ? "code"
-                          : "diagram"
-                }
-                initialCodeOverlayOpen={
-                  view === AnsatzView.CODE || view === AnsatzView.SPLIT_COLUMNS || view === AnsatzView.SPLIT_ROWS
-                }
-                workspaceFiles={Object.keys(projectFiles ?? {})
-                  .filter((p) => !p.endsWith(".layout"))
-                  .map((p) => {
-                    const lower = p.toLowerCase();
-                    const lang = lower.endsWith(".sysml")
-                      ? "sysml2"
-                      : lower.endsWith(".cir") || lower.endsWith(".sp") || lower.endsWith(".spice")
-                        ? "spice"
-                        : lower.endsWith(".scad")
-                          ? "scad"
-                          : lower.endsWith(".urdf")
-                            ? "urdf"
-                            : lower.endsWith(".pscx")
-                              ? "pscad"
-                              : lower.endsWith(".raw")
-                                ? "psse"
-                                : lower.endsWith(".mod")
-                                  ? "ampl"
-                                  : lower.endsWith(".mo")
-                                    ? "modelica"
-                                    : dialect || "modelica";
-                    const name = p.split("/").pop() ?? p;
-                    return { path: p, name, languageId: lang };
-                  })}
-                activeFilePath={activeFileName}
-                onSelectWorkspaceFile={onSelectProjectFile}
-                inspectorData={{
-                  selectedComponent,
-                  parameters: rotundaParameters?.map((p) => ({
-                    name: p.name,
-                    value: String(p.value),
-                    unit: p.unit,
-                  })),
-                }}
-                simulationData={{
-                  onRunSimulation: onSimulate,
-                  status: simulationStatus,
-                  variables: simulationVariables,
-                  selectedVariables: selectedSimulationVariables,
-                  onToggleVariable: onToggleSimulationVariable,
-                  rows: localSimulationData,
-                }}
-                onDiagramEdit={(actions) => {
-                  for (const action of actions) {
-                    enqueueDiagramAction(action as unknown as Record<string, unknown>);
-                  }
-                }}
-                animationController={animationControllerRef.current}
-                topOverlayInset={isAnsatzEditorRoute || isFloatingLayout ? 72 : 12}
-                onExitTo2D={() => setShowVrRotunda(false)}
-              />
-            </Suspense>
-          </div>
-        )}
+                  <EngineeringRotundaPanel
+                    document={rotundaDocument}
+                    models={rotundaModels}
+                    mode="spatial-3d"
+                    title={rotundaTitle}
+                    languageId={dialect || "modelica"}
+                    diagramType={diagramType}
+                    sourceCode={editorValue}
+                    initialActiveView={activeVrView}
+                    activeView={activeVrView}
+                    onActiveViewChange={(nextView) => {
+                      if (onSelectView) {
+                        onSelectView(nextView);
+                      } else if (nextView === "diagram") {
+                        setShowResultsView(false);
+                        setShowCadView(false);
+                        setShowAnalysisView(false);
+                      } else if (nextView === "3d") {
+                        setShowResultsView(false);
+                        setShowCadView(true);
+                        setShowAnalysisView(false);
+                      } else if (nextView === "simulation") {
+                        setShowResultsView(true);
+                        setShowCadView(false);
+                        setShowAnalysisView(false);
+                      } else if (nextView === "inspector") {
+                        setShowResultsView(false);
+                        setShowCadView(false);
+                        setShowAnalysisView(true);
+                      }
+                    }}
+                    initialCodeOverlayOpen={isVrSplitOpen || activeVrView === "code"}
+                    splitCodeOpen={isVrSplitOpen}
+                    onSplitCodeChange={(open) => {
+                      if (open !== isVrSplitOpen) {
+                        onToggleSplit?.();
+                      }
+                    }}
+                    hostedInWorkbench={isHostedWorkbench}
+                    vrQuickEditOpen={vrQuickEditOpen}
+                    onToggleVrQuickEdit={onToggleVrQuickEdit}
+                    availableViews={vrAvailableViews}
+                    initialPodiumVisible={!isHostedWorkbench}
+                    workspaceFiles={Object.keys(projectFiles ?? {})
+                      .filter((p) => !p.endsWith(".layout"))
+                      .map((p) => {
+                        const lower = p.toLowerCase();
+                        const lang = lower.endsWith(".sysml")
+                          ? "sysml2"
+                          : lower.endsWith(".cir") || lower.endsWith(".sp") || lower.endsWith(".spice")
+                            ? "spice"
+                            : lower.endsWith(".scad")
+                              ? "scad"
+                              : lower.endsWith(".urdf")
+                                ? "urdf"
+                                : lower.endsWith(".pscx")
+                                  ? "pscad"
+                                  : lower.endsWith(".raw")
+                                    ? "psse"
+                                    : lower.endsWith(".mod")
+                                      ? "ampl"
+                                      : lower.endsWith(".mo")
+                                        ? "modelica"
+                                        : dialect || "modelica";
+                        const name = p.split("/").pop() ?? p;
+                        return { path: p, name, languageId: lang };
+                      })}
+                    activeFilePath={activeFileName}
+                    onSelectWorkspaceFile={onSelectProjectFile}
+                    inspectorData={{
+                      selectedComponent,
+                      parameters: rotundaParameters?.map((p) => ({
+                        name: p.name,
+                        value: String(p.value),
+                        unit: p.unit,
+                      })),
+                      diagnostics,
+                      onModifyParameter: handleModifyRotundaParameter,
+                    }}
+                    simulationData={{
+                      onRunSimulation: onSimulate,
+                      status: simulationStatus,
+                      variables: simulationVariables,
+                      selectedVariables: selectedSimulationVariables,
+                      onToggleVariable: onToggleSimulationVariable,
+                      rows: localSimulationData,
+                    }}
+                    onDiagramEdit={(actions) => {
+                      for (const action of actions) {
+                        enqueueDiagramAction(action as unknown as Record<string, unknown>);
+                      }
+                    }}
+                    animationController={animationControllerRef.current}
+                    topOverlayInset={isAnsatzEditorRoute || isFloatingLayout ? 72 : 12}
+                    onExitTo2D={() => setShowVrRotunda(false)}
+                  />
+                </Suspense>
+              </div>
+            );
+          })()}
 
         {/* Simulation Results and Cosimulation Pane */}
         <div
@@ -3848,6 +4204,11 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
               activeFileName={activeFileName}
               onSolve={() => onSimulate?.()}
               onBackToInspector={() => setShowResultsView(false)}
+              inspectGeometry={inspectAmplGeometry}
+              Constraints2DComponent={AmplConstraints2D}
+              Constraints3DComponent={AmplConstraints3D}
+              FitnessLandscapeComponent={AmplFitnessLandscape}
+              ParetoFrontComponent={AmplParetoFront}
             />
           ) : localSimulationData || simulationStatus?.status === "failed" ? (
             <Suspense fallback={null}>
@@ -3937,14 +4298,17 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
             backgroundColor: "var(--color-canvas-default)",
           }}
         >
-          {(hasMultiFileProject || dialect.toLowerCase() === "modelica" || dialect.toLowerCase() === "comtrade") && (
+          {availableInspectorSubtabs.length > 1 && (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
-                padding: "8px 16px",
-                borderBottom: `1px solid ${colorMode === "dark" ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)"}`,
+                padding: "6px 12px",
+                borderBottom: "1px solid var(--ms-divider, rgba(15,23,42,0.08))",
+                background: "var(--ms-bg-alt, var(--color-canvas-subtle, transparent))",
+                overflowX: "auto",
+                scrollbarWidth: "none",
                 flexShrink: 0,
               }}
             >
@@ -3952,128 +4316,150 @@ export const AnsatzVisualizerPane: React.FC<AnsatzVisualizerPaneProps> = ({
                 aria-label="Inspector Mode"
                 size="small"
                 onChange={(idx) => {
-                  const tabOrder: ("domain" | "thread" | "calibrate" | "rtm" | "uq" | "repl")[] = hasMultiFileProject
-                    ? ["domain", "thread", "calibrate", "rtm", "uq", "repl"]
-                    : ["domain", "calibrate", "rtm", "uq", "repl"];
-                  setInspectorSubtab(tabOrder[idx] ?? "domain");
+                  const chosen = availableInspectorSubtabs[idx];
+                  if (chosen) setInspectorSubtab(chosen.id);
                 }}
               >
-                <SegmentedControl.Button selected={inspectorSubtab === "domain"}>
-                  Domain Inspector
-                </SegmentedControl.Button>
-                {hasMultiFileProject && (
-                  <SegmentedControl.Button selected={inspectorSubtab === "thread"}>
-                    Digital Thread
+                {availableInspectorSubtabs.map((tab) => (
+                  <SegmentedControl.Button key={tab.id} selected={inspectorSubtab === tab.id}>
+                    {tab.label}
                   </SegmentedControl.Button>
-                )}
-                <SegmentedControl.Button selected={inspectorSubtab === "calibrate"}>
-                  Calibration
-                </SegmentedControl.Button>
-                <SegmentedControl.Button selected={inspectorSubtab === "rtm"}>
-                  RTM &amp; Contracts
-                </SegmentedControl.Button>
-                <SegmentedControl.Button selected={inspectorSubtab === "uq"}>Opt / UQ</SegmentedControl.Button>
-                <SegmentedControl.Button selected={inspectorSubtab === "repl"}>REPL</SegmentedControl.Button>
+                ))}
               </SegmentedControl>
             </div>
           )}
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            {hasMultiFileProject && inspectorSubtab === "thread" ? (
-              <AnsatzDigitalThreadPanel
-                projectFiles={projectFiles}
-                activeFileName={activeFileName}
-                documentUri={documentUri}
-                colorMode={colorMode}
-                onSelectProjectFile={onSelectProjectFile}
-                onUpdateProjectFile={onUpdateProjectFile}
-                onRevealLine={onRevealLine}
-              />
-            ) : inspectorSubtab === "calibrate" ? (
-              <AnsatzCalibrationPanel
-                projectFiles={projectFiles}
-                activeFileName={activeFileName}
-                activeCode={editorValue}
-                documentUri={documentUri}
-                colorMode={colorMode}
-                onUpdateProjectFile={onUpdateProjectFile}
-                onCodeChange={(nextCode) => {
-                  const targetEditor = editorRef.current ?? editor;
-                  const model = targetEditor?.getModel?.();
-                  if (targetEditor && model && targetEditor.getValue() !== nextCode) {
-                    targetEditor.pushUndoStop();
-                    targetEditor.executeEdits("calibration-apply", [
-                      { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
-                    ]);
-                    targetEditor.pushUndoStop();
-                  }
-                }}
-              />
-            ) : inspectorSubtab === "rtm" ? (
-              <Suspense fallback={null}>
-                <AnsatzRtmContractsPanel documentUri={documentUri} colorMode={colorMode} onRevealLine={onRevealLine} />
-              </Suspense>
-            ) : inspectorSubtab === "uq" ? (
-              <Suspense fallback={null}>
-                <AnsatzOptimizationUqPanel
-                  documentUri={documentUri}
-                  dialect={dialect}
-                  selectedClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
-                  colorMode={colorMode}
-                />
-              </Suspense>
-            ) : inspectorSubtab === "repl" ? (
-              <Suspense fallback={null}>
-                <AnsatzReplPanel documentUri={documentUri} dialect={dialect} colorMode={colorMode} />
-              </Suspense>
-            ) : (
-              <PolyglotDomainPanel
-                dialect={dialect}
-                code={editorValue}
-                colorMode={colorMode}
-                isVisible={showAnalysisView && !showVrRotunda && inspectorSubtab === "domain"}
-                documentUri={documentUri}
-                activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
-                projectFiles={projectFiles}
-                activeFileName={activeFileName}
-                onUpdateProjectFile={onUpdateProjectFile}
-                onRevealLine={onRevealLine}
-                onCodeChange={(nextCode) => {
-                  const targetEditor = editorRef.current ?? editor;
-                  const model = targetEditor?.getModel?.();
-                  if (targetEditor && model && targetEditor.getValue() !== nextCode) {
-                    targetEditor.pushUndoStop();
-                    targetEditor.executeEdits("pscad-authoring", [
-                      { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
-                    ]);
-                    targetEditor.pushUndoStop();
-                  } else if (activeFileName && onUpdateProjectFile) {
-                    onUpdateProjectFile(activeFileName, nextCode);
-                  }
-                }}
-              />
-            )}
+            {showAnalysisView && !showVrRotunda ? (
+              <InspectorErrorBoundary
+                panelName={availableInspectorSubtabs.find((t) => t.id === inspectorSubtab)?.label ?? "Inspector"}
+                resetKey={`${dialect}:${documentUri ?? ""}:${inspectorSubtab}`}
+              >
+                {hasMultiFileProject && inspectorSubtab === "thread" ? (
+                  <AnsatzDigitalThreadPanel
+                    projectFiles={projectFiles}
+                    activeFileName={activeFileName}
+                    documentUri={documentUri}
+                    colorMode={colorMode}
+                    onSelectProjectFile={onSelectProjectFile}
+                    onUpdateProjectFile={onUpdateProjectFile}
+                    onRevealLine={onRevealLine}
+                  />
+                ) : inspectorSubtab === "calibrate" ? (
+                  <AnsatzCalibrationPanel
+                    projectFiles={projectFiles}
+                    activeFileName={activeFileName}
+                    activeCode={editorValue}
+                    documentUri={documentUri}
+                    colorMode={colorMode}
+                    onUpdateProjectFile={onUpdateProjectFile}
+                    onCodeChange={(nextCode) => {
+                      const targetEditor = editorRef.current ?? editor;
+                      const model = targetEditor?.getModel?.();
+                      if (targetEditor && model && targetEditor.getValue() !== nextCode) {
+                        targetEditor.pushUndoStop();
+                        targetEditor.executeEdits("calibration-apply", [
+                          { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+                        ]);
+                        targetEditor.pushUndoStop();
+                      }
+                    }}
+                  />
+                ) : inspectorSubtab === "rtm" ? (
+                  <Suspense fallback={<InspectorLoadingSkeleton label="Loading RTM & Contracts…" />}>
+                    <AnsatzRtmContractsPanel
+                      documentUri={documentUri}
+                      colorMode={colorMode}
+                      onRevealLine={onRevealLine}
+                    />
+                  </Suspense>
+                ) : inspectorSubtab === "uq" ? (
+                  <Suspense fallback={<InspectorLoadingSkeleton label="Loading Optimization & UQ…" />}>
+                    <AnsatzOptimizationUqPanel
+                      documentUri={documentUri}
+                      dialect={dialect}
+                      selectedClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
+                      colorMode={colorMode}
+                    />
+                  </Suspense>
+                ) : inspectorSubtab === "repl" ? (
+                  <Suspense fallback={<InspectorLoadingSkeleton label="Loading REPL…" />}>
+                    <AnsatzReplPanel documentUri={documentUri} dialect={dialect} colorMode={colorMode} />
+                  </Suspense>
+                ) : inspectorSubtab === "studio" ? (
+                  <Suspense fallback={<InspectorLoadingSkeleton label="Loading RLVR & Zonotope Studio…" />}>
+                    <AnsatzTrainingStudioPanel
+                      documentUri={documentUri ?? "file:///document.mo"}
+                      dialect={dialect}
+                      sourceCode={editorValue}
+                      colorMode={colorMode}
+                      showHypergraphOverlay={showHypergraphOverlay}
+                      onToggleHypergraphOverlay={onToggleHypergraphOverlay}
+                      computeDial={computeDial}
+                      onChangeComputeDial={onChangeComputeDial}
+                      onXRayTokenHeatChange={onXRayTokenHeatChange}
+                      onLoadExampleSource={onLoadExampleSource}
+                      zonotopeState={zonotopeWorkbenchState}
+                      hypergraphRecord={hypergraphRecord}
+                      onUpdateZonotopeBudgets={onUpdateZonotopeBudgets}
+                      onAddZonotopeOverride={onAddZonotopeOverride}
+                      onSelectZonotopeGroup={onSelectZonotopeGroup}
+                      onClearPendingOverrides={onClearPendingOverrides}
+                      onWorstCaseXiChange={onWorstCaseXiChange}
+                    />
+                  </Suspense>
+                ) : (
+                  <PolyglotDomainPanel
+                    dialect={dialect}
+                    code={editorValue}
+                    colorMode={colorMode}
+                    isVisible={showAnalysisView && !showVrRotunda && inspectorSubtab === "domain"}
+                    documentUri={documentUri}
+                    activeClassName={selectedTreeClassName ?? nestedModels[selectedModelIndex]?.name ?? undefined}
+                    projectFiles={projectFiles}
+                    activeFileName={activeFileName}
+                    onUpdateProjectFile={onUpdateProjectFile}
+                    onRevealLine={onRevealLine}
+                    onCodeChange={(nextCode) => {
+                      const targetEditor = editorRef.current ?? editor;
+                      const model = targetEditor?.getModel?.();
+                      if (targetEditor && model && targetEditor.getValue() !== nextCode) {
+                        targetEditor.pushUndoStop();
+                        targetEditor.executeEdits("pscad-authoring", [
+                          { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+                        ]);
+                        targetEditor.pushUndoStop();
+                      } else if (activeFileName && onUpdateProjectFile) {
+                        onUpdateProjectFile(activeFileName, nextCode);
+                      }
+                    }}
+                  />
+                )}
+              </InspectorErrorBoundary>
+            ) : null}
           </div>
         </div>
       </div>
       {showComponentWizard && dialect === "pscad" && (
-        <PscadComponentWizardModal
-          code={editorValue}
-          colorMode={colorMode}
-          onApplyCode={(nextCode) => {
-            const targetEditor = editorRef.current ?? editor;
-            const model = targetEditor?.getModel?.();
-            if (targetEditor && model && targetEditor.getValue() !== nextCode) {
-              targetEditor.pushUndoStop();
-              targetEditor.executeEdits("pscad-wizard", [
-                { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
-              ]);
-              targetEditor.pushUndoStop();
-            } else if (activeFileName && onUpdateProjectFile) {
-              onUpdateProjectFile(activeFileName, nextCode);
-            }
-          }}
-          onClose={() => setShowComponentWizard(false)}
-        />
+        <React.Suspense fallback={null}>
+          <PscadComponentWizardModal
+            code={editorValue}
+            colorMode={colorMode}
+            onApplyCode={(nextCode) => {
+              const targetEditor = editorRef.current ?? editor;
+              const model = targetEditor?.getModel?.();
+              if (targetEditor && model && targetEditor.getValue() !== nextCode) {
+                targetEditor.pushUndoStop();
+                targetEditor.executeEdits("pscad-wizard", [
+                  { range: model.getFullModelRange(), text: nextCode, forceMoveMarkers: true },
+                ]);
+                targetEditor.pushUndoStop();
+              } else if (activeFileName && onUpdateProjectFile) {
+                onUpdateProjectFile(activeFileName, nextCode);
+              }
+            }}
+            onClose={() => setShowComponentWizard(false)}
+          />
+        </React.Suspense>
       )}
     </div>
   );

@@ -144,7 +144,7 @@ If you have questions regarding this policy, wish to request written permission 
 
 ## 8. Third-Party Trademarks & Nominative Fair Use
 
-ModelScript supports interoperability, parsing, linting, simulation, and compilation across 105 documented engineering formats (106 total monorepo packages) and file standards.
+ModelScript supports interoperability, parsing, linting, simulation, and compilation across 169 documented engineering formats and file standards.
 
 ### Non-Affiliation & Disclaimers
 

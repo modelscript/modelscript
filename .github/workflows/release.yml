@@ -47,6 +47,14 @@ jobs:
       OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
       GITLAB_CLIENT_ID: ${{ secrets.GITLAB_CLIENT_ID || secrets.OAUTH_GITLAB_CLIENT_ID }}
       GITLAB_CLIENT_SECRET: ${{ secrets.GITLAB_CLIENT_SECRET || secrets.OAUTH_GITLAB_CLIENT_SECRET }}
+      STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+      STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+      STRIPE_PRICE_PRO_MONTHLY: ${{ secrets.STRIPE_PRICE_PRO_MONTHLY }}
+      STRIPE_PRICE_PRO_ANNUAL: ${{ secrets.STRIPE_PRICE_PRO_ANNUAL }}
+      STRIPE_PRICE_TEAM_MONTHLY: ${{ secrets.STRIPE_PRICE_TEAM_MONTHLY || secrets.STRIPE_PRICE_TEAM_SEAT_MONTHLY }}
+      STRIPE_PRICE_TEAM_ANNUAL: ${{ secrets.STRIPE_PRICE_TEAM_ANNUAL }}
+      VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+      VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -114,11 +122,14 @@ jobs:
             git push origin "refs/tags/${TAG}"
           fi
 
+      - name: Rebuild Workspace After Version Bump
+        run: npm run build
+
       # --- Publish to npm (Idempotent) ---
       - name: Publish to npm
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          if npm view "@modelscript/runtime@${VERSION}" version >/dev/null 2>&1; then
+          if npm view "@modelscript/cli@${VERSION}" version >/dev/null 2>&1 && npm view "@modelscript/runtime@${VERSION}" version >/dev/null 2>&1; then
             echo "✓ @modelscript/*@${VERSION} is already published on npm. Skipping duplicate npm publish."
           else
             NODE_OPTIONS="--require ./scripts/release/nx-minimatch-shim.cjs" npx nx release publish --yes
@@ -127,34 +138,29 @@ jobs:
           NPM_CONFIG_PROVENANCE: true
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # --- Publish VS Code Extension ---
-      - name: Build VS Code Extension
+      # --- Build Universal Pure-WASM Fallback VS Code Extension ---
+      # Published to VS Code Marketplace & Open VSX in publish-native-release AFTER
+      # platform-specific & web VSIXs to guarantee clean multi-target Marketplace ordering.
+      - name: Build Universal Pure-WASM VS Code Extension
         run: npm run build:ide:extension
       - name: Sync VS Code Extension Version
         run: npm run sync:versions
-      - name: Package VS Code Extension
+      - name: Package Universal Pure-WASM VS Code Extension
         run: npx --yes @vscode/vsce@3.3.2 package --no-dependencies -o modelscript.vsix
         working-directory: apps/ide/dist/extension
-      - name: Upload VSIX Artifact
+      - name: Upload Universal VSIX Artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: modelscript-vsix
           path: apps/ide/dist/extension/modelscript.vsix
-      - name: Create or Update GitHub Release & Attach VSIX
+      - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
           body_path: .cache/release-notes.md
-          files: apps/ide/dist/extension/modelscript.vsix
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish to VS Code Marketplace
-        run: npx --yes @vscode/vsce@3.3.2 publish --skip-duplicate --no-dependencies --packagePath modelscript.vsix -p ${{ secrets.VSCE_PAT }}
-        working-directory: apps/ide/dist/extension
-      - name: Publish to Open VSX
-        run: npx --yes ovsx@0.10.1 publish modelscript.vsix --skip-duplicate -p ${{ secrets.OVSX_PAT }}
-        working-directory: apps/ide/dist/extension
 
       # --- Build Unified Site & Docs (bundled into web/appliance Docker images) ---
       - name: Build PDF Manual
@@ -180,6 +186,8 @@ jobs:
           set: |
             *.cache-from=type=gha
             *.args.PREBUILT=true
+            *.attest=type=provenance,mode=max
+            *.attest=type=sbom
             api.tags=ghcr.io/modelscript/api-ee:latest
             api.tags=ghcr.io/modelscript/api-ee:${{ steps.version.outputs.version }}
             api-ce.tags=ghcr.io/modelscript/api-ce:latest
@@ -207,10 +215,11 @@ jobs:
     uses: ./.github/workflows/build-native.yml
     with:
       version: ${{ needs.release.outputs.version }}
+      ref: v${{ needs.release.outputs.version }}
 
-  # --- Attach Platform VSIXs & HPC Tarballs to GitHub Release + Publish to Marketplaces & GHCR ---
+  # --- Attach All VSIXs & HPC Tarballs to GitHub Release + Publish to Marketplaces & GHCR ---
   publish-native-release:
-    name: Publish Platform VSIXs, HPC Binaries & HPC Images
+    name: Publish Platform/Web/Universal VSIXs, HPC & CAE Images
     environment: production
     needs: [release, build-native-artifacts]
     runs-on: ubuntu-latest
@@ -219,13 +228,21 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ needs.release.outputs.version }}
 
-      - name: Download all platform native & web artifacts
+      - name: Download all platform-native & web VSIX artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-native-*
           path: release-artifacts
           merge-multiple: true
+
+      - name: Download universal pure-WASM fallback VSIX
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: modelscript-vsix
+          path: release-artifacts
 
       - name: Generate SHA256SUMS.txt
         working-directory: release-artifacts
@@ -234,7 +251,7 @@ jobs:
           sha256sum *.vsix *.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: Attach Platform VSIXs & HPC Binaries to GitHub Release
+      - name: Attach All VSIXs & HPC Binaries to GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: v${{ needs.release.outputs.version }}
@@ -245,27 +262,36 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish Platform-Native & Web VSIXs to VS Code Marketplace
+      - name: Publish Platform-Native, Web & Universal VSIXs to VS Code Marketplace
         working-directory: release-artifacts
         run: |
+          # Publish platform-specific + web targets first, then universal pure-WASM fallback last
           for vsix in modelscript-*.vsix; do
-            echo "Publishing ${vsix} to VS Code Marketplace..."
+            echo "Publishing target VSIX ${vsix} to VS Code Marketplace..."
             npx --yes @vscode/vsce@3.3.2 publish --skip-duplicate --no-dependencies --packagePath "${vsix}" -p "${VSCE_PAT}"
           done
+          if [ -f "modelscript.vsix" ]; then
+            echo "Publishing universal pure-WASM fallback modelscript.vsix to VS Code Marketplace..."
+            npx --yes @vscode/vsce@3.3.2 publish --skip-duplicate --no-dependencies --packagePath modelscript.vsix -p "${VSCE_PAT}"
+          fi
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
-      - name: Publish Platform-Native & Web VSIXs to Open VSX
+      - name: Publish Platform-Native, Web & Universal VSIXs to Open VSX
         working-directory: release-artifacts
         run: |
           for vsix in modelscript-*.vsix; do
-            echo "Publishing ${vsix} to Open VSX..."
+            echo "Publishing target VSIX ${vsix} to Open VSX..."
             npx --yes ovsx@0.10.1 publish "${vsix}" --skip-duplicate -p "${OVSX_PAT}"
           done
+          if [ -f "modelscript.vsix" ]; then
+            echo "Publishing universal pure-WASM fallback modelscript.vsix to Open VSX..."
+            npx --yes ovsx@0.10.1 publish modelscript.vsix --skip-duplicate -p "${OVSX_PAT}"
+          fi
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
-      - name: Set up Docker Buildx for HPC images
+      - name: Set up Docker Buildx for HPC & CAE images
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GHCR
@@ -282,6 +308,8 @@ jobs:
           file: Dockerfile.hpc
           target: hpc-worker
           push: true
+          sbom: true
+          provenance: mode=max
           tags: |
             ghcr.io/modelscript/hpc-worker:latest
             ghcr.io/modelscript/hpc-worker:${{ needs.release.outputs.version }}
@@ -295,8 +323,40 @@ jobs:
           file: Dockerfile.hpc
           target: hpc-worker-cuda
           push: true
+          sbom: true
+          provenance: mode=max
           tags: |
             ghcr.io/modelscript/hpc-worker-cuda:latest
             ghcr.io/modelscript/hpc-worker-cuda:${{ needs.release.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push CAE CalculiX FEA solver image (multi-arch)
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: docker/cae
+          file: docker/cae/Dockerfile.calculix
+          platforms: linux/amd64,linux/arm64
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: |
+            ghcr.io/modelscript/solver-calculix:latest
+            ghcr.io/modelscript/solver-calculix:${{ needs.release.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push CAE SU2 CFD solver image (multi-arch)
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        with:
+          context: docker/cae
+          file: docker/cae/Dockerfile.su2
+          platforms: linux/amd64,linux/arm64
+          push: true
+          sbom: true
+          provenance: mode=max
+          tags: |
+            ghcr.io/modelscript/solver-su2:latest
+            ghcr.io/modelscript/solver-su2:${{ needs.release.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

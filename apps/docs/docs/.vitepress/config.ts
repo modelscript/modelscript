@@ -343,7 +343,7 @@ export default defineConfig({
       ? `og/${slug}.png`
       : fs.existsSync(path.join(publicDir, `og/${slug}.svg`))
         ? `og/${slug}.svg`
-        : "og/index.svg";
+        : "og/index.png";
     const ogImageUrl = `https://modelscript.org/${ogRelPath}`;
     const tags: ([string, Record<string, string>] | [string, Record<string, string>, string])[] = [
       ["link", { rel: "canonical", href: url }],
@@ -446,9 +446,9 @@ export default defineConfig({
     ["meta", { name: "author", content: "Mohamad Omar Nachawati" }],
     ["meta", { property: "og:site_name", content: "ModelScript" }],
     ["meta", { property: "og:type", content: "website" }],
-    ["meta", { property: "og:image", content: "https://modelscript.org/og/index.svg" }],
+    ["meta", { property: "og:image", content: "https://modelscript.org/og/index.png" }],
     ["meta", { name: "twitter:card", content: "summary_large_image" }],
-    ["meta", { name: "twitter:image", content: "https://modelscript.org/og/index.svg" }],
+    ["meta", { name: "twitter:image", content: "https://modelscript.org/og/index.png" }],
     ["meta", { name: "robots", content: "index, follow" }],
     [
       "script",
@@ -497,6 +497,7 @@ export default defineConfig({
       { component: "IndustriesMegaMenu" },
       { component: "PlatformMegaMenu" },
       { component: "DocsMegaMenu" },
+      { text: "Blog", link: "https://blog.modelscript.org" },
       { text: "Pricing", link: "/pricing" },
       { component: "AnsatzNavPill" },
     ],
@@ -545,6 +546,7 @@ export default defineConfig({
             { text: "Overview & Architecture", link: "/ansatz/overview" },
             { text: "Workflow Replacement Guide", link: "/ansatz/workflow-replacement" },
             { text: "ActivityPub Federation", link: "/ansatz/federation" },
+            { text: "Federated Engineering Memory", link: "/ansatz/engineering-memory" },
             { text: "Package Registry", link: "/ansatz/package-registry" },
             { text: "Cloud HPC Simulation", link: "/ansatz/cloud-hpc" },
             { text: "Self-Hosting Guide", link: "/ansatz/self-hosting" },
@@ -559,6 +561,7 @@ export default defineConfig({
             { text: "Overview & Architecture", link: "/ansatz/overview" },
             { text: "Workflow Replacement Guide", link: "/ansatz/workflow-replacement" },
             { text: "ActivityPub Federation", link: "/ansatz/federation" },
+            { text: "Federated Engineering Memory", link: "/ansatz/engineering-memory" },
             { text: "Package Registry", link: "/ansatz/package-registry" },
             { text: "Cloud HPC Simulation", link: "/ansatz/cloud-hpc" },
             { text: "Self-Hosting Guide", link: "/ansatz/self-hosting" },

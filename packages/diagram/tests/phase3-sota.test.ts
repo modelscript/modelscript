@@ -30,7 +30,8 @@ describe("Phase 3 SOTA Diagram Upgrades", () => {
     assert.equal(resolveDiagramLodTier(1.0), "full");
     assert.equal(resolveDiagramLodTier(0.65), "full");
     assert.equal(resolveDiagramLodTier(0.5), "medium");
-    assert.equal(resolveDiagramLodTier(0.2), "low");
+    assert.equal(resolveDiagramLodTier(0.25), "medium");
+    assert.equal(resolveDiagramLodTier(0.15), "low");
   });
 
   it("performViewportCulling sets data-diagram-lod and culls off-screen nodes + edges", () => {
@@ -74,7 +75,7 @@ describe("Phase 3 SOTA Diagram Upgrades", () => {
         container: container as unknown as HTMLElement,
         getNodes: () => nodes,
         getEdges: () => edges,
-        scale: () => ({ sx: 0.25, sy: 0.25 }),
+        scale: () => ({ sx: 0.15, sy: 0.15 }),
         translate: () => ({ tx: 0, ty: 0 }),
         findViewByCell: (cell) => ({ container: cell }),
       });

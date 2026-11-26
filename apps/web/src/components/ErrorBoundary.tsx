@@ -93,6 +93,29 @@ export class ErrorBoundary extends Component<Props, State> {
   public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     this.setState({ errorInfo });
+    try {
+      if (typeof window !== "undefined") {
+        const payload = JSON.stringify({
+          name: error?.name || "Error",
+          message: String(error?.message || "Unknown error").slice(0, 500),
+          stack: String(error?.stack || "").slice(0, 1500),
+          componentStack: String(errorInfo?.componentStack || "").slice(0, 1000),
+          path: window.location.pathname.slice(0, 256),
+        });
+        if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+          navigator.sendBeacon("/api/v1/analytics/client-error", new Blob([payload], { type: "application/json" }));
+        } else {
+          void fetch("/api/v1/analytics/client-error", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: payload,
+            keepalive: true,
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // Never let telemetry throw inside an ErrorBoundary
+    }
   }
 
   private handleReset = () => {

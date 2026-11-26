@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
+import { indexLocalSymbolLines, scanModelicaStructure } from "@modelscript/modelica/structure-scanner";
 import { extractEmtNetlist, parsePscx } from "@modelscript/pscad";
+import { PscadLineConstantsPanel } from "@modelscript/pscad/ui/PscadLineConstantsPanel";
+import { PscadScriptSegmentsPanel } from "@modelscript/pscad/ui/PscadScriptSegmentsPanel";
+import { PscadSweepPanel } from "@modelscript/pscad/ui/PscadSweepPanel";
 import { parseUrdf } from "@modelscript/urdf";
 import React, { useEffect, useMemo, useState } from "react";
 import { useEditorHost } from "../../host";
 import { DslLanguagePanelMount, hasAnsatzLanguagePanel, triggerBrowserFileDownload } from "../util/LanguagePanelHost";
 import { BltVisualizer } from "./BltVisualizer.js";
-import { PscadLineConstantsPanel } from "./PscadLineConstantsPanel.js";
-import { PscadScriptSegmentsPanel } from "./PscadScriptSegmentsPanel.js";
-import { PscadSweepPanel } from "./PscadSweepPanel.js";
 import { analyzeModelBlt } from "./blt-analysis.js";
 import { InspectorTabs } from "./inspectors/InspectorTabs.js";
 import {
@@ -23,7 +25,6 @@ import {
   ThermoFluidInspector,
   TransitCockpitInspector,
 } from "./inspectors/index.js";
-import { indexLocalSymbolLines, scanModelicaStructure } from "./modelica-scanner.js";
 const CsvViewer = React.lazy(() => import("../../internal/CsvViewer").then((m) => ({ default: m.CsvViewer })));
 
 export interface PolyglotDocumentSymbol {
@@ -112,6 +113,65 @@ function findLineNumber(lines: string[], pattern: string | RegExp, startFrom = 0
   return 1;
 }
 
+function getXmlAttr(el: XmlElement | null | undefined, name: string): string | undefined {
+  if (!el) return undefined;
+  const lower = name.toLowerCase();
+  const val = el.attributes.find((a) => a.name.toLowerCase() === lower)?.value;
+  return val && val.length > 0 ? val : undefined;
+}
+
+function collectXmlElements(el: XmlElement | null | undefined, tagName: string, out: XmlElement[] = []): XmlElement[] {
+  if (!el) return out;
+  const lower = tagName.toLowerCase();
+  if (el.name.toLowerCase() === lower) out.push(el);
+  for (const child of el.children) {
+    collectXmlElements(child, lower, out);
+  }
+  return out;
+}
+
+function collectXmlAttrValues(el: XmlElement | null | undefined, attrName: string, out: string[] = []): string[] {
+  if (!el) return out;
+  const val = getXmlAttr(el, attrName);
+  if (val !== undefined) out.push(val);
+  for (const child of el.children) {
+    collectXmlAttrValues(child, attrName, out);
+  }
+  return out;
+}
+
+function findFirstXmlDescendant(
+  el: XmlElement | null | undefined,
+  tagName: string,
+  stopAtTag?: string,
+): XmlElement | undefined {
+  if (!el) return undefined;
+  const lower = tagName.toLowerCase();
+  const stopLower = stopAtTag?.toLowerCase();
+  for (const child of el.children) {
+    const childLower = child.name.toLowerCase();
+    if (childLower === lower) return child;
+    if (stopLower && childLower === stopLower) continue;
+    const nested = findFirstXmlDescendant(child, lower, stopLower);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+function readXmlTagText(el: XmlElement, tagName: string, stopAtTag?: string): string | undefined {
+  const child = findFirstXmlDescendant(el, tagName, stopAtTag);
+  const text = child?.text.trim();
+  return text ? text : undefined;
+}
+
+function offsetToLine(code: string, offset: number): number {
+  let line = 1;
+  for (let i = 0; i < offset && i < code.length; i++) {
+    if (code.charCodeAt(i) === 10) line++;
+  }
+  return line;
+}
+
 // ── 1. SysML v2 & ReqIF Requirements & Architecture Parser ──────────────────
 
 function analyzeRequirementsAndSysml(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
@@ -121,16 +181,13 @@ function analyzeRequirementsAndSysml(dialect: string, code: string, lines: strin
   const verifyMap = new Map<string, string[]>();
 
   if (dialect === "reqif" || code.includes("<REQ-IF") || code.includes("<SPEC-OBJECTS>")) {
-    const specObjRegex = /<SPEC-OBJECT\b([^>]*)>([\s\S]*?)<\/SPEC-OBJECT>/gi;
-    let m: RegExpExecArray | null;
-    while ((m = specObjRegex.exec(code)) !== null) {
-      const attrs = m[1]!;
-      const body = m[2]!;
-      const id = /IDENTIFIER=["']([^"']+)["']/i.exec(attrs)?.[1] ?? `REQ-${reqRows.length + 1}`;
-      const name = /LONG-NAME=["']([^"']+)["']/i.exec(attrs)?.[1] ?? id;
-      const values = Array.from(body.matchAll(/THE-VALUE=["']([^"']+)["']/gi)).map((v) => v[1]!);
+    const doc = parseXmlSync(code);
+    for (const objEl of collectXmlElements(doc.root, "SPEC-OBJECT")) {
+      const id = getXmlAttr(objEl, "IDENTIFIER") ?? `REQ-${reqRows.length + 1}`;
+      const name = getXmlAttr(objEl, "LONG-NAME") ?? id;
+      const values = collectXmlAttrValues(objEl, "THE-VALUE");
       const text = values.join(" — ") || "Requirement specification object";
-      const line = code.slice(0, m.index).split("\n").length;
+      const line = offsetToLine(code, objEl.start);
       reqRows.push({
         id,
         name,
@@ -141,14 +198,13 @@ function analyzeRequirementsAndSysml(dialect: string, code: string, lines: strin
         line,
       });
     }
-    const relRegex = /<SPEC-RELATION\b([^>]*)>([\s\S]*?)<\/SPEC-RELATION>/gi;
-    while ((m = relRegex.exec(code)) !== null) {
-      const attrs = m[1]!;
-      const body = m[2]!;
-      const id = /IDENTIFIER=["']([^"']+)["']/i.exec(attrs)?.[1] ?? `REL-${inventoryRows.length + 1}`;
-      const src = /<SOURCE>\s*<[^>]+>([^<]+)</i.exec(body)?.[1]?.trim() ?? "—";
-      const tgt = /<TARGET>\s*<[^>]+>([^<]+)</i.exec(body)?.[1]?.trim() ?? "—";
-      const line = code.slice(0, m.index).split("\n").length;
+    for (const relEl of collectXmlElements(doc.root, "SPEC-RELATION")) {
+      const id = getXmlAttr(relEl, "IDENTIFIER") ?? `REL-${inventoryRows.length + 1}`;
+      const srcEl = findFirstXmlDescendant(relEl, "SOURCE");
+      const tgtEl = findFirstXmlDescendant(relEl, "TARGET");
+      const src = srcEl?.children[0]?.text.trim() || srcEl?.text.trim() || "—";
+      const tgt = tgtEl?.children[0]?.text.trim() || tgtEl?.text.trim() || "—";
+      const line = offsetToLine(code, relEl.start);
       inventoryRows.push({
         name: id,
         kind: "SpecRelation",
@@ -379,35 +435,36 @@ function analyzeMultibody(dialect: string, code: string, lines: string[]): Domai
     }
 
     if (!parsedOk) {
-      const linkRegex = /<link\s+name=["']([^"']+)["'][^>]*>([\s\S]*?)<\/link>|<link\s+name=["']([^"']+)["'][^>]*\/>/gi;
-      let m: RegExpExecArray | null;
-      while ((m = linkRegex.exec(code)) !== null) {
-        const name = (m[1] || m[3])!;
-        const body = m[2] ?? "";
-        const mass = /<mass\s+value=["']([^"']+)["']/i.exec(body)?.[1] ?? "0.0";
-        const ixx = /ixx=["']([^"']+)["']/i.exec(body)?.[1];
-        const iyy = /iyy=["']([^"']+)["']/i.exec(body)?.[1];
-        const izz = /izz=["']([^"']+)["']/i.exec(body)?.[1];
-        const line = code.slice(0, m.index).split("\n").length;
+      const doc = parseXmlSync(code);
+      for (const linkEl of collectXmlElements(doc.root, "link")) {
+        const name = getXmlAttr(linkEl, "name");
+        if (!name) continue;
+        const massEl = findFirstXmlDescendant(linkEl, "mass");
+        const inertiaEl = findFirstXmlDescendant(linkEl, "inertia");
+        const originEl = findFirstXmlDescendant(linkEl, "origin");
+        const mass = getXmlAttr(massEl, "value") ?? "0.0";
+        const ixx = getXmlAttr(inertiaEl, "ixx");
+        const iyy = getXmlAttr(inertiaEl, "iyy");
+        const izz = getXmlAttr(inertiaEl, "izz");
+        const line = offsetToLine(code, linkEl.start);
         bodyRows.push({
           name,
           mass: `${mass} kg`,
-          cg: /<origin[^>]*xyz=["']([^"']+)["']/i.exec(body)?.[1] ?? "0 0 0",
+          cg: getXmlAttr(originEl, "xyz") ?? "0 0 0",
           inertia: ixx ? `I=(${ixx}, ${iyy ?? "0"}, ${izz ?? "0"})` : "Default",
           line,
         });
       }
 
-      const jointRegex = /<joint\s+name=["']([^"']+)["']\s+type=["']([^"']+)["'][^>]*>([\s\S]*?)<\/joint>/gi;
-      while ((m = jointRegex.exec(code)) !== null) {
-        const name = m[1]!;
-        const jtype = m[2]!;
-        const body = m[3]!;
-        const parent = /<parent\s+link=["']([^"']+)["']/i.exec(body)?.[1] ?? "world";
-        const child = /<child\s+link=["']([^"']+)["']/i.exec(body)?.[1] ?? "—";
-        const axis = /<axis\s+xyz=["']([^"']+)["']/i.exec(body)?.[1] ?? "0 0 1";
+      for (const jointEl of collectXmlElements(doc.root, "joint")) {
+        const name = getXmlAttr(jointEl, "name");
+        const jtype = getXmlAttr(jointEl, "type");
+        if (!name || !jtype) continue;
+        const parent = getXmlAttr(findFirstXmlDescendant(jointEl, "parent"), "link") ?? "world";
+        const child = getXmlAttr(findFirstXmlDescendant(jointEl, "child"), "link") ?? "—";
+        const axis = getXmlAttr(findFirstXmlDescendant(jointEl, "axis"), "xyz") ?? "0 0 1";
         const dof = jointDofForType(jtype);
-        const line = code.slice(0, m.index).split("\n").length;
+        const line = offsetToLine(code, jointEl.start);
         jointRows.push({
           name,
           type: jtype,
@@ -855,21 +912,15 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
       }
     }
   } else if (dialect === "powerfactory") {
-    const readTag = (block: string, tag: string): string | undefined =>
-      new RegExp(`<${tag}>([^<]*)</${tag}>`, "i").exec(block)?.[1]?.trim();
-
-    let objMatch: RegExpExecArray | null;
-    const objRegex = /<DataObject\b([^>]*?)(?:\/>|>([\s\S]*?)<\/DataObject>)/gi;
-    while ((objMatch = objRegex.exec(code)) !== null) {
-      const attrs = objMatch[1] ?? "";
-      const body = objMatch[2] ?? "";
-      const cls = /\bclass=["']([^"']+)["']/i.exec(attrs)?.[1] ?? "DataObject";
-      const locName = /\bloc_name=["']([^"']+)["']/i.exec(attrs)?.[1] ?? cls;
-      const line = code.slice(0, objMatch.index).split("\n").length;
+    const doc = parseXmlSync(code);
+    for (const objEl of collectXmlElements(doc.root, "DataObject")) {
+      const cls = getXmlAttr(objEl, "class") ?? "DataObject";
+      const locName = getXmlAttr(objEl, "loc_name") ?? cls;
+      const line = offsetToLine(code, objEl.start);
 
       if (cls === "ElmTerm") {
-        const uknom = readTag(body, "uknom");
-        const fnom = readTag(body, "fnom");
+        const uknom = readXmlTagText(objEl, "uknom", "DataObject");
+        const fnom = readXmlTagText(objEl, "fnom", "DataObject");
         busRows.push({
           id: locName,
           name: locName,
@@ -878,11 +929,11 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
           line,
         });
       } else if (cls === "ElmLne" || cls === "ElmTr2" || cls === "StaSwitch") {
-        const bus1 = readTag(body, "bus1") ?? "—";
-        const bus2 = readTag(body, "bus2") ?? "—";
-        const r1 = readTag(body, "r1");
-        const x1 = readTag(body, "x1");
-        const onOff = readTag(body, "on_off");
+        const bus1 = readXmlTagText(objEl, "bus1", "DataObject") ?? "—";
+        const bus2 = readXmlTagText(objEl, "bus2", "DataObject") ?? "—";
+        const r1 = readXmlTagText(objEl, "r1", "DataObject");
+        const x1 = readXmlTagText(objEl, "x1", "DataObject");
+        const onOff = readXmlTagText(objEl, "on_off", "DataObject");
         const params =
           cls === "StaSwitch"
             ? `on_off=${onOff ?? "1"}`
@@ -895,9 +946,9 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
           line,
         });
       } else {
-        const bus1 = readTag(body, "bus1") ?? "Substation / Grid";
-        const pgini = readTag(body, "pgini") ?? readTag(body, "plini");
-        const qgini = readTag(body, "qgini") ?? readTag(body, "qlini");
+        const bus1 = readXmlTagText(objEl, "bus1", "DataObject") ?? "Substation / Grid";
+        const pgini = readXmlTagText(objEl, "pgini", "DataObject") ?? readXmlTagText(objEl, "plini", "DataObject");
+        const qgini = readXmlTagText(objEl, "qgini", "DataObject") ?? readXmlTagText(objEl, "qlini", "DataObject");
         const spec = [pgini ? `P=${pgini} MW` : "", qgini ? `Q=${qgini} Mvar` : ""].filter(Boolean).join(", ") || "—";
         genLoadRows.push({
           id: locName,
@@ -946,19 +997,20 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
           line: i + 1,
         });
       }
-      if (dialect === "pscad") {
-        // Handled cleanly via parsePscx + extractEmtNetlist below
-      } else {
-        const pscadComp = /<component\b[^>]*name=["']([^"']+)["'][^>]*>/i.exec(trimmed);
-        if (pscadComp) {
-          branchRows.push({
-            id: pscadComp[1]!,
-            category: "PSCAD Block",
-            nodes: "Schematic Canvas",
-            params: trimmed.slice(0, 64),
-            line: i + 1,
-          });
-        }
+    }
+    if (dialect !== "pscad" && code.includes("<component")) {
+      const doc = parseXmlSync(code);
+      for (const compEl of collectXmlElements(doc.root, "component")) {
+        const compName = getXmlAttr(compEl, "name");
+        if (!compName) continue;
+        const line = offsetToLine(code, compEl.start);
+        branchRows.push({
+          id: compName,
+          category: "PSCAD Block",
+          nodes: "Schematic Canvas",
+          params: (lines[line - 1] ?? "").trim().slice(0, 64),
+          line,
+        });
       }
     }
   }
@@ -1007,8 +1059,8 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
         genLoadRows.push({
           id: src.id,
           kind: "AC/DC Source",
-          bus: src.bus,
-          rating: `${src.voltageKv} kV · ${src.frequencyHz} Hz`,
+          busOrNode: src.bus,
+          spec: `${src.voltageKv} kV · ${src.frequencyHz} Hz`,
           line: 1,
         });
       }
@@ -1016,8 +1068,8 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
         genLoadRows.push({
           id: sm.id,
           kind: "Sync Machine",
-          bus: sm.bus,
-          rating: `${sm.ratedMva} MVA · ${sm.ratedKvLL} kV`,
+          busOrNode: sm.bus,
+          spec: `${sm.ratedMva} MVA · ${sm.ratedKvLL} kV`,
           line: 1,
         });
       }
@@ -1025,8 +1077,8 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
         genLoadRows.push({
           id: fmu.id,
           kind: "IBR / FMU",
-          bus: fmu.busConnection,
-          rating: `${fmu.ratedMva} MVA · ${fmu.ratedKv} kV`,
+          busOrNode: fmu.busConnection,
+          spec: `${fmu.ratedMva} MVA · ${fmu.ratedKv} kV`,
           line: 1,
         });
       }
@@ -1034,8 +1086,8 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
         genLoadRows.push({
           id: vdl.id,
           kind: "Dynamic Load",
-          bus: vdl.busId,
-          rating: `${vdl.p0Mw} MW / ${vdl.q0Mvar} Mvar`,
+          busOrNode: vdl.busId,
+          spec: `${vdl.p0Mw} MW / ${vdl.q0Mvar} Mvar`,
           line: 1,
         });
       }
@@ -2237,7 +2289,7 @@ function analyzeGeneralModel(
   };
 }
 
-function analyzePlcopenAndAutomation(dialect: string, _code: string, lines: string[]): DomainAnalysisResult {
+function analyzePlcopenAndAutomation(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
   const varRows: Record<string, unknown>[] = [];
   const logicRows: Record<string, unknown>[] = [];
   let pouCount = 0;
@@ -2246,84 +2298,114 @@ function analyzePlcopenAndAutomation(dialect: string, _code: string, lines: stri
   let currentVarSection = "LOCAL";
   let taskInterval = "T#1ms";
 
+  const isXmlDoc = code.trimStart().startsWith("<");
+  if (isXmlDoc) {
+    const doc = parseXmlSync(code);
+    const walkPlcXml = (el: XmlElement, section: string) => {
+      const interval = getXmlAttr(el, "interval");
+      if (interval) taskInterval = interval;
+
+      const lower = el.name.toLowerCase();
+      let nextSection = section;
+      if (lower === "inputvars") nextSection = "INPUT";
+      else if (lower === "outputvars") nextSection = "OUTPUT";
+      else if (lower === "inoutvars") nextSection = "IN_OUT";
+      else if (lower === "localvars") nextSection = "LOCAL";
+      else if (lower === "pou") {
+        const pouName = getXmlAttr(el, "name");
+        const pouType = getXmlAttr(el, "pouType");
+        if (pouName && pouType) {
+          pouCount++;
+          const line = offsetToLine(code, el.start);
+          varRows.push({
+            id: `pou-${line}-${pouCount}`,
+            name: pouName,
+            direction: "POU",
+            dataType: pouType.toUpperCase(),
+            line,
+          });
+        }
+      } else if (lower === "variable") {
+        const vName = getXmlAttr(el, "name");
+        if (vName) {
+          const typeEl = el.children.find((c) => c.name.toLowerCase() === "type");
+          const derivedEl = findFirstXmlDescendant(typeEl ?? el, "derived");
+          const primitiveTag = typeEl?.children.find((c) => c.name.toLowerCase() !== "derived")?.name;
+          const vType = (getXmlAttr(derivedEl, "name") || primitiveTag || "BOOL").toUpperCase();
+          if (section === "INPUT") inputCount++;
+          else if (section === "OUTPUT") outputCount++;
+          const line = offsetToLine(code, el.start);
+          varRows.push({
+            id: `var-${line}-${varRows.length}`,
+            name: vName,
+            direction: section,
+            dataType: vType,
+            line,
+          });
+        }
+      }
+
+      for (const child of el.children) {
+        walkPlcXml(child, nextSection);
+      }
+    };
+    if (doc.root) walkPlcXml(doc.root, "LOCAL");
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]!;
     const trimmed = raw.trim();
     if (!trimmed || trimmed.startsWith("<!--") || trimmed.startsWith("(*") || trimmed.startsWith("//")) continue;
 
-    const taskM = /\binterval\s*=\s*["']([^"']+)["']/i.exec(trimmed);
-    if (taskM) {
-      taskInterval = taskM[1]!;
-    }
+    if (!isXmlDoc) {
+      // ST section headers
+      if (/^VAR_INPUT\b/i.test(trimmed)) {
+        currentVarSection = "INPUT";
+        continue;
+      }
+      if (/^VAR_OUTPUT\b/i.test(trimmed)) {
+        currentVarSection = "OUTPUT";
+        continue;
+      }
+      if (/^VAR_IN_OUT\b/i.test(trimmed)) {
+        currentVarSection = "IN_OUT";
+        continue;
+      }
+      if (/^VAR\b/i.test(trimmed)) {
+        currentVarSection = "LOCAL";
+        continue;
+      }
 
-    // XML or ST section headers
-    if (/<inputVars\b/i.test(trimmed) || /^VAR_INPUT\b/i.test(trimmed)) {
-      currentVarSection = "INPUT";
-      continue;
-    }
-    if (/<outputVars\b/i.test(trimmed) || /^VAR_OUTPUT\b/i.test(trimmed)) {
-      currentVarSection = "OUTPUT";
-      continue;
-    }
-    if (/<inOutVars\b/i.test(trimmed) || /^VAR_IN_OUT\b/i.test(trimmed)) {
-      currentVarSection = "IN_OUT";
-      continue;
-    }
-    if (/<localVars\b/i.test(trimmed) || /^VAR\b/i.test(trimmed)) {
-      currentVarSection = "LOCAL";
-      continue;
-    }
+      // ST POU header (PROGRAM/FUNCTION_BLOCK/FUNCTION)
+      const stPouM = /^(PROGRAM|FUNCTION_BLOCK|FUNCTION)\s+([A-Za-z_]\w*)/i.exec(trimmed);
+      if (stPouM) {
+        pouCount++;
+        varRows.push({
+          id: `pou-${i}`,
+          name: stPouM[2]!,
+          direction: "POU",
+          dataType: stPouM[1]!.toUpperCase(),
+          line: i + 1,
+        });
+        continue;
+      }
 
-    // POU header (XML <pou name="..." pouType="..."> or ST PROGRAM/FUNCTION_BLOCK)
-    const xmlPouM = /<pou\b[^>]*\bname\s*=\s*["']([^"']+)["'][^>]*\bpouType\s*=\s*["']([^"']+)["']/i.exec(trimmed);
-    const stPouM = /^(PROGRAM|FUNCTION_BLOCK|FUNCTION)\s+([A-Za-z_]\w*)/i.exec(trimmed);
-    if (xmlPouM || stPouM) {
-      pouCount++;
-      const pouName = xmlPouM ? xmlPouM[1]! : stPouM![2]!;
-      const pouType = (xmlPouM ? xmlPouM[2]! : stPouM![1]!).toUpperCase();
-      varRows.push({
-        id: `pou-${i}`,
-        name: pouName,
-        direction: "POU",
-        dataType: pouType,
-        line: i + 1,
-      });
-      continue;
-    }
-
-    // XML <variable name="...">
-    const xmlVarM = /<variable\b[^>]*\bname\s*=\s*["']([^"']+)["']/i.exec(trimmed);
-    if (xmlVarM) {
-      const vName = xmlVarM[1]!;
-      const typeM = /<type>\s*<([A-Za-z0-9_]+)\s*\/>|<derived\b[^>]*\bname\s*=\s*["']([^"']+)["']/i.exec(trimmed);
-      const vType = (typeM?.[1] || typeM?.[2] || "BOOL").toUpperCase();
-      if (currentVarSection === "INPUT") inputCount++;
-      else if (currentVarSection === "OUTPUT") outputCount++;
-      varRows.push({
-        id: `var-${i}`,
-        name: vName,
-        direction: currentVarSection,
-        dataType: vType,
-        line: i + 1,
-      });
-      continue;
-    }
-
-    // ST variable declaration: name : TYPE := init;
-    const stVarM = /^([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)(?:\s*:=\s*([^;]+))?\s*;/.exec(trimmed);
-    if (stVarM) {
-      const vName = stVarM[1]!;
-      const vType = stVarM[2]!.toUpperCase();
-      if (currentVarSection === "INPUT") inputCount++;
-      else if (currentVarSection === "OUTPUT") outputCount++;
-      varRows.push({
-        id: `stvar-${i}`,
-        name: vName,
-        direction: currentVarSection,
-        dataType: vType,
-        line: i + 1,
-      });
-      continue;
+      // ST variable declaration: name : TYPE := init;
+      const stVarM = /^([A-Za-z_]\w*)\s*:\s*([A-Za-z_]\w*)(?:\s*:=\s*([^;]+))?\s*;/.exec(trimmed);
+      if (stVarM) {
+        const vName = stVarM[1]!;
+        const vType = stVarM[2]!.toUpperCase();
+        if (currentVarSection === "INPUT") inputCount++;
+        else if (currentVarSection === "OUTPUT") outputCount++;
+        varRows.push({
+          id: `stvar-${i}`,
+          name: vName,
+          direction: currentVarSection,
+          dataType: vType,
+          line: i + 1,
+        });
+        continue;
+      }
     }
 
     // ST control statements (inside XML or plain ST)
@@ -2610,12 +2692,12 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = (props) =
     return () => clearTimeout(timer);
   }, [props.code, isVisible, debouncedCode]);
 
-  // Sync immediately when panel becomes visible or dialect switches
+  // Sync immediately when panel becomes visible, dialect switches, or active file changes
   useEffect(() => {
     if (isVisible) {
       setDebouncedCode(props.code);
     }
-  }, [isVisible, normalizedDialect]);
+  }, [isVisible, normalizedDialect, props.documentUri, props.activeFileName]);
 
   const dslHost = useMemo(
     () => ({

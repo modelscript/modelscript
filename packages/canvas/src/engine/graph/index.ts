@@ -48,6 +48,7 @@ export {
   mountGraphDom,
   syncAlignmentGuidesDom,
   syncGridPatternDom,
+  syncHoveredPortDom,
   syncMagnetHighlightsDom,
   syncMarqueeDom,
 } from "./dom-layers.js";

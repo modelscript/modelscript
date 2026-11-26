@@ -102,7 +102,7 @@
     }
   },
   "release": {
-    "projects": ["packages/*", "!packages/ide", "!packages/examples/*", "languages/*", "apps/api", "apps/cli"],
+    "projects": ["packages/*", "!packages/ide", "!packages/native", "!packages/examples/*", "languages/*", "apps/cli"],
     "projectsRelationship": "fixed",
     "version": {
       "conventionalCommits": true,
@@ -113,7 +113,7 @@
     },
     "changelog": {
       "workspaceChangelog": {
-        "createRelease": "github",
+        "createRelease": false,
         "renderOptions": {
           "authors": false
         }

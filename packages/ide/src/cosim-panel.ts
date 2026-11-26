@@ -1253,11 +1253,13 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   // ── Config Helpers ──
 
   private getApiUrl(): string {
-    return vscode.workspace.getConfiguration("modelscript.cosim").get<string>("apiUrl") ?? "http://localhost:3000";
+    return vscode.workspace.getConfiguration("modelscript.cosim").get<string>("apiUrl") ?? "https://ansatz.social";
   }
 
   private getMqttWsUrl(): string {
-    return vscode.workspace.getConfiguration("modelscript.cosim").get<string>("mqttWsUrl") ?? "ws://localhost:9001";
+    return (
+      vscode.workspace.getConfiguration("modelscript.cosim").get<string>("mqttWsUrl") ?? "wss://ansatz.social/mqtt"
+    );
   }
 
   // ── PostMessage ──
@@ -1618,11 +1620,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       <div class="connection-form">
         <div class="field">
           <label>API URL</label>
-          <input type="text" id="input-api-url" placeholder="http://localhost:3000">
+          <input type="text" id="input-api-url" placeholder="https://ansatz.social">
         </div>
         <div class="field">
           <label>MQTT WebSocket URL</label>
-          <input type="text" id="input-mqtt-url" placeholder="ws://localhost:9001">
+          <input type="text" id="input-mqtt-url" placeholder="wss://ansatz.social/mqtt">
         </div>
         <div class="btn-row">
           <button id="btn-save-config">Save</button>

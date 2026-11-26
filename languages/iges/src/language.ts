@@ -25,6 +25,11 @@ export const igesLanguage = language({
   },
   errorCodes: IgesErrorCode,
 
+  conflicts: ($) => [
+    [$["_ParamFields"]!, $["_DirFields"]!],
+    [$["_OptParamValue"]!, $["NumberLiteral"]!],
+  ],
+
   rules: {
     IgesFile: ($) =>
       repeat(
@@ -52,20 +57,25 @@ export const igesLanguage = language({
     DirectoryRecord: ($) =>
       seq(
         field("entityType", $["EntityTypeCode"]!),
-        repeat(choice($["NumberLiteral"]!, $["Identifier"]!)),
+        $["_DirFields"]!,
         field("marker", $["DirectoryMarker"]!),
         field("seq", $["SequenceNumber"]!),
       ),
 
+    _DirFields: ($) => repeat(choice($["NumberLiteral"]!, $["Identifier"]!)),
+
     ParameterRecord: ($) =>
       seq(
         field("entityType", $["EntityTypeCode"]!),
-        repeat(seq(",", optional($["ParamValue"]!))),
+        $["_ParamFields"]!,
         optional(";"),
         optional(field("dePointer", $["NumberLiteral"]!)),
         field("marker", $["ParameterMarker"]!),
         field("seq", $["SequenceNumber"]!),
       ),
+
+    _ParamFields: ($) => repeat(seq(",", $["_OptParamValue"]!)),
+    _OptParamValue: ($) => optional($["ParamValue"]!),
 
     ParamValue: ($) => choice($["HollerithString"]!, $["NumberLiteral"]!, $["Identifier"]!),
 

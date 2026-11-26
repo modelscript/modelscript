@@ -106,6 +106,19 @@ runs:
           "
         fi
 
+        if [ -n "${STRIPE_SECRET_KEY:-}" ] || [ -n "${STRIPE_WEBHOOK_SECRET:-}" ] || [ -n "${STRIPE_PRICE_PRO_MONTHLY:-}" ] || [ -n "${STRIPE_PRICE_PRO_ANNUAL:-}" ] || [ -n "${STRIPE_PRICE_TEAM_MONTHLY:-}" ] || [ -n "${STRIPE_PRICE_TEAM_ANNUAL:-}" ] || [ -n "${VAPID_PUBLIC_KEY:-}" ] || [ -n "${VAPID_PRIVATE_KEY:-}" ]; then
+          {
+            [ -n "${STRIPE_SECRET_KEY:-}" ] && printf 'STRIPE_SECRET_KEY=%s\n' "$STRIPE_SECRET_KEY"
+            [ -n "${STRIPE_WEBHOOK_SECRET:-}" ] && printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$STRIPE_WEBHOOK_SECRET"
+            [ -n "${STRIPE_PRICE_PRO_MONTHLY:-}" ] && printf 'STRIPE_PRICE_PRO_MONTHLY=%s\n' "$STRIPE_PRICE_PRO_MONTHLY"
+            [ -n "${STRIPE_PRICE_PRO_ANNUAL:-}" ] && printf 'STRIPE_PRICE_PRO_ANNUAL=%s\n' "$STRIPE_PRICE_PRO_ANNUAL"
+            [ -n "${STRIPE_PRICE_TEAM_MONTHLY:-}" ] && printf 'STRIPE_PRICE_TEAM_MONTHLY=%s\n' "$STRIPE_PRICE_TEAM_MONTHLY"
+            [ -n "${STRIPE_PRICE_TEAM_ANNUAL:-}" ] && printf 'STRIPE_PRICE_TEAM_ANNUAL=%s\n' "$STRIPE_PRICE_TEAM_ANNUAL"
+            [ -n "${VAPID_PUBLIC_KEY:-}" ] && printf 'VAPID_PUBLIC_KEY=%s\n' "$VAPID_PUBLIC_KEY"
+            [ -n "${VAPID_PRIVATE_KEY:-}" ] && printf 'VAPID_PRIVATE_KEY=%s\n' "$VAPID_PRIVATE_KEY"
+          } | ssh "$SSH_TARGET" "touch '${TARGET_DIR}/.env.production' && chmod 600 '${TARGET_DIR}/.env.production' && (grep -v -E '^(STRIPE_SECRET_KEY|STRIPE_WEBHOOK_SECRET|STRIPE_PRICE_PRO_MONTHLY|STRIPE_PRICE_PRO_ANNUAL|STRIPE_PRICE_TEAM_MONTHLY|STRIPE_PRICE_TEAM_ANNUAL|VAPID_PUBLIC_KEY|VAPID_PRIVATE_KEY)=' '${TARGET_DIR}/.env.production' > '${TARGET_DIR}/.env.production.tmp' || true) && cat - >> '${TARGET_DIR}/.env.production.tmp' && mv '${TARGET_DIR}/.env.production.tmp' '${TARGET_DIR}/.env.production'"
+        fi
+
         # 5. Authenticate host to GHCR over stdin (avoid exposing token in remote shell args)
         printf '%s' "$GHCR_TOKEN" | ssh "$SSH_TARGET" "docker login ghcr.io -u '${GHCR_ACTOR}' --password-stdin"
 

@@ -2,7 +2,7 @@
 
 import { AlertIcon, BellIcon, BroadcastIcon, MailIcon, SyncIcon, TrashIcon, UnmuteIcon } from "@primer/octicons-react";
 import { Text } from "@primer/react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   deletePushSubscription,
@@ -13,6 +13,7 @@ import {
   type NotificationPreferences,
   type PushSubscriptionRecord,
 } from "../../../api/account";
+import { api } from "../../../api/client";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
 import { getApiErrorMessage } from "../../../util/error";
@@ -24,8 +25,36 @@ export interface NotificationFiltersTabProps {
   onNavigate?: ((tab: TabType) => void) | undefined;
 }
 
+/**
+ * Converts a URL-safe base64 VAPID public key string into a Uint8Array
+ * suitable for `PushManager.subscribe({ applicationServerKey })`.
+ */
+export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const trimmed = base64String.trim();
+  const padding = "=".repeat((4 - (trimmed.length % 4)) % 4);
+  const base64 = (trimmed + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = typeof atob === "function" ? atob(base64) : Buffer.from(base64, "base64").toString("binary");
+  const buffer = new ArrayBuffer(rawData.length);
+  const outputArray = new Uint8Array(buffer);
+  for (let i = 0; i < rawData.length; i += 1) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function isWebPushSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    typeof navigator !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window
+  );
+}
+
 export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ subView = "notifications" }) => {
   const toast = useToast();
+  const mountedRef = useRef(true);
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -39,11 +68,18 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
   const [registeringPush, setRegisteringPush] = useState(false);
   const [deletingSubId, setDeletingSubId] = useState<number | null>(null);
   const [pushPermissionState, setPushPermissionState] = useState<string>(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      return Notification.permission;
+    if (!isWebPushSupported()) {
+      return "unsupported";
     }
-    return "default";
+    return Notification.permission;
   });
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const loadPreferencesAndSubscriptions = useCallback(async () => {
     setLoading(true);
@@ -52,43 +88,49 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
 
     try {
       const data = await getNotificationSettings();
+      if (!mountedRef.current) return;
       if (data) {
-        setNotificationPrefs((prev) => {
-          const mergedChannels = {
-            email: data.channels?.email ?? data.deliveryChannels?.emailNotifications ?? prev.channels?.email ?? true,
-            browserPush: data.channels?.browserPush ?? prev.channels?.browserPush ?? false,
-            inApp: data.channels?.inApp ?? data.deliveryChannels?.inApp ?? prev.channels?.inApp ?? true,
-          };
-          return {
-            ...prev,
-            ...data,
-            channels: mergedChannels,
-            deliveryChannels: {
-              inApp: mergedChannels.inApp,
-              emailNotifications: mergedChannels.email,
-            },
-            events: {
-              social: { ...prev.events?.social, ...(data.events?.social || {}) },
-              engineering: { ...prev.events?.engineering, ...(data.events?.engineering || {}) },
-              computeHpc: { ...prev.events?.computeHpc, ...(data.events?.computeHpc || {}) },
-            } as NotificationPreferences["events"],
-          };
+        const defaults = DEFAULT_NOTIFICATION_PREFERENCES;
+        const mergedChannels = {
+          email: data.channels?.email ?? data.deliveryChannels?.emailNotifications ?? defaults.channels?.email ?? true,
+          browserPush: data.channels?.browserPush ?? defaults.channels?.browserPush ?? false,
+          inApp: data.channels?.inApp ?? data.deliveryChannels?.inApp ?? defaults.channels?.inApp ?? true,
+        };
+        setNotificationPrefs({
+          ...defaults,
+          ...data,
+          channels: mergedChannels,
+          deliveryChannels: {
+            inApp: mergedChannels.inApp,
+            emailNotifications: mergedChannels.email,
+          },
+          events: {
+            social: { ...defaults.events!.social, ...(data.events?.social || {}) },
+            engineering: { ...defaults.events!.engineering, ...(data.events?.engineering || {}) },
+            computeHpc: { ...defaults.events!.computeHpc, ...(data.events?.computeHpc || {}) },
+          },
         });
       }
     } catch (err: unknown) {
+      if (!mountedRef.current) return;
       const msg = getApiErrorMessage(err, "Unable to load your saved notification preferences from the server.");
       setLoadError(msg);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
 
     try {
       const subs = await getPushSubscriptions();
+      if (!mountedRef.current) return;
       setPushSubscriptions(Array.isArray(subs) ? subs : []);
     } catch {
       // Ignore push list error if endpoint unavailable
     } finally {
-      setLoadingSubscriptions(false);
+      if (mountedRef.current) {
+        setLoadingSubscriptions(false);
+      }
     }
   }, []);
 
@@ -102,30 +144,61 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
     setRegisteringPush(true);
     setNotificationError(null);
     try {
-      let permission = "granted";
-      if (typeof window !== "undefined" && "Notification" in window) {
-        permission = await Notification.requestPermission();
-        setPushPermissionState(permission);
-      }
-      if (permission === "denied") {
+      if (!isWebPushSupported()) {
+        setPushPermissionState("unsupported");
         const msg =
-          "Browser notification permission was denied. Please allow notifications in your browser site settings.";
+          "Browser Web Push is not supported in this browser or context (requires Notifications, Service Worker, and PushManager APIs).";
         setNotificationError(msg);
         toast.error(msg);
         return false;
       }
 
-      const origin = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
-      const uaHash =
-        typeof navigator !== "undefined"
-          ? encodeURIComponent((navigator.userAgent || "browser").slice(0, 32).replace(/\s+/g, "-"))
-          : "web";
-      const endpoint = `${origin}/webpush/browser/${uaHash}-${Date.now()}`;
+      const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+      setPushPermissionState(permission);
+      if (permission !== "granted") {
+        const msg =
+          permission === "denied"
+            ? "Browser notification permission was denied. Please allow notifications in your browser site settings."
+            : "Browser notification permission was dismissed. Please allow notifications to register Web Push.";
+        setNotificationError(msg);
+        toast.error(msg);
+        return false;
+      }
+
+      const vapidResponse = await api.get<{ publicKey?: string }>("/push/vapid-key");
+      const publicKey = vapidResponse.data?.publicKey?.trim();
+      if (!publicKey) {
+        const msg = "Web Push is not configured on this instance.";
+        setNotificationError(msg);
+        toast.error(msg);
+        return false;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }
+
+      const subJson = subscription.toJSON();
+      const endpoint = subJson.endpoint || subscription.endpoint;
+      const p256dh = subJson.keys?.["p256dh"];
+      const auth = subJson.keys?.["auth"];
+      if (!endpoint || !p256dh || !auth) {
+        const msg = "Browser PushManager did not return a valid subscription endpoint and encryption keys.";
+        setNotificationError(msg);
+        toast.error(msg);
+        return false;
+      }
+
       const res = await registerPushSubscription({
         endpoint,
         keys: {
-          p256dh: "BOr6_webpush_p256dh_client_key_modelscript",
-          auth: "webpush_auth_secret",
+          p256dh,
+          auth,
         },
         alerts: {
           mentions: Boolean(notificationPrefs.events?.social?.mentions),
@@ -153,18 +226,18 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
   };
 
   const handleToggleBrowserPush = async (enabled: boolean) => {
+    const rollbackBrowserPush = () => {
+      setNotificationPrefs((p) => ({
+        ...p,
+        channels: {
+          email: p.channels?.email ?? true,
+          inApp: p.channels?.inApp ?? true,
+          browserPush: false,
+        },
+      }));
+    };
+
     if (enabled) {
-      let permission = "granted";
-      if (typeof window !== "undefined" && "Notification" in window) {
-        permission = await Notification.requestPermission();
-        setPushPermissionState(permission);
-      }
-      if (permission === "denied") {
-        const msg = "Browser Push permission was denied by the browser.";
-        setNotificationError(msg);
-        toast.error(msg);
-        return;
-      }
       setNotificationPrefs((p) => ({
         ...p,
         channels: {
@@ -174,17 +247,34 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
         },
       }));
       if (pushSubscriptions.length === 0) {
-        await handleRegisterBrowserPush();
+        const registered = await handleRegisterBrowserPush();
+        if (!registered) {
+          rollbackBrowserPush();
+        }
+      } else {
+        if (!isWebPushSupported()) {
+          setPushPermissionState("unsupported");
+          const msg =
+            "Browser Web Push is not supported in this browser or context (requires Notifications, Service Worker, and PushManager APIs).";
+          setNotificationError(msg);
+          toast.error(msg);
+          rollbackBrowserPush();
+          return;
+        }
+        const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
+        setPushPermissionState(permission);
+        if (permission !== "granted") {
+          const msg =
+            permission === "denied"
+              ? "Browser notification permission was denied. Please allow notifications in your browser site settings."
+              : "Browser notification permission was dismissed. Please allow notifications to enable Web Push.";
+          setNotificationError(msg);
+          toast.error(msg);
+          rollbackBrowserPush();
+        }
       }
     } else {
-      setNotificationPrefs((p) => ({
-        ...p,
-        channels: {
-          email: p.channels?.email ?? true,
-          inApp: p.channels?.inApp ?? true,
-          browserPush: false,
-        },
-      }));
+      rollbackBrowserPush();
     }
   };
 

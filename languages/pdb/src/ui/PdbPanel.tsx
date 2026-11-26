@@ -2,12 +2,14 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelSvgStage,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import React, { useMemo, useState } from "react";
@@ -227,37 +229,50 @@ export const PdbPanel: React.FC<LanguagePanelProps> = ({
       )}
 
       {activeTab === "residues" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>Serial</th>
-                <th style={{ padding: "5px 6px" }}>Atom</th>
-                <th style={{ padding: "5px 6px" }}>Residue</th>
-                <th style={{ padding: "5px 6px" }}>Chain</th>
-                <th style={{ padding: "5px 6px" }}>Coords (Å)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(computed.doc?.atoms ?? []).slice(0, 200).map((a, idx) => (
-                <tr
-                  key={`${a.serial}-${idx}`}
-                  style={{ borderBottom: "1px solid var(--ms-divider)", fontFamily: "var(--ms-font-mono)" }}
-                >
-                  <td style={{ padding: "4px 6px" }}>{a.serial}</td>
-                  <td style={{ padding: "4px 6px", fontWeight: 600 }}>{a.name}</td>
-                  <td style={{ padding: "4px 6px" }}>
-                    {a.resName} {a.resSeq}
-                  </td>
-                  <td style={{ padding: "4px 6px" }}>{a.chainId}</td>
-                  <td style={{ padding: "4px 6px", color: "var(--ms-text-2)" }}>
+        <PanelDataGrid
+          rows={computed.doc?.atoms ?? []}
+          columns={
+            [
+              {
+                key: "serial",
+                label: "Serial",
+                align: "right",
+                mono: true,
+                sortValue: (a) => a.serial,
+                render: (a) => a.serial,
+              },
+              {
+                key: "name",
+                label: "Atom",
+                mono: true,
+                sortValue: (a) => a.name,
+                render: (a) => <strong>{a.name}</strong>,
+              },
+              {
+                key: "residue",
+                label: "Residue",
+                mono: true,
+                sortValue: (a) => `${a.resName} ${a.resSeq}`,
+                render: (a) => `${a.resName} ${a.resSeq}`,
+              },
+              { key: "chainId", label: "Chain", mono: true, sortValue: (a) => a.chainId, render: (a) => a.chainId },
+              {
+                key: "coords",
+                label: "Coords (Å)",
+                mono: true,
+                sortable: false,
+                render: (a) => (
+                  <span style={{ color: "var(--ms-text-2)" }}>
                     ({a.x.toFixed(1)}, {a.y.toFixed(1)}, {a.z.toFixed(1)})
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </span>
+                ),
+              },
+            ] as PanelDataGridColumn<NonNullable<typeof computed.doc>["atoms"][number]>[]
+          }
+          rowKey={(a, idx) => `${a.serial}-${idx}`}
+          searchPlaceholder="Filter atoms by serial, name, residue, or chain…"
+          emptyMessage="No PDB atoms parsed."
+        />
       )}
     </PanelShell>
   );

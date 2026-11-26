@@ -1,6 +1,7 @@
 {
   "name": "@modelscript/native",
   "version": "0.1.0",
+  "private": true,
   "description": "Platform-native wasm2c CPU kernels, Dawn WebGPU runtime, and CUDA/HIP hardware FP64 backend for Desktop VS Code and Cloud HPC",
   "keywords": [
     "modelscript",

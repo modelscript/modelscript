@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Caddy configuration for Self-Hosted Federated Ansatz / ModelScript Nodes
+# Automatically provisions and renews Let's Encrypt TLS certificates for {$PUBLIC_DOMAIN}.
+#
+# Usage:
+#   PUBLIC_DOMAIN=models.example.edu docker compose -f docker-compose.federated.yml up -d
+
+{$PUBLIC_DOMAIN:localhost} {
+    encode gzip zstd
+
+    # Block dotfile and scanner probes
+    @blocked path /.env /.env.* /.git /.git/* /wp-login.php /wp-admin* /xmlrpc.php /phpmyadmin*
+    respond @blocked 404
+
+    # Route ActivityPub federation, Git Smart HTTP, npm Registry, SysML v2 REST, and API traffic
+    handle /api/* {
+        reverse_proxy api:3000
+    }
+    handle /git/* {
+        reverse_proxy api:3000
+    }
+    handle /-/* {
+        reverse_proxy api:3000
+    }
+    handle /projects {
+        reverse_proxy api:3000
+    }
+    handle /projects/* {
+        reverse_proxy api:3000
+    }
+    handle /.well-known/* {
+        reverse_proxy api:3000
+    }
+    handle /security.txt {
+        reverse_proxy api:3000
+    }
+    handle /nodeinfo/* {
+        reverse_proxy api:3000
+    }
+    handle /users/* {
+        reverse_proxy api:3000
+    }
+    handle /actor* {
+        reverse_proxy api:3000
+    }
+    handle /inbox* {
+        reverse_proxy api:3000
+    }
+    handle /thumbnails/* {
+        reverse_proxy api:3000
+    }
+    handle /avatars/* {
+        reverse_proxy api:3000
+    }
+    handle /banners/* {
+        reverse_proxy api:3000
+    }
+    handle /uploads/* {
+        reverse_proxy api:3000
+    }
+    handle /legal* {
+        reverse_proxy api:3000
+    }
+    handle /health* {
+        reverse_proxy api:3000
+    }
+
+    # Route Web IDE Workbench & static assets to API service
+    handle /vscode/* {
+        reverse_proxy api:3000
+    }
+    handle /vscode-static/* {
+        reverse_proxy api:3000
+    }
+    handle /static/* {
+        reverse_proxy api:3000
+    }
+    handle /embed/solution/* {
+        reverse_proxy api:3000
+    }
+
+    # Serve Web SPA for all other routes
+    handle {
+        reverse_proxy web:80
+    }
+}

@@ -299,7 +299,7 @@ function main(): void {
     .sort()
     .map(
       (slug) =>
-        `  ${JSON.stringify(slug)}: () => import("./chunks/${slug}.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,`,
+        `  ${JSON.stringify(slug)}: () => import("./chunks/${slug}.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,`,
     )
     .join("\n");
 

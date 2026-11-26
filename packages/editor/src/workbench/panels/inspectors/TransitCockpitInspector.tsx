@@ -81,44 +81,21 @@ export const TransitCockpitInspector: React.FC<TransitCockpitInspectorProps> = (
       }
     }
 
-    if (list.length === 0) {
-      // Default scheduled timetable runs across morning & afternoon peaks
-      const sampleDepartures = [
-        6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.25, 10.0, 11.0, 12.5, 14.0, 15.5, 16.5, 17.0, 17.5, 18.25,
-      ];
-      sampleDepartures.forEach((dep, idx) => {
-        const duration = 0.75 + (idx % 3) * 0.05;
-        list.push({
-          id: `TRIP_${1000 + idx}`,
-          routeId: idx % 2 === 0 ? "Route-38R Express" : "Route-14 Mission",
-          vehicleId: `BEB-${201 + (idx % 6)}`,
-          depTimeH: dep,
-          arrTimeH: dep + duration,
-          batteryStartSoc: Math.max(0.3, 0.92 - (idx % 5) * 0.1),
-          batteryEndSoc: Math.max(0.2, 0.76 - (idx % 5) * 0.1),
-          energyKwh: 34.0 + (idx % 4) * 3.5,
-          line: 1 + idx * 5,
-        });
-      });
-    }
-
     return list;
   }, [lines]);
 
-  // Hourly depot load profile (24h)
+  // Hourly depot load profile derived from parsed trip energy demand (returns all zeros when no trips are present)
   const hourlyDepotKw = useMemo(() => {
-    const profile = new Array(24).fill(0);
-    // Overnight slow charging (00:00 - 05:00)
-    for (let h = 0; h < 5; h++) profile[h] = 680 + Math.sin(h) * 120;
-    // Midday top-off charging (10:00 - 14:00)
-    for (let h = 10; h < 14; h++) profile[h] = 420 + Math.cos(h) * 80;
-    // Evening return fleet charging (19:00 - 23:00)
-    for (let h = 19; h < 24; h++) profile[h] = 950 + Math.sin(h) * 150;
+    const profile = new Array<number>(24).fill(0);
+    for (const trip of trips) {
+      const chargeHour = Math.max(0, Math.min(23, Math.floor(trip.arrTimeH)));
+      profile[chargeHour] = (profile[chargeHour] ?? 0) + trip.energyKwh;
+    }
     return profile;
-  }, []);
+  }, [trips]);
 
   const totalDailyKwh = trips.reduce((acc, t) => acc + t.energyKwh, 0);
-  const peakDepotKw = Math.max(...hourlyDepotKw);
+  const peakDepotKw = hourlyDepotKw.length > 0 ? Math.max(...hourlyDepotKw) : 0;
 
   // Marey SVG dimensions
   const svgW = 680;

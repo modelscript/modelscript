@@ -2,12 +2,14 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelSvgStage,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import {
@@ -57,6 +59,14 @@ export const OscalPanel: React.FC<LanguagePanelProps> = ({
   }, [computed.doc, activeTab]);
 
   const controls = computed.doc?.controls ?? [];
+  type ControlRow = (typeof controls)[number];
+  const controlColumns = useMemo<PanelDataGridColumn<ControlRow>[]>(
+    () => [
+      { key: "id", label: "ID", mono: true, sortValue: (c) => c.id, render: (c) => <strong>{c.id}</strong> },
+      { key: "title", label: "Title", sortValue: (c) => c.title ?? "", render: (c) => c.title },
+    ],
+    [],
+  );
 
   const kpis = useMemo<PanelKpiItem[]>(
     () => [
@@ -86,7 +96,7 @@ export const OscalPanel: React.FC<LanguagePanelProps> = ({
             )}
             {mode === "artifact" && host.openInAnsatzEditor && code && (
               <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "oscal", title)}>
-                Open in Ansatz Editor
+                Open in Editor
               </PanelButton>
             )}
           </>
@@ -114,24 +124,13 @@ export const OscalPanel: React.FC<LanguagePanelProps> = ({
       )}
 
       {activeTab === "controls" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>ID</th>
-                <th style={{ padding: "5px 6px" }}>Title</th>
-              </tr>
-            </thead>
-            <tbody>
-              {controls.slice(0, 200).map((c, idx) => (
-                <tr key={`${c.id}-${idx}`} style={{ borderBottom: "1px solid var(--ms-divider)" }}>
-                  <td style={{ padding: "4px 6px", fontFamily: "var(--ms-font-mono)", fontWeight: 600 }}>{c.id}</td>
-                  <td style={{ padding: "4px 6px" }}>{c.title}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={controls}
+          columns={controlColumns}
+          rowKey={(c, idx) => `${c.id}-${idx}`}
+          searchPlaceholder="Filter OSCAL controls by ID or title…"
+          emptyMessage="No OSCAL controls parsed."
+        />
       )}
     </PanelShell>
   );

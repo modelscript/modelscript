@@ -406,6 +406,8 @@ export interface PsseViewportOptions {
   kHops?: number | undefined;
   /** Layout mode: `"auto"` (voltage-tier Sugiyama) or `"geographic"` (substation lat/lon projection). */
   layoutMode?: "auto" | "geographic" | undefined;
+  /** Visual color theme for standalone SVG rendering (defaults to `"dark"`). */
+  theme?: "light" | "dark" | undefined;
 }
 
 export interface PsseCanvasBusNode {
@@ -1583,25 +1585,162 @@ export function renderPsseSvg(
   options?: PsseViewportOptions,
 ): string {
   const diag = buildPsseDiagram(c, powerflow, options);
+  const isLight = options?.theme === "light";
+
+  // Build line-number lookup maps from the parsed case for click-to-source interactivity
+  const busLineMap = new Map<number, number>();
+  const rawBuses = c.buses instanceof Map ? Array.from(c.buses.values()) : Array.isArray(c.buses) ? c.buses : [];
+  for (const b of rawBuses) {
+    const rec = b as unknown as { i: number; span?: { line?: number } };
+    if (rec.span?.line) busLineMap.set(rec.i, rec.span.line);
+  }
+  const genLineMap = new Map<string, number>();
+  for (const g of c.generators ?? []) {
+    const rec = g as unknown as { i: number; id?: string; span?: { line?: number } };
+    if (rec.span?.line) genLineMap.set(`${rec.i}_${(rec.id ?? "1").trim()}`, rec.span.line);
+  }
+  const branchLineMap = new Map<string, number>();
+  for (const br of c.branches ?? []) {
+    const rec = br as unknown as { i: number; j: number; ckt?: string; span?: { line?: number } };
+    if (rec.span?.line) branchLineMap.set(`${rec.i}_${rec.j}_${(rec.ckt ?? "1").trim()}`, rec.span.line);
+  }
+  const xfmrLineMap = new Map<string, number>();
+  for (const xf of c.transformers ?? []) {
+    const rec = xf as unknown as { i: number; j: number; ckt?: string; span?: { line?: number } };
+    if (rec.span?.line) xfmrLineMap.set(`${rec.i}_${rec.j}_${(rec.ckt ?? "1").trim()}`, rec.span.line);
+  }
+
+  // Theme palette
+  const pal = isLight
+    ? {
+        bg: "#f8fafc",
+        grid: "#cbd5e1",
+        gridOpacity: "0.55",
+        nodeBg: "#ffffff",
+        busBg: "#ffffff",
+        pillBg: "#ffffff",
+        busText: "#0f172a",
+        busSubtext: "#475569",
+        genText: "#047857",
+        genSubtext: "#059669",
+        genCondenser: "#0369a1",
+        loadText: "#b45309",
+        shuntText: "#0e7490",
+        edgeText: "#1e293b",
+        xfmrText: "#be185d",
+        hoverGlow: "rgba(14,116,144,0.35)",
+      }
+    : {
+        bg: "#0b0f19",
+        grid: "#1e293b",
+        gridOpacity: "0.45",
+        nodeBg: "#0f172a",
+        busBg: "#1e293b",
+        pillBg: "#0f172a",
+        busText: "#f8fafc",
+        busSubtext: "#cbd5e1",
+        genText: "#4ade80",
+        genSubtext: "#86efac",
+        genCondenser: "#7dd3fc",
+        loadText: "#fbbf24",
+        shuntText: "#67e8f9",
+        edgeText: "#e2e8f0",
+        xfmrText: "#f9a8d4",
+        hoverGlow: "rgba(255,255,255,0.8)",
+      };
 
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
 
+  type BBox = { x: number; y: number; w: number; h: number };
+  const occupiedBoxes: BBox[] = [];
+
   const cellMap = new Map<string, PsseDiagramCell>();
   for (const cell of diag.cells) {
     cellMap.set(cell.id, cell);
     if (cell.x !== undefined && cell.y !== undefined) {
+      const isGen = cell.shape === "circle" || cell.id.startsWith("gen_");
       if (cell.x < minX) minX = cell.x;
       // Account for generator top callout pill above circle
-      const topExtra = cell.shape === "circle" ? 28 : 0;
+      const topExtra = isGen ? 36 : 0;
       if (cell.y - topExtra < minY) minY = cell.y - topExtra;
       const w = cell.width ?? 80;
       const h = cell.height ?? 30;
       if (cell.x + w > maxX) maxX = cell.x + w;
       if (cell.y + h > maxY) maxY = cell.y + h;
+      // Register every node's bounding box (+ padding) to prevent edge labels from overlapping nodes
+      occupiedBoxes.push({ x: cell.x - 8, y: cell.y - topExtra - 6, w: w + 16, h: h + topExtra + 12 });
     }
+  }
+
+  function boxesOverlap(a: BBox, b: BBox): boolean {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function placeNonCollidingPill(
+    pts: Array<{ x: number; y: number }>,
+    pillW: number,
+    pillH: number,
+    nx: number,
+    ny: number,
+  ): { x: number; y: number } {
+    // Evaluate point at fraction t along polyline
+    const sampleAt = (t: number) => {
+      if (pts.length === 2) {
+        return {
+          x: pts[0]!.x + (pts[1]!.x - pts[0]!.x) * t,
+          y: pts[0]!.y + (pts[1]!.y - pts[0]!.y) * t,
+        };
+      }
+      const segLengths: number[] = [];
+      let total = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const d = Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
+        segLengths.push(d);
+        total += d;
+      }
+      let target = total * t;
+      for (let i = 0; i < segLengths.length; i++) {
+        const d = segLengths[i]!;
+        if (target <= d || i === segLengths.length - 1) {
+          const frac = d > 0 ? target / d : 0;
+          return {
+            x: pts[i]!.x + (pts[i + 1]!.x - pts[i]!.x) * frac,
+            y: pts[i]!.y + (pts[i + 1]!.y - pts[i]!.y) * frac,
+          };
+        }
+        target -= d;
+      }
+      return pts[0]!;
+    };
+
+    const tCandidates = [0.5, 0.36, 0.64, 0.25, 0.75];
+    const perpOffsets = [0, -20, 20, -38, 38, -56, 56];
+
+    for (const off of perpOffsets) {
+      for (const t of tCandidates) {
+        const base = sampleAt(t);
+        const cx = base.x + nx * off;
+        const cy = base.y + ny * off;
+        const box: BBox = { x: cx - pillW / 2 - 4, y: cy - pillH / 2 - 3, w: pillW + 8, h: pillH + 6 };
+        let collides = false;
+        for (const occ of occupiedBoxes) {
+          if (boxesOverlap(box, occ)) {
+            collides = true;
+            break;
+          }
+        }
+        if (!collides) {
+          occupiedBoxes.push(box);
+          return { x: cx, y: cy };
+        }
+      }
+    }
+    const fallback = sampleAt(0.5);
+    occupiedBoxes.push({ x: fallback.x - pillW / 2, y: fallback.y - pillH / 2, w: pillW, h: pillH });
+    return fallback;
   }
 
   if (!isFinite(minX)) {
@@ -1611,38 +1750,38 @@ export function renderPsseSvg(
     maxY = 600;
   }
 
-  const pad = 64;
+  const pad = 72;
   const vbX = Math.round(minX - pad);
   const vbY = Math.round(minY - pad);
   const vbW = Math.round(maxX - minX + 2 * pad);
   const vbH = Math.round(maxY - minY + 2 * pad);
 
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="100%" height="100%" style="background:#0b0f19;">\n`;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}" width="100%" height="100%" style="background:${pal.bg};">\n`;
   svg += `  <defs>\n`;
   svg += `    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">\n`;
   svg += `      <feGaussianBlur stdDeviation="3" result="blur" />\n`;
   svg += `      <feComposite in="SourceGraphic" in2="blur" operator="over" />\n`;
   svg += `    </filter>\n`;
   svg += `    <pattern id="sld-grid" width="40" height="40" patternUnits="userSpaceOnUse">\n`;
-  svg += `      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.6" opacity="0.45" />\n`;
+  svg += `      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="${pal.grid}" stroke-width="0.6" opacity="${pal.gridOpacity}" />\n`;
   svg += `    </pattern>\n`;
   svg += `  </defs>\n`;
   svg += `  <style>\n`;
-  svg += `    .bus-text { font-family: Inter, system-ui, sans-serif; fill: #f8fafc; font-size: 10px; font-weight: 600; pointer-events: none; }\n`;
-  svg += `    .bus-subtext { font-family: Inter, system-ui, sans-serif; fill: #cbd5e1; font-size: 9.5px; font-weight: 500; pointer-events: none; }\n`;
-  svg += `    .gen-text { font-family: Inter, system-ui, sans-serif; fill: #4ade80; font-size: 9px; font-weight: bold; pointer-events: none; }\n`;
-  svg += `    .load-text { font-family: Inter, system-ui, sans-serif; fill: #fbbf24; font-size: 9px; font-weight: 600; pointer-events: none; }\n`;
-  svg += `    .shunt-text { font-family: Inter, system-ui, sans-serif; fill: #67e8f9; font-size: 8.5px; font-weight: 600; pointer-events: none; }\n`;
-  svg += `    .edge-text { font-family: Inter, system-ui, sans-serif; fill: #e2e8f0; font-size: 9px; font-weight: 500; pointer-events: none; }\n`;
-  svg += `    .xfmr-text { font-family: Inter, system-ui, sans-serif; fill: #f9a8d4; font-size: 9px; font-weight: 600; pointer-events: none; }\n`;
-  svg += `    .sld-edge { transition: all 0.2s ease; cursor: pointer; }\n`;
-  svg += `    .sld-edge:hover line, .sld-edge:hover path.edge-main { stroke-width: 4.5px !important; filter: drop-shadow(0 0 6px rgba(255,255,255,0.8)); }\n`;
-  svg += `    .sld-edge.selected line, .sld-edge.selected path.edge-main { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 8px #facc15); }\n`;
-  svg += `    .sld-node { transition: all 0.2s ease; cursor: pointer; }\n`;
-  svg += `    .sld-node:hover rect.node-body { stroke-width: 3.5px !important; filter: drop-shadow(0 0 8px #38bdf8); }\n`;
-  svg += `    .sld-node:hover circle { stroke-width: 3px !important; filter: drop-shadow(0 0 8px #22c55e); }\n`;
-  svg += `    .sld-node.selected rect.node-body { stroke: #facc15 !important; stroke-width: 4px !important; filter: drop-shadow(0 0 10px #facc15); }\n`;
-  svg += `    .sld-node.selected circle { stroke: #facc15 !important; stroke-width: 3.5px !important; filter: drop-shadow(0 0 10px #facc15); }\n`;
+  svg += `    .bus-text { font-family: Inter, system-ui, sans-serif; fill: ${pal.busText}; font-size: 10px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .bus-subtext { font-family: Inter, system-ui, sans-serif; fill: ${pal.busSubtext}; font-size: 9.5px; font-weight: 500; pointer-events: none; }\n`;
+  svg += `    .gen-text { font-family: Inter, system-ui, sans-serif; fill: ${pal.genText}; font-size: 9px; font-weight: 700; pointer-events: none; }\n`;
+  svg += `    .load-text { font-family: Inter, system-ui, sans-serif; fill: ${pal.loadText}; font-size: 9px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .shunt-text { font-family: Inter, system-ui, sans-serif; fill: ${pal.shuntText}; font-size: 8.5px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .edge-text { font-family: Inter, system-ui, sans-serif; fill: ${pal.edgeText}; font-size: 8.8px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .xfmr-text { font-family: Inter, system-ui, sans-serif; fill: ${pal.xfmrText}; font-size: 8.8px; font-weight: 600; pointer-events: none; }\n`;
+  svg += `    .sld-edge { transition: opacity 0.15s ease; cursor: pointer; }\n`;
+  svg += `    .sld-edge:hover line, .sld-edge:hover polyline.edge-main, .sld-edge:hover path.edge-main { stroke-width: 4px !important; filter: drop-shadow(0 0 5px ${pal.hoverGlow}); }\n`;
+  svg += `    .sld-edge.selected line, .sld-edge.selected polyline.edge-main, .sld-edge.selected path.edge-main { stroke: #eab308 !important; stroke-width: 4px !important; }\n`;
+  svg += `    .sld-node { transition: opacity 0.15s ease; cursor: pointer; }\n`;
+  svg += `    .sld-node:hover rect.node-body { stroke-width: 3px !important; filter: drop-shadow(0 0 6px rgba(14,116,144,0.45)); }\n`;
+  svg += `    .sld-node:hover circle.gen-ring { stroke-width: 3px !important; filter: drop-shadow(0 0 6px rgba(16,185,129,0.5)); }\n`;
+  svg += `    .sld-node.selected rect.node-body { stroke: #eab308 !important; stroke-width: 3.5px !important; }\n`;
+  svg += `    .sld-node.selected circle.gen-ring { stroke: #eab308 !important; stroke-width: 3.5px !important; }\n`;
   svg += `  </style>\n`;
   svg += `  <rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="url(#sld-grid)" pointer-events="none" />\n`;
 
@@ -1668,7 +1807,7 @@ export function renderPsseSvg(
       const p2 = getCellCenter(tgtId);
       if (!p1 || !p2) continue;
 
-      const stroke = (cell.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+      const stroke = (cell.attrs?.["line"]?.["stroke"] as string | undefined) ?? "#0891b2";
       const strokeWidth = (cell.attrs?.["line"]?.["strokeWidth"] as number | undefined) ?? 2;
       const rawDash = cell.attrs?.["line"]?.["strokeDasharray"] as string | undefined;
       const strokeDash = rawDash ? `stroke-dasharray="${rawDash}"` : "";
@@ -1682,6 +1821,7 @@ export function renderPsseSvg(
         const ux = dx / len;
         const uy = dy / len;
         const nx = -uy;
+        const ny = ux;
 
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
@@ -1692,21 +1832,27 @@ export function renderPsseSvg(
         const c2x = (midX + ux * coilOffset).toFixed(1);
         const c2y = (midY + uy * coilOffset).toFixed(1);
 
-        svg += `    <g id="${cell.id}" class="sld-edge xfmr-line">\n`;
+        const fromBus = cell.data?.["fromBus"] as number | undefined;
+        const toBus = cell.data?.["toBus"] as number | undefined;
+        const ckt = String(cell.data?.["ckt"] ?? "1").trim();
+        const lineNum =
+          fromBus !== undefined && toBus !== undefined ? xfmrLineMap.get(`${fromBus}_${toBus}_${ckt}`) : undefined;
+        const lineAttr = lineNum ? ` data-line="${lineNum}"` : "";
+
+        svg += `    <g id="${cell.id}" class="sld-edge xfmr-line" data-entity-id="${cell.id}" data-entity-kind="transformer" data-edge="${cell.id}"${lineAttr}>\n`;
         svg += `      <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
-        // Opaque dark mask behind transformer windings so dashed line doesn't cut through coils
-        svg += `      <circle cx="${c1x}" cy="${c1y}" r="${coilR + 1.5}" fill="#0b0f19" />\n`;
-        svg += `      <circle cx="${c2x}" cy="${c2y}" r="${coilR + 1.5}" fill="#0b0f19" />\n`;
+        // Mask behind transformer windings matching canvas background
+        svg += `      <circle cx="${c1x}" cy="${c1y}" r="${coilR + 1.5}" fill="${pal.bg}" />\n`;
+        svg += `      <circle cx="${c2x}" cy="${c2y}" r="${coilR + 1.5}" fill="${pal.bg}" />\n`;
         svg += `      <circle cx="${c1x}" cy="${c1y}" r="${coilR}" fill="none" stroke="${stroke}" stroke-width="2" />\n`;
         svg += `      <circle cx="${c2x}" cy="${c2y}" r="${coilR}" fill="none" stroke="${stroke}" stroke-width="2" />\n`;
         if (cell.label) {
           const safeLabel = escapeXml(cell.label);
           const pillW = Math.max(76, cell.label.length * 5.6 + 14);
-          // Offset label perpendicular to the branch or above it so it never collides with coils
-          const labelX = midX + (Math.abs(uy) > 0.7 ? 62 : nx * 20);
-          const labelY = midY + (Math.abs(uy) > 0.7 ? 0 : -20);
-          svg += `      <rect x="${(labelX - pillW / 2).toFixed(1)}" y="${(labelY - 10).toFixed(1)}" width="${pillW.toFixed(1)}" height="15" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1" opacity="0.95" />\n`;
-          svg += `      <text x="${labelX.toFixed(1)}" y="${(labelY + 1).toFixed(1)}" text-anchor="middle" class="xfmr-text">${safeLabel}</text>\n`;
+          const pillH = 16;
+          const pos = placeNonCollidingPill([p1, p2], pillW, pillH, nx, ny);
+          svg += `      <rect x="${(pos.x - pillW / 2).toFixed(1)}" y="${(pos.y - pillH / 2).toFixed(1)}" width="${pillW.toFixed(1)}" height="${pillH}" rx="4" fill="${pal.pillBg}" stroke="${stroke}" stroke-width="1" opacity="0.96" />\n`;
+          svg += `      <text x="${pos.x.toFixed(1)}" y="${(pos.y + 3).toFixed(1)}" text-anchor="middle" class="xfmr-text">${safeLabel}</text>\n`;
         }
         svg += `    </g>\n`;
       } else {
@@ -1726,28 +1872,61 @@ export function renderPsseSvg(
         const y1 = p1.y + ny * offsetDist;
         const x2 = p2.x + nx * offsetDist;
         const y2 = p2.y + ny * offsetDist;
-        const midX = (x1 + x2) / 2;
-        const midY = (y1 + y2) / 2;
+
+        const hasVertices = Array.isArray(cell.vertices) && cell.vertices.length > 0;
+        const polyPts: Array<{ x: number; y: number }> = hasVertices
+          ? [{ x: x1, y: y1 }, ...cell.vertices!, { x: x2, y: y2 }]
+          : [
+              { x: x1, y: y1 },
+              { x: x2, y: y2 },
+            ];
+
+        const midIdx = Math.floor(polyPts.length / 2);
+        const segA = polyPts[Math.max(0, midIdx - 1)]!;
+        const segB = polyPts[Math.min(polyPts.length - 1, midIdx)]!;
+        const sdx = segB.x - segA.x;
+        const sdy = segB.y - segA.y;
+        const slen = Math.hypot(sdx, sdy) || 1;
+        const sux = sdx / slen;
+        const suy = sdy / slen;
+
+        const midX = (segA.x + segB.x) / 2;
+        const midY = (segA.y + segB.y) / 2;
 
         // Flow direction arrow along line
         const pFrom = cell.data?.["pFrom"] as number | undefined;
         const dirSign = pFrom !== undefined && pFrom < 0 ? -1 : 1;
-        const arrowX = midX + ux * 36 * dirSign;
-        const arrowY = midY + uy * 36 * dirSign;
-        const angleDeg = (Math.atan2(uy * dirSign, ux * dirSign) * 180) / Math.PI;
+        const arrowX = midX + sux * Math.min(32, slen * 0.25) * dirSign;
+        const arrowY = midY + suy * Math.min(32, slen * 0.25) * dirSign;
+        const angleDeg = (Math.atan2(suy * dirSign, sux * dirSign) * 180) / Math.PI;
 
-        svg += `    <g id="${cell.id}" class="sld-edge branch-line">\n`;
-        svg += `      <line data-edge="${cell.id}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
+        const fromBus = cell.data?.["fromBus"] as number | undefined;
+        const toBus = cell.data?.["toBus"] as number | undefined;
+        const ckt = String(cell.data?.["ckt"] ?? "1").trim();
+        const lineNum =
+          fromBus !== undefined && toBus !== undefined
+            ? (branchLineMap.get(`${fromBus}_${toBus}_${ckt}`) ?? branchLineMap.get(`${toBus}_${fromBus}_${ckt}`))
+            : undefined;
+        const lineAttr = lineNum ? ` data-line="${lineNum}"` : "";
+
+        svg += `    <g id="${cell.id}" class="sld-edge branch-line" data-entity-id="${cell.id}" data-entity-kind="branch" data-edge="${cell.id}"${lineAttr}>\n`;
+        if (hasVertices) {
+          const ptsStr = polyPts.map((pt) => `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(" ");
+          svg += `      <polyline class="edge-main" data-edge="${cell.id}" points="${ptsStr}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="round" ${strokeDash} />\n`;
+        } else {
+          svg += `      <line class="edge-main" data-edge="${cell.id}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash} />\n`;
+        }
         // Directional flow chevron
-        if (len > 110) {
-          svg += `      <polygon points="-5,-3.5 5,0 -5,3.5" fill="${stroke}" transform="translate(${arrowX.toFixed(1)},${arrowY.toFixed(1)}) rotate(${angleDeg.toFixed(1)})" opacity="0.9" />\n`;
+        if (slen > 90) {
+          svg += `      <polygon points="-5,-3.5 5,0 -5,3.5" fill="${stroke}" transform="translate(${arrowX.toFixed(1)},${arrowY.toFixed(1)}) rotate(${angleDeg.toFixed(1)})" opacity="0.92" />\n`;
         }
         if (cell.label) {
           const safeLabel = escapeXml(cell.label);
           const pillW = Math.max(78, cell.label.length * 5.4 + 14);
-          const pillY = midY - 12;
-          svg += `      <rect x="${(midX - pillW / 2).toFixed(1)}" y="${pillY.toFixed(1)}" width="${pillW.toFixed(1)}" height="16" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="0.9" opacity="0.94" />\n`;
-          svg += `      <text x="${midX.toFixed(1)}" y="${(pillY + 11).toFixed(1)}" text-anchor="middle" class="edge-text">${safeLabel}</text>\n`;
+          const pillH = 16;
+          const pos = placeNonCollidingPill(polyPts, pillW, pillH, -suy, sux);
+          svg += `      <rect x="${(pos.x - pillW / 2).toFixed(1)}" y="${(pos.y - pillH / 2).toFixed(1)}" width="${pillW.toFixed(1)}" height="${pillH}" rx="4" fill="${pal.pillBg}" stroke="${stroke}" stroke-width="1" opacity="0.96" />\n`;
+          svg += `      <text x="${pos.x.toFixed(1)}" y="${(pos.y + 3).toFixed(1)}" text-anchor="middle" class="edge-text">${safeLabel}</text>\n`;
         }
         svg += `    </g>\n`;
       }
@@ -1762,58 +1941,58 @@ export function renderPsseSvg(
       const w = cell.width ?? 80;
       const h = cell.height ?? 20;
 
-      if (cell.shape === "circle") {
-        // Generator / IBR / Synchronous Condenser node
+      if (cell.shape === "circle" || cell.id.startsWith("gen_")) {
+        // Generator / IBR / Synchronous Condenser node (IEEE circle + glyph)
         const cx = cell.x + w / 2;
         const cy = cell.y + h / 2;
-        const r = w / 2;
+        const r = cell.shape === "circle" ? w / 2 : 18;
         const genKind = (cell.data?.["genKind"] as PsseGenKind | undefined) ?? "sync";
-        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#22c55e";
+        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#10b981";
+        const busNumber = cell.data?.["busNumber"] as number | undefined;
+        const genId = String(cell.data?.["generatorId"] ?? "1").trim();
+        const lineNum = busNumber !== undefined ? genLineMap.get(`${busNumber}_${genId}`) : undefined;
+        const lineAttr = lineNum ? ` data-line="${lineNum}"` : "";
 
-        svg += `    <g id="${cell.id}" class="sld-node gen-node" data-gen-kind="${genKind}">\n`;
-        svg += `      <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0f172a" stroke="${stroke}" stroke-width="2.2" />\n`;
+        svg += `    <g id="${cell.id}" class="sld-node gen-node" data-entity-id="${cell.id}" data-entity-kind="generator" data-gen-kind="${genKind}"${lineAttr}>\n`;
+        svg += `      <circle class="gen-ring" cx="${cx}" cy="${cy}" r="${r}" fill="${pal.nodeBg}" stroke="${stroke}" stroke-width="2.2" />\n`;
 
         if (genKind === "wind") {
-          // Wind Turbine Generator icon + AC wave
           svg += `      <circle cx="${cx}" cy="${cy - 2}" r="2.2" fill="${stroke}" />\n`;
-          svg += `      <path d="M ${cx} ${cy - 2} L ${cx} ${cy - 14} M ${cx} ${cy - 2} L ${cx - 10} ${cy + 5} M ${cx} ${cy - 2} L ${cx + 10} ${cy + 5}" stroke="${stroke}" stroke-width="2" stroke-linecap="round" />\n`;
-          svg += `      <path d="M ${cx - 8} ${cy + 13} Q ${cx - 4} ${cy + 9}, ${cx} ${cy + 13} T ${cx + 8} ${cy + 13}" fill="none" stroke="${stroke}" stroke-width="1.6" />\n`;
+          svg += `      <path d="M ${cx} ${cy - 2} L ${cx} ${cy - 12} M ${cx} ${cy - 2} L ${cx - 9} ${cy + 4} M ${cx} ${cy - 2} L ${cx + 9} ${cy + 4}" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" />\n`;
+          svg += `      <path d="M ${cx - 7} ${cy + 11} Q ${cx - 3.5} ${cy + 7}, ${cx} ${cy + 11} T ${cx + 7} ${cy + 11}" fill="none" stroke="${stroke}" stroke-width="1.5" />\n`;
         } else if (genKind === "solar") {
-          // Solar PV Inverter icon
-          svg += `      <rect x="${cx - 10}" y="${cy - 11}" width="20" height="12" rx="1.5" fill="none" stroke="${stroke}" stroke-width="1.6" />\n`;
-          svg += `      <line x1="${cx - 10}" y1="${cy - 5}" x2="${cx + 10}" y2="${cy - 5}" stroke="${stroke}" stroke-width="1.1" />\n`;
-          svg += `      <line x1="${cx - 3.5}" y1="${cy - 11}" x2="${cx - 3.5}" y2="${cy + 1}" stroke="${stroke}" stroke-width="1.1" />\n`;
-          svg += `      <line x1="${cx + 3.5}" y1="${cy - 11}" x2="${cx + 3.5}" y2="${cy + 1}" stroke="${stroke}" stroke-width="1.1" />\n`;
-          svg += `      <path d="M ${cx - 8} ${cy + 10} Q ${cx - 4} ${cy + 6}, ${cx} ${cy + 10} T ${cx + 8} ${cy + 10}" fill="none" stroke="${stroke}" stroke-width="1.6" />\n`;
+          svg += `      <rect x="${cx - 9}" y="${cy - 10}" width="18" height="11" rx="1.5" fill="none" stroke="${stroke}" stroke-width="1.5" />\n`;
+          svg += `      <line x1="${cx - 9}" y1="${cy - 4.5}" x2="${cx + 9}" y2="${cy - 4.5}" stroke="${stroke}" stroke-width="1" />\n`;
+          svg += `      <line x1="${cx - 3}" y1="${cy - 10}" x2="${cx - 3}" y2="${cy + 1}" stroke="${stroke}" stroke-width="1" />\n`;
+          svg += `      <line x1="${cx + 3}" y1="${cy - 10}" x2="${cx + 3}" y2="${cy + 1}" stroke="${stroke}" stroke-width="1" />\n`;
+          svg += `      <path d="M ${cx - 7} ${cy + 9} Q ${cx - 3.5} ${cy + 5}, ${cx} ${cy + 9} T ${cx + 7} ${cy + 9}" fill="none" stroke="${stroke}" stroke-width="1.5" />\n`;
         } else if (genKind === "condenser") {
-          // Synchronous Condenser (SC + sine wave)
-          svg += `      <text x="${cx}" y="${cy - 2}" text-anchor="middle" class="gen-text" style="fill:${stroke};font-size:10px;">SC</text>\n`;
-          svg += `      <path d="M ${cx - 9} ${cy + 8} Q ${cx - 4.5} ${cy + 3}, ${cx} ${cy + 8} T ${cx + 9} ${cy + 8}" fill="none" stroke="${stroke}" stroke-width="1.8" />\n`;
+          svg += `      <text x="${cx}" y="${cy - 1}" text-anchor="middle" class="gen-text" style="fill:${stroke};font-size:9.5px;">SC</text>\n`;
+          svg += `      <path d="M ${cx - 8} ${cy + 7} Q ${cx - 4} ${cy + 3}, ${cx} ${cy + 7} T ${cx + 8} ${cy + 7}" fill="none" stroke="${stroke}" stroke-width="1.6" />\n`;
         } else {
-          // Standard Synchronous Generator (crisp AC sine wave + ~)
-          svg += `      <path d="M ${cx - 10} ${cy} Q ${cx - 5} ${cy - 7}, ${cx} ${cy} T ${cx + 10} ${cy}" fill="none" stroke="${stroke}" stroke-width="2" />\n`;
-          svg += `      <text x="${cx}" y="${cy + 13}" text-anchor="middle" class="gen-text" style="font-size:8px;opacity:0.85;">~</text>\n`;
+          // Standard Synchronous Generator (crisp IEEE AC sine wave)
+          svg += `      <path d="M ${cx - 9} ${cy} Q ${cx - 4.5} ${cy - 7}, ${cx} ${cy} T ${cx + 9} ${cy}" fill="none" stroke="${stroke}" stroke-width="2" stroke-linecap="round" />\n`;
         }
 
-        // Always render generator callout badge above the circle so it never collides with lead wire
+        // Generator callout badge above the circle
         if (cell.label) {
           const lines = cell.label.split("\n");
           const line0 = escapeXml(lines[0] ?? "");
           const line1 = lines[1] ? escapeXml(lines[1]) : "";
           const badgeH = line1 ? 26 : 15;
-          const badgeW = Math.max(78, Math.max(lines[0]?.length ?? 0, lines[1]?.length ?? 0) * 5.5 + 12);
+          const badgeW = Math.max(82, Math.max(lines[0]?.length ?? 0, lines[1]?.length ?? 0) * 5.5 + 14);
           const badgeY = cy - r - badgeH - 5;
-          svg += `      <rect x="${(cx - badgeW / 2).toFixed(1)}" y="${badgeY.toFixed(1)}" width="${badgeW.toFixed(1)}" height="${badgeH}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1" opacity="0.95" />\n`;
-          svg += `      <text x="${cx}" y="${(badgeY + 10.5).toFixed(1)}" text-anchor="middle" class="gen-text" style="fill:${genKind === "condenser" ? "#7dd3fc" : "#4ade80"};">${line0}</text>\n`;
+          svg += `      <rect x="${(cx - badgeW / 2).toFixed(1)}" y="${badgeY.toFixed(1)}" width="${badgeW.toFixed(1)}" height="${badgeH}" rx="4" fill="${pal.pillBg}" stroke="${stroke}" stroke-width="1" opacity="0.96" />\n`;
+          svg += `      <text x="${cx}" y="${(badgeY + 10.5).toFixed(1)}" text-anchor="middle" class="gen-text" style="fill:${genKind === "condenser" ? pal.genCondenser : pal.genText};">${line0}</text>\n`;
           if (line1) {
-            svg += `      <text x="${cx}" y="${(badgeY + 21.5).toFixed(1)}" text-anchor="middle" class="gen-text" style="fill:#86efac;font-weight:500;font-size:8.5px;">${line1}</text>\n`;
+            svg += `      <text x="${cx}" y="${(badgeY + 21.5).toFixed(1)}" text-anchor="middle" class="gen-text" style="fill:${pal.genSubtext};font-weight:500;font-size:8.5px;">${line1}</text>\n`;
           }
         }
         svg += `    </g>\n`;
       } else if (cell.id.startsWith("load_")) {
         const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#f59e0b";
-        svg += `    <g id="${cell.id}" class="sld-node load-node">\n`;
-        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1.6" />\n`;
+        svg += `    <g id="${cell.id}" class="sld-node load-node" data-entity-id="${cell.id}" data-entity-kind="load">\n`;
+        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="${pal.nodeBg}" stroke="${stroke}" stroke-width="1.6" />\n`;
         if (cell.label) {
           const lines = cell.label.split("\n");
           let lineY = cell.y + 11.5;
@@ -1826,11 +2005,10 @@ export function renderPsseSvg(
       } else if (cell.id.startsWith("shunt_") || cell.id.startsWith("swshunt_")) {
         const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#06b6d4";
         const cx = cell.x + w / 2;
-        svg += `    <g id="${cell.id}" class="sld-node shunt-node">\n`;
-        // Capacitor plates symbol at top of shunt box
+        svg += `    <g id="${cell.id}" class="sld-node shunt-node" data-entity-id="${cell.id}" data-entity-kind="shunt">\n`;
         svg += `      <line x1="${cx - 8}" y1="${cell.y - 5}" x2="${cx + 8}" y2="${cell.y - 5}" stroke="${stroke}" stroke-width="2" />\n`;
         svg += `      <line x1="${cx - 8}" y1="${cell.y - 2}" x2="${cx + 8}" y2="${cell.y - 2}" stroke="${stroke}" stroke-width="2" />\n`;
-        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="#0f172a" stroke="${stroke}" stroke-width="1.6" />\n`;
+        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="4" fill="${pal.nodeBg}" stroke="${stroke}" stroke-width="1.6" />\n`;
         if (cell.label) {
           const lines = cell.label.split("\n");
           let lineY = cell.y + 11.5;
@@ -1842,14 +2020,16 @@ export function renderPsseSvg(
         svg += `    </g>\n`;
       } else {
         // Substation Busbar Node
-        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#38bdf8";
+        const stroke = (cell.attrs?.["body"]?.["stroke"] as string | undefined) ?? "#0891b2";
         const voltageColor = (cell.data?.["voltageColor"] as string | undefined) ?? stroke;
-        const fill = (cell.attrs?.["body"]?.["fill"] as string | undefined) ?? "#1e293b";
-        const busNum = cell.data?.["busNumber"] ?? cell.id.replace("bus_", "");
+        const fill = isLight ? pal.busBg : ((cell.attrs?.["body"]?.["fill"] as string | undefined) ?? pal.busBg);
+        const busNum = Number(cell.data?.["busNumber"] ?? cell.id.replace("bus_", ""));
         const voltageStatus = (cell.data?.["voltageStatus"] as string | undefined) ?? "normal";
+        const lineNum = Number.isFinite(busNum) ? busLineMap.get(busNum) : undefined;
+        const lineAttr = lineNum ? ` data-line="${lineNum}"` : "";
 
-        svg += `    <g id="${cell.id}" class="sld-node bus-node" data-bus="${busNum}">\n`;
-        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="2.5" />\n`;
+        svg += `    <g id="${cell.id}" class="sld-node bus-node" data-entity-id="${cell.id}" data-entity-kind="bus" data-bus="${busNum}"${lineAttr}>\n`;
+        svg += `      <rect class="node-body" x="${cell.x}" y="${cell.y}" width="${w}" height="${h}" rx="5" fill="${fill}" stroke="${stroke}" stroke-width="2.2" />\n`;
         // Prominent substation busbar conductor rail along top edge in nominal voltage color
         svg += `      <line x1="${cell.x + 3}" y1="${cell.y + 2}" x2="${cell.x + w - 3}" y2="${cell.y + 2}" stroke="${voltageColor}" stroke-width="3.5" stroke-linecap="round" />\n`;
         if (voltageStatus === "warning" || voltageStatus === "violation") {

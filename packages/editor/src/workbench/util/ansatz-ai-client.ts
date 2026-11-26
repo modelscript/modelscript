@@ -73,6 +73,36 @@ export interface AnsatzChatMessage {
   toolCalls?: AnsatzToolCall[] | undefined;
 }
 
+export type AnsatzComputeDial = "fast-m0" | "auto-escalate" | "certified-m32";
+
+export interface AnsatzMemoryRetrievalSource {
+  chunkId: string;
+  sourceKind: string;
+  sourceUri: string;
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+  dialect: string;
+  score: number;
+  formalVerified: boolean;
+}
+
+export interface AnsatzMemoryRetrievalEvent {
+  type: "memory_retrieval";
+  computeDial: AnsatzComputeDial;
+  backend: "diskann";
+  latencyMs: number;
+  chunkCount: number;
+  sources: AnsatzMemoryRetrievalSource[];
+}
+
+export interface AnsatzTraceCreatedEvent {
+  type: "trace_created";
+  traceId: string;
+  deltaTBefore?: number | undefined;
+  deltaTAfter?: number | undefined;
+  creditsCharged?: number | undefined;
+}
+
 export interface AnsatzAiContextSnapshot {
   fileName: string;
   dialect: string;
@@ -85,7 +115,12 @@ export interface AnsatzAiTurnCallbacks {
   onTextDelta?: ((delta: string) => void) | undefined;
   onToolCall?: ((call: AnsatzToolCall) => void) | undefined;
   onToolResult?: ((result: AnsatzToolResult) => void) | undefined;
+  onMemoryRetrieval?: ((event: AnsatzMemoryRetrievalEvent) => void) | undefined;
+  onTraceCreated?: ((event: AnsatzTraceCreatedEvent) => void) | undefined;
   onLocalProgress?: ((message: string) => void) | undefined;
+  computeDial?: AnsatzComputeDial | undefined;
+  packagePins?: Record<string, string> | undefined;
+  allowTrainingOptIn?: boolean | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -93,7 +128,9 @@ export interface AnsatzAiTurnResult {
   content: string;
   model: string;
   providerUsed: AnsatzAiProviderMode;
+  traceId?: string | undefined;
   toolResults: AnsatzToolResult[];
+  memoryRetrieval?: AnsatzMemoryRetrievalEvent | undefined;
 }
 
 export interface AnsatzProvidersInfo {
@@ -167,12 +204,16 @@ interface StreamTurnResponse {
   content: string;
   toolCalls: AnsatzToolCall[];
   model: string;
+  memoryRetrieval?: AnsatzMemoryRetrievalEvent | undefined;
+  traceId?: string | undefined;
 }
 
 async function consumeSseResponse(
   res: Response,
   defaultModel: string,
   onTextDelta?: (delta: string) => void,
+  onMemoryRetrieval?: (event: AnsatzMemoryRetrievalEvent) => void,
+  onTraceCreated?: (event: AnsatzTraceCreatedEvent) => void,
 ): Promise<StreamTurnResponse> {
   if (!res.ok || !res.body) {
     const errText = await res.text().catch(() => "");
@@ -184,6 +225,8 @@ async function consumeSseResponse(
   let buffer = "";
   let content = "";
   let model = defaultModel;
+  let memoryRetrieval: AnsatzMemoryRetrievalEvent | undefined;
+  let traceId: string | undefined;
   const toolCalls: AnsatzToolCall[] = [];
   const openAiPendingTools = new Map<number, { id?: string | undefined; name: string; argsText: string }>();
 
@@ -209,6 +252,33 @@ async function consumeSseResponse(
         }
 
         // 1. Ansatz SSE format
+        if (parsed["type"] === "trace_created" && typeof parsed["traceId"] === "string") {
+          traceId = parsed["traceId"];
+          onTraceCreated?.({
+            type: "trace_created",
+            traceId,
+            deltaTBefore: typeof parsed["deltaTBefore"] === "number" ? parsed["deltaTBefore"] : undefined,
+            deltaTAfter: typeof parsed["deltaTAfter"] === "number" ? parsed["deltaTAfter"] : undefined,
+            creditsCharged: typeof parsed["creditsCharged"] === "number" ? parsed["creditsCharged"] : undefined,
+          });
+          continue;
+        }
+        if (parsed["type"] === "memory_retrieval" && parsed["backend"] === "diskann") {
+          const rawDial = parsed["computeDial"];
+          const computeDial: AnsatzComputeDial =
+            rawDial === "fast-m0" || rawDial === "certified-m32" ? rawDial : "auto-escalate";
+          const evt: AnsatzMemoryRetrievalEvent = {
+            type: "memory_retrieval",
+            computeDial,
+            backend: "diskann",
+            latencyMs: typeof parsed["latencyMs"] === "number" ? parsed["latencyMs"] : 0,
+            chunkCount: typeof parsed["chunkCount"] === "number" ? parsed["chunkCount"] : 0,
+            sources: Array.isArray(parsed["sources"]) ? (parsed["sources"] as AnsatzMemoryRetrievalSource[]) : [],
+          };
+          memoryRetrieval = evt;
+          onMemoryRetrieval?.(evt);
+          continue;
+        }
         if (parsed["type"] === "text" && typeof parsed["delta"] === "string") {
           content += parsed["delta"];
           onTextDelta?.(parsed["delta"]);
@@ -274,13 +344,22 @@ async function consumeSseResponse(
     }
   }
 
-  return { content, toolCalls, model };
+  return {
+    content,
+    toolCalls,
+    model,
+    ...(memoryRetrieval ? { memoryRetrieval } : {}),
+    ...(traceId ? { traceId } : {}),
+  };
 }
 
 function getAuthHeader(): Record<string, string> {
   if (typeof window === "undefined") return {};
   try {
-    const token = window.localStorage.getItem("token") || window.localStorage.getItem("auth_token");
+    const token =
+      window.localStorage.getItem("modelscript-auth-token") ||
+      window.localStorage.getItem("token") ||
+      window.localStorage.getItem("auth_token");
     if (token) return { Authorization: `Bearer ${token}` };
   } catch {
     // ignore
@@ -388,6 +467,8 @@ export async function runAnsatzAiTurn(
   // 2. Remote / Local-Endpoint / Ansatz / Custom OpenAI-or-Anthropic loop
   const workingMessages: AnsatzChatMessage[] = [...history];
   let finalContent = "";
+  let lastMemoryRetrieval: AnsatzMemoryRetrievalEvent | undefined;
+  let lastTraceId: string | undefined;
   let resolvedModel =
     effectiveMode === "local-endpoint"
       ? settings.localEndpointModel
@@ -446,7 +527,7 @@ export async function runAnsatzAiTurn(
         }),
         signal: callbacks.signal,
       });
-      turnRes = await consumeSseResponse(res, model, callbacks.onTextDelta);
+      turnRes = await consumeSseResponse(res, model, callbacks.onTextDelta, callbacks.onMemoryRetrieval);
     } else {
       // Ansatz Cloud or Backend-proxied Custom BYOK
       const res = await fetch("/api/v1/ai/ansatz/chat", {
@@ -465,6 +546,11 @@ export async function runAnsatzAiTurn(
             selectedComponent: host.getSelectedComponent(),
             diagnostics: host.getDiagnostics(),
           },
+          computeDial: callbacks.computeDial ?? "auto-escalate",
+          ...(callbacks.packagePins && Object.keys(callbacks.packagePins).length > 0
+            ? { packagePins: callbacks.packagePins }
+            : {}),
+          ...(callbacks.allowTrainingOptIn !== undefined ? { allowTrainingOptIn: callbacks.allowTrainingOptIn } : {}),
           providerMode: effectiveMode === "custom" ? "custom" : "ansatz",
           ...(effectiveMode === "custom"
             ? {
@@ -479,10 +565,22 @@ export async function runAnsatzAiTurn(
         }),
         signal: callbacks.signal,
       });
-      turnRes = await consumeSseResponse(res, resolvedModel, callbacks.onTextDelta);
+      turnRes = await consumeSseResponse(
+        res,
+        resolvedModel,
+        callbacks.onTextDelta,
+        callbacks.onMemoryRetrieval,
+        callbacks.onTraceCreated,
+      );
     }
 
     resolvedModel = turnRes.model;
+    if (turnRes.memoryRetrieval) {
+      lastMemoryRetrieval = turnRes.memoryRetrieval;
+    }
+    if (turnRes.traceId) {
+      lastTraceId = turnRes.traceId;
+    }
     if (turnRes.content) {
       finalContent += (finalContent ? "\n" : "") + turnRes.content;
     }
@@ -516,6 +614,8 @@ export async function runAnsatzAiTurn(
     model: resolvedModel,
     providerUsed: effectiveMode,
     toolResults,
+    ...(lastMemoryRetrieval ? { memoryRetrieval: lastMemoryRetrieval } : {}),
+    ...(lastTraceId ? { traceId: lastTraceId } : {}),
   };
 }
 
@@ -621,6 +721,7 @@ export async function generateAnsatzTaskTitle(
         ],
         maxTokens: 32,
         temperature: 0.2,
+        computeDial: "fast-m0",
         providerMode: effectiveMode === "custom" ? "custom" : "ansatz",
         ...(effectiveMode === "custom"
           ? {
@@ -639,5 +740,68 @@ export async function generateAnsatzTaskTitle(
     return sanitizeGeneratedTitle(streamRes.content, prompt);
   } catch {
     return fallbackTaskTitle(prompt);
+  }
+}
+
+export interface AnsatzTurnFeedbackPayload {
+  userRating?: "up" | "down" | null | undefined;
+  failureTags?: string[] | undefined;
+  editOutcome?: "none" | "accepted" | "reverted" | "manual_fixed" | undefined;
+  userFixedCode?: string | undefined;
+  allowTrainingOptIn?: boolean | undefined;
+}
+
+export async function submitAnsatzTurnFeedback(
+  traceId: string,
+  payload: AnsatzTurnFeedbackPayload,
+): Promise<{
+  updated: boolean;
+  harvestedToDiskAnn?: boolean;
+  creditsAwarded?: number;
+  provenanceCid?: string;
+} | null> {
+  try {
+    const res = await fetch(`/api/v1/ai/traces/${encodeURIComponent(traceId)}/feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as {
+      updated: boolean;
+      harvestedToDiskAnn?: boolean;
+      creditsAwarded?: number;
+      provenanceCid?: string;
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function escalateAnsatzTurnToArena(
+  traceId: string,
+  payload?: {
+    title?: string | undefined;
+    challengeType?: "fix_it_bounty" | "pairwise_arena" | "tolerance_labeling" | undefined;
+  },
+): Promise<{ challengeId: number; annotateUrl: string } | null> {
+  try {
+    const res = await fetch(`/api/v1/ai/traces/${encodeURIComponent(traceId)}/escalate-arena`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeader(),
+      },
+      credentials: "include",
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { challengeId: number; annotateUrl: string };
+  } catch {
+    return null;
   }
 }

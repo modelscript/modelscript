@@ -152,10 +152,18 @@ function loadWasmLanguageParserNodeSync(langDirName: "sysml2" | "modelica"): Tre
     const getBuiltin = (process as unknown as NodeBuiltinProcess).getBuiltinModule;
     if (typeof process !== "undefined" && typeof getBuiltin === "function") {
       try {
+        const modMod = getBuiltin("node:module") as
+          { createRequire?: (url: string) => { resolve: (id: string) => string } } | undefined;
+        if (modMod && typeof modMod.createRequire === "function") {
+          try {
+            wasmPath = modMod.createRequire(import.meta.url).resolve(`@modelscript/${langDirName}/parser.wasm`);
+          } catch {
+            // Fall through to monorepo-relative path probing
+          }
+        }
         const fsMod = getBuiltin("node:fs") as
-          | { existsSync?: (p: string) => boolean; readFileSync?: (p: string, enc: string) => string }
-          | undefined;
-        if (fsMod && typeof fsMod.existsSync === "function") {
+          { existsSync?: (p: string) => boolean; readFileSync?: (p: string, enc: string) => string } | undefined;
+        if (fsMod && typeof fsMod.existsSync === "function" && !fsMod.existsSync(wasmPath)) {
           for (const rel of candidateRels) {
             const p = decodeURIComponent(new URL(rel, import.meta.url).pathname);
             if (fsMod.existsSync(p)) {

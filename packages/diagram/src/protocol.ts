@@ -21,6 +21,8 @@ export const DiagramMethods = {
   drillDown: "modelscript/diagram.drillDown",
   /** Get palette / stencils for diagram toolbox */
   getPalette: "modelscript/diagram.getPalette",
+  /** Validate whether two diagram ports can be legally connected in the active language LSP */
+  validateConnection: "modelscript/diagram.validateConnection",
 } as const;
 
 // ── Shared Value Types ──
@@ -207,6 +209,10 @@ export interface DiagramPort {
   markup: X6Markup;
   isConjugated?: boolean | undefined;
   direction?: "in" | "out" | "inout" | string | undefined;
+  /** Fully-qualified connector class (e.g. `Modelica.Electrical.Analog.Interfaces.PositivePin`) used for compatibility checks. */
+  connectorType?: string | undefined;
+  /** Optional explicit physical domain hint (e.g. `electrical`, `signal`). */
+  domain?: string | undefined;
 }
 
 export interface ReactiveAnimationBinding {
@@ -711,6 +717,25 @@ export type CollabMessage =
   | { type: "comment"; comment: DiagramComment }
   | { type: "peerLeave"; peerId: string };
 
+export interface DiagramValidateConnectionParams {
+  uri: string;
+  className?: string | undefined;
+  diagramType?: string | undefined;
+  languageId?: string | undefined;
+  sourceNode: string;
+  sourcePort?: string | undefined;
+  targetNode: string;
+  targetPort?: string | undefined;
+}
+
+export interface DiagramValidateConnectionResult {
+  compatible: boolean;
+  reason?: string | undefined;
+  rule?: string | undefined;
+  inferredSourceDomain?: string | undefined;
+  inferredTargetDomain?: string | undefined;
+}
+
 // ── Shared Diagram Backend Interface & TextEdit Helpers ──
 
 export interface DiagramTextEdit {
@@ -771,7 +796,7 @@ export interface DiagramBackendHost {
         mergeCoincidentInsertEdits?(edits: DiagramTextEdit[]): DiagramTextEdit[];
         computeSpiceComponentDropEdits?(...args: unknown[]): DiagramTextEdit[];
         computeSimulinkComponentDropEdits?(...args: unknown[]): DiagramTextEdit[];
-        computePscadComponentDropEdits?(...args: unknown[]): DiagramTextEdit[];
+        computePscadComponentDropEdits?(...args: unknown[]): DiagramTextEdit[] | null;
         resolveCrossLanguageComponentDrop?(...args: unknown[]): unknown;
       }
     | undefined;

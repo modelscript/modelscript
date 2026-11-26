@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  analyzeN1Contingencies,
   calculateShortCircuit,
   compileAssemblyScriptDyrInWorker,
   ensurePsseWasmParser,
@@ -16,7 +17,6 @@ import {
   parseRaw,
   parseSeq,
   PsspySession,
-  screenContingencies,
   simulatePsseTransient,
   solvePowerFlow,
   solvePowerFlowAsync,
@@ -27,12 +27,16 @@ import {
   type PsseLinkedDynamicInstance,
   type PsseTransientResult,
 } from "@modelscript/psse";
+import { PsseSpreadsheetView } from "@modelscript/psse/ui/PsseSpreadsheetView";
+import { PsseStudyPanel } from "@modelscript/psse/ui/PsseStudyPanel";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { InspectorTabs } from "./InspectorTabs.js";
-import { PsseSpreadsheetView } from "./PsseSpreadsheetView.js";
-import { PsseStudyPanel } from "./PsseStudyPanel.js";
+import { collectComparatorPowerFlowSnapshots } from "./powerflow-adapters.js";
 
 const CsvViewer = React.lazy(() => import("../../../internal/CsvViewer").then((m) => ({ default: m.CsvViewer })));
+const SimulationResults = React.lazy(() =>
+  import("../../SimulationResults.js").then((m) => ({ default: m.SimulationResults })),
+);
 
 export interface PsseStudyArtifactSnapshot {
   dyrText?: string | undefined;
@@ -1507,6 +1511,8 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
         onRevealLine={onRevealLine}
         colorMode={colorMode}
         onStatusChange={setStudyStatus}
+        collectSnapshots={collectComparatorPowerFlowSnapshots}
+        SimulationResultsComponent={SimulationResults}
       />
       {diagnostics && diagnostics.length > 0 && (
         <div
@@ -1629,8 +1635,8 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
                   return formatPowerFlowReport(pf, c.title1 || "PSS/E BASE CASE", c);
                 }
                 if (activeReport === "accc") {
-                  const accc = screenContingencies(c);
-                  return accc.reportText;
+                  const accc = analyzeN1Contingencies(c);
+                  return (accc as unknown as { reportText?: string }).reportText ?? JSON.stringify(accc, null, 2);
                 }
                 if (activeReport === "qv") {
                   const busId = Number(qvTargetBus) || (c.buses.keys().next().value ?? 1);

@@ -3,5 +3,6 @@
 export * from "./animation-engine.js";
 export * from "./custom-graph.js";
 export * from "./glyph-compiler.js";
+export { syncHoveredPortDom, syncMagnetHighlightsDom } from "./graph/index.js";
 export * from "./pointer-fsm.js";
 export * from "./soa-scene.js";

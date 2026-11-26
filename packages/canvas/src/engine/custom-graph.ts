@@ -50,6 +50,7 @@ import {
   syncEdgeToolsDom as syncEdgeToolsDomImpl,
   syncEdgeToScene as syncEdgeToSceneImpl,
   syncGridPatternDom,
+  syncHoveredPortDom,
   syncMagnetHighlightsDom,
   syncMarqueeDom,
   syncPlotCrosshairInHost,
@@ -213,7 +214,21 @@ export class UnifiedGraph {
         syncEdgeToolsDom: (edge) => this.syncEdgeToolsDom(edge),
         syncAlignmentGuidesDom: (guides) => syncAlignmentGuidesDom(this.dom?.guidesG ?? null, guides),
         syncMarqueeDom: (rect) => syncMarqueeDom(this.dom?.marqueeRectEl ?? null, rect),
-        syncMagnetHighlightsDom: (preview) => syncMagnetHighlightsDom(this.dom?.nodesG ?? null, preview),
+        syncMagnetHighlightsDom: (preview) =>
+          syncMagnetHighlightsDom(this.dom?.nodesG ?? null, preview, (sId, sPort, tId, tPort) => {
+            const validator = this.options.connecting?.validateConnection;
+            if (!validator) return true;
+            try {
+              return validator({
+                sourceCell: this.cells.get(sId) ?? null,
+                targetCell: this.cells.get(tId) ?? null,
+                sourcePort: sPort,
+                targetPort: tPort,
+              });
+            } catch {
+              return true;
+            }
+          }),
         applyViewportTransformDom: (panOnly) => this.applyViewportTransformDom(panOnly),
         scheduleCanvas2DRender: () => this.scheduleCanvas2DRender(),
         emit: (event, args) => this.emit(event, args),
@@ -274,6 +289,7 @@ export class UnifiedGraph {
       setWidgetSize: (id, w, h) => this.setWidgetSize(id, w, h),
       brushPlotWidget: (id, rect) => this.brushPlotWidget(id, rect),
       applyViewportTransformDom: (panOnly) => this.applyViewportTransformDom(panOnly),
+      syncHoveredPortDom: (hoveredPort) => syncHoveredPortDom(this.dom?.nodesG ?? null, hoveredPort),
       emit: (event, args) => this.emit(event, args),
     });
     this.cleanupDomListeners.push(cleanup);

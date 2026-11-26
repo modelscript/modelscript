@@ -2,16 +2,19 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
+  PanelSvgStage,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import React, { useMemo, useState } from "react";
 
-type SysmlTabId = "requirements" | "elements" | "traceability";
+type SysmlTabId = "diagram" | "requirements" | "elements" | "traceability";
 
 interface SysmlRequirementRow {
   id: string;
@@ -27,6 +30,143 @@ interface SysmlElementRow {
   name: string;
   type?: string | undefined;
   line: number;
+}
+
+function escapeXml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function renderSysmlOverviewSvg(
+  requirements: SysmlRequirementRow[],
+  elements: SysmlElementRow[],
+  theme: "light" | "dark",
+): string {
+  const isLight = theme === "light";
+  const pal = isLight
+    ? {
+        bg: "#f8fafc",
+        grid: "#cbd5e1",
+        cardBg: "#ffffff",
+        reqStroke: "#0e7490",
+        partStroke: "#4f46e5",
+        satStroke: "#059669",
+        verStroke: "#7c3aed",
+        fg: "#0f172a",
+        fgMuted: "#475569",
+      }
+    : {
+        bg: "#0b0f19",
+        grid: "#1e293b",
+        cardBg: "#111827",
+        reqStroke: "#22d3ee",
+        partStroke: "#818cf8",
+        satStroke: "#34d399",
+        verStroke: "#a78bfa",
+        fg: "#f8fafc",
+        fgMuted: "#94a3b8",
+      };
+
+  const reqNodes = requirements.slice(0, 24);
+  const elNodes = elements.filter((e) => e.kind !== "package").slice(0, 24);
+  if (reqNodes.length === 0 && elNodes.length === 0) return "";
+
+  const boxW = 196;
+  const boxH = 54;
+  const gapX = 28;
+  const rowGap = 110;
+  const pad = 48;
+
+  const colsReq = Math.max(1, Math.min(4, reqNodes.length));
+  const colsEl = Math.max(1, Math.min(4, elNodes.length));
+  const maxCols = Math.max(colsReq, colsEl);
+  const totalW = Math.max(640, maxCols * (boxW + gapX) - gapX + pad * 2);
+
+  const reqRows = Math.ceil(reqNodes.length / 4);
+  const elRows = Math.ceil(elNodes.length / 4);
+  const reqSectionH = reqRows > 0 ? reqRows * (boxH + 22) + rowGap : 0;
+  const totalH = Math.max(320, pad * 2 + reqSectionH + Math.max(1, elRows) * (boxH + 22));
+
+  const posMap = new Map<string, { x: number; y: number }>();
+  let nodesSvg = "";
+  let edgesSvg = "";
+
+  reqNodes.forEach((r, idx) => {
+    const col = idx % 4;
+    const row = Math.floor(idx / 4);
+    const x = pad + col * (boxW + gapX);
+    const y = pad + row * (boxH + 22);
+    posMap.set(r.name, { x, y });
+    posMap.set(r.id, { x, y });
+    const shortName = r.name.length > 22 ? `${r.name.slice(0, 21)}…` : r.name;
+    const shortDoc = (r.doc || r.id).slice(0, 28);
+    nodesSvg += `<g data-entity-id="req_${escapeXml(r.id)}" data-entity-kind="requirement" data-line="${r.line}" style="cursor:pointer;">
+      <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="6" fill="${pal.cardBg}" stroke="${pal.reqStroke}" stroke-width="1.6" />
+      <text x="${x + boxW / 2}" y="${y + 15}" text-anchor="middle" fill="${pal.reqStroke}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600">«requirement»</text>
+      <text x="${x + boxW / 2}" y="${y + 30}" text-anchor="middle" fill="${pal.fg}" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700">${escapeXml(shortName)}</text>
+      <text x="${x + boxW / 2}" y="${y + 44}" text-anchor="middle" fill="${pal.fgMuted}" font-family="Inter,system-ui,sans-serif" font-size="9">${escapeXml(shortDoc)}</text>
+    </g>\n`;
+  });
+
+  elNodes.forEach((el, idx) => {
+    const col = idx % 4;
+    const row = Math.floor(idx / 4);
+    const x = pad + col * (boxW + gapX);
+    const y = pad + reqSectionH + row * (boxH + 22);
+    posMap.set(el.name, { x, y });
+    const shortName = el.name.length > 22 ? `${el.name.slice(0, 21)}…` : el.name;
+    const sub = el.type ? `: ${el.type.slice(0, 22)}` : `Line ${el.line}`;
+    nodesSvg += `<g data-entity-id="el_${escapeXml(el.name)}" data-entity-kind="${escapeXml(el.kind)}" data-line="${el.line}" style="cursor:pointer;">
+      <rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="6" fill="${pal.cardBg}" stroke="${pal.partStroke}" stroke-width="1.5" />
+      <text x="${x + boxW / 2}" y="${y + 15}" text-anchor="middle" fill="${pal.partStroke}" font-family="Inter,system-ui,sans-serif" font-size="9" font-weight="600">«${escapeXml(el.kind)}»</text>
+      <text x="${x + boxW / 2}" y="${y + 30}" text-anchor="middle" fill="${pal.fg}" font-family="Inter,system-ui,sans-serif" font-size="11" font-weight="700">${escapeXml(shortName)}</text>
+      <text x="${x + boxW / 2}" y="${y + 44}" text-anchor="middle" fill="${pal.fgMuted}" font-family="Inter,system-ui,sans-serif" font-size="9">${escapeXml(sub)}</text>
+    </g>\n`;
+  });
+
+  // Draw satisfy & verify traceability arrows
+  for (const r of reqNodes) {
+    const reqPos = posMap.get(r.name) ?? posMap.get(r.id);
+    if (!reqPos) continue;
+    for (const sat of r.satisfiedBy) {
+      const targetName = sat.split(".").pop() ?? sat;
+      const elPos = posMap.get(sat) ?? posMap.get(targetName);
+      if (!elPos) continue;
+      const x1 = elPos.x + boxW / 2;
+      const y1 = elPos.y;
+      const x2 = reqPos.x + boxW / 2;
+      const y2 = reqPos.y + boxH;
+      const midY = (y1 + y2) / 2;
+      edgesSvg += `<path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" fill="none" stroke="${pal.satStroke}" stroke-width="1.6" stroke-dasharray="5 3" marker-end="url(#sysml-sat)" />\n`;
+    }
+    for (const ver of r.verifiedBy) {
+      const targetName = ver.split(".").pop() ?? ver;
+      const elPos = posMap.get(ver) ?? posMap.get(targetName);
+      if (!elPos) continue;
+      const x1 = elPos.x + boxW / 2 + 12;
+      const y1 = elPos.y;
+      const x2 = reqPos.x + boxW / 2 + 12;
+      const y2 = reqPos.y + boxH;
+      const midY = (y1 + y2) / 2;
+      edgesSvg += `<path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" fill="none" stroke="${pal.verStroke}" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#sysml-ver)" />\n`;
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalW} ${totalH}" width="100%" height="100%" style="background:${pal.bg};">
+  <defs>
+    <pattern id="sysml-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M 32 0 L 0 0 0 32" fill="none" stroke="${pal.grid}" stroke-width="0.5" opacity="0.5" />
+    </pattern>
+    <marker id="sysml-sat" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="${pal.satStroke}" />
+    </marker>
+    <marker id="sysml-ver" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="${pal.verStroke}" />
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="${totalW}" height="${totalH}" fill="url(#sysml-grid)" />
+  <g>${edgesSvg}</g>
+  <g>${nodesSvg}</g>
+</svg>`;
 }
 
 function scanSysml2(code: string) {
@@ -111,13 +251,19 @@ export const SysmlPanel: React.FC<LanguagePanelProps> = ({
   isFullScreen = false,
   host,
 }) => {
-  const [activeTab, setActiveTab] = useState<SysmlTabId>("requirements");
-  const [filter, setFilter] = useState("");
+  const [activeTab, setActiveTab] = useState<SysmlTabId>("diagram");
+  const [canvasThemeOverride, setCanvasThemeOverride] = useState<"light" | "dark" | null>(null);
+  const canvasTheme = canvasThemeOverride ?? colorMode;
 
   const scanned = useMemo(() => scanSysml2(code), [code]);
 
   const title =
     (typeof viewConfig?.["title"] === "string" && viewConfig["title"]) || "SysML v2 Requirements & Elements";
+
+  const diagramSvg = useMemo(
+    () => renderSysmlOverviewSvg(scanned.requirements, scanned.elements, canvasTheme),
+    [scanned.requirements, scanned.elements, canvasTheme],
+  );
 
   const kpis = useMemo<PanelKpiItem[]>(() => {
     const reqs = scanned.requirements.length;
@@ -135,18 +281,62 @@ export const SysmlPanel: React.FC<LanguagePanelProps> = ({
     ];
   }, [scanned]);
 
-  const filteredElements = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return scanned.elements.slice(0, 250);
-    return scanned.elements
-      .filter(
-        (e) =>
-          e.name.toLowerCase().includes(q) ||
-          e.kind.toLowerCase().includes(q) ||
-          (e.type ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 250);
-  }, [scanned.elements, filter]);
+  const reqColumns = useMemo<PanelDataGridColumn<SysmlRequirementRow>[]>(
+    () => [
+      { key: "id", label: "ID", mono: true, sortValue: (r) => r.id, render: (r) => <strong>{r.id}</strong> },
+      { key: "name", label: "Name", sortValue: (r) => r.name, render: (r) => <strong>{r.name}</strong> },
+      {
+        key: "doc",
+        label: "Specification",
+        sortValue: (r) => r.doc,
+        render: (r) => <span style={{ color: "var(--ms-text-2)" }}>{r.doc || "—"}</span>,
+      },
+      {
+        key: "satisfiedBy",
+        label: "Satisfied By",
+        mono: true,
+        sortValue: (r) => r.satisfiedBy.join(", "),
+        render: (r) => (r.satisfiedBy.length > 0 ? r.satisfiedBy.join(", ") : "—"),
+      },
+      {
+        key: "verifiedBy",
+        label: "Verified By",
+        mono: true,
+        sortValue: (r) => r.verifiedBy.join(", "),
+        render: (r) => (r.verifiedBy.length > 0 ? r.verifiedBy.join(", ") : "—"),
+      },
+    ],
+    [],
+  );
+
+  const elementColumns = useMemo<PanelDataGridColumn<SysmlElementRow>[]>(
+    () => [
+      {
+        key: "kind",
+        label: "Kind",
+        mono: true,
+        sortValue: (e) => e.kind,
+        render: (e) => <span style={{ color: "var(--ms-brand)" }}>{e.kind}</span>,
+      },
+      { key: "name", label: "Name", mono: true, sortValue: (e) => e.name, render: (e) => <strong>{e.name}</strong> },
+      {
+        key: "type",
+        label: "Type",
+        mono: true,
+        sortValue: (e) => e.type ?? "",
+        render: (e) => <span style={{ color: "var(--ms-text-2)" }}>{e.type ?? "—"}</span>,
+      },
+      {
+        key: "line",
+        label: "Line",
+        align: "right",
+        mono: true,
+        sortValue: (e) => e.line,
+        render: (e) => <span style={{ color: "var(--ms-text-3)" }}>L{e.line}</span>,
+      },
+    ],
+    [],
+  );
 
   const handleExportCsv = () => {
     if (!host.exportFile) return;
@@ -174,6 +364,11 @@ export const SysmlPanel: React.FC<LanguagePanelProps> = ({
         badge={{ label: "SysML v2", tone: "info" }}
         actions={
           <>
+            {activeTab === "diagram" && host.exportFile && diagramSvg && (
+              <PanelButton onClick={() => host.exportFile?.("sysml2-architecture.svg", diagramSvg, "image/svg+xml")}>
+                Export SVG
+              </PanelButton>
+            )}
             {host.exportFile && scanned.requirements.length > 0 && (
               <PanelButton onClick={handleExportCsv}>Export CSV</PanelButton>
             )}
@@ -182,7 +377,7 @@ export const SysmlPanel: React.FC<LanguagePanelProps> = ({
                 variant="primary"
                 onClick={() => host.openInAnsatzEditor?.(code, dialect || "sysml2", title)}
               >
-                Open in Ansatz Editor
+                Open in Editor
               </PanelButton>
             )}
           </>
@@ -195,110 +390,45 @@ export const SysmlPanel: React.FC<LanguagePanelProps> = ({
         activeTab={activeTab}
         onSelect={setActiveTab}
         tabs={[
+          { id: "diagram", label: "Architecture Graph" },
           { id: "requirements", label: "Requirements Matrix", count: scanned.requirements.length },
           { id: "elements", label: "Element Table", count: scanned.elements.length },
           { id: "traceability", label: "Traceability" },
         ]}
       />
 
+      {activeTab === "diagram" && (
+        <PanelSvgStage
+          svg={diagramSvg}
+          canvasTheme={canvasTheme}
+          onToggleCanvasTheme={() =>
+            setCanvasThemeOverride((prev) => ((prev ?? colorMode) === "dark" ? "light" : "dark"))
+          }
+          onRevealLine={host.onRevealLine}
+          emptyMessage="Add SysML v2 requirements, parts, or actions to visualize the Architecture & Traceability Graph."
+        />
+      )}
+
       {activeTab === "requirements" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          {scanned.requirements.length === 0 ? (
-            <div style={{ color: "var(--ms-text-2)" }}>No SysML v2 requirements declared in this model.</div>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-              <thead>
-                <tr
-                  style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}
-                >
-                  <th style={{ padding: "5px 6px" }}>ID</th>
-                  <th style={{ padding: "5px 6px" }}>Name</th>
-                  <th style={{ padding: "5px 6px" }}>Specification</th>
-                  <th style={{ padding: "5px 6px" }}>Satisfied By</th>
-                  <th style={{ padding: "5px 6px" }}>Verified By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scanned.requirements.map((r) => (
-                  <tr
-                    key={`${r.id}-${r.line}`}
-                    onClick={() => host.onRevealLine?.(r.line, r.name)}
-                    style={{
-                      borderBottom: "1px solid var(--ms-divider)",
-                      cursor: host.onRevealLine ? "pointer" : "default",
-                    }}
-                  >
-                    <td style={{ padding: "5px 6px", fontFamily: "var(--ms-font-mono)", fontWeight: 600 }}>{r.id}</td>
-                    <td style={{ padding: "5px 6px", fontWeight: 600 }}>{r.name}</td>
-                    <td style={{ padding: "5px 6px", color: "var(--ms-text-2)" }}>{r.doc || "—"}</td>
-                    <td style={{ padding: "5px 6px", fontFamily: "var(--ms-font-mono)" }}>
-                      {r.satisfiedBy.length > 0 ? r.satisfiedBy.join(", ") : "—"}
-                    </td>
-                    <td style={{ padding: "5px 6px", fontFamily: "var(--ms-font-mono)" }}>
-                      {r.verifiedBy.length > 0 ? r.verifiedBy.join(", ") : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <PanelDataGrid
+          rows={scanned.requirements}
+          columns={reqColumns}
+          rowKey={(r) => `${r.id}-${r.line}`}
+          searchPlaceholder="Filter requirements by ID, name, or specification…"
+          onRowClick={(r) => host.onRevealLine?.(r.line, r.name)}
+          emptyMessage="No SysML v2 requirements declared in this model."
+        />
       )}
 
       {activeTab === "elements" && (
-        <div
-          style={{
-            flex: 1,
-            overflow: "auto",
-            padding: "10px 12px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-          }}
-        >
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter SysML elements by name, kind, or type..."
-            style={{
-              padding: "5px 8px",
-              borderRadius: "5px",
-              border: "1px solid var(--ms-border)",
-              background: "var(--ms-bg-soft)",
-              color: "var(--ms-text-1)",
-              fontSize: "12px",
-            }}
-          />
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>Kind</th>
-                <th style={{ padding: "5px 6px" }}>Name</th>
-                <th style={{ padding: "5px 6px" }}>Type</th>
-                <th style={{ padding: "5px 6px" }}>Line</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredElements.map((el, idx) => (
-                <tr
-                  key={`${el.name}-${el.line}-${idx}`}
-                  onClick={() => host.onRevealLine?.(el.line, el.name)}
-                  style={{
-                    borderBottom: "1px solid var(--ms-divider)",
-                    fontFamily: "var(--ms-font-mono)",
-                    cursor: host.onRevealLine ? "pointer" : "default",
-                  }}
-                >
-                  <td style={{ padding: "4px 6px", color: "var(--ms-brand)" }}>{el.kind}</td>
-                  <td style={{ padding: "4px 6px", fontWeight: 600 }}>{el.name}</td>
-                  <td style={{ padding: "4px 6px", color: "var(--ms-text-2)" }}>{el.type ?? "—"}</td>
-                  <td style={{ padding: "4px 6px", color: "var(--ms-text-3)" }}>L{el.line}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={scanned.elements}
+          columns={elementColumns}
+          rowKey={(el, idx) => `${el.name}-${el.line}-${idx}`}
+          searchPlaceholder="Filter SysML elements by name, kind, or type…"
+          onRowClick={(el) => host.onRevealLine?.(el.line, el.name)}
+          emptyMessage="No SysML v2 elements found."
+        />
       )}
 
       {activeTab === "traceability" && (

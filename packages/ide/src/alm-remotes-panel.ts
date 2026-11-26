@@ -60,7 +60,7 @@ export class AlmRemotesPanel {
     this._panel = panel;
     const cfg = vscode.workspace.getConfiguration("modelscript.cloud");
     const configured = cfg.get<string>("apiUrl");
-    this._apiBaseUrl = (configured || "http://localhost:3000/api/v1").replace(/\/+$/, "");
+    this._apiBaseUrl = (configured || "https://ansatz.social/api/v1").replace(/\/+$/, "");
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.onDidReceiveMessage(

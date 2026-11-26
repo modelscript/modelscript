@@ -1,5 +1,5 @@
 {
-  "toolCount": 121,
+  "toolCount": 124,
   "tools": [
     {
       "name": "ecad_dfm_audit",
@@ -165,6 +165,21 @@
       "name": "asm_evaluate_biokinetics",
       "description": "Evaluate IWA Activated Sludge Model (ASM1) biological process rates and net substrate/biomass conversion rates.",
       "category": "Municipal Water, Stormwater, Hydrology & Wastewater"
+    },
+    {
+      "name": "modelscript_compile_hypergraph",
+      "description": "Compiles engineering code (Modelica, SysML2, SCAD, STEP, URDF, SPICE, OWL2) or Markdown into the 4-column Typed Relational Hypergraph (tokenIds, groupIds, relTypeIds, relSigns, mInit) for Dynamic-m zonotope training.",
+      "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "modelscript_bucket_dynamic_m",
+      "description": "Compiles a batch of engineering examples into 4-column Relational Hypergraphs and groups them into Dynamic-m batch buckets by similar mInit counts to avoid wasted GPU/WebGPU padding.",
+      "category": "Closed-Loop Synthesis & Workspace"
+    },
+    {
+      "name": "modelscript_memory_query",
+      "description": "Queries the federated or local DiskANN Vector Memory API for version-pinned package documentation, OWL2 axioms, and formally verified social RLHF fixes.",
+      "category": "Closed-Loop Synthesis & Workspace"
     },
     {
       "name": "modelica_load",

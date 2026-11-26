@@ -26,6 +26,13 @@ export const dxfLanguage = language({
 
   extras: () => [/\s+/],
 
+  conflicts: ($) => [
+    [$["EntityRecord"]!, $["GroupCode"]!, $["NonZeroCode"]!],
+    [$["LayerRecord"]!, $["GroupCode"]!, $["NonZeroCode"]!],
+    [$["BlockDef"]!, $["GroupCode"]!, $["NonZeroCode"]!],
+    [$["PolylineSequence"]!, $["GroupCode"]!, $["NonZeroCode"]!],
+  ],
+
   rules: {
     Document: ($) => seq(repeat($["Section"]!), optional($["EofMarker"]!)),
 

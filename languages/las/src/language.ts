@@ -158,7 +158,6 @@ export const lasLanguage = language({
       const lineChoice = choice(getRule("SectionHeader"), getRule("DataLine"), getRule("_comment"));
       return def({
         syntax: seq(
-          optional(getRule("_newline")),
           optional(field("lines", lineChoice)),
           repeat(seq(getRule("_newline"), optional(field("lines", lineChoice)))),
         ),

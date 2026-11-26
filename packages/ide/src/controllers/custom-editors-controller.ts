@@ -8,6 +8,7 @@ import { ClimateRasterEditorProvider } from "../climate-raster-panel.js";
 import { CrystallographyEditorProvider } from "../crystallography-panel.js";
 import { DiagramEditorProvider } from "../diagram-editor-provider.js";
 import { registerDslUiPanels } from "../dsl-custom-editor-provider.js";
+import { NmodlEditorProvider } from "../electrophysiology-panel.js";
 import { ElementTableProvider } from "../element-table-provider.js";
 import { FitsImageViewerEditorProvider } from "../fits-image-panel.js";
 import { FMU_VIEW_SCHEME, FmuContentProvider, FmuEditorProvider } from "../fmu-document-provider.js";
@@ -360,6 +361,13 @@ export function registerCustomEditors(
   const optEditor = new OpticalBenchEditorProvider(context);
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(OpticalBenchEditorProvider.viewType, optEditor, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+  );
+
+  const nmodlEditor = new NmodlEditorProvider(context);
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(NmodlEditorProvider.viewType, nmodlEditor, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );

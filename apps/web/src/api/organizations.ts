@@ -67,7 +67,9 @@ export const updateOrganization = async (
 };
 
 export const getOrganizationMembers = async (slug: string): Promise<OrganizationMember[]> => {
-  const { data } = await api.get<{ members: OrganizationMember[] }>(`/organizations/${slug}/members`);
+  const { data } = await api.get<{ members: OrganizationMember[] }>(
+    `/organizations/${encodeURIComponent(slug)}/members`,
+  );
   return data.members || [];
 };
 
@@ -76,7 +78,7 @@ export const addOrganizationMember = async (
   username: string,
   role: OrgRole = "contributor",
 ): Promise<void> => {
-  await api.post(`/organizations/${slug}/members`, { username, role });
+  await api.post(`/organizations/${encodeURIComponent(slug)}/members`, { username, role });
 };
 
 export const updateOrgMemberRole = async (orgName: string, username: string, role: OrgRole): Promise<void> => {
@@ -86,5 +88,5 @@ export const updateOrgMemberRole = async (orgName: string, username: string, rol
 };
 
 export const removeOrganizationMember = async (slug: string, userId: number): Promise<void> => {
-  await api.delete(`/organizations/${slug}/members/${userId}`);
+  await api.delete(`/organizations/${encodeURIComponent(slug)}/members/${encodeURIComponent(String(userId))}`);
 };

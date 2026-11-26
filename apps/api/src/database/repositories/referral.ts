@@ -121,17 +121,20 @@ export class ReferralRepository extends BaseRepository {
   }
 
   generateUserGoldenTicket(userId: number, note?: string, initialCredits = 100) {
-    const user = this.facade.getUserById(userId);
-    if (!user) {
-      throw new Error(`User with ID ${userId} not found`);
-    }
-    const remaining = typeof user.invites_remaining === "number" ? user.invites_remaining : 5;
-    if (remaining <= 0) {
-      throw new Error("No golden tickets / invites remaining for this account");
-    }
+    return this.immediateTransaction(() => {
+      const user = this.facade.getUserById(userId);
+      if (!user) {
+        throw new Error(`User with ID ${userId} not found`);
+      }
 
-    return this.transaction(() => {
-      this.run(`UPDATE users SET invites_remaining = MAX(0, invites_remaining - 1) WHERE id = ?`, userId);
+      const decRes = this.run(
+        `UPDATE users SET invites_remaining = invites_remaining - 1 WHERE id = ? AND invites_remaining > 0`,
+        userId,
+      );
+      if (decRes.changes !== 1) {
+        throw new Error("No golden tickets / invites remaining for this account");
+      }
+
       return this.facade.createInstanceInvite({
         createdBy: userId,
         maxUses: 1,
@@ -168,6 +171,7 @@ export class ReferralRepository extends BaseRepository {
       createdBy: r.created_by,
       maxUses: r.max_uses,
       usesCount: r.used_count,
+      uses_count: r.used_count,
       expiresAt: r.expires_at,
       revoked: Boolean(r.revoked_at),
       createdAt: r.created_at,

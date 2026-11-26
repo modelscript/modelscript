@@ -19,6 +19,8 @@ export const sindaLanguage = language({
   },
   errorCodes: SindaErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
   rules: {
     SindaDeck: ($) =>
       seq(
@@ -34,13 +36,12 @@ export const sindaLanguage = language({
             $["Variables1Block"]!,
             $["Variables2Block"]!,
             $["OutputCallsBlock"]!,
-            $["Comment"]!,
           ),
         ),
         optional($["EndOfData"]!),
       ),
 
-    OptionsBlock: ($) => seq("HEADER", "OPTIONS", "DATA", repeat(choice($["OptionEntry"]!, $["Comment"]!))),
+    OptionsBlock: ($) => seq("HEADER", "OPTIONS", "DATA", repeat($["OptionEntry"]!)),
 
     OptionEntry: ($) =>
       choice(
@@ -53,13 +54,7 @@ export const sindaLanguage = language({
       ),
 
     NodeDataBlock: ($) =>
-      seq(
-        "HEADER",
-        "NODE",
-        "DATA",
-        optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["NodeRecord"]!, $["Comment"]!)),
-      ),
+      seq("HEADER", "NODE", "DATA", optional(seq(",", field("submodel", $["Identifier"]!))), repeat($["NodeRecord"]!)),
 
     NodeRecord: ($) =>
       seq(
@@ -75,7 +70,7 @@ export const sindaLanguage = language({
         "CONDUCTOR",
         "DATA",
         optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["ConductorRecord"]!, $["Comment"]!)),
+        repeat($["ConductorRecord"]!),
       ),
 
     ConductorRecord: ($) =>
@@ -95,7 +90,7 @@ export const sindaLanguage = language({
         "CONSTANTS",
         "DATA",
         optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["ConstantAssignment"]!, $["Comment"]!)),
+        repeat($["ConstantAssignment"]!),
       ),
 
     ConstantAssignment: ($) =>
@@ -107,7 +102,7 @@ export const sindaLanguage = language({
         "ARRAY",
         "DATA",
         optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["ArrayRecord"]!, $["Comment"]!)),
+        repeat($["ArrayRecord"]!),
       ),
 
     ArrayRecord: ($) => seq(field("arrayId", $["SignedInteger"]!), repeat(seq(optional(","), $["NumberLiteral"]!))),
@@ -118,13 +113,13 @@ export const sindaLanguage = language({
         "SOURCE",
         "DATA",
         optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["SourceRecord"]!, $["Comment"]!)),
+        repeat($["SourceRecord"]!),
       ),
 
     SourceRecord: ($) =>
       seq(field("nodeId", $["SignedInteger"]!), optional(","), field("heatLoad", $["NumberLiteral"]!)),
 
-    ExecutionBlock: ($) => seq("HEADER", "EXECUTION", repeat(choice($["ExecutionCall"]!, $["Comment"]!))),
+    ExecutionBlock: ($) => seq("HEADER", "EXECUTION", repeat($["ExecutionCall"]!)),
 
     ExecutionCall: ($) =>
       seq(optional("CALL"), field("routine", $["Identifier"]!), optional(seq("(", optional($["ArgList"]!), ")"))),
@@ -141,7 +136,7 @@ export const sindaLanguage = language({
         "VARIABLES",
         "1",
         optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["VariableStatement"]!, $["Comment"]!)),
+        repeat($["VariableStatement"]!),
       ),
 
     Variables2Block: ($) =>
@@ -150,7 +145,7 @@ export const sindaLanguage = language({
         "VARIABLES",
         "2",
         optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["VariableStatement"]!, $["Comment"]!)),
+        repeat($["VariableStatement"]!),
       ),
 
     VariableStatement: ($) =>
@@ -162,7 +157,7 @@ export const sindaLanguage = language({
         "OUTPUT",
         "CALLS",
         optional(seq(",", field("submodel", $["Identifier"]!))),
-        repeat(choice($["ExecutionCall"]!, $["Comment"]!)),
+        repeat($["ExecutionCall"]!),
       ),
 
     EndOfData: () => seq("END", "OF", "DATA"),

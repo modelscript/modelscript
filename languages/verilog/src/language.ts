@@ -20,6 +20,8 @@ export const verilogLanguage = language({
   },
   errorCodes: VerilogErrorCode,
 
+  conflicts: ($) => [[$["_OptionalElse"]!], [$["_OptionalTernary"]!, $["BinaryOp"]!]],
+
   rules: {
     SourceFile: ($) => repeat(choice($["ModuleDeclaration"]!, $["Comment"]!)),
 
@@ -150,8 +152,10 @@ export const verilogLanguage = language({
         field("condition", $["Expression"]!),
         ")",
         field("consequent", $["Statement"]!),
-        optional(seq("else", field("alternate", $["Statement"]!))),
+        $["_OptionalElse"]!,
       ),
+
+    _OptionalElse: ($) => optional(seq("else", field("alternate", $["Statement"]!))),
 
     CaseStatement: ($) =>
       seq(
@@ -203,12 +207,9 @@ export const verilogLanguage = language({
         field("expr", $["Expression"]!),
       ),
 
-    Expression: ($) =>
-      seq(
-        $["UnaryExpr"]!,
-        repeat(seq($["BinaryOp"]!, $["UnaryExpr"]!)),
-        optional(seq("?", $["Expression"]!, ":", $["Expression"]!)),
-      ),
+    Expression: ($) => seq($["UnaryExpr"]!, repeat(seq($["BinaryOp"]!, $["UnaryExpr"]!)), $["_OptionalTernary"]!),
+
+    _OptionalTernary: ($) => optional(seq("?", $["Expression"]!, ":", $["Expression"]!)),
 
     UnaryExpr: ($) => choice(seq(choice("~", "!", "-", "+", "&", "|", "^"), $["PrimaryExpr"]!), $["PrimaryExpr"]!),
 

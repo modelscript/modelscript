@@ -777,8 +777,7 @@ export function injectArtifactDependencies(
         const code = result.files[primary]!;
         const neededImports: string[] = [];
         for (const depName of Object.keys(depMap)) {
-          const impRegex = new RegExp(`\\bimport\\s+${depName}\\b`, "i");
-          if (!impRegex.test(code)) {
+          if (!hasSysmlImport(code, depName)) {
             neededImports.push(`  import ${depName}::*;`);
           }
         }
@@ -802,8 +801,7 @@ export function injectArtifactDependencies(
         const code = result.files[primary]!;
         const neededIncludes: string[] = [];
         for (const depName of Object.keys(depMap)) {
-          const incRegex = new RegExp(`\\.(?:include|lib)\\s+["']?${depName}(?:\\.[a-z0-9]+)?["']?`, "i");
-          if (!incRegex.test(code)) {
+          if (!hasSpiceInclude(code, depName)) {
             neededIncludes.push(`.include "${depName}.cir"`);
           }
         }
@@ -878,4 +876,96 @@ export function mountArtifactToMemFs(
   }
 
   return { files, primaryFile };
+}
+
+function isWordCharCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 // _
+  );
+}
+
+function isWhitespaceCode(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13;
+}
+
+function isAsciiAlnum(str: string): boolean {
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i);
+    const isDigit = code >= 48 && code <= 57;
+    const isLower = code >= 97 && code <= 122;
+    const isUpper = code >= 65 && code <= 90;
+    if (!isDigit && !isLower && !isUpper) return false;
+  }
+  return str.length > 0;
+}
+
+function hasSysmlImport(code: string, depName: string): boolean {
+  if (!depName) return false;
+  const lowerCode = code.toLowerCase();
+  const target = depName.toLowerCase();
+  let pos = 0;
+
+  while (pos < lowerCode.length) {
+    const idx = lowerCode.indexOf("import", pos);
+    if (idx < 0) return false;
+
+    const leftOk = idx === 0 || !isWordCharCode(lowerCode.charCodeAt(idx - 1));
+    let cur = idx + 6;
+    if (leftOk && cur < lowerCode.length && isWhitespaceCode(lowerCode.charCodeAt(cur))) {
+      while (cur < lowerCode.length && isWhitespaceCode(lowerCode.charCodeAt(cur))) {
+        cur++;
+      }
+      if (lowerCode.startsWith(target, cur)) {
+        const end = cur + target.length;
+        const rightOk = end === lowerCode.length || !isWordCharCode(lowerCode.charCodeAt(end));
+        if (rightOk) return true;
+      }
+    }
+    pos = idx + 6;
+  }
+  return false;
+}
+
+function hasSpiceInclude(code: string, depName: string): boolean {
+  if (!depName) return false;
+  const target = depName.toLowerCase();
+
+  for (const rawLine of code.split("\n")) {
+    const line = rawLine.trim().toLowerCase();
+    let rest: string | undefined;
+    if (line.startsWith(".include")) {
+      rest = line.slice(8);
+    } else if (line.startsWith(".lib")) {
+      rest = line.slice(4);
+    } else {
+      continue;
+    }
+
+    if (rest.length === 0 || !isWhitespaceCode(rest.charCodeAt(0))) {
+      continue;
+    }
+
+    let arg = rest.trimStart();
+    if (arg.startsWith('"') || arg.startsWith("'")) {
+      const quote = arg[0]!;
+      const closeIdx = arg.indexOf(quote, 1);
+      arg = closeIdx > 0 ? arg.slice(1, closeIdx) : arg.slice(1);
+    } else {
+      let tokenEnd = 0;
+      while (tokenEnd < arg.length && !isWhitespaceCode(arg.charCodeAt(tokenEnd))) {
+        tokenEnd++;
+      }
+      arg = arg.slice(0, tokenEnd);
+    }
+
+    if (arg === target) return true;
+    if (arg.startsWith(target + ".")) {
+      const ext = arg.slice(target.length + 1);
+      if (isAsciiAlnum(ext)) return true;
+    }
+  }
+  return false;
 }

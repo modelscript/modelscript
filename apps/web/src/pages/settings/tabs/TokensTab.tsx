@@ -46,7 +46,7 @@ const PAT_SCOPE_GROUPS = [
       },
       {
         scope: "packages:yank",
-        label: "packages:yank (packages:Delete)",
+        label: "packages:yank (packages:delete)",
         desc: "Yank or unpublish package versions",
       },
       {
@@ -91,7 +91,9 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
   const brandName = branding.instanceName || "Ansatz";
   const [apiTokens, setApiTokens] = useState<ApiTokenItem[]>([]);
   const [confirmingRevokeTokenId, setConfirmingRevokeTokenId] = useState<number | null>(null);
+  const [revokingTokenId, setRevokingTokenId] = useState<number | null>(null);
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tokenName, setTokenName] = useState("");
   const [tokenScopes, setTokenScopes] = useState<string[]>(["packages:read", "packages:publish"]);
   const [tokenPackagePattern, setTokenPackagePattern] = useState("*");
@@ -101,17 +103,34 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
   const [isCreatingToken, setIsCreatingToken] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
     setIsLoadingTokens(true);
+    setLoadError(null);
     getApiTokens()
-      .then((data) => setApiTokens(data))
-      .catch(() => {})
-      .finally(() => setIsLoadingTokens(false));
+      .then((data) => {
+        if (!cancelled) {
+          setApiTokens(data);
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setLoadError(getApiErrorMessage(err, "Failed to load personal access tokens."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingTokens(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
     <>
       <Header>
-        <CircleIconButton onClick={onBack} style={{ marginRight: "8px" }}>
+        <CircleIconButton onClick={onBack} aria-label="Back" style={{ marginRight: "8px" }}>
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         Personal Access Tokens (PAT)
@@ -125,6 +144,7 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
         {/* Newly Created Secret Banner */}
         {createdTokenSecret && (
           <Box
+            role="status"
             mb={4}
             p={4}
             style={{
@@ -134,11 +154,20 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
               color: "var(--color-success-fg)",
             }}
           >
-            <Box display="flex" alignItems="center" gap={2} mb={2}>
-              <CheckCircleIcon size={20} />
-              <Text fontWeight="bold" fontSize="16px">
-                New Token Generated Successfully
-              </Text>
+            <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} mb={2}>
+              <Box display="flex" alignItems="center" gap={2}>
+                <CheckCircleIcon size={20} />
+                <Text fontWeight="bold" fontSize="16px">
+                  New Token Generated Successfully
+                </Text>
+              </Box>
+              <SecondaryButton
+                type="button"
+                style={{ padding: "4px 10px", fontSize: "12px" }}
+                onClick={() => setCreatedTokenSecret(null)}
+              >
+                Dismiss
+              </SecondaryButton>
             </Box>
             <Text fontSize="14px" display="block" mb={2}>
               Make sure to copy your personal access token now. You will not be able to see it again!
@@ -167,9 +196,13 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
               </code>
               <button
                 type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(createdTokenSecret);
-                  toast.success("Token copied to clipboard!");
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(createdTokenSecret);
+                    toast.success("Token copied to clipboard!");
+                  } catch {
+                    toast.error("Failed to copy token to clipboard.");
+                  }
                 }}
                 style={{
                   background: "var(--color-accent-emphasis)",
@@ -197,6 +230,25 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
             </DetailTitle>
           </Box>
 
+          {loadError && (
+            <Box
+              role="alert"
+              mb={3}
+              p={3}
+              style={{
+                background: "var(--color-danger-subtle)",
+                color: "var(--color-danger-fg)",
+                borderRadius: "6px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <AlertIcon size={16} />
+              <Text fontSize="14px">{loadError}</Text>
+            </Box>
+          )}
+
           {isLoadingTokens ? (
             <Text color="var(--color-fg-muted)">Loading your tokens...</Text>
           ) : apiTokens.length === 0 ? (
@@ -211,6 +263,7 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
             <Box display="flex" flexDirection="column" gap={2}>
               {apiTokens.map((t) => {
                 const expiresAtValue = t.expires_at || t.expiresAt;
+                const isRevoking = revokingTokenId === t.id;
                 return (
                   <Box
                     key={t.id}
@@ -274,6 +327,7 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                       <Box display="flex" alignItems="center" gap={2}>
                         <SecondaryButton
                           type="button"
+                          disabled={isRevoking}
                           style={{ padding: "6px 12px", fontSize: "13px" }}
                           onClick={() => setConfirmingRevokeTokenId(null)}
                         >
@@ -281,23 +335,34 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                         </SecondaryButton>
                         <DangerButton
                           type="button"
+                          disabled={isRevoking}
                           style={{ padding: "6px 14px", fontSize: "13px" }}
                           onClick={async () => {
-                            setConfirmingRevokeTokenId(null);
+                            if (isRevoking) return;
+                            setRevokingTokenId(t.id);
                             try {
                               await revokeApiToken(t.id);
+                              setConfirmingRevokeTokenId(null);
                               setApiTokens((prev) => prev.filter((tok) => tok.id !== t.id));
                               toast.success("Token revoked successfully.");
                             } catch (err: unknown) {
                               toast.error(getApiErrorMessage(err, "Failed to revoke token."));
+                            } finally {
+                              setRevokingTokenId(null);
                             }
                           }}
                         >
-                          Confirm Revoke
+                          {isRevoking ? "Revoking…" : "Confirm Revoke"}
                         </DangerButton>
                       </Box>
                     ) : (
-                      <CircleIconButton title="Revoke Token" onClick={() => setConfirmingRevokeTokenId(t.id)}>
+                      <CircleIconButton
+                        type="button"
+                        aria-label={`Revoke token ${t.name}`}
+                        title="Revoke Token"
+                        disabled={isRevoking}
+                        onClick={() => setConfirmingRevokeTokenId(t.id)}
+                      >
                         <TrashIcon size={16} color="var(--color-danger-fg)" />
                       </CircleIconButton>
                     )}
@@ -316,6 +381,7 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
 
           {tokenError && (
             <Box
+              role="alert"
               mb={3}
               p={3}
               style={{
@@ -345,8 +411,9 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                   packagePattern: tokenPackagePattern.trim() || "*",
                   expiresInDays: tokenExpiresInDays > 0 ? tokenExpiresInDays : undefined,
                 });
-                setCreatedTokenSecret(res.token);
-                setApiTokens([res, ...apiTokens]);
+                const { token: _secret, ...tokenRecord } = res;
+                setCreatedTokenSecret(_secret);
+                setApiTokens((prev) => [tokenRecord, ...prev]);
                 setTokenName("");
                 toast.success("Token generated successfully!");
               } catch (err: unknown) {

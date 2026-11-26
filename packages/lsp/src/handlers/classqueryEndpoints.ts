@@ -650,9 +650,17 @@ export function registerClassQueryEndpoints(context: LspContext) {
           ) {
             let sliceEnd = entry.endOffset;
             if (!text.slice(entry.startOffset, sliceEnd).trimEnd().endsWith(";")) {
-              const semiMatch = text.slice(sliceEnd).match(/^\s*;/);
-              if (semiMatch) {
-                sliceEnd += semiMatch[0].length;
+              let scan = sliceEnd;
+              while (scan < text.length) {
+                const code = text.charCodeAt(scan);
+                if (code === 32 || code === 9 || code === 10 || code === 13 || code === 12 || code === 11) {
+                  scan++;
+                } else {
+                  break;
+                }
+              }
+              if (scan < text.length && text.charCodeAt(scan) === 59 /* ';' */) {
+                sliceEnd = scan + 1;
               }
             }
             let snippet = text.substring(entry.startOffset, sliceEnd).trim();

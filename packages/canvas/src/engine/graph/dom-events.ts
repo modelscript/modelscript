@@ -28,6 +28,7 @@ export interface DomEventsHost {
     brushRect: { x0: number; y0: number; x1: number; y1: number } | undefined,
   ) => { indices: number[]; linkedIds: string[] };
   applyViewportTransformDom: (panOnly?: boolean) => void;
+  syncHoveredPortDom?: ((hoveredPort: { nodeId: string; portId: string } | null) => void) | undefined;
   emit: (event: string, args?: unknown) => void;
 }
 
@@ -61,7 +62,21 @@ export function attachGraphDomEventListeners(root: HTMLElement, host: DomEventsH
     return { u: pt.x, v: pt.y, sx: e.clientX - rect.left, sy: e.clientY - rect.top };
   };
 
+  let hoveredPort: { nodeId: string; portId: string } | null = null;
+
+  const clearHoveredPort = (e?: Event) => {
+    if (!hoveredPort) return;
+    const prev = hoveredPort;
+    hoveredPort = null;
+    host.syncHoveredPortDom?.(null);
+    const prevCell = host.cells.get(prev.nodeId);
+    if (prevCell) {
+      host.emit("port:mouseleave", { node: prevCell, cell: prevCell, port: prev.portId, e });
+    }
+  };
+
   const clearHover = (e?: Event) => {
+    clearHoveredPort(e);
     const hoveredId = host.getHoveredCellId();
     if (!hoveredId) return;
     const prevCell = host.cells.get(hoveredId);
@@ -76,8 +91,39 @@ export function attachGraphDomEventListeners(root: HTMLElement, host: DomEventsH
   };
 
   const updateHover = (e: PointerEvent, u: number, v: number) => {
-    if (host.fsm.mode !== "idle" || host.getActiveWidgetInteraction()) return;
+    if (host.fsm.mode !== "idle" || host.getActiveWidgetInteraction()) {
+      clearHoveredPort(e);
+      return;
+    }
     const targetEl = e.target as Element | null;
+    const portEl = targetEl?.closest?.(".ms-port, [data-port], [magnet='true']");
+    let nextPort: { nodeId: string; portId: string } | null = null;
+    if (portEl) {
+      const pId = portEl.getAttribute("port-id") ?? portEl.getAttribute("port") ?? portEl.getAttribute("data-port");
+      const nId = portEl.closest?.("[data-cell-id]")?.getAttribute("data-cell-id");
+      if (nId && pId) {
+        nextPort = { nodeId: nId, portId: pId };
+      }
+    }
+    if (!nextPort) {
+      const hoverRadius = Math.min(8, host.fsm.getPortSnapRadius?.() ?? 8);
+      const hit = host.scene.hitTestPort(u, v, hoverRadius);
+      if (hit) {
+        nextPort = { nodeId: hit.nodeId, portId: hit.portId };
+      }
+    }
+    if (nextPort?.nodeId !== hoveredPort?.nodeId || nextPort?.portId !== hoveredPort?.portId) {
+      clearHoveredPort(e);
+      if (nextPort) {
+        hoveredPort = nextPort;
+        host.syncHoveredPortDom?.(nextPort);
+        const nextCell = host.cells.get(nextPort.nodeId);
+        if (nextCell) {
+          host.emit("port:mouseenter", { node: nextCell, cell: nextCell, port: nextPort.portId, x: u, y: v, e });
+        }
+      }
+    }
+
     const cellEl = targetEl?.closest?.("[data-cell-id]");
     let nextId = cellEl?.getAttribute("data-cell-id") ?? null;
     if (!nextId && host.getActiveRenderModeInternal() === "canvas2d") {
@@ -85,7 +131,18 @@ export function attachGraphDomEventListeners(root: HTMLElement, host: DomEventsH
       if (hitNode) nextId = hitNode.id;
     }
     if (nextId !== host.getHoveredCellId()) {
-      clearHover(e);
+      const prevHoveredId = host.getHoveredCellId();
+      if (prevHoveredId) {
+        const prevCell = host.cells.get(prevHoveredId);
+        host.setHoveredCellId(null);
+        if (prevCell) {
+          if (prevCell.isNode()) {
+            host.emit("node:mouseleave", { node: prevCell, cell: prevCell, e });
+          } else {
+            host.emit("edge:mouseleave", { edge: prevCell, cell: prevCell, e });
+          }
+        }
+      }
       if (nextId) {
         const nextCell = host.cells.get(nextId);
         if (nextCell) {

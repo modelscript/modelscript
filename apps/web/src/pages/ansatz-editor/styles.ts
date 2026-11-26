@@ -268,6 +268,58 @@ export const SplitToggleButton = styled.button<{ $active?: boolean }>`
   }
 `;
 
+export const VrToggleButton = styled.button<{ $active?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: ${CONTROL_H};
+  padding: 0 9px;
+  border-radius: ${RADIUS_OUTER};
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+  box-sizing: border-box;
+  user-select: none;
+  flex-shrink: 0;
+  background: ${(props) =>
+    props.$active ? "linear-gradient(135deg, #6366f1 0%, #0891b2 100%)" : "var(--ms-bg-inset, rgba(15, 23, 42, 0.04))"};
+  border: 1px solid
+    ${(props) => (props.$active ? "rgba(129, 140, 248, 0.75)" : "var(--ms-border, rgba(15, 23, 42, 0.12))")};
+  box-shadow: ${(props) => (props.$active ? "0 2px 10px rgba(99, 102, 241, 0.32)" : "none")};
+  color: ${(props) => (props.$active ? "#ffffff" : "var(--ms-text-2, var(--fgColor-muted))")};
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  &:hover:not(:disabled) {
+    background: ${(props) =>
+      props.$active
+        ? "linear-gradient(135deg, #4f46e5 0%, #0e7490 100%)"
+        : "var(--ms-surface-hover, rgba(125, 125, 125, 0.08))"};
+    color: ${(props) => (props.$active ? "#ffffff" : "var(--ms-text-1, var(--fgColor-default))")};
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--ms-brand, #0891b2);
+    outline-offset: 1px;
+  }
+
+  @container (max-width: 1180px) {
+    padding: 0 7px;
+    .vr-label {
+      display: none;
+    }
+  }
+`;
+
 export const NavRight = styled.div`
   display: flex;
   align-items: center;

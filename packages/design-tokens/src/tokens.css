@@ -56,6 +56,19 @@
   --ms-danger: #e11d48;
   --ms-info: #0891b2;
 
+  /* ── Compatibility aliases (prevents dark-only fallbacks across language panels) ── */
+  --ms-surface: var(--ms-bg);
+  --ms-surface-2: var(--ms-bg-alt);
+  --ms-surface-elevated: var(--ms-bg-elv);
+  --ms-text: var(--ms-text-1);
+  --ms-text-muted: var(--ms-text-2);
+  --ms-accent: var(--ms-brand);
+  --ms-border-default: var(--ms-border);
+  --ms-border-subtle: var(--ms-divider);
+  --ms-bg-subtle: var(--ms-bg-alt);
+  --ms-fg-default: var(--ms-text-1);
+  --ms-error: var(--ms-danger);
+
   /* ── Illustration / domain hues (-600 on light) ── */
   --hue-indigo: #4f46e5;
   --hue-cyan: #0891b2;
@@ -224,6 +237,18 @@
   --ms-warning: #fbbf24;
   --ms-danger: #fb7185;
   --ms-info: #22d3ee;
+
+  --ms-surface: var(--ms-bg);
+  --ms-surface-2: var(--ms-bg-alt);
+  --ms-surface-elevated: var(--ms-bg-elv);
+  --ms-text: var(--ms-text-1);
+  --ms-text-muted: var(--ms-text-2);
+  --ms-accent: var(--ms-brand);
+  --ms-border-default: var(--ms-border);
+  --ms-border-subtle: var(--ms-divider);
+  --ms-bg-subtle: var(--ms-bg-alt);
+  --ms-fg-default: var(--ms-text-1);
+  --ms-error: var(--ms-danger);
 
   /* ── High-Contrast Semantic Status (Dark: Luminous) ── */
   --ms-status-pass-fg: #34d399;

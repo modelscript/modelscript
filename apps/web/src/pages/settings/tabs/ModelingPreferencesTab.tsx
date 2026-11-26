@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Box from "../../../components/Box";
 import { useModelingPreferences } from "../../../ModelingPreferencesContext";
 import { DetailSubtitle, DetailTitle, FormLabel, Header, SecondaryButton } from "../settingsStyles";
 
 const STOP_TIME_PRESETS = [1, 5, 10, 60, 100] as const;
+export const MAX_DEFAULT_STOP_TIME = 1e9;
+
+export function parseDefaultStopTimeDraft(draft: string): number | null {
+  const trimmed = draft.trim();
+  if (!trimmed) return null;
+  const num = Number(trimmed);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return Math.min(num, MAX_DEFAULT_STOP_TIME);
+}
 
 export const ModelingPreferencesTab: React.FC = () => {
   const {
@@ -14,13 +23,25 @@ export const ModelingPreferencesTab: React.FC = () => {
     resetPreferences: resetModelingPrefs,
   } = useModelingPreferences();
 
+  const [stopTimeDraft, setStopTimeDraft] = useState<string>(() => String(modelingPrefs.defaultStopTime));
+
+  useEffect(() => {
+    setStopTimeDraft((curr) => {
+      const parsed = parseDefaultStopTimeDraft(curr);
+      if (parsed !== null && parsed === modelingPrefs.defaultStopTime) {
+        return curr;
+      }
+      return String(modelingPrefs.defaultStopTime);
+    });
+  }, [modelingPrefs.defaultStopTime]);
+
   const indent = " ".repeat(modelingPrefs.tabSize || 2);
   const activeLineIndex = 4; // 0-indexed line 5 (`der(v) = ...`) as simulated cursor line for relative numbering
   const activeLineNumbers = modelingPrefs.lineNumbers || "on";
   const bracketColorize = Boolean(modelingPrefs.bracketPairColorization);
 
   const renderBracket = (char: string, depth: 0 | 1) => {
-    const color = bracketColorize ? (depth === 0 ? "#f59e0b" : "#a855f7") : "var(--color-text-primary)";
+    const color = bracketColorize ? (depth === 0 ? "#f59e0b" : "#c084fc") : "#e6edf3";
     return <span style={{ color, fontWeight: bracketColorize ? 700 : 400 }}>{char}</span>;
   };
 
@@ -67,7 +88,7 @@ export const ModelingPreferencesTab: React.FC = () => {
           {indent}
           <span style={{ color: "#60a5fa" }}>der</span>
           {renderBracket("(", 0)}x{renderBracket(")", 0)} = v;{" "}
-          <span style={{ color: "var(--color-text-muted)" }}>
+          <span style={{ color: "#8b949e" }}>
             // StopTime={modelingPrefs.defaultStopTime}s ({modelingPrefs.defaultSolver.toUpperCase()})
           </span>
         </>
@@ -126,7 +147,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                 <FormLabel style={{ margin: 0, display: "block" }}>Font Size</FormLabel>
                 <DetailSubtitle>Editor text size in pixels</DetailSubtitle>
               </Box>
-              <Box display="flex" gap={2}>
+              <Box display="flex" gap={2} flexWrap="wrap" role="group" aria-label="Font Size">
                 {[12, 14, 16, 18].map((size) => {
                   const selected = modelingPrefs.fontSize === size;
                   return (
@@ -161,7 +182,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                 <FormLabel style={{ margin: 0, display: "block" }}>Tab Indentation</FormLabel>
                 <DetailSubtitle>Spaces per indentation level</DetailSubtitle>
               </Box>
-              <Box display="flex" gap={2}>
+              <Box display="flex" gap={2} flexWrap="wrap" role="group" aria-label="Tab Indentation">
                 {[2, 4].map((spaces) => {
                   const selected = modelingPrefs.tabSize === spaces;
                   return (
@@ -196,7 +217,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                 <FormLabel style={{ margin: 0, display: "block" }}>Line Numbers</FormLabel>
                 <DetailSubtitle>Gutter line numbering display mode in Monaco editor</DetailSubtitle>
               </Box>
-              <Box display="flex" gap={2}>
+              <Box display="flex" gap={2} flexWrap="wrap" role="group" aria-label="Line Numbers">
                 {(
                   [
                     { id: "on", label: "On" },
@@ -232,12 +253,15 @@ export const ModelingPreferencesTab: React.FC = () => {
             </Box>
 
             {/* Word Wrapping */}
-            <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Word Wrapping</FormLabel>
+                <FormLabel htmlFor="modeling-word-wrap" style={{ margin: 0, display: "block" }}>
+                  Word Wrapping
+                </FormLabel>
                 <DetailSubtitle>Wrap long equation lines automatically</DetailSubtitle>
               </Box>
               <input
+                id="modeling-word-wrap"
                 type="checkbox"
                 role="switch"
                 aria-checked={modelingPrefs.wordWrap === "on"}
@@ -247,17 +271,20 @@ export const ModelingPreferencesTab: React.FC = () => {
                   const mode = e.target.checked ? "on" : "off";
                   updateModelingPrefs({ wordWrap: mode, editorWordWrap: mode });
                 }}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
 
             {/* Code Minimap */}
-            <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Code Minimap</FormLabel>
+                <FormLabel htmlFor="modeling-minimap" style={{ margin: 0, display: "block" }}>
+                  Code Minimap
+                </FormLabel>
                 <DetailSubtitle>Show high-level code structure scroll preview</DetailSubtitle>
               </Box>
               <input
+                id="modeling-minimap"
                 type="checkbox"
                 role="switch"
                 aria-checked={modelingPrefs.minimapEnabled}
@@ -266,24 +293,27 @@ export const ModelingPreferencesTab: React.FC = () => {
                 onChange={(e) =>
                   updateModelingPrefs({ minimapEnabled: e.target.checked, editorMinimap: e.target.checked })
                 }
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
 
             {/* Bracket Pair Colorization */}
-            <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Bracket Pair Colorization</FormLabel>
+                <FormLabel htmlFor="modeling-bracket-colorization" style={{ margin: 0, display: "block" }}>
+                  Bracket Pair Colorization
+                </FormLabel>
                 <DetailSubtitle>Colorize matching parentheses and curly braces</DetailSubtitle>
               </Box>
               <input
+                id="modeling-bracket-colorization"
                 type="checkbox"
                 role="switch"
                 aria-checked={modelingPrefs.bracketPairColorization}
                 aria-label="Bracket Pair Colorization"
                 checked={modelingPrefs.bracketPairColorization}
                 onChange={(e) => updateModelingPrefs({ bracketPairColorization: e.target.checked })}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
 
@@ -293,7 +323,8 @@ export const ModelingPreferencesTab: React.FC = () => {
               style={{
                 border: "1px solid var(--color-border-default)",
                 borderRadius: "8px",
-                background: "var(--color-canvas-default)",
+                background: "#0d1117",
+                color: "#e6edf3",
                 overflow: "hidden",
               }}
             >
@@ -303,16 +334,19 @@ export const ModelingPreferencesTab: React.FC = () => {
                 display="flex"
                 justifyContent="space-between"
                 alignItems="center"
+                flexWrap="wrap"
+                gap={2}
                 style={{
-                  borderBottom: "1px solid var(--color-border-subtle)",
-                  background: "rgba(139, 92, 246, 0.06)",
+                  borderBottom: "1px solid #30363d",
+                  background: "#161b22",
+                  color: "#e6edf3",
                   fontSize: "12px",
                 }}
               >
-                <span style={{ fontWeight: 600, fontFamily: "var(--font-mono, monospace)" }}>
+                <span style={{ fontWeight: 600, fontFamily: "var(--font-mono, monospace)", color: "#e6edf3" }}>
                   Live Monaco Preview — DampedHarmonicOscillator.mo
                 </span>
-                <span style={{ color: "var(--color-text-muted)" }}>
+                <span style={{ color: "#8b949e" }}>
                   {modelingPrefs.fontSize}px • Tab:{modelingPrefs.tabSize} • Lines:{activeLineNumbers} • Wrap:
                   {modelingPrefs.wordWrap}
                 </span>
@@ -326,6 +360,8 @@ export const ModelingPreferencesTab: React.FC = () => {
                   fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                   fontSize: `${modelingPrefs.fontSize}px`,
                   lineHeight: "1.55",
+                  background: "#0d1117",
+                  color: "#e6edf3",
                   overflowX: modelingPrefs.wordWrap === "on" ? "hidden" : "auto",
                 }}
               >
@@ -345,7 +381,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                           gap: "12px",
                           whiteSpace: modelingPrefs.wordWrap === "on" ? "pre-wrap" : "pre",
                           wordBreak: modelingPrefs.wordWrap === "on" ? "break-word" : "normal",
-                          background: idx === activeLineIndex ? "rgba(139, 92, 246, 0.08)" : "transparent",
+                          background: idx === activeLineIndex ? "rgba(139, 92, 246, 0.18)" : "transparent",
                           borderRadius: "4px",
                           padding: "0 4px",
                         }}
@@ -356,7 +392,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                               width: "24px",
                               textAlign: "right",
                               userSelect: "none",
-                              color: idx === activeLineIndex ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                              color: idx === activeLineIndex ? "#e6edf3" : "#8b949e",
                               fontWeight: idx === activeLineIndex ? 700 : 400,
                               flexShrink: 0,
                             }}
@@ -374,12 +410,12 @@ export const ModelingPreferencesTab: React.FC = () => {
                     aria-label="Minimap Preview"
                     style={{
                       width: "44px",
-                      borderLeft: "1px solid var(--color-border-subtle)",
+                      borderLeft: "1px solid #30363d",
                       paddingLeft: "6px",
                       display: "flex",
                       flexDirection: "column",
                       gap: "4px",
-                      opacity: 0.55,
+                      opacity: 0.7,
                       flexShrink: 0,
                     }}
                   >
@@ -390,8 +426,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                           height: "4px",
                           width: `${w}px`,
                           borderRadius: "2px",
-                          background:
-                            i === activeLineIndex ? "var(--color-accent-purple, #a855f7)" : "var(--color-text-muted)",
+                          background: i === activeLineIndex ? "#a855f7" : "#8b949e",
                         }}
                       />
                     ))}
@@ -407,7 +442,13 @@ export const ModelingPreferencesTab: React.FC = () => {
           <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
             Compiler &amp; Flattener Architecture
           </DetailTitle>
-          <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))" gap={3}>
+          <Box
+            display="grid"
+            gridTemplateColumns="repeat(auto-fit, minmax(220px, 1fr))"
+            gap={3}
+            role="group"
+            aria-label="Compiler and Flattener Backend"
+          >
             {[
               {
                 backend: "hybrid" as const,
@@ -472,37 +513,43 @@ export const ModelingPreferencesTab: React.FC = () => {
               gap: "16px",
             }}
           >
-            <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Lint on Type</FormLabel>
+                <FormLabel htmlFor="modeling-lint-on-type" style={{ margin: 0, display: "block" }}>
+                  Lint on Type
+                </FormLabel>
                 <DetailSubtitle>Run real-time semantic and equation balance checks while editing</DetailSubtitle>
               </Box>
               <input
+                id="modeling-lint-on-type"
                 type="checkbox"
                 role="switch"
                 aria-checked={modelingPrefs.lintOnType}
                 aria-label="Lint on Type"
                 checked={modelingPrefs.lintOnType}
                 onChange={(e) => updateModelingPrefs({ lintOnType: e.target.checked })}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
 
-            <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Experimental Compiler Features</FormLabel>
+                <FormLabel htmlFor="modeling-experimental-features" style={{ margin: 0, display: "block" }}>
+                  Experimental Compiler Features
+                </FormLabel>
                 <DetailSubtitle>
                   Enable preview language extensions, e-graph rewriting, and WebGPU kernels
                 </DetailSubtitle>
               </Box>
               <input
+                id="modeling-experimental-features"
                 type="checkbox"
                 role="switch"
                 aria-checked={modelingPrefs.enableExperimentalFeatures}
                 aria-label="Experimental Compiler Features"
                 checked={modelingPrefs.enableExperimentalFeatures}
                 onChange={(e) => updateModelingPrefs({ enableExperimentalFeatures: e.target.checked })}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
           </Box>
@@ -530,7 +577,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                 <FormLabel style={{ margin: 0, display: "block" }}>Default Solver</FormLabel>
                 <DetailSubtitle>Primary numerical integration algorithm for simulations</DetailSubtitle>
               </Box>
-              <Box display="flex" gap={2}>
+              <Box display="flex" gap={2} flexWrap="wrap" role="group" aria-label="Default Solver">
                 {(
                   [
                     { id: "cvode", label: "CVODE" },
@@ -569,45 +616,74 @@ export const ModelingPreferencesTab: React.FC = () => {
             {/* Default Stop Time (s) */}
             <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Default Stop Time (s)</FormLabel>
+                <FormLabel htmlFor="modeling-default-stop-time" style={{ margin: 0, display: "block" }}>
+                  Default Stop Time (s)
+                </FormLabel>
                 <DetailSubtitle>Simulation horizon duration in seconds</DetailSubtitle>
               </Box>
               <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-                {STOP_TIME_PRESETS.map((sec) => {
-                  const selected = modelingPrefs.defaultStopTime === sec;
-                  return (
-                    <button
-                      key={sec}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => updateModelingPrefs({ defaultStopTime: sec })}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: "6px",
-                        border: selected
-                          ? "2px solid var(--color-accent-purple, #a855f7)"
-                          : "1px solid var(--color-border-default)",
-                        background: selected ? "rgba(139, 92, 246, 0.15)" : "var(--color-canvas-default)",
-                        color: "var(--color-text-primary)",
-                        fontWeight: selected ? "700" : "500",
-                        cursor: "pointer",
-                        fontSize: "13px",
-                      }}
-                    >
-                      {sec}s
-                    </button>
-                  );
-                })}
+                <Box
+                  display="flex"
+                  alignItems="center"
+                  gap={2}
+                  flexWrap="wrap"
+                  role="group"
+                  aria-label="Default Stop Time Presets"
+                >
+                  {STOP_TIME_PRESETS.map((sec) => {
+                    const selected = modelingPrefs.defaultStopTime === sec;
+                    return (
+                      <button
+                        key={sec}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          setStopTimeDraft(String(sec));
+                          updateModelingPrefs({ defaultStopTime: sec });
+                        }}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          border: selected
+                            ? "2px solid var(--color-accent-purple, #a855f7)"
+                            : "1px solid var(--color-border-default)",
+                          background: selected ? "rgba(139, 92, 246, 0.15)" : "var(--color-canvas-default)",
+                          color: "var(--color-text-primary)",
+                          fontWeight: selected ? "700" : "500",
+                          cursor: "pointer",
+                          fontSize: "13px",
+                        }}
+                      >
+                        {sec}s
+                      </button>
+                    );
+                  })}
+                </Box>
                 <input
+                  id="modeling-default-stop-time"
                   type="number"
                   aria-label="Default Stop Time (s)"
                   min={0.001}
+                  max={MAX_DEFAULT_STOP_TIME}
                   step="any"
-                  value={modelingPrefs.defaultStopTime}
+                  value={stopTimeDraft}
                   onChange={(e) => {
-                    const num = Number(e.target.value);
-                    if (Number.isFinite(num) && num > 0) {
-                      updateModelingPrefs({ defaultStopTime: num });
+                    const raw = e.target.value;
+                    setStopTimeDraft(raw);
+                    const parsed = parseDefaultStopTimeDraft(raw);
+                    if (parsed !== null) {
+                      updateModelingPrefs({ defaultStopTime: parsed });
+                    }
+                  }}
+                  onBlur={() => {
+                    const parsed = parseDefaultStopTimeDraft(stopTimeDraft);
+                    if (parsed !== null) {
+                      if (parsed !== modelingPrefs.defaultStopTime) {
+                        updateModelingPrefs({ defaultStopTime: parsed });
+                      }
+                      setStopTimeDraft(String(parsed));
+                    } else {
+                      setStopTimeDraft(String(modelingPrefs.defaultStopTime));
                     }
                   }}
                   style={{
@@ -629,7 +705,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                 <FormLabel style={{ margin: 0, display: "block" }}>Relative Tolerance (reltol)</FormLabel>
                 <DetailSubtitle>Error tolerance for CVODE / IDA / RK45 integrators</DetailSubtitle>
               </Box>
-              <Box display="flex" gap={2}>
+              <Box display="flex" gap={2} flexWrap="wrap" role="group" aria-label="Relative Tolerance">
                 {[1e-3, 1e-4, 1e-6].map((tol) => {
                   const activeTol = modelingPrefs.solverTolerance ?? modelingPrefs.defaultRelativeTolerance;
                   const selected = activeTol === tol;
@@ -665,7 +741,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                 <FormLabel style={{ margin: 0, display: "block" }}>Default Output Intervals</FormLabel>
                 <DetailSubtitle>Simulation result sample steps (grid density)</DetailSubtitle>
               </Box>
-              <Box display="flex" gap={2}>
+              <Box display="flex" gap={2} flexWrap="wrap" role="group" aria-label="Default Output Intervals">
                 {[500, 1000, 2000].map((intervals) => {
                   const selected = modelingPrefs.defaultNumberOfIntervals === intervals;
                   return (
@@ -695,25 +771,28 @@ export const ModelingPreferencesTab: React.FC = () => {
             </Box>
 
             {/* Diagram Auto-Layout */}
-            <Box display="flex" justifyContent="space-between" alignItems="center">
+            <Box display="flex" justifyContent="space-between" alignItems="center" gap={3}>
               <Box>
-                <FormLabel style={{ margin: 0, display: "block" }}>Diagram Auto-Layout</FormLabel>
+                <FormLabel htmlFor="modeling-diagram-auto-layout" style={{ margin: 0, display: "block" }}>
+                  Diagram Auto-Layout
+                </FormLabel>
                 <DetailSubtitle>Automatically route schematic connector lines</DetailSubtitle>
               </Box>
               <input
+                id="modeling-diagram-auto-layout"
                 type="checkbox"
                 role="switch"
                 aria-checked={modelingPrefs.diagramAutoLayout}
                 aria-label="Diagram Auto-Layout"
                 checked={modelingPrefs.diagramAutoLayout}
                 onChange={(e) => updateModelingPrefs({ diagramAutoLayout: e.target.checked })}
-                style={{ width: "20px", height: "20px", cursor: "pointer" }}
+                style={{ width: "20px", height: "20px", cursor: "pointer", flexShrink: 0 }}
               />
             </Box>
           </Box>
         </Box>
 
-        <Box display="flex" justifyContent="space-between" alignItems="center" mt={4}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mt={4}>
           <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
             ✓ Preferences are automatically persisted to this browser.
           </span>

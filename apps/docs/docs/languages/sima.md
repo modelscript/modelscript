@@ -1,6 +1,6 @@
 ---
 title: "SIMO / RIFLEX-Compatible Marine Operations (.inp, .sima, .sys, .hyd)"
-description: "The @modelscript/sima package (languages/sima) provides native ingestion, analysis, verification, DAE simulation, and multi-domain projections for SIMO- and RIFLEX-compatible offshore marine engine..."
+description: "@modelscript/sima provides native ingestion, verification, DAE simulation, and multi-domain projections for SIMO/RIFLEX marine models and SIMA archives."
 ---
 
 # SIMO / RIFLEX-Compatible Marine Operations (`.inp`, `.sima`, `.sys`, `.hyd`)

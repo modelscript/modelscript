@@ -15,6 +15,7 @@ import {
 } from "@primer/octicons-react";
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { parseTrainingRecipeViewConfig } from "../../../components/artifacts/training-recipe-model";
 import type { PostItem } from "../../../types/api";
 import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../../util/editor-routing";
 import type { NotebookHeading, NotebookMetadata } from "../../../util/notebook";
@@ -63,6 +64,35 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
   const primaryArtifactId = postExt.artifact_view_id ?? post.artifact_id ?? notebookData.artifactIds?.[0];
   const primaryArtifactView =
     (primaryArtifactId ? postExt.artifact_views?.[primaryArtifactId] : undefined) || postExt.artifact_view;
+  const primaryViewType = String(
+    primaryArtifactView?.view_type || primaryArtifactView?.artifact_type || postExt.artifact_type || "",
+  ).toLowerCase();
+  const isTrainingRecipeArticle = ["training-recipe", "memory-shard", "dataset-pretrain", "dataset-posttrain"].includes(
+    primaryViewType,
+  );
+
+  const parsedRecipeMeta = useMemo(() => {
+    if (!isTrainingRecipeArticle) return null;
+    const rawCfg = primaryArtifactView?.view_config ?? postExt.artifact_config;
+    let obj: Record<string, unknown> | undefined;
+    if (typeof rawCfg === "string") {
+      try {
+        obj = JSON.parse(rawCfg) as Record<string, unknown>;
+      } catch {
+        obj = undefined;
+      }
+    } else if (rawCfg && typeof rawCfg === "object") {
+      obj = rawCfg;
+    }
+    return parseTrainingRecipeViewConfig(obj, notebookData.title, primaryViewType);
+  }, [
+    isTrainingRecipeArticle,
+    primaryArtifactView?.view_config,
+    postExt.artifact_config,
+    notebookData.title,
+    primaryViewType,
+  ]);
+
   const isMultiFileArticle = Boolean(
     primaryArtifactView &&
     isMultiFileArtifact({
@@ -85,6 +115,41 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
 
   const properties = useMemo(() => {
     const items: { icon: React.ReactNode; label: string; value: string; href?: string | undefined }[] = [];
+    if (parsedRecipeMeta) {
+      items.push({
+        icon: <PackageIcon size={12} />,
+        label: "Artifact",
+        value: `${parsedRecipeMeta.packageName}@${parsedRecipeMeta.version}`,
+      });
+      if (parsedRecipeMeta.targetModel) {
+        items.push({
+          icon: <CpuIcon size={12} />,
+          label: "Base Model",
+          value: `${parsedRecipeMeta.targetModel.baseModel} (${parsedRecipeMeta.targetModel.parameterScale})`,
+        });
+      }
+      if (parsedRecipeMeta.dynamicM) {
+        items.push({
+          icon: <SlidersIcon size={12} />,
+          label: "Dynamic-m",
+          value: `${parsedRecipeMeta.dynamicM.mStart}→${parsedRecipeMeta.dynamicM.mMax} (cap ${parsedRecipeMeta.dynamicM.mCap})`,
+        });
+      }
+      if (parsedRecipeMeta.memoryContract?.embedderId) {
+        items.push({
+          icon: <ZapIcon size={12} />,
+          label: "Embedder",
+          value: parsedRecipeMeta.memoryContract.embedderId,
+        });
+      }
+      if (parsedRecipeMeta.evalMetrics.gate1To4PassRate !== undefined) {
+        items.push({
+          icon: <PulseIcon size={12} />,
+          label: "Gate 1–4",
+          value: `${Math.round(parsedRecipeMeta.evalMetrics.gate1To4PassRate * 100)}% verified`,
+        });
+      }
+    }
     if (notebookData.series?.trim()) {
       items.push({
         icon: <BookIcon size={12} />,
@@ -116,6 +181,7 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
     }
     return items;
   }, [
+    parsedRecipeMeta,
     notebookData.series,
     notebookData.seriesPart,
     notebookData.difficulty,

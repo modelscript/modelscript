@@ -105,11 +105,20 @@ fi
 # Step 2c: Execute Production Hardening Pre-Flight Sentinel
 PREFLIGHT_SCRIPT="$(resolve_ops_script "preflight-audit.ts")"
 if [ -n "${PREFLIGHT_SCRIPT}" ] && [ -f "${PREFLIGHT_SCRIPT}" ]; then
-  echo "==> Executing Production Hardening Pre-Flight Sentinel..."
-  npx tsx "${PREFLIGHT_SCRIPT}" || {
-    echo "🚨 ERROR: Production Hardening Pre-Flight Sentinel reported critical security failures!"
-    exit 1
-  }
+  if command -v npx >/dev/null 2>&1; then
+    echo "==> Executing Production Hardening Pre-Flight Sentinel..."
+    (
+      set -a
+      [ -f "${TARGET_DIR}/.env.production" ] && source "${TARGET_DIR}/.env.production"
+      set +a
+      npx tsx "${PREFLIGHT_SCRIPT}"
+    ) || {
+      echo "🚨 ERROR: Production Hardening Pre-Flight Sentinel reported critical security failures!"
+      exit 1
+    }
+  else
+    echo "⚠️  Skipping host-side preflight-audit.ts (npx/node not installed on Docker host)."
+  fi
 fi
 
 # Step 3: Pull target Docker images
@@ -138,18 +147,21 @@ echo "==> Running production health probes..."
 check_endpoint() {
   local url="$1"
   local host_header="${2:-}"
+  local user_agent="${3:-}"
   local max_attempts=15
   local attempt=1
+  local -a curl_args=(--fail --silent --show-error)
+
+  if [ -n "${host_header}" ]; then
+    curl_args+=(-H "Host: ${host_header}")
+  fi
+  if [ -n "${user_agent}" ]; then
+    curl_args+=(-A "${user_agent}")
+  fi
 
   while [ "${attempt}" -le "${max_attempts}" ]; do
-    if [ -n "${host_header}" ]; then
-      if curl --fail --silent --show-error -H "Host: ${host_header}" "${url}" >/dev/null 2>&1; then
-        return 0
-      fi
-    else
-      if curl --fail --silent --show-error "${url}" >/dev/null 2>&1; then
-        return 0
-      fi
+    if curl "${curl_args[@]}" "${url}" >/dev/null 2>&1; then
+      return 0
     fi
     sleep 2
     attempt=$((attempt + 1))
@@ -166,20 +178,27 @@ if [ "${ROLLOUT_FAILED}" = "false" ]; then
     echo "    ✓ API is healthy."
   fi
 
-  echo "    Checking Documentation portal (http://127.0.0.1:3001/healthz via modelscript.org)..."
-  if ! check_endpoint "http://127.0.0.1:3001/healthz" "modelscript.org"; then
-    echo "🚨 FAIL: Documentation portal health probe did not respond successfully."
+  echo "    Checking Documentation portal (modelscript.org: /, Googlebot /, /guide/introduction, /sitemap.xml)..."
+  if ! check_endpoint "http://127.0.0.1:3001/healthz" "modelscript.org" \
+    || ! check_endpoint "http://127.0.0.1:3001/" "modelscript.org" \
+    || ! check_endpoint "http://127.0.0.1:3001/" "modelscript.org" "Googlebot/2.1 (+http://www.google.com/bot.html)" \
+    || ! check_endpoint "http://127.0.0.1:3001/guide/introduction" "modelscript.org" \
+    || ! check_endpoint "http://127.0.0.1:3001/sitemap.xml" "modelscript.org"; then
+    echo "🚨 FAIL: Documentation portal smoke probes failed."
     ROLLOUT_FAILED=true
   else
-    echo "    ✓ Documentation portal is healthy."
+    echo "    ✓ Documentation portal is healthy (including crawler & sitemap checks)."
   fi
 
-  echo "    Checking Ansatz platform (http://127.0.0.1:3001/healthz via ansatz.social)..."
-  if ! check_endpoint "http://127.0.0.1:3001/healthz" "ansatz.social"; then
-    echo "🚨 FAIL: Ansatz platform health probe did not respond successfully."
+  echo "    Checking Ansatz platform (ansatz.social: /editor, /embed/editor, /lsp/server/dist/browserServerMain.js)..."
+  if ! check_endpoint "http://127.0.0.1:3001/healthz" "ansatz.social" \
+    || ! check_endpoint "http://127.0.0.1:3001/editor" "ansatz.social" \
+    || ! check_endpoint "http://127.0.0.1:3001/embed/editor" "ansatz.social" \
+    || ! check_endpoint "http://127.0.0.1:3001/lsp/server/dist/browserServerMain.js" "ansatz.social"; then
+    echo "🚨 FAIL: Ansatz platform smoke probes failed."
     ROLLOUT_FAILED=true
   else
-    echo "    ✓ Ansatz platform is healthy."
+    echo "    ✓ Ansatz platform, embeds, and browser LSP assets are healthy."
   fi
 fi
 
@@ -191,13 +210,14 @@ if [ "${ROLLOUT_FAILED}" = "true" ]; then
   echo "Dumping container failure logs:"
   ${COMPOSE_CMD} logs --tail=100 api web || true
 
-  if [ -n "${PREV_API_IMAGE}" ] && [ "${PREV_API_IMAGE}" != "${IMAGE_TAG}" ]; then
-    echo "==> Rolling back containers to previous known-good tag (${PREV_API_IMAGE})..."
-    IMAGE_TAG="${PREV_API_IMAGE}" ${COMPOSE_CMD} --profile "${DEPLOY_PROFILE}" up -d --wait --remove-orphans || true
+  ROLLBACK_TAG="${PREV_API_IMAGE:-${PREV_WEB_IMAGE:-}}"
+  if [ -n "${ROLLBACK_TAG}" ] && [ "${ROLLBACK_TAG}" != "${IMAGE_TAG}" ]; then
+    echo "==> Rolling back containers to previous known-good tag (${ROLLBACK_TAG}) using local cache..."
+    IMAGE_TAG="${ROLLBACK_TAG}" ${COMPOSE_CMD} --profile "${DEPLOY_PROFILE}" up -d --pull never --wait --remove-orphans || true
 
     # Check if rollback image is healthy
     if check_endpoint "http://127.0.0.1:3000/health"; then
-      echo "✓ Rollback successful! Services restored to ${PREV_API_IMAGE}."
+      echo "✓ Rollback successful! Services restored to ${ROLLBACK_TAG}."
     elif [ -n "${LATEST_BACKUP}" ] && [ -f "${LATEST_BACKUP}" ] && [ -n "${RESTORE_SCRIPT}" ] && [ -f "${RESTORE_SCRIPT}" ]; then
       echo "==> Services still unhealthy after image rollback. Restoring pre-deploy database snapshot..."
       if ! "${RESTORE_SCRIPT}" "${LATEST_BACKUP}"; then

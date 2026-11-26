@@ -24,6 +24,14 @@
       "types": "./dist/src/context.d.ts",
       "default": "./dist/src/context.js"
     },
+    "./document-queries": {
+      "types": "./dist/src/document-queries.d.ts",
+      "default": "./dist/src/document-queries.js"
+    },
+    "./structure-scanner": {
+      "types": "./dist/src/structure-scanner.d.ts",
+      "default": "./dist/src/structure-scanner.js"
+    },
     "./factory": {
       "types": "./dist/src/factory.d.ts",
       "default": "./dist/src/factory.js"

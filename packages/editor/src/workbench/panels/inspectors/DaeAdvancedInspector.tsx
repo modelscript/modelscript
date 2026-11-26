@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { indexLocalSymbolLines, scanModelicaStructure } from "@modelscript/modelica/structure-scanner";
 import React, { useMemo, useState } from "react";
-import { indexLocalSymbolLines, scanModelicaStructure } from "../modelica-scanner.js";
 import { InspectorTabs } from "./InspectorTabs.js";
 
 export interface DaeAdvancedInspectorProps {
@@ -374,9 +374,167 @@ function inferExprDim(expr: string, varDims: Map<string, DimVec>): ExprDimResult
 
 function extractModificationAttr(modText: string | undefined, attr: string): string | undefined {
   if (!modText) return undefined;
-  const re = new RegExp(`\\b${attr}\\s*=\\s*([^,)]+)`);
-  const m = re.exec(modText);
-  return m?.[1]?.trim();
+  let inner = modText.trim();
+  if (!inner) return undefined;
+
+  // Strip a single balanced outer "(...)" wrapper when present
+  if (inner.startsWith("(") && inner.endsWith(")")) {
+    let depth = 0;
+    let inDouble = false;
+    let inSingle = false;
+    let wrapsEntire = true;
+    for (let i = 0; i < inner.length; i++) {
+      const ch = inner[i]!;
+      if (inDouble) {
+        if (ch === "\\" && i + 1 < inner.length) i++;
+        else if (ch === '"') inDouble = false;
+      } else if (inSingle) {
+        if (ch === "\\" && i + 1 < inner.length) i++;
+        else if (ch === "'") inSingle = false;
+      } else if (ch === '"') {
+        inDouble = true;
+      } else if (ch === "'") {
+        inSingle = true;
+      } else if (ch === "(") {
+        depth++;
+      } else if (ch === ")") {
+        depth--;
+        if (depth === 0 && i < inner.length - 1) {
+          wrapsEntire = false;
+          break;
+        }
+      }
+    }
+    if (wrapsEntire && depth === 0) {
+      inner = inner.slice(1, -1);
+    }
+  }
+
+  let parenDepth = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let inDouble = false;
+  let inSingle = false;
+  let segStart = 0;
+
+  const inspectSegment = (rawSeg: string): string | undefined => {
+    const seg = rawSeg.trim();
+    if (!seg) return undefined;
+    let pDepth = 0;
+    let bDepth = 0;
+    let kDepth = 0;
+    let dQuote = false;
+    let sQuote = false;
+    let eqIdx = -1;
+    for (let j = 0; j < seg.length; j++) {
+      const c = seg[j]!;
+      if (dQuote) {
+        if (c === "\\" && j + 1 < seg.length) j++;
+        else if (c === '"') dQuote = false;
+      } else if (sQuote) {
+        if (c === "\\" && j + 1 < seg.length) j++;
+        else if (c === "'") sQuote = false;
+      } else if (c === '"') {
+        dQuote = true;
+      } else if (c === "'") {
+        sQuote = true;
+      } else if (c === "(") {
+        pDepth++;
+      } else if (c === ")") {
+        if (pDepth > 0) pDepth--;
+      } else if (c === "{") {
+        bDepth++;
+      } else if (c === "}") {
+        if (bDepth > 0) bDepth--;
+      } else if (c === "[") {
+        kDepth++;
+      } else if (c === "]") {
+        if (kDepth > 0) kDepth--;
+      } else if (c === "=" && pDepth === 0 && bDepth === 0 && kDepth === 0) {
+        const prev = j > 0 ? seg[j - 1] : "";
+        const next = j + 1 < seg.length ? seg[j + 1] : "";
+        if (prev !== "<" && prev !== ">" && prev !== "!" && prev !== ":" && next !== "=") {
+          eqIdx = j;
+          break;
+        }
+      }
+    }
+    if (eqIdx < 0) return undefined;
+
+    let lhs = seg.slice(0, eqIdx).trim();
+    const openParen = lhs.indexOf("(");
+    if (openParen >= 0) {
+      lhs = lhs.slice(0, openParen).trim();
+    }
+    // Handle prefixes like "each start" or "final each start"
+    let keyStart = lhs.length;
+    while (keyStart > 0) {
+      const ch = lhs[keyStart - 1]!;
+      if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") break;
+      keyStart--;
+    }
+    const key = lhs.slice(keyStart);
+    if (key !== attr) return undefined;
+
+    const val = seg.slice(eqIdx + 1).trim();
+    return val.length > 0 ? val : undefined;
+  };
+
+  for (let i = 0; i <= inner.length; i++) {
+    const ch = i < inner.length ? inner[i]! : ",";
+    if (i < inner.length) {
+      if (inDouble) {
+        if (ch === "\\" && i + 1 < inner.length) i++;
+        else if (ch === '"') inDouble = false;
+        continue;
+      }
+      if (inSingle) {
+        if (ch === "\\" && i + 1 < inner.length) i++;
+        else if (ch === "'") inSingle = false;
+        continue;
+      }
+      if (ch === '"') {
+        inDouble = true;
+        continue;
+      }
+      if (ch === "'") {
+        inSingle = true;
+        continue;
+      }
+      if (ch === "(") {
+        parenDepth++;
+        continue;
+      }
+      if (ch === ")") {
+        if (parenDepth > 0) parenDepth--;
+        continue;
+      }
+      if (ch === "{") {
+        braceDepth++;
+        continue;
+      }
+      if (ch === "}") {
+        if (braceDepth > 0) braceDepth--;
+        continue;
+      }
+      if (ch === "[") {
+        bracketDepth++;
+        continue;
+      }
+      if (ch === "]") {
+        if (bracketDepth > 0) bracketDepth--;
+        continue;
+      }
+    }
+
+    if (ch === "," && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
+      const found = inspectSegment(inner.slice(segStart, i));
+      if (found !== undefined) return found;
+      segStart = i + 1;
+    }
+  }
+
+  return undefined;
 }
 
 export interface DaePhysicsSummary {

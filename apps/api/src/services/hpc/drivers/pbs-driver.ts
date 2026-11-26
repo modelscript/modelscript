@@ -13,7 +13,7 @@ import type {
   HpcSubmissionResult,
   HpcUsageMetrics,
 } from "../hpc-types.js";
-import { escapeBashDoubleQuoted, isValidEnvKey, quoteShellArg, sanitizeSlurmToken } from "../sbatch-generator.js";
+import { escapeBashDoubleQuoted, quoteShellArg, sanitizeSlurmToken, sanitizeUserEnv } from "../sbatch-generator.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -36,9 +36,10 @@ export function generatePbsScript(spec: HpcJobSpec): string {
   const lines: string[] = ["#!/bin/bash"];
 
   const safeJobName = sanitizeSlurmToken(spec.name || spec.jobId, "modelscript-pbs-job");
+  const safeJobId = sanitizeSlurmToken(spec.jobId, "job");
   lines.push(`#PBS -N ${safeJobName}`);
-  lines.push(`#PBS -o pbs-%j.out`);
-  lines.push(`#PBS -e pbs-%j.err`);
+  lines.push(`#PBS -o pbs-${safeJobId}.out`);
+  lines.push(`#PBS -e pbs-${safeJobId}.err`);
   lines.push(`#PBS -j oe`);
 
   const nodes = Math.max(1, Math.floor(r.nodes ?? 1));
@@ -73,12 +74,12 @@ export function generatePbsScript(spec: HpcJobSpec): string {
   lines.push(`if [ -n "\${PBS_O_WORKDIR:-}" ]; then cd "$PBS_O_WORKDIR"; fi`);
   lines.push(`export OMP_NUM_THREADS=${cpusPerTask}`);
 
-  if (spec.env) {
+  const safeEnv = sanitizeUserEnv(spec.env);
+  if (Object.keys(safeEnv).length > 0) {
     lines.push("");
     lines.push("# --- Environment Setup ---");
-    for (const [key, value] of Object.entries(spec.env)) {
-      if (!isValidEnvKey(key) || value === undefined) continue;
-      lines.push(`export ${key}="${escapeBashDoubleQuoted(String(value))}"`);
+    for (const [key, value] of Object.entries(safeEnv)) {
+      lines.push(`export ${key}="${escapeBashDoubleQuoted(value)}"`);
     }
   }
 
@@ -182,7 +183,7 @@ export function parsePbsQstatOutput(output: string): {
   if (/\b(Q|H|W)\b/.test(trimmed)) return { state: "PENDING" };
   if (/\bC\b/.test(trimmed)) return { state: "COMPLETED", exitCode: 0 };
 
-  return { state: "COMPLETED", exitCode: 0 };
+  return { state: "FAILED", exitCode: -1 };
 }
 
 /**
@@ -192,12 +193,17 @@ export function parsePbsQstatOutput(output: string): {
 export class PbsDriver implements HpcDriver {
   readonly type = "pbs" as const;
   private readonly executor: CommandExecutor;
+  private readonly nativeToLogicalJobId = new Map<string, string>();
 
   constructor(options: PbsDriverOptions = {}) {
     this.executor =
       options.executor ||
       (async (cmd: string, args: string[], cwd?: string) => {
-        const res = await execFileAsync(cmd, args, { cwd });
+        const res = await execFileAsync(cmd, args, {
+          cwd,
+          timeout: 30_000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
         return { stdout: res.stdout.toString(), stderr: res.stderr.toString() };
       });
   }
@@ -218,7 +224,8 @@ export class PbsDriver implements HpcDriver {
       throw new Error(`Failed to submit PBS job: ${fullOut.trim()}`);
     }
 
-    const nativeJobId = match[1];
+    const nativeJobId = this.assertSafeNativeJobId(match[1]);
+    this.nativeToLogicalJobId.set(nativeJobId, spec.jobId);
     const profile = getComputeProfile(spec.profileId);
 
     return {
@@ -231,29 +238,26 @@ export class PbsDriver implements HpcDriver {
 
   private assertSafeNativeJobId(nativeJobId: string): string {
     const trimmed = String(nativeJobId).trim();
-    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(trimmed) || trimmed.startsWith("-")) {
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(trimmed) || trimmed.startsWith("-") || trimmed.includes("..")) {
       throw new Error(`Invalid PBS nativeJobId: ${nativeJobId}`);
     }
     return trimmed;
   }
 
   public async pollStatus(nativeJobId: string): Promise<{ state: HpcJobState; exitCode?: number | undefined }> {
-    try {
-      const safeId = this.assertSafeNativeJobId(nativeJobId);
-      const { stdout } = await this.executor("qstat", ["-f", safeId]);
-      return parsePbsQstatOutput(stdout);
-    } catch {
-      // If qstat fails or job has left accounting queue, treat as completed
-      return { state: "COMPLETED", exitCode: 0 };
-    }
+    const safeId = this.assertSafeNativeJobId(nativeJobId);
+    const { stdout } = await this.executor("qstat", ["-f", safeId]);
+    return parsePbsQstatOutput(stdout);
   }
 
   public async cancel(nativeJobId: string): Promise<boolean> {
     try {
       const safeId = this.assertSafeNativeJobId(nativeJobId);
       await this.executor("qdel", [safeId]);
+      this.nativeToLogicalJobId.delete(safeId);
       return true;
-    } catch {
+    } catch (err) {
+      console.warn(`[PbsDriver] Failed to cancel job ${nativeJobId}:`, err);
       return false;
     }
   }
@@ -272,14 +276,14 @@ export class PbsDriver implements HpcDriver {
           parseInt(cputMatch[1], 10) * 3600 + parseInt(cputMatch[2], 10) * 60 + parseInt(cputMatch[3], 10);
       }
 
-      // Extract walltime
+      // Extract walltime (do not fabricate 60s when missing)
       let elapsedSeconds = 0;
       const wallMatch = stdout.match(/resources_used\.walltime\s*=\s*(\d+):(\d+):(\d+)/i);
       if (wallMatch && wallMatch[1] && wallMatch[2] && wallMatch[3]) {
         elapsedSeconds =
           parseInt(wallMatch[1], 10) * 3600 + parseInt(wallMatch[2], 10) * 60 + parseInt(wallMatch[3], 10);
-      } else {
-        elapsedSeconds = cpuCoreSeconds > 0 ? Math.ceil(cpuCoreSeconds / profile.cpus) : 60;
+      } else if (cpuCoreSeconds > 0) {
+        elapsedSeconds = Math.ceil(cpuCoreSeconds / Math.max(1, profile.cpus));
       }
 
       // Extract peak memory
@@ -304,20 +308,29 @@ export class PbsDriver implements HpcDriver {
         nativeJobId: safeId,
         exitCode: parsed.exitCode ?? 0,
       };
-    } catch {
+    } catch (err) {
+      console.warn(`[PbsDriver] Failed to fetch metrics for job ${nativeJobId}:`, err);
       return {
         wallClockSeconds: 0,
         cpuCoreSeconds: 0,
         peakMemoryMb: profile.memoryMb,
         costCredits: 0,
         nativeJobId,
-        exitCode: 0,
+        exitCode: -1,
       };
     }
   }
 
   public getLogPath(nativeJobId: string, workingDir: string): string {
-    const safeId = this.assertSafeNativeJobId(nativeJobId);
-    return path.join(workingDir, `pbs-${safeId}.out`);
+    const safeNativeId = this.assertSafeNativeJobId(nativeJobId);
+    const logicalId = this.nativeToLogicalJobId.get(safeNativeId);
+    const fileId = path.basename(sanitizeSlurmToken(logicalId ?? safeNativeId, "job"));
+    const resolvedDir = path.resolve(workingDir);
+    const resolvedLog = path.resolve(resolvedDir, `pbs-${fileId}.out`);
+    const rootWithSep = resolvedDir.endsWith(path.sep) ? resolvedDir : resolvedDir + path.sep;
+    if (!resolvedLog.startsWith(rootWithSep)) {
+      throw new Error(`Unsafe log path detected for PBS job ${nativeJobId}`);
+    }
+    return resolvedLog;
   }
 }

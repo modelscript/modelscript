@@ -759,17 +759,57 @@ function findSectionClosingLine(lines: string[], sectionName: string): number | 
   return null;
 }
 
+function isXmlPrefixChar(ch: string): boolean {
+  const c = ch.charCodeAt(0);
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95 || c === 45;
+}
+
+function matchesClosingTagAt(line: string, pos: number, targetLower: string): boolean {
+  const end = pos + targetLower.length;
+  if (end > line.length || line.slice(pos, end).toLowerCase() !== targetLower) {
+    return false;
+  }
+  let q = end;
+  while (q < line.length && isWsChar(line[q]!)) q++;
+  return q < line.length && line[q] === ">";
+}
+
+function findXmlClosingTagIndex(line: string, targetSection: string): number {
+  const targetLower = targetSection.toLowerCase();
+  let searchFrom = 0;
+  while (searchFrom < line.length) {
+    const start = line.indexOf("</", searchFrom);
+    if (start === -1) return -1;
+    const afterSlash = start + 2;
+    if (matchesClosingTagAt(line, afterSlash, targetLower)) {
+      return start;
+    }
+    let prefixEnd = afterSlash;
+    while (prefixEnd < line.length && isXmlPrefixChar(line[prefixEnd]!)) {
+      prefixEnd++;
+    }
+    if (
+      prefixEnd > afterSlash &&
+      prefixEnd < line.length &&
+      line[prefixEnd] === ":" &&
+      matchesClosingTagAt(line, prefixEnd + 1, targetLower)
+    ) {
+      return start;
+    }
+    searchFrom = afterSlash;
+  }
+  return -1;
+}
+
 function insertIntoSectionOrRoot(lines: string[], allEdits: TextEdit[], content: string, targetSection?: string) {
   if (targetSection) {
-    const escaped = targetSection.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const xmlCloseRe = new RegExp(`</(?:[A-Za-z0-9_-]+:)?${escaped}\\s*>`, "i");
     for (let i = lines.length - 1; i >= 0; i--) {
-      const m = xmlCloseRe.exec(lines[i]!);
-      if (m) {
+      const idx = findXmlClosingTagIndex(lines[i]!, targetSection);
+      if (idx !== -1) {
         allEdits.push({
           range: {
-            start: { line: i, character: m.index },
-            end: { line: i, character: m.index },
+            start: { line: i, character: idx },
+            end: { line: i, character: idx },
           },
           newText: "\n  " + content.trim() + "\n",
         });

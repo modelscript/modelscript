@@ -26,6 +26,7 @@ export * as variants from "./variants/index.js";
 export * from "./aasx/index.js";
 export * from "./adapters/index.js";
 export * from "./catalog/index.js";
+export * from "./cfd/cgns-exporter.js";
 export * from "./compliance/index.js";
 export * from "./cosim/index.js";
 export * from "./ddp/index.js";

@@ -217,7 +217,7 @@ describe("Settings Feature Flag Gating (AI Bots, Billing, Organizations, Invites
     assert.ok(
       settingsContent.includes('if (effectiveRawTab === "admin")') &&
         settingsContent.includes(
-          'if (isUserAdmin) {\n        navigate("/admin");\n      } else {\n        setActiveTab("account");',
+          'if (isUserAdmin) {\n        navigate("/admin", { replace: true });\n      } else {\n        setActiveTab("account");',
         ),
       "SettingsPage.tsx must protect /settings/admin navigation so non-admins fallback to account",
     );

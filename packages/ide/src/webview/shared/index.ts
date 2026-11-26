@@ -21,3 +21,18 @@ export {
 } from "./timeseries-viewer.js";
 
 export { EngineeringDataGrid, type DataGridColumn, type EngineeringDataGridProps } from "./engineering-datagrid.js";
+
+export {
+  VsCodeEditorHostProvider,
+  createVsCodeLspTransport,
+  getVsCodeWebviewApi,
+  useVsCodeHostActions,
+  type PickedWorkspaceFile,
+  type VsCodeEditorHostProviderProps,
+  type VsCodeHostActions,
+  type VsCodeLspTransportOptions,
+  type VsCodeMessageEventLike,
+  type VsCodeMessageTarget,
+  type VsCodeWebviewApi,
+  type WorkspaceFileListing,
+} from "./vscode-editor-host.js";

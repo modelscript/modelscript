@@ -182,3 +182,41 @@ end GridCoupled;
   assert.equal(bindings.boundaryBusNumber, 2);
   assert.ok(bindings.signalBindings.some((b) => b.modelicaVar === "ctrl.v_ref" && b.pscadSignal === "emtPin"));
 });
+
+test("detectPolyglotPlan and extractPolyglotBoundaryBindings use Modelica CST and ignore comments", async () => {
+  await ensureModelicaParser();
+  const uw = new UnifiedWorkspace([pscadLanguage, psseLanguage]);
+
+  const commentOnlyMo = `model PureModelica
+  // PSCAD.Interfaces.ElectricalPin fakePin;
+  /* GRID_CASE.Bus_2 fakeBus; */
+  Real x;
+equation
+  // connect(fakeBus.v_pu, fakePin);
+  der(x) = -x;
+end PureModelica;
+`;
+  const noPlan = detectPolyglotPlan(uw, "file:///workspace/PureModelica.mo", commentOnlyMo);
+  assert.equal(noPlan, null, "Commented-out PSCAD references must not trigger a polyglot plan");
+
+  const emptyBindings = extractPolyglotBoundaryBindings(commentOnlyMo, undefined, uw);
+  assert.equal(emptyBindings.boundaryBusNumber, undefined);
+  assert.equal(emptyBindings.signalBindings.length, 0);
+
+  const multiDeclMo = `model MultiDecl
+  PSCAD.Interfaces.ElectricalPin pinA, pinB;
+  GRID_CASE.Bus_7 pccBus;
+  Real ctrlOut;
+equation
+  // connect(pinA, ctrlOut);
+  connect(pccBus.v_pu, pinB);
+  connect(pinB, ctrlOut);
+end MultiDecl;
+`;
+  const multiBindings = extractPolyglotBoundaryBindings(multiDeclMo, undefined, uw);
+  assert.equal(multiBindings.boundaryBusNumber, 7);
+  assert.deepEqual(multiBindings.signalBindings, [
+    { modelicaVar: "pccBus.v_pu", pscadSignal: "pinB" },
+    { modelicaVar: "ctrlOut", pscadSignal: "pinB" },
+  ]);
+});

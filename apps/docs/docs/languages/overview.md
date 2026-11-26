@@ -1,11 +1,11 @@
 ---
 title: "Polyglot Language Ecosystem"
-description: "ModelScript is not a single-language compiler—it is a polyglot systems engineering framework. All 105 documented engineering, scientific, and clinical formats share the same WebAssembly GLR parser compiler..."
+description: "ModelScript's polyglot ecosystem unifies 169 engineering, scientific, and clinical formats on one WebAssembly GLR parser, SymbolIndex, and TGG sync engine."
 ---
 
 # Polyglot Language Ecosystem
 
-ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **105 documented engineering, scientific, and clinical formats** (106 total workspace language packages) share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
+ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **169 documented engineering, scientific, and clinical formats** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
 
 ---
 

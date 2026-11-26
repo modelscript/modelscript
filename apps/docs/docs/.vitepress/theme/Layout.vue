@@ -2,24 +2,23 @@
 <script setup lang="ts">
 import { inBrowser, useRoute } from "vitepress";
 import DefaultTheme from "vitepress/theme";
-import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, nextTick, onMounted, watch } from "vue";
 import DocBreadcrumbs from "./components/DocBreadcrumbs.vue";
 import LanguageHeader from "./components/LanguageHeader.vue";
-import { useAnsatzOrigin } from "./util/ansatz";
+import { useAnsatzOrigin, useBlogOrigin } from "./util/ansatz";
 
-const TurbineHero = defineAsyncComponent(() => import("./components/TurbineHero.vue"));
 const NotFound = defineAsyncComponent(() => import("./components/NotFound.vue"));
 const LanguageExample = defineAsyncComponent(() => import("./components/LanguageExample.vue"));
 
 const { Layout } = DefaultTheme;
 const route = useRoute();
 const { ansatzOrigin } = useAnsatzOrigin();
-const isMounted = ref(false);
+const { blogOrigin } = useBlogOrigin();
 const isLanguageDetailPage = computed(
   () => route.path.startsWith("/languages/") && !route.path.startsWith("/languages/overview"),
 );
 
-function syncHeroAnsatzLinks(): void {
+function syncLocalOriginLinks(): void {
   if (!inBrowser) return;
   const origin = ansatzOrigin.value.replace(/\/$/, "");
   const links = document.querySelectorAll<HTMLAnchorElement>(".VPHero .actions a");
@@ -35,17 +34,25 @@ function syncHeroAnsatzLinks(): void {
       a.rel = "noopener noreferrer";
     }
   });
+
+  const blogTarget = blogOrigin.value.replace(/\/$/, "");
+  if (blogTarget !== "https://blog.modelscript.org") {
+    document
+      .querySelectorAll<HTMLAnchorElement>('a[href^="https://blog.modelscript.org"]')
+      .forEach((a) => {
+        a.href = a.href.replace(/^https:\/\/blog\.modelscript\.org/, blogTarget);
+      });
+  }
 }
 
 onMounted(() => {
-  isMounted.value = true;
-  syncHeroAnsatzLinks();
+  syncLocalOriginLinks();
 });
 
 watch(
-  [() => route.path, ansatzOrigin],
+  [() => route.path, ansatzOrigin, blogOrigin],
   () => {
-    nextTick(() => syncHeroAnsatzLinks());
+    nextTick(() => syncLocalOriginLinks());
   },
   { flush: "post" },
 );
@@ -55,14 +62,6 @@ watch(
   <Layout>
     <template #nav-bar-title-after>
       <span class="ms-nav-beta-badge">Beta</span>
-    </template>
-    <template #home-hero-image>
-      <ClientOnly>
-        <TurbineHero />
-      </ClientOnly>
-      <div v-if="!isMounted" class="turbine-ssr-fallback">
-        <img class="fallback-img" src="/ms-logo.png" alt="ModelScript Turbine Engine" />
-      </div>
     </template>
     <template #doc-before>
       <DocBreadcrumbs />

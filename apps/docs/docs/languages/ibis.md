@@ -1,6 +1,6 @@
 ---
 title: "IBIS Semiconductor Buffer Modeling (.ibs)"
-description: "@modelscript/ibis (languages/ibis) provides zero-regex parsing, non-linear driver I/V interpolation, dynamic VT ramp synthesis, package parasitics RLC lowering, and Modelica 3.x projection for ANSI..."
+description: "@modelscript/ibis provides zero-regex parsing, non-linear I/V interpolation, VT ramp synthesis, RLC lowering, and Modelica projection for ANSI/EIA-656 IBIS."
 ---
 
 # IBIS Semiconductor Buffer Modeling (`.ibs`)

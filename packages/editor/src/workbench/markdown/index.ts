@@ -3,3 +3,4 @@
 export { DiagramMacro } from "./macros/DiagramMacro.js";
 export { RequirementsMacro } from "./macros/RequirementsMacro.js";
 export { MarkdownViewer } from "./MarkdownViewer.js";
+export { ZonotopeProseAnnotator, type ZonotopeProseAnnotatorProps } from "./ZonotopeProseAnnotator.js";

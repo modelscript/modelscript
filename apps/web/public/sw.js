@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // ModelScript Service Worker - Offline Caching & PWA Support
 
-const CACHE_NAME = "modelscript-v1";
+const CACHE_NAME = "modelscript-v2";
 const STATIC_ASSETS = [
   "/",
   "/maintenance.html",
@@ -11,6 +11,26 @@ const STATIC_ASSETS = [
   "/manifest.webmanifest",
   "/robots.txt",
 ];
+
+// Allow the web app to purge user-scoped cached API responses on logout
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "CLEAR_API_CACHE") {
+    event.waitUntil(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.keys().then((keys) =>
+          Promise.all(
+            keys
+              .filter((req) => {
+                const p = new URL(req.url).pathname;
+                return p.startsWith("/api/v1/social/");
+              })
+              .map((req) => cache.delete(req)),
+          ),
+        ),
+      ),
+    );
+  }
+});
 
 // Install event: Pre-cache static shell assets
 self.addEventListener("install", (event) => {
@@ -69,21 +89,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 1b. Unhashed WASM parsers & LSP server bundles (StaleWhileRevalidate so updates propagate)
+  // 1b. Unhashed WASM parsers & LSP server bundles (NetworkFirst with cache fallback so deploys stay consistent)
   if (url.pathname.endsWith(".wasm") || url.pathname.startsWith("/lsp/server/dist/")) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
-        cache.match(request).then((cachedResponse) => {
-          const fetchPromise = fetch(request)
-            .then((networkResponse) => {
-              if (networkResponse && networkResponse.status === 200) {
-                cache.put(request, networkResponse.clone());
-              }
-              return networkResponse;
-            })
-            .catch(() => cachedResponse);
-          return cachedResponse || fetchPromise;
-        }),
+        fetch(request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(request, networkResponse.clone());
+            }
+            return networkResponse;
+          })
+          .catch(() => cache.match(request).then((cached) => cached || Response.error())),
       ),
     );
     return;

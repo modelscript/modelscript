@@ -17,7 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV SU2_RUN=/usr/bin
 ENV PATH="${SU2_RUN}:${PATH}"
 
+RUN mkdir -p /workspace && chown 1000:1000 /workspace
 WORKDIR /workspace
+USER 1000:1000
 
 ENTRYPOINT ["SU2_CFD"]
 CMD ["config.cfg"]

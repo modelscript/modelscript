@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { compileGlyphMarkup } from "@modelscript/canvas/engine";
 import assert from "node:assert";
 import test from "node:test";
+import { attachPlacementAndWireTools } from "../src/canvas-placement-wire.js";
 import {
   DROP_BOUNCE_DURATION_MS,
   clearActiveDropPlaceholder,
@@ -9,6 +11,7 @@ import {
   ensureDiagramStyles,
   getActiveDropPlaceholder,
   getTypicalNodeSize,
+  parseIconSvgToMarkup,
 } from "../src/drop-placeholder.js";
 import * as Spinner from "../src/spinner.js";
 import { performViewportCulling } from "../src/viewport-culling.js";
@@ -137,9 +140,101 @@ test("Drag and Drop Component Placeholder & Bounce Animation Suite", async (t) =
     assert.strictEqual(node.height, 20);
     assert.strictEqual(node.zIndex, 9999);
     assert.ok(node.imageUrl.startsWith("data:image/svg+xml;utf8,"));
+    assert.ok(Array.isArray(node.markup), "drop placeholder must provide inline SVG markup");
+    assert.strictEqual(node.markup[0].tagName, "svg");
+    assert.strictEqual(node.markup[0].selector, "image");
+    assert.strictEqual(node.markup[0].attrs.viewBox, "0 0 100 100");
+    assert.strictEqual(node.markup[0].children?.[0]?.tagName, "rect");
+    assert.strictEqual(node.markup[0].children?.[0]?.attrs?.fill, "blue");
     assert.match(node.attrs.image.style, /drop-placeholder-bounce/);
     assert.match(node.attrs.image.style, /transform-box:\s*fill-box/);
     assert.match(node.attrs.image.style, /transform-origin:\s*center center/);
+  });
+
+  await t.test("parseIconSvgToMarkup converts PSSE SVG icons into sanitized DiagramMarkupNode trees", () => {
+    const psseSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" onclick="alert(1)"><circle cx="32" cy="30" r="22" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2.5"/><path d="M 18 30 Q 25 18 32 30 T 46 30" fill="none" stroke="#1d4ed8" stroke-width="2.5"/><text x="32" y="61" text-anchor="middle" fill="#1e3a8a">GENROU</text></svg>';
+    const markup = parseIconSvgToMarkup(psseSvg, 40, 40);
+    assert.ok(markup && markup.length === 1);
+    const root = markup[0]!;
+    assert.strictEqual(root.tagName, "svg");
+    assert.strictEqual(root.selector, "image");
+    assert.strictEqual(root.attrs?.width, 40);
+    assert.strictEqual(root.attrs?.height, 40);
+    assert.strictEqual(root.attrs?.viewBox, "0 0 64 64");
+    assert.strictEqual(root.attrs?.onclick, undefined, "inline event handlers must be stripped");
+    assert.strictEqual(root.children?.length, 3);
+    assert.strictEqual(root.children?.[0]?.tagName, "circle");
+    assert.strictEqual(root.children?.[1]?.tagName, "path");
+    assert.strictEqual(root.children?.[2]?.tagName, "text");
+    assert.strictEqual(root.children?.[2]?.textContent, "GENROU");
+
+    assert.strictEqual(parseIconSvgToMarkup("", 40, 40), null);
+    assert.strictEqual(parseIconSvgToMarkup("<div>not svg</div>", 40, 40), null);
+  });
+
+  await t.test("placement-ghost renders dragged SVG icon markup instead of default black rect", () => {
+    const addedNodes: any[] = [];
+    const handlers = new Map<string, (...args: any[]) => void>();
+    const mockGraph: any = {
+      on: (event: string, fn: (...args: any[]) => void) => handlers.set(event, fn),
+      getNodes: () => [{ id: "GEN1", getSize: () => ({ width: 48, height: 48 }) }],
+      getCellById: () => null,
+      addNode: (node: any) => {
+        const created = {
+          ...node,
+          remove: () => {},
+          getSize: () => ({ width: node.width, height: node.height }),
+          position: () => {},
+        };
+        addedNodes.push(created);
+        return created;
+      },
+    };
+
+    const prevWindow = (globalThis as any).window;
+    const mockWin: any = {
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    };
+    (globalThis as any).window = mockWin;
+    try {
+      const controller = attachPlacementAndWireTools({
+        graph: mockGraph,
+        isDark: false,
+        startInlineNodeEdit: () => {},
+      });
+      const psseSvg =
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="30" r="22" fill="#eff6ff" stroke="#1d4ed8"/></svg>';
+      mockWin.__startPlacement({
+        className: "psse:generator",
+        classKind: "Component",
+        iconSvg: psseSvg,
+        isDrag: true,
+      });
+      mockWin.__movePlacementGhost(200, 160, { buttons: 1 });
+
+      assert.strictEqual(addedNodes.length, 1);
+      const ghost = addedNodes[0];
+      assert.strictEqual(ghost.id, "placement-ghost");
+      assert.ok(Array.isArray(ghost.markup), "placement-ghost must supply inline SVG markup");
+      assert.strictEqual(ghost.markup[0].tagName, "svg");
+      assert.strictEqual(ghost.markup[0].children?.[0]?.tagName, "circle");
+
+      // Verify the canvas glyph compiler produces the dragged SVG icon rather than the default #1e293b rect
+      const compiled = compileGlyphMarkup(ghost.markup, ghost.attrs, ghost.width, ghost.height);
+      assert.strictEqual(compiled.roots[0]?.tagName, "svg");
+      assert.strictEqual(compiled.roots[0]?.children[0]?.tagName, "circle");
+      assert.strictEqual(compiled.roots[0]?.children[0]?.attrs.fill, "#eff6ff");
+
+      controller.dispose();
+    } finally {
+      if (prevWindow === undefined) {
+        delete (globalThis as any).window;
+      } else {
+        (globalThis as any).window = prevWindow;
+      }
+    }
   });
 
   await t.test("should fallback to styled rectangular placeholder when SVG is missing", () => {

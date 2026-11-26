@@ -13,6 +13,7 @@ services:
     environment:
       - PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-ansatz.social}
       - DOCS_DOMAIN=${DOCS_DOMAIN:-modelscript.org}
+      - BLOG_DOMAIN=${BLOG_DOMAIN:-blog.modelscript.org}
     restart: always
 
   mqtt:
@@ -32,7 +33,7 @@ services:
       - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
       - TRUST_PROXY=true
       - PUBLIC_URL=${PUBLIC_URL:-https://ansatz.social}
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://ansatz.social,https://modelscript.org,https://ide.ansatz.social,https://ide.modelscript.org}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://ansatz.social,https://modelscript.org,https://blog.modelscript.org,https://ide.ansatz.social,https://ide.modelscript.org}
       - FEDERATION_MODE=${FEDERATION_MODE:-open}
       - DEPLOYMENT_PRESET=${DEPLOYMENT_PRESET:-tier3_flagship}
       - MSX_REGISTRATION_MODE=${MSX_REGISTRATION_MODE:-invite_only}
@@ -58,6 +59,13 @@ services:
       - GITLAB_TOKEN=${GITLAB_TOKEN:-}
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_PRICE_PRO_MONTHLY=${STRIPE_PRICE_PRO_MONTHLY:-}
+      - STRIPE_PRICE_PRO_ANNUAL=${STRIPE_PRICE_PRO_ANNUAL:-}
+      - STRIPE_PRICE_TEAM_MONTHLY=${STRIPE_PRICE_TEAM_MONTHLY:-${STRIPE_PRICE_TEAM_SEAT_MONTHLY:-}}
+      - STRIPE_PRICE_TEAM_ANNUAL=${STRIPE_PRICE_TEAM_ANNUAL:-}
+      - STRIPE_PRICE_TEAM_SEAT_MONTHLY=${STRIPE_PRICE_TEAM_SEAT_MONTHLY:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
       - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
       - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
       - RESEND_API_KEY=${RESEND_API_KEY:-}

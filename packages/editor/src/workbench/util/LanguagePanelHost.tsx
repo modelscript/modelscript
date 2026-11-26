@@ -8,6 +8,8 @@ import type {
 } from "@modelscript/react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { getEditorLanguageUi, useEditorHost } from "../../host";
+import { normalizeInspectorDialect } from "../panels/inspector-capabilities";
+import { InspectorErrorBoundary, InspectorLoadingSkeleton } from "../panels/InspectorErrorBoundary";
 import { compressAnsatzPayload } from "./permalink";
 
 export type LanguagePanelLoader = () => Promise<{ default: React.ComponentType<LanguagePanelProps> }>;
@@ -39,15 +41,18 @@ function getOrCreateLazyPanel(
 }
 
 export function hasAnsatzLanguagePanel(dialect: string): boolean {
-  return Boolean(getEditorLanguageUi().ansatzPanels[dialect]);
+  const panels = getEditorLanguageUi().ansatzPanels;
+  return Boolean(panels[dialect] ?? panels[normalizeInspectorDialect(dialect)]);
 }
 
 export function hasArtifactLanguagePanel(viewTypeOrDialect: string): boolean {
-  return Boolean(getEditorLanguageUi().artifactPanels[viewTypeOrDialect]);
+  const panels = getEditorLanguageUi().artifactPanels;
+  return Boolean(panels[viewTypeOrDialect] ?? panels[normalizeInspectorDialect(viewTypeOrDialect)]);
 }
 
 export function getDslStencilsForDialect(dialect: string): LanguageStencilEntry[] | undefined {
-  return getEditorLanguageUi().stencils[dialect];
+  const stencils = getEditorLanguageUi().stencils;
+  return stencils[dialect] ?? stencils[normalizeInspectorDialect(dialect)];
 }
 
 export function triggerBrowserFileDownload(filename: string, content: string | Uint8Array, mimeType?: string): void {
@@ -90,32 +95,58 @@ export const DslLanguagePanelMount: React.FC<DslLanguagePanelMountProps> = ({
   viewConfig,
   isFullScreen,
   host,
-  fallback = null,
+  fallback,
 }) => {
+  const resolvedKey = useMemo(() => {
+    const ui = getEditorLanguageUi();
+    const map = registry === "ansatz" ? ui.ansatzPanels : ui.artifactPanels;
+    if (map[lookupKey]) return lookupKey;
+    const canonical = normalizeInspectorDialect(lookupKey);
+    return map[canonical] ? canonical : lookupKey;
+  }, [registry, lookupKey]);
+
   const LazyPanel = useMemo(() => {
     const ui = getEditorLanguageUi();
     const map = registry === "ansatz" ? ui.ansatzPanels : ui.artifactPanels;
-    const loader = map[lookupKey];
+    const loader = map[resolvedKey];
     if (!loader) return null;
-    return getOrCreateLazyPanel(`${registry}:${lookupKey}`, loader as unknown as LanguagePanelLoader);
-  }, [registry, lookupKey]);
+    return getOrCreateLazyPanel(`${registry}:${resolvedKey}`, loader as unknown as LanguagePanelLoader);
+  }, [registry, resolvedKey]);
 
   if (!LazyPanel) return null;
 
+  const instanceKey = `${registry}:${resolvedKey}:${documentUri ?? ""}`;
+
   return (
-    <Suspense fallback={fallback}>
-      {React.createElement(LazyPanel, {
-        code,
-        dialect,
-        colorMode,
-        mode,
-        documentUri,
-        projectFiles,
-        viewConfig,
-        isFullScreen,
-        host,
-      })}
-    </Suspense>
+    <InspectorErrorBoundary panelName={`${resolvedKey.toUpperCase()} Inspector`} resetKey={instanceKey}>
+      <Suspense fallback={fallback ?? <InspectorLoadingSkeleton label={`Loading ${resolvedKey} inspector…`} />}>
+        <div
+          data-theme={colorMode}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          {React.createElement(LazyPanel, {
+            key: instanceKey,
+            code,
+            dialect,
+            colorMode,
+            mode,
+            documentUri,
+            projectFiles,
+            viewConfig,
+            isFullScreen,
+            host,
+          })}
+        </div>
+      </Suspense>
+    </InspectorErrorBoundary>
   );
 };
 
@@ -140,15 +171,16 @@ export const DslArtifactPanelWrapper: React.FC<DslArtifactPanelWrapperProps> = (
   const [fetchedCode, setFetchedCode] = useState<string>("");
 
   useEffect(() => {
+    setFetchedCode("");
     if (inlineCode || !sourceUrl) return;
     let cancelled = false;
     fetch(sourceUrl)
       .then((res) => (res.ok ? res.text() : ""))
       .then((text) => {
-        if (!cancelled && text) setFetchedCode(text);
+        if (!cancelled) setFetchedCode(text || "");
       })
       .catch(() => {
-        // Fallback to inline viewConfig metadata
+        if (!cancelled) setFetchedCode("");
       });
     return () => {
       cancelled = true;

@@ -54,6 +54,43 @@ export const simulateRateLimiter = rateLimit({
   store: resolveRateLimitStore("rl:sim:"),
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => {
+    const user = (
+      req as { user?: { userId?: number | string | undefined; id?: number | string | undefined } | undefined }
+    ).user;
+    const uid = user?.userId ?? user?.id;
+    if (uid !== undefined && uid !== null && String(uid).length > 0) {
+      return `user:${String(uid)}`;
+    }
+    return req.ip || req.socket?.remoteAddress || "unknown";
+  },
+  validate: { keyGeneratorIpFallback: false },
   skip: (req) => process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true",
   message: { error: "Simulation dispatch rate limit exceeded. Please wait before submitting more jobs." },
+});
+
+/**
+ * Package publish rate limiter to protect disk/storage and indexing workers from upload floods.
+ */
+export const publishRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: Number(process.env["PUBLISH_RATE_LIMIT_MAX"]) || (process.env["NODE_ENV"] === "test" ? 100000 : 30),
+  store: resolveRateLimitStore("rl:publish:"),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true",
+  message: { error: "Package publish rate limit exceeded. Please wait before publishing more versions." },
+});
+
+/**
+ * AI chat rate limiter to protect hosted LLM endpoints and SSE connections from abuse.
+ */
+export const aiChatRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: Number(process.env["AI_CHAT_RATE_LIMIT_MAX"]) || (process.env["NODE_ENV"] === "test" ? 100000 : 60),
+  store: resolveRateLimitStore("rl:ai:"),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => process.env["NODE_ENV"] === "test" && req.headers["x-test-bypass-rate-limit"] === "true",
+  message: { error: "AI chat rate limit exceeded. Please wait before sending more requests." },
 });

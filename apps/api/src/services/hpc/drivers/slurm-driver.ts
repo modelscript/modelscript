@@ -48,19 +48,21 @@ export function parseSacctOutput(output: string): {
     return { elapsedSeconds: 0, cpuCoreSeconds: 0, peakMemoryMb: 0, state: "FAILED", exitCode: -1 };
   }
 
-  // Use the main job step line (usually line 0 or step with MaxRSS)
+  // Use the main job line for state/exitCode, while aggregating max metrics across steps
   let maxMemoryBytes = 0;
   let cpuCoreSec = 0;
   let elapsedSec = 0;
   let allocatedGpus: number | undefined;
   let finalState: HpcJobState = "COMPLETED";
   let finalExitCode = 0;
+  let hasPrimaryLine = false;
 
   for (const line of lines) {
     const parts = line.split("|");
     if (parts.length < 8) continue;
 
-    const [, cpuTimeRaw, , maxRss, , elapsedRaw, stateStr, exitCodeStr, allocTres] = parts;
+    const [jobIdPart, cpuTimeRaw, , maxRss, , elapsedRaw, stateStr, exitCodeStr, allocTres] = parts;
+    const isStepLine = (jobIdPart || "").includes(".");
 
     const parsedElapsed = parseInt(elapsedRaw || "0", 10);
     if (!isNaN(parsedElapsed) && parsedElapsed > elapsedSec) {
@@ -96,25 +98,32 @@ export function parseSacctOutput(output: string): {
       }
     }
 
-    // Parse state
-    const upperState = (stateStr || "").toUpperCase();
-    if (upperState.startsWith("COMPLETED")) {
-      finalState = "COMPLETED";
-    } else if (upperState.startsWith("CANCELLED")) {
-      finalState = "CANCELLED";
-    } else if (upperState.startsWith("RUNNING")) {
-      finalState = "RUNNING";
-    } else if (upperState.startsWith("PENDING")) {
-      finalState = "PENDING";
-    } else {
-      finalState = "FAILED";
-    }
+    // Only update finalState and finalExitCode from primary job line (or first line if no primary line seen yet)
+    if (!isStepLine || !hasPrimaryLine) {
+      if (!isStepLine) {
+        hasPrimaryLine = true;
+      }
 
-    // Parse exit code (e.g., "0:0")
-    if (exitCodeStr) {
-      const codePart = exitCodeStr.split(":")[0];
-      const parsedCode = parseInt(codePart || "0", 10);
-      if (!isNaN(parsedCode)) finalExitCode = parsedCode;
+      // Parse state
+      const upperState = (stateStr || "").toUpperCase();
+      if (upperState.startsWith("COMPLETED")) {
+        finalState = "COMPLETED";
+      } else if (upperState.startsWith("CANCELLED")) {
+        finalState = "CANCELLED";
+      } else if (upperState.startsWith("RUNNING")) {
+        finalState = "RUNNING";
+      } else if (upperState.startsWith("PENDING")) {
+        finalState = "PENDING";
+      } else {
+        finalState = "FAILED";
+      }
+
+      // Parse exit code (e.g., "0:0")
+      if (exitCodeStr) {
+        const codePart = exitCodeStr.split(":")[0];
+        const parsedCode = parseInt(codePart || "0", 10);
+        if (!isNaN(parsedCode)) finalExitCode = parsedCode;
+      }
     }
   }
 
@@ -164,7 +173,11 @@ export class SlurmDriver implements HpcDriver {
     this.executor =
       options.executor ||
       (async (cmd: string, args: string[], cwd?: string) => {
-        const res = await execFileAsync(cmd, args, { cwd });
+        const res = await execFileAsync(cmd, args, {
+          cwd,
+          timeout: 30_000,
+          maxBuffer: 10 * 1024 * 1024,
+        });
         return { stdout: res.stdout.toString(), stderr: res.stderr.toString() };
       });
   }
@@ -200,7 +213,7 @@ export class SlurmDriver implements HpcDriver {
 
   private assertSafeNativeJobId(nativeJobId: string): string {
     const trimmed = String(nativeJobId).trim();
-    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(trimmed) || trimmed.startsWith("-")) {
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(trimmed) || trimmed.startsWith("-") || trimmed.includes("..")) {
       throw new Error(`Invalid Slurm nativeJobId: ${nativeJobId}`);
     }
     return trimmed;

@@ -2,12 +2,14 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelSvgStage,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import {
@@ -93,6 +95,28 @@ export const AmlPanel: React.FC<LanguagePanelProps> = ({
     return out;
   }, [computed.doc]);
 
+  type AmlElRow = (typeof allElements)[number];
+  const elementColumns = useMemo<PanelDataGridColumn<AmlElRow>[]>(
+    () => [
+      { key: "name", label: "Name", mono: true, sortValue: (e) => e.name, render: (e) => <strong>{e.name}</strong> },
+      {
+        key: "role",
+        label: "Role",
+        mono: true,
+        sortValue: (e) => e.role ?? "",
+        render: (e) => <span style={{ color: "var(--ms-text-2)" }}>{e.role ?? "—"}</span>,
+      },
+      {
+        key: "id",
+        label: "ID",
+        mono: true,
+        sortValue: (e) => e.id ?? "",
+        render: (e) => <span style={{ color: "var(--ms-text-3)" }}>{e.id ?? "—"}</span>,
+      },
+    ],
+    [],
+  );
+
   const kpis = useMemo<PanelKpiItem[]>(() => {
     const hierarchies = computed.doc?.instanceHierarchies?.length ?? 0;
     return [
@@ -123,7 +147,7 @@ export const AmlPanel: React.FC<LanguagePanelProps> = ({
                 variant="primary"
                 onClick={() => host.openInAnsatzEditor?.(code, dialect || "automationml", title)}
               >
-                Open in Ansatz Editor
+                Open in Editor
               </PanelButton>
             )}
           </>
@@ -152,29 +176,13 @@ export const AmlPanel: React.FC<LanguagePanelProps> = ({
       )}
 
       {activeTab === "elements" && (
-        <div style={{ flex: 1, overflow: "auto", padding: "10px 12px" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>Name</th>
-                <th style={{ padding: "5px 6px" }}>Role</th>
-                <th style={{ padding: "5px 6px" }}>ID</th>
-              </tr>
-            </thead>
-            <tbody>
-              {allElements.slice(0, 200).map((el, idx) => (
-                <tr
-                  key={`${el.id ?? el.name}-${idx}`}
-                  style={{ borderBottom: "1px solid var(--ms-divider)", fontFamily: "var(--ms-font-mono)" }}
-                >
-                  <td style={{ padding: "4px 6px", fontWeight: 600 }}>{el.name}</td>
-                  <td style={{ padding: "4px 6px", color: "var(--ms-text-2)" }}>{el.role ?? "—"}</td>
-                  <td style={{ padding: "4px 6px", color: "var(--ms-text-3)" }}>{el.id ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={allElements}
+          columns={elementColumns}
+          rowKey={(el, idx) => `${el.id ?? el.name}-${idx}`}
+          searchPlaceholder="Filter InternalElements by name, role, or ID…"
+          emptyMessage="No AutomationML InternalElements parsed."
+        />
       )}
 
       {activeTab === "lints" && (

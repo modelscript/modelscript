@@ -6,16 +6,20 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
+import { attachExtensionWebviewBridge } from "./webview/shared/extension-lsp-bridge.js";
 
 export class OptimizationPanel extends BaseWebviewPanel {
   static currentPanel: OptimizationPanel | undefined;
   static readonly viewType = "modelscript.optimization";
 
   public sourceUri?: string | undefined;
+  private dialect = "modelica";
   private client?: LanguageClient | undefined;
 
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
-    const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
+    const activeDoc = vscode.window.activeTextEditor?.document;
+    const sourceUri = uri ?? activeDoc?.uri.toString();
+    const dialect = activeDoc?.languageId || "modelica";
     if (!sourceUri) {
       vscode.window.showWarningMessage("Open a Modelica file to run optimization.");
       return;
@@ -23,13 +27,15 @@ export class OptimizationPanel extends BaseWebviewPanel {
 
     if (OptimizationPanel.currentPanel) {
       OptimizationPanel.currentPanel.sourceUri = sourceUri;
+      OptimizationPanel.currentPanel.dialect = dialect;
       OptimizationPanel.currentPanel._panel.reveal(vscode.ViewColumn.Beside);
+      OptimizationPanel.currentPanel.syncDocument();
       return;
     }
 
     const panel = vscode.window.createWebviewPanel(
       OptimizationPanel.viewType,
-      "Optimization Dashboard",
+      "Optimization, UQ & Surrogates",
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -38,53 +44,58 @@ export class OptimizationPanel extends BaseWebviewPanel {
       },
     );
 
-    OptimizationPanel.currentPanel = new OptimizationPanel(panel, extensionUri, client, sourceUri);
+    OptimizationPanel.currentPanel = new OptimizationPanel(panel, extensionUri, client, sourceUri, dialect);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient, sourceUri: string) {
+  private constructor(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    client: LanguageClient,
+    sourceUri: string,
+    dialect: string,
+  ) {
     super(panel, extensionUri);
     this.client = client;
     this.sourceUri = sourceUri;
+    this.dialect = dialect;
 
     this._panel.webview.html = this.getHtmlShell({
-      title: "Optimization Dashboard",
+      title: "Optimization, UQ & Surrogates",
       scriptName: "optimization-webview.js",
     });
 
-    this._panel.webview.onDidReceiveMessage(
-      async (msg) => {
-        if (msg.type === "optimizeRequest") {
-          try {
-            if (!this.client) return;
-            const result = await this.client.sendRequest("modelscript/optimizeModel", {
-              uri: this.sourceUri,
-              objective: msg.payload.objective,
-              controls: msg.payload.controls,
-              tolerance: msg.payload.tolerance,
-              maxIterations: msg.payload.maxIterations,
-              constraintsUri: msg.payload.constraintsUri ?? msg.payload.sysmlUri,
-              constraintsFilter: msg.payload.constraintsFilter ?? msg.payload.sysmlFilter,
-              sysmlUri: msg.payload.constraintsUri ?? msg.payload.sysmlUri,
-              sysmlFilter: msg.payload.constraintsFilter ?? msg.payload.sysmlFilter,
-            });
-            const isDark =
-              vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-              vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-            this._panel.webview.postMessage({
-              type: "optimizationResult",
-              data: result,
-              isDark,
-            });
-          } catch (e: unknown) {
-            const errMsg = e instanceof Error ? e.message : String(e);
-            vscode.window.showErrorMessage(`Optimization failed: ${errMsg}`);
-            this._panel.webview.postMessage({ type: "optimizationError", error: errMsg });
-          }
+    const bridgeSub = attachExtensionWebviewBridge(this._panel.webview, {
+      client: this.client,
+      getDocument: () => vscode.window.activeTextEditor?.document,
+      title: "Optimization, UQ & Surrogates",
+      languageId: this.dialect,
+      onUnhandledMessage: (msg) => {
+        if (msg.type === "ready") {
+          this.syncDocument();
         }
       },
-      null,
-      this._disposables,
-    );
+    });
+    this._disposables.push(bridgeSub);
+
+    const editorSub = vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor?.document) {
+        this.sourceUri = editor.document.uri.toString();
+        this.dialect = editor.document.languageId || "modelica";
+        this.syncDocument();
+      }
+    });
+    this._disposables.push(editorSub);
+  }
+
+  private syncDocument(): void {
+    if (!this.sourceUri) return;
+    void this._panel.webview.postMessage({
+      type: "syncOptimizationDocument",
+      data: {
+        documentUri: this.sourceUri,
+        dialect: this.dialect,
+      },
+    });
   }
 
   public override dispose(): void {

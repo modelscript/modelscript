@@ -3,15 +3,15 @@
 import styled from "styled-components";
 
 export const Header = styled.div`
-  padding: 0 16px;
+  padding: 0 var(--settings-item-px, 16px);
   min-height: 53px;
-  font-size: var(--text-xl, 20px);
+  font-size: var(--text-xl, 1.25rem);
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--color-text-heading);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-md, 16px);
   position: sticky;
   top: var(--dev-header-height, 0px);
   background: var(--surface-sticky);
@@ -20,7 +20,7 @@ export const Header = styled.div`
   transition: background-color 0.25s ease;
   border-bottom: 1px solid var(--color-border);
   z-index: 50;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-md, 16px);
 
   & > button:first-child:not(.subtab-back) {
     @media (min-width: 901px) {
@@ -31,9 +31,10 @@ export const Header = styled.div`
 
 export const DetailItem = styled.div<{ $clickable?: boolean | undefined }>`
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 12px 16px;
-  gap: 16px;
+  padding: var(--settings-item-py, 16px) var(--settings-item-px, 16px);
+  gap: var(--space-md, 16px);
   cursor: ${(props) => (props.$clickable ? "pointer" : "default")};
   transition: background-color 0.2s;
   color: var(--color-text-primary);
@@ -53,19 +54,20 @@ export const DetailIcon = styled.div`
 
 export const DetailText = styled.div`
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 `;
 
 export const DetailTitle = styled.span`
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: var(--color-text-primary);
 `;
 
 export const DetailSubtitle = styled.span`
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--color-text-muted);
-  margin-top: 2px;
+  margin-top: var(--space-xs, 4px);
 `;
 
 export const SaveButton = styled.button<{ $variant?: "primary" | "danger" | "secondary" | undefined }>`
@@ -81,10 +83,10 @@ export const SaveButton = styled.button<{ $variant?: "primary" | "danger" | "sec
     props.$variant === "secondary" ? "var(--color-text-primary)" : "var(--ms-brand-contrast, #ffffff)"};
   border: ${(props) => (props.$variant === "secondary" ? "1px solid var(--ms-border)" : "none")};
   border-radius: 9999px;
-  padding: 8px 16px;
+  padding: var(--space-sm, 8px) var(--space-md, 16px);
   font-weight: bold;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   align-self: flex-end;
   box-shadow: ${(props) =>
     props.$variant === "danger"
@@ -121,13 +123,13 @@ export const PrimaryButton = styled.button`
   color: white;
   border: none;
   border-radius: 9999px;
-  padding: 10px 20px;
+  padding: var(--space-sm, 8px) var(--space-md, 16px);
   font-weight: bold;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm, 8px);
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
   transition: all 0.15s ease-in-out;
   &:hover:not(:disabled) {
@@ -145,16 +147,16 @@ export const SecondaryButton = styled.button`
   color: var(--color-text-primary);
   border: 1px solid var(--color-border-default);
   border-radius: 9999px;
-  padding: 10px 20px;
+  padding: var(--space-sm, 8px) var(--space-md, 16px);
   font-weight: 600;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm, 8px);
   transition: all 0.15s ease-in-out;
   &:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.08);
+    background-color: var(--color-bg-hover, rgba(127, 127, 127, 0.14));
     border-color: var(--color-border-hover);
   }
   &:disabled {
@@ -168,13 +170,13 @@ export const DangerButton = styled.button`
   color: white;
   border: none;
   border-radius: 9999px;
-  padding: 10px 20px;
+  padding: var(--space-sm, 8px) var(--space-md, 16px);
   font-weight: bold;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm, 8px);
   transition: opacity 0.15s ease-in-out;
   &:hover:not(:disabled) {
     opacity: 0.9;
@@ -188,26 +190,29 @@ export const DangerButton = styled.button`
 
 export const FormInput = styled.input`
   width: 100%;
-  padding: 12px 16px;
+  padding: var(--space-sm, 8px) var(--settings-item-px, 16px);
   border-radius: 8px;
   border: 1px solid var(--color-border-default);
   background-color: var(--color-canvas-default);
   color: var(--color-text-primary);
   outline: none;
-  font-size: 15px;
-  margin-top: 8px;
-  margin-bottom: 16px;
+  font-size: 0.9375rem;
+  margin-top: var(--space-sm, 8px);
+  margin-bottom: var(--space-md, 16px);
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease;
-  &:focus {
+  &:focus,
+  &:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     border-color: var(--color-accent-emphasis);
     box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
   }
 `;
 
 export const FormLabel = styled.label`
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--color-text-primary);
   display: block;

@@ -76,7 +76,10 @@ test("Organizations, Scoped Namespaces & Package Collaborators RBAC", async (t) 
     assert.strictEqual(res.body.organization.name, "Acme Aerospace");
 
     // Alice is automatically owner
-    const membersRes = await request(app).get("/api/v1/organizations/acme/members").expect(200);
+    const membersRes = await request(app)
+      .get("/api/v1/organizations/acme/members")
+      .set("Authorization", `Bearer ${aliceToken}`)
+      .expect(200);
     assert.strictEqual(membersRes.body.members.length, 1);
     assert.strictEqual(membersRes.body.members[0].username, "alice");
     assert.strictEqual(membersRes.body.members[0].role, "owner");
@@ -120,7 +123,10 @@ test("Organizations, Scoped Namespaces & Package Collaborators RBAC", async (t) 
       .send({ username: "eve", role: "owner" })
       .expect(403);
 
-    const membersRes = await request(app).get("/api/v1/organizations/acme/members").expect(200);
+    const membersRes = await request(app)
+      .get("/api/v1/organizations/acme/members")
+      .set("Authorization", `Bearer ${aliceToken}`)
+      .expect(200);
     assert.strictEqual(membersRes.body.members.length, 3);
   });
 

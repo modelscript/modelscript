@@ -34,36 +34,27 @@ export const netcdfLanguage = language({
 
   errorCodes: NetcdfErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
+  conflicts: ($) => [[$["VariablesSection"]!, $["GlobalAttribute"]!]],
+
   rules: {
     NetcdfDocument: ($) =>
       seq(
-        repeat($["Comment"]!),
         "netcdf",
         field("name", $["Identifier"]!),
         "{",
-        repeat(
-          choice(
-            $["DimensionsSection"]!,
-            $["VariablesSection"]!,
-            $["DataSection"]!,
-            $["GlobalAttribute"]!,
-            $["Comment"]!,
-          ),
-        ),
+        repeat(choice($["DimensionsSection"]!, $["VariablesSection"]!, $["DataSection"]!, $["GlobalAttribute"]!)),
         "}",
-        repeat($["Comment"]!),
       ),
 
-    DimensionsSection: ($) => seq("dimensions:", repeat(choice($["DimensionDecl"]!, $["Comment"]!))),
+    DimensionsSection: ($) => seq("dimensions:", repeat($["DimensionDecl"]!)),
 
     DimensionDecl: ($) =>
       seq(field("name", $["Identifier"]!), "=", field("size", choice("UNLIMITED", $["NumberLiteral"]!)), ";"),
 
     VariablesSection: ($) =>
-      seq(
-        "variables:",
-        repeat(choice($["VariableDecl"]!, $["VariableAttribute"]!, $["GlobalAttribute"]!, $["Comment"]!)),
-      ),
+      seq("variables:", repeat(choice($["VariableDecl"]!, $["VariableAttribute"]!, $["GlobalAttribute"]!))),
 
     VariableDecl: ($) =>
       seq(field("type", $["DataType"]!), field("name", $["Identifier"]!), optional($["DimensionList"]!), ";"),
@@ -75,7 +66,7 @@ export const netcdfLanguage = language({
 
     GlobalAttribute: ($) => seq(":", field("attribute", $["Identifier"]!), "=", $["ValueList"]!, ";"),
 
-    DataSection: ($) => seq("data:", repeat(choice($["DataAssignment"]!, $["Comment"]!))),
+    DataSection: ($) => seq("data:", repeat($["DataAssignment"]!)),
 
     DataAssignment: ($) => seq(field("variable", $["Identifier"]!), "=", $["ValueList"]!, ";"),
 

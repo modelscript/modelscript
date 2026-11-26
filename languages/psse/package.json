@@ -44,6 +44,14 @@
     "./ui": {
       "types": "./dist/src/ui/PssePanel.d.ts",
       "default": "./dist/src/ui/PssePanel.js"
+    },
+    "./ui/PsseSpreadsheetView": {
+      "types": "./dist/src/ui/PsseSpreadsheetView.d.ts",
+      "default": "./dist/src/ui/PsseSpreadsheetView.js"
+    },
+    "./ui/PsseStudyPanel": {
+      "types": "./dist/src/ui/PsseStudyPanel.d.ts",
+      "default": "./dist/src/ui/PsseStudyPanel.js"
     }
   },
   "files": [

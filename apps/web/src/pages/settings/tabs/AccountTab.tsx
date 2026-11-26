@@ -77,6 +77,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
   // Account Info states
   const [accountInfoMode, setAccountInfoMode] = useState<"gate" | "form">("gate");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [needsPasswordReentry, setNeedsPasswordReentry] = useState(false);
   const [username, setUsername] = useState(user?.username || "");
   const [displayName, setDisplayName] = useState(user?.display_name || "");
   const [email, setEmail] = useState(user?.email || "");
@@ -88,21 +90,26 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
   const [newPassword, setNewPassword] = useState("");
   const [newPasswordConfirm, setNewPasswordConfirm] = useState("");
   const [isRevokingSessions, setIsRevokingSessions] = useState(false);
+  const [confirmRevokeSessions, setConfirmRevokeSessions] = useState(false);
 
   // Status states
   const [loading, setLoading] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const isEmailVerified = user?.email_verified !== 0 && user?.email_verified !== false;
+  const isEmailVerified = user?.email_verified === 1 || user?.email_verified === true;
+  const isIdentityChanged = username.trim() !== (user?.username || "") || email.trim() !== (user?.email || "");
 
   // Only reset mode and password gate when subView changes (NOT when user refreshes)
   useEffect(() => {
     setError(null);
     setSuccess(null);
+    setPassword("");
+    setTotpCode("");
+    setNeedsPasswordReentry(false);
+    setConfirmRevokeSessions(false);
     if (subView === "accountInfo") {
       setAccountInfoMode(user?.has_password === false ? "form" : "gate");
-      setPassword("");
       if (user) {
         setUsername(user.username || "");
         setDisplayName(user.display_name || "");
@@ -135,6 +142,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     setError(null);
     try {
       await updateAccount({ password });
+      setNeedsPasswordReentry(false);
       setAccountInfoMode("form");
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Incorrect password"));
@@ -157,18 +165,43 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
   };
 
   const handleSaveAccount = async () => {
+    const trimmedUsername = username.trim();
+    const trimmedEmail = email.trim();
+    const usernameChanged = trimmedUsername !== (user?.username || "");
+    const emailChanged = trimmedEmail !== (user?.email || "");
+    const identityChanged = usernameChanged || emailChanged;
+
+    if (user?.totp_enabled && identityChanged && !totpCode.trim()) {
+      setError("Please enter your 6-digit two-factor authentication code to change your username or email.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setSuccess(null);
     try {
-      const res = await updateAccount({
-        password,
-        username: username.trim(),
-        email: email.trim(),
+      const payload: Parameters<typeof updateAccount>[0] = {
+        password: password || undefined,
         display_name: displayName.trim(),
         avatar_url: avatarUrl.trim(),
         banner_url: bannerUrl.trim(),
-      });
+      };
+      if (usernameChanged) {
+        payload.username = trimmedUsername;
+      }
+      if (emailChanged) {
+        payload.email = trimmedEmail;
+      }
+      if (user?.totp_enabled && identityChanged && totpCode.trim()) {
+        payload.totpCode = totpCode.trim();
+      }
+
+      const res = await updateAccount(payload);
+      setPassword("");
+      setTotpCode("");
+      if (user?.has_password !== false) {
+        setNeedsPasswordReentry(true);
+      }
       await refreshUser();
       setSuccess(
         res?.verificationRequired
@@ -189,6 +222,10 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     }
     if (newPassword.length < 8) {
       setError("New password must be at least 8 characters");
+      return;
+    }
+    if (new TextEncoder().encode(newPassword).length > 72) {
+      setError("New password must not exceed 72 bytes");
       return;
     }
     if (newPassword !== newPasswordConfirm) {
@@ -234,27 +271,51 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
       toast.error(getApiErrorMessage(err, "Failed to revoke sessions."));
     } finally {
       setIsRevokingSessions(false);
+      setConfirmRevokeSessions(false);
     }
   };
 
   const passwordStrength = getPasswordStrength(newPassword);
 
+  const handleDetailKeyDown = (action: () => void) => (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      action();
+    }
+  };
+
   if (subView === "accountInfo") {
     return (
       <>
         <Header>
-          <Box
-            display="flex"
-            alignItems="center"
-            gap={3}
-            sx={{ cursor: "pointer" }}
+          <button
+            type="button"
+            className="subtab-back"
+            aria-label="Back"
             onClick={() => onNavigate("account")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              color: "inherit",
+              font: "inherit",
+            }}
           >
             <ArrowLeftIcon size={20} />
             <span>Account information</span>
-          </Box>
+          </button>
         </Header>
-        <DetailItem $clickable onClick={() => navigate("/settings/profile")}>
+        <DetailItem
+          $clickable
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/settings/profile")}
+          onKeyDown={handleDetailKeyDown(() => navigate("/settings/profile"))}
+        >
           <DetailIcon>
             <PersonIcon size={20} />
           </DetailIcon>
@@ -272,9 +333,14 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
             <p style={{ color: "var(--color-text-muted)", marginBottom: "24px" }}>
               Please enter your password in order to access this section.
             </p>
-            {error && <p style={{ color: "var(--color-error)", marginBottom: "16px" }}>{error}</p>}
+            {error && (
+              <p role="alert" style={{ color: "var(--color-error)", marginBottom: "16px" }}>
+                {error}
+              </p>
+            )}
             <FormInput
               type="password"
+              autoComplete="current-password"
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -293,15 +359,21 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         ) : (
           <Box p={4}>
             {success && (
-              <p style={{ color: "var(--color-success)", marginBottom: "16px", fontWeight: "bold" }}>{success}</p>
+              <p role="status" style={{ color: "var(--color-success)", marginBottom: "16px", fontWeight: "bold" }}>
+                {success}
+              </p>
             )}
-            {error && <p style={{ color: "var(--color-error)", marginBottom: "16px" }}>{error}</p>}
+            {error && (
+              <p role="alert" style={{ color: "var(--color-error)", marginBottom: "16px" }}>
+                {error}
+              </p>
+            )}
 
             <FormLabel>Username</FormLabel>
-            <FormInput value={username} onChange={(e) => setUsername(e.target.value)} />
+            <FormInput autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
 
             <FormLabel>Display Name</FormLabel>
-            <FormInput value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+            <FormInput autoComplete="name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
 
             <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
               <FormLabel style={{ marginBottom: 0 }}>Email</FormLabel>
@@ -339,7 +411,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
                 )}
               </Box>
             </Box>
-            <FormInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <FormInput type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
 
             <FormLabel>Avatar URL</FormLabel>
             <FormInput
@@ -357,8 +429,58 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
               onChange={(e) => setBannerUrl(e.target.value)}
             />
 
+            {needsPasswordReentry && user?.has_password !== false && (
+              <>
+                <FormLabel htmlFor="account-password-reentry">Current Password (required to save changes)</FormLabel>
+                <FormInput
+                  id="account-password-reentry"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Enter your current password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </>
+            )}
+
+            {user?.totp_enabled && isIdentityChanged && (
+              <Box
+                mt={2}
+                mb={3}
+                p={3}
+                style={{
+                  border: "1px solid rgba(6, 182, 212, 0.35)",
+                  borderRadius: "var(--radius-md, 8px)",
+                  background: "rgba(6, 182, 212, 0.08)",
+                }}
+              >
+                <FormLabel htmlFor="account-totp-code">2FA Authenticator Code</FormLabel>
+                <p style={{ fontSize: "12px", color: "var(--color-text-muted)", margin: "0 0 8px 0" }}>
+                  Enter the 6-digit code from your authenticator app to confirm changing your username or email.
+                </p>
+                <FormInput
+                  id="account-totp-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  placeholder="000000"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  style={{ marginBottom: 0, letterSpacing: "0.2em", fontFamily: "monospace" }}
+                />
+              </Box>
+            )}
+
             <Box display="flex" justifyContent="flex-end" mt={2}>
-              <SaveButton onClick={handleSaveAccount} disabled={loading}>
+              <SaveButton
+                onClick={handleSaveAccount}
+                disabled={
+                  loading ||
+                  (needsPasswordReentry && user?.has_password !== false && !password) ||
+                  Boolean(user?.totp_enabled && isIdentityChanged && totpCode.trim().length < 6)
+                }
+              >
                 {loading ? "Saving..." : "Save"}
               </SaveButton>
             </Box>
@@ -372,16 +494,26 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     return (
       <>
         <Header>
-          <Box
-            display="flex"
-            alignItems="center"
-            gap={3}
-            sx={{ cursor: "pointer" }}
+          <button
+            type="button"
+            className="subtab-back"
+            aria-label="Back"
             onClick={() => onNavigate("account")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              color: "inherit",
+              font: "inherit",
+            }}
           >
             <ArrowLeftIcon size={20} />
             <span>{user?.has_password === false ? "Set account password" : "Change your password"}</span>
-          </Box>
+          </button>
         </Header>
         <Box p={4}>
           {user?.has_password === false && (
@@ -403,20 +535,32 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
           )}
 
           {success && (
-            <p style={{ color: "var(--color-success)", marginBottom: "16px", fontWeight: "bold" }}>{success}</p>
+            <p role="status" style={{ color: "var(--color-success)", marginBottom: "16px", fontWeight: "bold" }}>
+              {success}
+            </p>
           )}
-          {error && <p style={{ color: "var(--color-error)", marginBottom: "16px" }}>{error}</p>}
+          {error && (
+            <p role="alert" style={{ color: "var(--color-error)", marginBottom: "16px" }}>
+              {error}
+            </p>
+          )}
 
           {user?.has_password !== false && (
             <>
               <FormLabel>Current Password</FormLabel>
-              <FormInput type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} />
+              <FormInput
+                type="password"
+                autoComplete="current-password"
+                value={oldPassword}
+                onChange={(e) => setOldPassword(e.target.value)}
+              />
             </>
           )}
 
           <FormLabel>New Password (min. 8 characters)</FormLabel>
           <FormInput
             type="password"
+            autoComplete="new-password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             style={{ marginBottom: passwordStrength ? "8px" : "16px" }}
@@ -453,6 +597,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
           <FormLabel>Confirm New Password</FormLabel>
           <FormInput
             type="password"
+            autoComplete="new-password"
             value={newPasswordConfirm}
             onChange={(e) => setNewPasswordConfirm(e.target.value)}
           />
@@ -483,21 +628,61 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
               Revoking all sessions immediately invalidates all JWT tokens across other browsers and mobile devices.
               Your current session will remain active.
             </p>
-            <DangerButton
-              type="button"
-              onClick={handleRevokeAllSessions}
-              disabled={isRevokingSessions}
-              style={{
-                background: "rgba(239, 68, 68, 0.12)",
-                border: "1px solid rgba(239, 68, 68, 0.35)",
-                color: "#ef4444",
-                padding: "8px 16px",
-                fontSize: "13px",
-                fontWeight: 600,
-              }}
-            >
-              {isRevokingSessions ? "Revoking sessions…" : "Revoke All Other Sessions"}
-            </DangerButton>
+            {confirmRevokeSessions ? (
+              <Box
+                p={3}
+                style={{
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  borderRadius: "var(--radius-md, 8px)",
+                  background: "rgba(239, 68, 68, 0.08)",
+                }}
+              >
+                <p style={{ margin: "0 0 12px 0", fontSize: "13px", color: "var(--color-text-primary)" }}>
+                  Are you sure you want to revoke all other active sessions? You will stay signed in on this device.
+                </p>
+                <Box display="flex" alignItems="center" gap={2}>
+                  <DangerButton
+                    type="button"
+                    onClick={handleRevokeAllSessions}
+                    disabled={isRevokingSessions}
+                    style={{
+                      background: "rgba(239, 68, 68, 0.16)",
+                      border: "1px solid rgba(239, 68, 68, 0.45)",
+                      color: "#ef4444",
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {isRevokingSessions ? "Revoking sessions…" : "Confirm Revoke"}
+                  </DangerButton>
+                  <SecondaryButton
+                    type="button"
+                    onClick={() => setConfirmRevokeSessions(false)}
+                    disabled={isRevokingSessions}
+                    style={{ padding: "8px 14px", fontSize: "13px" }}
+                  >
+                    Cancel
+                  </SecondaryButton>
+                </Box>
+              </Box>
+            ) : (
+              <DangerButton
+                type="button"
+                onClick={() => setConfirmRevokeSessions(true)}
+                disabled={isRevokingSessions}
+                style={{
+                  background: "rgba(239, 68, 68, 0.12)",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  color: "#ef4444",
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                }}
+              >
+                {isRevokingSessions ? "Revoking sessions…" : "Revoke All Other Sessions"}
+              </DangerButton>
+            )}
           </Box>
         </Box>
       </>
@@ -508,14 +693,22 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     <>
       <Header>
         {onBack && (
-          <Box
-            display="flex"
-            alignItems="center"
-            sx={{ cursor: "pointer", "@media (min-width: 901px)": { display: "none" } }}
+          <button
+            type="button"
+            aria-label="Back"
             onClick={onBack}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              cursor: "pointer",
+              background: "transparent",
+              border: "none",
+              padding: 0,
+              color: "inherit",
+            }}
           >
             <ArrowLeftIcon size={20} />
-          </Box>
+          </button>
         )}
         <span>Your Account</span>
       </Header>
@@ -648,7 +841,13 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
           </div>
         )}
       </Box>
-      <DetailItem $clickable onClick={() => navigate("/settings/profile")}>
+      <DetailItem
+        $clickable
+        role="button"
+        tabIndex={0}
+        onClick={() => navigate("/settings/profile")}
+        onKeyDown={handleDetailKeyDown(() => navigate("/settings/profile"))}
+      >
         <DetailIcon>
           <PersonIcon size={20} />
         </DetailIcon>
@@ -658,7 +857,13 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         </DetailText>
         <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>
-      <DetailItem $clickable onClick={() => onNavigate("accountInfo")}>
+      <DetailItem
+        $clickable
+        role="button"
+        tabIndex={0}
+        onClick={() => onNavigate("accountInfo")}
+        onKeyDown={handleDetailKeyDown(() => onNavigate("accountInfo"))}
+      >
         <DetailIcon>
           <PersonIcon size={20} />
         </DetailIcon>
@@ -668,7 +873,13 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         </DetailText>
         <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>
-      <DetailItem $clickable onClick={() => onNavigate("changePassword")}>
+      <DetailItem
+        $clickable
+        role="button"
+        tabIndex={0}
+        onClick={() => onNavigate("changePassword")}
+        onKeyDown={handleDetailKeyDown(() => onNavigate("changePassword"))}
+      >
         <DetailIcon>
           <KeyIcon size={20} />
         </DetailIcon>
@@ -678,7 +889,13 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         </DetailText>
         <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>
-      <DetailItem $clickable onClick={() => onNavigate("connectedAccounts")}>
+      <DetailItem
+        $clickable
+        role="button"
+        tabIndex={0}
+        onClick={() => onNavigate("connectedAccounts")}
+        onKeyDown={handleDetailKeyDown(() => onNavigate("connectedAccounts"))}
+      >
         <DetailIcon>
           <GlobeIcon size={20} />
         </DetailIcon>
@@ -688,7 +905,13 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         </DetailText>
         <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>
-      <DetailItem $clickable onClick={() => onNavigate("dataArchive")}>
+      <DetailItem
+        $clickable
+        role="button"
+        tabIndex={0}
+        onClick={() => onNavigate("dataArchive")}
+        onKeyDown={handleDetailKeyDown(() => onNavigate("dataArchive"))}
+      >
         <DetailIcon>
           <DownloadIcon size={20} />
         </DetailIcon>
@@ -698,7 +921,13 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         </DetailText>
         <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
       </DetailItem>
-      <DetailItem $clickable onClick={() => onNavigate("deleteAccount")}>
+      <DetailItem
+        $clickable
+        role="button"
+        tabIndex={0}
+        onClick={() => onNavigate("deleteAccount")}
+        onKeyDown={handleDetailKeyDown(() => onNavigate("deleteAccount"))}
+      >
         <DetailIcon>
           <TrashIcon size={20} />
         </DetailIcon>

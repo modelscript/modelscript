@@ -98,9 +98,10 @@ export function checkJobWalletDrain(
   database: LibraryDatabase,
   elapsedSeconds: number,
   profile: ComputeProfile,
+  orgId?: number | null,
 ): { hasBalance: boolean; remainingCredits: number; currentCost: number } {
   const currentCost = calculateCostCredits(elapsedSeconds, profile);
-  const userBalance = database.getUserBalance(userId);
+  const userBalance = orgId ? database.getOrgBalance(orgId) : database.getUserBalance(userId);
   const remainingCredits = Math.round((userBalance - currentCost) * 100) / 100;
 
   return {
@@ -163,7 +164,7 @@ export function resolveRequestUserId(req: express.Request, database: LibraryData
   const verifyCandidateToken = (token: string): number | null => {
     try {
       const secret = process.env["JWT_SECRET"] || JWT_SECRET;
-      const decoded = jwt.verify(token, secret) as {
+      const decoded = jwt.verify(token, secret, { algorithms: ["HS256"] }) as {
         id?: number;
         scope?: string;
         purpose?: string;

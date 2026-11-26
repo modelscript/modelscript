@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { syncMagnetHighlightsDom } from "@modelscript/canvas/engine";
 import { rerouteEdgeOrthogonal, resolveNearestNodePortId } from "./canvas-edge-routing.js";
 import { enqueueDiagramAction, getCurrentOptions, toSchemaY } from "./canvas-state.js";
 import type { Cell, DiagramWindow, Edge, Graph, Node, PlacementData } from "./canvas-types.js";
+import { adaptSvgColors } from "./color-inversion.js";
 import {
   clearActiveDropPlaceholder,
   dropComponentGhost,
   ensureDiagramStyles,
   getTypicalNodeSize,
   isEphemeralDiagramNode,
+  parseIconSvgToMarkup,
 } from "./drop-placeholder.js";
 import {
   collectCommittedExistingWires,
@@ -68,7 +71,14 @@ export function attachPlacementAndWireTools(params: {
     const fillColor = isDark ? "rgba(204, 204, 204, 0.15)" : "rgba(51, 51, 51, 0.08)";
     const { width, height } = getTypicalNodeSize(g);
 
-    if (placementData.iconSvg) {
+    const displaySvg = placementData.iconSvg
+      ? isDark
+        ? adaptSvgColors(placementData.iconSvg, isDark)
+        : placementData.iconSvg
+      : null;
+    const iconMarkup = displaySvg ? parseIconSvgToMarkup(displaySvg, width, height) : null;
+
+    if (displaySvg && iconMarkup) {
       placementGhost = g.addNode({
         id: "placement-ghost",
         shape: "image",
@@ -77,7 +87,8 @@ export function attachPlacementAndWireTools(params: {
         width,
         height,
         zIndex: 9999,
-        imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(placementData.iconSvg)}`,
+        imageUrl: `data:image/svg+xml;utf8,${encodeURIComponent(displaySvg)}`,
+        markup: iconMarkup,
         attrs: {
           image: {
             preserveAspectRatio: "xMidYMid meet",
@@ -86,6 +97,7 @@ export function attachPlacementAndWireTools(params: {
         },
       });
     } else {
+      const shortLabel = placementData.className.split(".").pop();
       placementGhost = g.addNode({
         id: "placement-ghost",
         shape: "rect",
@@ -93,6 +105,7 @@ export function attachPlacementAndWireTools(params: {
         y: y - height / 2,
         width,
         height,
+        zIndex: 9999,
         attrs: {
           body: {
             fill: fillColor,
@@ -104,8 +117,15 @@ export function attachPlacementAndWireTools(params: {
             opacity: 0.88,
             pointerEvents: "none",
           },
+          label: {
+            text: shortLabel,
+            fill: strokeColor,
+            pointerEvents: "none",
+            fontSize: 10,
+            fontWeight: "600",
+          },
           text: {
-            text: placementData.className.split(".").pop(),
+            text: shortLabel,
             fill: strokeColor,
             pointerEvents: "none",
             fontSize: 10,
@@ -155,6 +175,73 @@ export function attachPlacementAndWireTools(params: {
     previewEdge?: Edge | null;
   } | null = null;
 
+  const validateWirePair = (sId: string, sPort: string, tId: string, tPort: string): boolean => {
+    const graphWithOpts = g as unknown as {
+      options?: { connecting?: { validateConnection?: (args: Record<string, unknown>) => boolean } };
+    };
+    const validator = graphWithOpts.options?.connecting?.validateConnection;
+    if (!validator) return true;
+    try {
+      return validator({
+        sourceCell: g.getCellById(sId) ?? null,
+        targetCell: g.getCellById(tId) ?? null,
+        sourcePort: sPort,
+        targetPort: tPort,
+      });
+    } catch {
+      return true;
+    }
+  };
+
+  const syncWireToolHighlights = (
+    snappedTarget?: { nodeId: string; portId: string; x: number; y: number } | null,
+    cursor?: { x: number; y: number },
+  ) => {
+    const nodesG = (g.container?.querySelector?.(".ms-nodes-layer") as SVGGElement | null) ?? null;
+    if (!nodesG) return;
+    if (!activeWireState) {
+      syncMagnetHighlightsDom(nodesG, null);
+      return;
+    }
+    syncMagnetHighlightsDom(
+      nodesG,
+      {
+        sourceNodeId: activeWireState.sourceCell.id,
+        sourcePortId: activeWireState.sourcePortId ?? "",
+        sourcePoint: activeWireState.sourcePoint,
+        currentPoint: cursor ?? activeWireState.sourcePoint,
+        snappedTarget: snappedTarget ?? null,
+      },
+      validateWirePair,
+    );
+  };
+
+  const findCompatibleSnapTarget = (
+    x: number,
+    y: number,
+    radius = 24,
+  ): { nodeId: string; portId: string; x: number; y: number } | null => {
+    if (!activeWireState) return null;
+    let best: { nodeId: string; portId: string; x: number; y: number; dist: number } | null = null;
+    for (const node of g.getNodes()) {
+      if (isEphemeralDiagramNode(node.id)) continue;
+      const ports = (node as unknown as { getPorts?: () => { id: string }[] }).getPorts?.() ?? [];
+      for (const p of ports) {
+        if (node.id === activeWireState.sourceCell.id && p.id === activeWireState.sourcePortId) continue;
+        if (!validateWirePair(activeWireState.sourceCell.id, activeWireState.sourcePortId ?? "", node.id, p.id)) {
+          continue;
+        }
+        const pt = resolveNodePortWorldPoint(node, p.id);
+        if (!pt) continue;
+        const dist = Math.hypot(pt.x - x, pt.y - y);
+        if (dist <= radius && (!best || dist < best.dist)) {
+          best = { nodeId: node.id, portId: p.id, x: pt.x, y: pt.y, dist };
+        }
+      }
+    }
+    return best ? { nodeId: best.nodeId, portId: best.portId, x: best.x, y: best.y } : null;
+  };
+
   const cancelWireToolInProgress = () => {
     if (activeWireState?.previewEdge) {
       try {
@@ -164,6 +251,7 @@ export function attachPlacementAndWireTools(params: {
       }
     }
     activeWireState = null;
+    syncWireToolHighlights(null);
   };
 
   const setWireToolState = (active?: boolean): boolean => {
@@ -205,10 +293,17 @@ export function attachPlacementAndWireTools(params: {
       }
     }
     if (wireToolActive && activeWireState?.previewEdge) {
-      const raster = getCurrentOptions()?.snapGrid ?? 20;
-      const snappedX = Math.round(x / raster) * raster;
-      const snappedY = Math.round(y / raster) * raster;
-      activeWireState.previewEdge.setTarget({ x: snappedX, y: snappedY });
+      const snappedTarget = findCompatibleSnapTarget(x, y, 24);
+      if (snappedTarget) {
+        activeWireState.previewEdge.setTarget({ cell: snappedTarget.nodeId, port: snappedTarget.portId });
+        syncWireToolHighlights(snappedTarget, { x: snappedTarget.x, y: snappedTarget.y });
+      } else {
+        const raster = getCurrentOptions()?.snapGrid ?? 20;
+        const snappedX = Math.round(x / raster) * raster;
+        const snappedY = Math.round(y / raster) * raster;
+        activeWireState.previewEdge.setTarget({ x: snappedX, y: snappedY });
+        syncWireToolHighlights(null, { x: snappedX, y: snappedY });
+      }
     }
   };
 
@@ -292,10 +387,17 @@ export function attachPlacementAndWireTools(params: {
           previewEdge,
         };
         g.addEdge(previewEdge);
+        syncWireToolHighlights(null, portPoint);
       } else {
         // Target node clicked: finish wire
         if (activeWireState.sourceCell.id === cell.id && activeWireState.sourcePortId === portId) {
           // Clicked start port; skip
+          return;
+        }
+        if (
+          !validateWirePair(activeWireState.sourceCell.id, activeWireState.sourcePortId ?? "", cell.id, portId ?? "")
+        ) {
+          // Incompatible port: ignore click
           return;
         }
         const srcStr =

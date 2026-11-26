@@ -27,6 +27,7 @@ export const scaleLanguage = language({
   },
   word: scaleDeckGrammar.word,
   extras: scaleDeckGrammar.extras,
+  conflicts: scaleDeckGrammar.conflicts,
   rules: scaleDeckGrammar.rules,
 
   writeback: {

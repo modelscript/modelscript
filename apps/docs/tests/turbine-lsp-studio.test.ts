@@ -349,14 +349,29 @@ describe("@modelscript/docs TurbineHero Live WASM LSP Studio", () => {
           if (msg.type() === "error") consoleErrors.push(msg.text());
         });
         page.on("request", (req) => {
-          if (!interactedWithHero && /\/lsp\/|monaco|browserServerMain/i.test(req.url())) {
+          if (!interactedWithHero && /\/lsp\/|monaco|browserServerMain|language-examples/i.test(req.url())) {
             lspRequestsBeforeInteract.push(req.url());
           }
         });
 
         await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "networkidle", timeout: 30000 });
 
-        // Wait for lightweight Three.js hero first frame
+        // Hero Verification Playground renders immediately above the fold with zero LSP/Monaco requests
+        await page.locator("#polyglot-sandbox.sandbox-section--hero .sb-static-editor").first().waitFor({
+          state: "visible",
+          timeout: 15000,
+        });
+        assert.deepStrictEqual(
+          lspRequestsBeforeInteract,
+          [],
+          `Zero LSP/Monaco requests should occur on initial load, saw: ${lspRequestsBeforeInteract.join(", ")}`,
+        );
+
+        // Scroll to the relocated 3D Turbine Digital Twin showcase section to trigger lazy Three.js boot
+        const turbineSection = page.locator("#turbine-showcase .turbine").first();
+        await turbineSection.scrollIntoViewIfNeeded();
+
+        // Wait for lightweight Three.js showcase first frame
         const readyCanvas = page.locator(".turbine-canvas.is-ready").first();
         await readyCanvas.waitFor({ state: "visible", timeout: 15000 });
         const canvasMetrics = await readyCanvas.evaluate((el) => {
@@ -368,12 +383,12 @@ describe("@modelscript/docs TurbineHero Live WASM LSP Studio", () => {
         assert.deepStrictEqual(
           lspRequestsBeforeInteract,
           [],
-          `Zero LSP/Monaco requests should occur on initial load, saw: ${lspRequestsBeforeInteract.join(", ")}`,
+          `Zero LSP/Monaco requests should occur before interaction, saw: ${lspRequestsBeforeInteract.join(", ")}`,
         );
 
-        // Hover hero to trigger 120ms idle prefetch + reveal CTA pill, then click into in-place studio
+        // Hover turbine to trigger 120ms idle prefetch + reveal CTA pill, then click into in-place studio
         interactedWithHero = true;
-        await page.locator(".turbine").first().hover();
+        await turbineSection.hover();
         const ctaPill = page.locator(".turbine-lsp-trigger").first();
         await ctaPill.waitFor({ state: "visible", timeout: 10000 });
         await ctaPill.click();

@@ -13,11 +13,11 @@ import type { FmiLsEmtCompanionInstance } from "@modelscript/exchange";
 import { Context as ModelicaContext } from "@modelscript/modelica";
 import type { PsseCase } from "@modelscript/psse";
 import {
+  UnifiedWorkspace,
   initBltWasm,
   type DAEBuilder,
   type SymbolEntry,
   type SymbolIndex,
-  type UnifiedWorkspace,
 } from "@modelscript/runtime";
 import {
   HybridEmtTsCoordinator,
@@ -218,31 +218,152 @@ export interface PolyglotBoundaryBindings {
   signalBindings: Array<{ modelicaVar: string; pscadSignal: string }>;
 }
 
+interface CstNodeLike {
+  type?: string | undefined;
+  text?: string | undefined;
+  children?: CstNodeLike[] | undefined;
+}
+
+const BUILTIN_MODELICA_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
+const COMPONENT_CLAUSE_TYPES = new Set(["component_clause", "ComponentClause"]);
+const TYPE_SPECIFIER_TYPES = new Set(["type_specifier", "TypeSpecifier"]);
+const COMPONENT_DECL_TYPES = new Set(["component_declaration", "ComponentDeclaration"]);
+const IDENT_TYPES = new Set(["identifier", "IDENT"]);
+const CONNECT_TYPES = new Set(["connect_equation", "connect_clause"]);
+const COMPONENT_REF_TYPES = new Set(["component_reference"]);
+
+function collectNodesByTypes(root: CstNodeLike, types: ReadonlySet<string>, stopAtMatch = false): CstNodeLike[] {
+  const result: CstNodeLike[] = [];
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type && types.has(cur.type)) {
+      result.push(cur);
+      if (stopAtMatch) continue;
+    }
+    const children = cur.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+  return result;
+}
+
+function collectFirstNodeByTypes(root: CstNodeLike, types: ReadonlySet<string>): CstNodeLike | undefined {
+  const stack: CstNodeLike[] = [root];
+  while (stack.length > 0) {
+    const cur = stack.pop();
+    if (!cur) continue;
+    if (cur.type && types.has(cur.type)) return cur;
+    const children = cur.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+  return undefined;
+}
+
+function parseModelicaCst(
+  text: string,
+  unifiedWs?: UnifiedWorkspace | undefined,
+  uri?: string | undefined,
+): CstNodeLike | undefined {
+  if (unifiedWs && uri) {
+    const existingTree = unifiedWs.getDocumentTree(uri);
+    if (existingTree?.rootNode) {
+      return existingTree.rootNode as CstNodeLike;
+    }
+  }
+  const parser = unifiedWs?.getParser(".mo") ?? UnifiedWorkspace.getGlobalParser(".mo");
+  if (parser && typeof parser.parse === "function") {
+    const tree = parser.parse(text);
+    if (tree?.rootNode) {
+      return tree.rootNode as CstNodeLike;
+    }
+  }
+  return undefined;
+}
+
+function extractModelicaComponentsAndConnects(rootNode: CstNodeLike): {
+  instanceTypes: Map<string, string>;
+  typeRefs: string[];
+  connects: Array<{ lhs: string; rhs: string }>;
+} {
+  const instanceTypes = new Map<string, string>();
+  const typeRefs: string[] = [];
+  const connects: Array<{ lhs: string; rhs: string }> = [];
+
+  const stack: CstNodeLike[] = [rootNode];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node) continue;
+
+    if (node.type && COMPONENT_CLAUSE_TYPES.has(node.type)) {
+      const typeSpecNode = (node.children ?? []).find((c) => c.type && TYPE_SPECIFIER_TYPES.has(c.type));
+      const typeName = typeSpecNode?.text?.trim() ?? "";
+      if (typeName) {
+        typeRefs.push(typeName);
+        for (const declWrap of collectNodesByTypes(node, COMPONENT_DECL_TYPES, true)) {
+          const declNode = (declWrap.children ?? []).find((c) => c.type === "declaration") ?? declWrap;
+          const idNode = collectFirstNodeByTypes(declNode, IDENT_TYPES);
+          const instanceName = idNode?.text?.trim() ?? "";
+          if (instanceName) {
+            instanceTypes.set(instanceName, typeName);
+          }
+        }
+      }
+      continue;
+    }
+
+    if (node.type && CONNECT_TYPES.has(node.type)) {
+      const refs = collectNodesByTypes(node, COMPONENT_REF_TYPES, true);
+      if (refs.length >= 2) {
+        const lhs = refs[0]?.text?.trim() ?? "";
+        const rhs = refs[1]?.text?.trim() ?? "";
+        if (lhs && rhs) {
+          connects.push({ lhs, rhs });
+        }
+      }
+      continue;
+    }
+
+    const children = node.children;
+    if (children) {
+      for (let i = children.length - 1; i >= 0; i--) {
+        const ch = children[i];
+        if (ch) stack.push(ch);
+      }
+    }
+  }
+
+  return { instanceTypes, typeRefs, connects };
+}
+
 /**
  * Extracts explicit boundary bus numbers and signal bindings from Modelica `connect(a, b)`
- * equations and `.pscx` wire/component references.
+ * equations and `.pscx` wire/component references using the Modelica WASM CST.
  */
 export function extractPolyglotBoundaryBindings(
   modelicaText?: string | undefined,
   psseCase?: PsseCase | undefined,
+  unifiedWs?: UnifiedWorkspace | undefined,
+  rootNode?: CstNodeLike | undefined,
 ): PolyglotBoundaryBindings {
   const signalBindings: Array<{ modelicaVar: string; pscadSignal: string }> = [];
   let boundaryBusNumber: number | undefined;
 
-  if (modelicaText) {
-    // Map component instance names to their declared types
-    const instanceTypes = new Map<string, string>();
-    const declRe = /^\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+([A-Za-z_]\w*)\s*(?:\(|;|\[)/gm;
-    let dm: RegExpExecArray | null;
-    while ((dm = declRe.exec(modelicaText)) !== null) {
-      instanceTypes.set(dm[2]!, dm[1]!);
-    }
+  const cstRoot = rootNode ?? (modelicaText ? parseModelicaCst(modelicaText, unifiedWs) : undefined);
+  if (cstRoot) {
+    const { instanceTypes, connects } = extractModelicaComponentsAndConnects(cstRoot);
 
-    const connectRe = /\bconnect\s*\(\s*([^,\s)]+)\s*,\s*([^,\s)]+)\s*\)\s*;/g;
-    let cm: RegExpExecArray | null;
-    while ((cm = connectRe.exec(modelicaText)) !== null) {
-      const lhs = cm[1]!;
-      const rhs = cm[2]!;
+    for (const { lhs, rhs } of connects) {
       const lhsComp = lhs.split(".")[0]!;
       const rhsComp = rhs.split(".")[0]!;
       const lhsType = instanceTypes.get(lhsComp) ?? "";
@@ -299,25 +420,28 @@ export function detectPolyglotPlan(
   let modelicaUri: string | undefined = isModelica ? uri : undefined;
 
   if (isModelica) {
-    // Scan component type references in Modelica source (e.g., `PSCAD.VoltageSource v1;`, `Microgrid.IbrInverter inv;`)
-    const typeRefRe = /^\s*(?:[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+[A-Za-z_]\w*\s*(?:\(|;|\[)/gm;
-    let m: RegExpExecArray | null;
-    while ((m = typeRefRe.exec(text)) !== null) {
-      const candidate = m[0]!.trim().split(/\s+/)[0]!;
-      if (
-        candidate === "model" ||
-        candidate === "Real" ||
-        candidate === "Integer" ||
-        candidate === "Boolean" ||
-        candidate === "String" ||
-        candidate === "parameter" ||
-        candidate === "constant" ||
-        candidate === "input" ||
-        candidate === "output" ||
-        candidate === "import" ||
-        candidate === "extends" ||
-        candidate === "equation"
-      ) {
+    // Collect component type references from SymbolIndex for `uri` first, falling back to Modelica CST
+    const typeCandidates: string[] = [];
+    for (const entry of index.symbols.values()) {
+      if (entry.resourceId !== uri) continue;
+      if (entry.kind.toLowerCase() !== "component") continue;
+      const meta = entry.metadata as Record<string, unknown> | undefined;
+      const rawType = meta?.["typeSpecifier"] ?? meta?.["type_specifier"] ?? meta?.["typeName"] ?? meta?.["typeRef"];
+      if (typeof rawType === "string" && rawType.trim().length > 0) {
+        typeCandidates.push(rawType.trim());
+      }
+    }
+
+    if (typeCandidates.length === 0) {
+      const cstRoot = parseModelicaCst(text, unifiedWs, uri);
+      if (cstRoot) {
+        const { typeRefs } = extractModelicaComponentsAndConnects(cstRoot);
+        typeCandidates.push(...typeRefs);
+      }
+    }
+
+    for (const candidate of typeCandidates) {
+      if (BUILTIN_MODELICA_TYPES.has(candidate)) {
         continue;
       }
       const sym = findSymbolByQualifiedName(index, candidate);

@@ -3,10 +3,6 @@
 import AnsatzEditor from "@modelscript/editor/workbench/AnsatzEditor";
 import { AnsatzEditorLoadingScreen } from "@modelscript/editor/workbench/AnsatzEditorLoadingScreen";
 import { ANSATZ_LANGUAGE_MAP, getDefaultLanguageView, getLanguageInfo } from "@modelscript/editor/workbench/constants";
-import {
-  getLatestPowerFlowComparisonSnapshot,
-  getLatestPsseStudySnapshot,
-} from "@modelscript/editor/workbench/panels/inspectors/PowerGridInspector";
 import { getLatestSeasonalVerificationMatrix } from "@modelscript/editor/workbench/panels/inspectors/RequirementsOntologyInspector";
 import {
   extractPrimaryModelicaClassName,
@@ -25,6 +21,8 @@ import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } 
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { createArtifactView, getArtifactView, getPost } from "../api";
 import { useAuth } from "../AuthContext";
+import { parseTrainingStudioUrlParams } from "../components/artifacts/training-recipe-composer-helpers";
+import { TrainingRecipeComposerForm } from "../components/artifacts/TrainingRecipeComposerForm";
 import { analyzeSnippetDiagnostics } from "../components/compose/snippet-diagnostics";
 import { ComposeContext, type ComposeInitialState } from "../components/ComposeContext";
 import { ErrorBoundary } from "../components/ErrorBoundary";
@@ -162,6 +160,9 @@ export const AnsatzEditorPage: React.FC = () => {
   const editPostIdParam = searchParams.get("editPostId");
   const replyToPostIdParam = searchParams.get("replyToPostId");
   const diagramTypeParam = searchParams.get("diagramType");
+  const trainingStudioParams = useMemo(() => parseTrainingStudioUrlParams(location.search), [location.search]);
+  const [trainingBannerDismissed, setTrainingBannerDismissed] = useState(false);
+  const [trainingComposerOpen, setTrainingComposerOpen] = useState(false);
 
   const editPostId = editPostIdParam || undefined;
   const replyToPostId = replyToPostIdParam || undefined;
@@ -337,6 +338,8 @@ export const AnsatzEditorPage: React.FC = () => {
           code: currentCode,
           title: currentTitle,
           lang: currentLang,
+          projectFiles: projectFiles && Object.keys(projectFiles).length > 0 ? projectFiles : undefined,
+          activeFile: activeFile ?? undefined,
           timestamp: Date.now(),
         });
         localStorage.setItem("ansatz_ansatz_draft", draftData);
@@ -344,7 +347,7 @@ export const AnsatzEditorPage: React.FC = () => {
       } catch {}
     }, 1000);
     return () => clearTimeout(timer);
-  }, [currentCode, currentTitle, currentLang, isDirty]);
+  }, [currentCode, currentTitle, currentLang, projectFiles, activeFile, isDirty]);
 
   // Recover draft if opened cleanly without query parameters or initial target
   useEffect(() => {
@@ -358,6 +361,14 @@ export const AnsatzEditorPage: React.FC = () => {
           baselineCodeRef.current = parsed.code;
           if (parsed.title) setCurrentTitle(parsed.title);
           if (parsed.lang) setCurrentLang(parsed.lang);
+          if (parsed.projectFiles && typeof parsed.projectFiles === "object") {
+            setProjectFiles(parsed.projectFiles as Record<string, string>);
+          }
+          if (typeof parsed.activeFile === "string") {
+            setActiveFile(parsed.activeFile);
+          }
+          setIsTemplatesModalOpen(false);
+          setIsTemplateChoiceRequired(false);
         }
       }
     } catch {}
@@ -1235,8 +1246,6 @@ export const AnsatzEditorPage: React.FC = () => {
     }
     try {
       const isMulti = Boolean(projectFiles && Object.keys(projectFiles).length > 1);
-      const psseSnapshot = currentLang === "psse" ? getLatestPsseStudySnapshot() : null;
-      const pfComparison = getLatestPowerFlowComparisonSnapshot();
       const seasonalVerification = getLatestSeasonalVerificationMatrix();
       const created = await createArtifactView({
         artifact_type: currentLang === "modelica" ? "modelica-diagram" : currentLang,
@@ -1248,8 +1257,6 @@ export const AnsatzEditorPage: React.FC = () => {
           dialect: currentLang,
           view: currentView,
           ...(isMulti && projectFiles ? { files: projectFiles } : {}),
-          ...(psseSnapshot ?? {}),
-          ...(pfComparison ? { powerFlowComparison: pfComparison } : {}),
           ...(seasonalVerification ? { seasonalVerification } : {}),
         }),
       });
@@ -1628,10 +1635,35 @@ export const AnsatzEditorPage: React.FC = () => {
   const splitOrientation: "horizontal" | "vertical" =
     isNarrowForHorizontal && hasEnoughVerticalSpace ? "vertical" : "horizontal";
 
+  const [isVrMode, setIsVrMode] = useState<boolean>(() => {
+    const vrParam = searchParams.get("vr");
+    return vrParam === "1" || vrParam === "true";
+  });
+
   const handleToggleSplit = useCallback(() => {
     if (currentView === "code" || !canSplit) return;
     setIsSplit((prev) => !prev);
   }, [currentView, canSplit]);
+
+  const handleToggleVrMode = useCallback(() => {
+    setIsVrMode((prev) => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        try {
+          const url = new URL(window.location.href);
+          if (next) {
+            url.searchParams.set("vr", "1");
+          } else {
+            url.searchParams.delete("vr");
+          }
+          window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+        } catch {
+          // Ignore restricted history contexts (e.g. sandboxed iframes)
+        }
+      }
+      return next;
+    });
+  }, [setIsVrMode]);
   const [simulateTriggerCount, setSimulateTriggerCount] = useState<number>(() => (autoSimulateParam === "1" ? 1 : 0));
   const [simulationResetKey, setSimulationResetKey] = useState<number>(0);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -1764,13 +1796,16 @@ export const AnsatzEditorPage: React.FC = () => {
         } else if (e.key === "6") {
           e.preventDefault();
           handleViewChange("split");
+        } else if (e.code === "KeyV" || e.key.toLowerCase() === "v") {
+          e.preventDefault();
+          handleToggleVrMode();
         }
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleRunSimulation, handleToggleSidebar, handleViewChange]);
+  }, [handleRunSimulation, handleToggleSidebar, handleToggleVrMode, handleViewChange]);
 
   const handleParametersChange = (nextParams: Record<string, number>) => {
     setPayload((prev) => {
@@ -1811,6 +1846,8 @@ export const AnsatzEditorPage: React.FC = () => {
         canSplit={canSplit}
         splitOrientation={splitOrientation}
         onToggleSplit={handleToggleSplit}
+        isVrMode={isVrMode}
+        onToggleVrMode={handleToggleVrMode}
         isDirty={isDirty}
         isSimulating={isSimulating}
         runStatus={{
@@ -1837,6 +1874,101 @@ export const AnsatzEditorPage: React.FC = () => {
         onOpenShare={() => setShareModalOpen(true)}
         onPublishToFeed={handlePublishToFeed}
       />
+
+      {trainingStudioParams.isTrainingStudio && !trainingBannerDismissed && (
+        <div
+          data-testid="training-studio-deeplink-banner"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            padding: "8px 14px",
+            borderBottom: "1px solid var(--color-border-default)",
+            background: "var(--color-canvas-subtle)",
+            fontSize: "12px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: "999px",
+                  fontWeight: 700,
+                  fontSize: "11px",
+                  background: "rgba(124, 58, 237, 0.14)",
+                  color: "#7c3aed",
+                }}
+              >
+                Training Studio
+              </span>
+              {trainingStudioParams.forkRecipe && (
+                <span>
+                  Forking <code>{trainingStudioParams.forkRecipe}</code>
+                </span>
+              )}
+              {!trainingStudioParams.forkRecipe && trainingStudioParams.recipe && (
+                <span>
+                  Active recipe <code>{trainingStudioParams.recipe}</code>
+                </span>
+              )}
+              {trainingStudioParams.runBackend && (
+                <span
+                  style={{
+                    padding: "2px 7px",
+                    borderRadius: "6px",
+                    fontWeight: 600,
+                    fontSize: "11px",
+                    background: "rgba(5, 150, 105, 0.14)",
+                    color: "#047857",
+                  }}
+                >
+                  Backend: {trainingStudioParams.runBackend.toUpperCase()}
+                </span>
+              )}
+              {trainingStudioParams.artifactId && (
+                <span style={{ color: "var(--color-fg-muted)" }}>Artifact #{trainingStudioParams.artifactId}</span>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <Button size="small" variant="primary" onClick={() => setTrainingComposerOpen((open) => !open)}>
+                {trainingComposerOpen ? "Hide Recipe Composer" : "Draft Lab Report"}
+              </Button>
+              <Button
+                size="small"
+                variant="invisible"
+                aria-label="Dismiss Training Studio banner"
+                onClick={() => setTrainingBannerDismissed(true)}
+              >
+                ×
+              </Button>
+            </div>
+          </div>
+          {trainingComposerOpen && (
+            <div style={{ maxHeight: "48vh", overflowY: "auto" }}>
+              <TrainingRecipeComposerForm
+                forkedFromPackage={trainingStudioParams.forkRecipe ?? trainingStudioParams.recipe}
+                onDraftGenerated={({ markdown, artifactPayload }) => {
+                  setTrainingComposerOpen(false);
+                  openCompose({
+                    initialContent: markdown,
+                    initialTitle: artifactPayload.title,
+                    artifactId: trainingStudioParams.artifactId ?? undefined,
+                  });
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <EditorArea>
         {isLoadingArtifact ? (
@@ -1903,6 +2035,10 @@ export const AnsatzEditorPage: React.FC = () => {
                   <Button
                     variant="default"
                     onClick={() => {
+                      try {
+                        localStorage.removeItem("ansatz_ansatz_draft");
+                        localStorage.removeItem("ansatz_sketch_draft");
+                      } catch {}
                       applySelectedExample(HERO_EXAMPLES[0]!);
                       window.location.reload();
                     }}
@@ -1946,6 +2082,9 @@ export const AnsatzEditorPage: React.FC = () => {
               canSplit={canSplit}
               onViewChange={handleViewChange}
               onToggleSplit={handleToggleSplit}
+              colorMode={theme === "dark" ? "dark" : "light"}
+              isVrMode={isVrMode}
+              onVrModeChange={setIsVrMode}
               splitOrientation={splitOrientation === "vertical" ? "rows" : "columns"}
               initialVisualizerSubview={
                 currentView === "simulation" ||
@@ -1982,21 +2121,10 @@ export const AnsatzEditorPage: React.FC = () => {
                 setIsSimulating(s === "pending" || s === "processing");
               }}
               onDialectChange={(dialect: string) => {
-                setCurrentLang(dialect);
-                const nextInfo = getLanguageInfo(dialect);
-                if (nextInfo.defaultFiles && !isDirty) {
-                  const nextFiles = { ...nextInfo.defaultFiles };
-                  const nextActive = nextInfo.defaultActiveFile ?? Object.keys(nextFiles)[0] ?? null;
-                  setProjectFiles(nextFiles);
-                  setActiveFile(nextActive);
-                  if (nextActive && nextFiles[nextActive] !== undefined) {
-                    setCurrentCode(nextFiles[nextActive]);
-                    baselineCodeRef.current = nextFiles[nextActive];
-                  }
-                } else if (!nextInfo.defaultFiles && !isDirty) {
-                  setProjectFiles(null);
-                  setActiveFile(null);
-                }
+                if (dialect === currentLang) return;
+                // Replace the old language's content with the new language's starter
+                // (prompts to discard if there are unsaved changes).
+                handleSelectLang(dialect);
               }}
             />
           </ErrorBoundary>

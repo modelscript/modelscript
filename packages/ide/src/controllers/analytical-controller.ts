@@ -3,11 +3,13 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser";
 import { AcceleratorLatticePanel } from "../accelerator-lattice-panel.js";
+import { AiCopilotPanel } from "../ai-copilot-panel.js";
 import { AnalysisPanel } from "../analysis-panel.js";
 import { CadViewerPanel } from "../cad-viewer-panel.js";
 import { ClimateRasterPanel } from "../climate-raster-panel.js";
 import { ContractHierarchyPanel } from "../contract-hierarchy-panel.js";
 import { CrystallographyPanel } from "../crystallography-panel.js";
+import { DomainInspectorPanel } from "../domain-inspector-panel.js";
 import { ElectrophysiologyPanel } from "../electrophysiology-panel.js";
 import { FitsImageViewerPanel } from "../fits-image-panel.js";
 import { HepEventViewerPanel } from "../hep-event-panel.js";
@@ -16,7 +18,9 @@ import { NeuralSpikeViewerPanel } from "../neural-spike-panel.js";
 import { OpticalBenchPanel } from "../optical-bench-panel.js";
 import { QuantumChemistryPanel } from "../quantum-chemistry-panel.js";
 import { ReactionCoordinatePanel } from "../reaction-coordinate-panel.js";
+import { RtmContractsPanel } from "../rtm-contracts-panel.js";
 import { SeismicViewerPanel } from "../seismic-viewer-panel.js";
+import { SpatialDiagramPanel } from "../spatial-diagram-panel.js";
 import { ThreadExplorerPanel } from "../thread-explorer-panel.js";
 import { TokamakEquilibriumPanel } from "../tokamak-equilibrium-panel.js";
 import { type ReplayTraceData, TraceReplayPanel } from "../trace-replay-panel.js";
@@ -55,6 +59,22 @@ export function registerAnalyticalCommands(
         ContractHierarchyPanel.createOrShow(context.extensionUri, client, uriOrContractName, contractName);
       },
     ),
+
+    vscode.commands.registerCommand("modelscript.openRtmContracts", () => {
+      RtmContractsPanel.createOrShow(context.extensionUri, client);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openSpatialDiagram3D", () => {
+      SpatialDiagramPanel.createOrShow(context.extensionUri, client);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openAnsatzCopilot", () => {
+      AiCopilotPanel.createOrShow(context.extensionUri, client);
+    }),
+
+    vscode.commands.registerCommand("modelscript.openDomainInspector", () => {
+      DomainInspectorPanel.createOrShow(context.extensionUri, client);
+    }),
 
     vscode.commands.registerCommand(
       "modelscript.openTraceReplay",
@@ -249,20 +269,77 @@ export function registerAnalyticalCommands(
             const moDoc = await vscode.workspace.openTextDocument(moUri);
             const moText = moDoc.getText();
             filesReadOrUpdated++;
-            const updatedMoText = moText
-              .replace(/\bparameter\s+Real\s+m\s*=\s*[\d.]+/g, `parameter Real m = ${mass}`)
-              .replace(/\bparameter\s+Real\s+A\s*=\s*[\d.]+/g, `parameter Real A = ${area}`)
-              .replace(/\bparameter\s+Real\s+Cd\s*=\s*[\d.]+/g, `parameter Real Cd = ${cd.toFixed(2)}`)
-              .replace(/\bparameter\s+Real\s+rho\s*=\s*[\d.]+/g, `parameter Real rho = ${rho}`);
+            const targetValues: Record<string, string> = {
+              m: String(mass),
+              A: String(area),
+              Cd: cd.toFixed(2),
+              rho: String(rho),
+            };
 
-            if (updatedMoText !== moText) {
-              const edit = new vscode.WorkspaceEdit();
-              edit.replace(
-                moUri,
-                new vscode.Range(moDoc.positionAt(0), moDoc.positionAt(moText.length)),
-                updatedMoText,
-              );
-              await vscode.workspace.applyEdit(edit);
+            let appliedViaCst = false;
+            if (client) {
+              try {
+                const cstParams = await client.sendRequest<
+                  Array<{
+                    name: string;
+                    value: string;
+                    valueStartOffset: number;
+                    valueEndOffset: number;
+                  }>
+                >("modelscript/getDocumentParameters", {
+                  uri: moUri.toString(),
+                  documentText: moText,
+                });
+                if (Array.isArray(cstParams) && cstParams.length > 0) {
+                  const edit = new vscode.WorkspaceEdit();
+                  let hasEdits = false;
+                  for (const param of cstParams) {
+                    const nextVal = targetValues[param.name];
+                    if (
+                      nextVal !== undefined &&
+                      param.value !== nextVal &&
+                      Number.isFinite(param.valueStartOffset) &&
+                      Number.isFinite(param.valueEndOffset) &&
+                      param.valueStartOffset >= 0 &&
+                      param.valueEndOffset >= param.valueStartOffset
+                    ) {
+                      edit.replace(
+                        moUri,
+                        new vscode.Range(
+                          moDoc.positionAt(param.valueStartOffset),
+                          moDoc.positionAt(param.valueEndOffset),
+                        ),
+                        nextVal,
+                      );
+                      hasEdits = true;
+                    }
+                  }
+                  if (hasEdits) {
+                    await vscode.workspace.applyEdit(edit);
+                  }
+                  appliedViaCst = true;
+                }
+              } catch {
+                // Fall back to regex replacement if LSP CST query fails
+              }
+            }
+
+            if (!appliedViaCst) {
+              const updatedMoText = moText
+                .replace(/\bparameter\s+Real\s+m\s*=\s*[\d.]+/g, `parameter Real m = ${mass}`)
+                .replace(/\bparameter\s+Real\s+A\s*=\s*[\d.]+/g, `parameter Real A = ${area}`)
+                .replace(/\bparameter\s+Real\s+Cd\s*=\s*[\d.]+/g, `parameter Real Cd = ${cd.toFixed(2)}`)
+                .replace(/\bparameter\s+Real\s+rho\s*=\s*[\d.]+/g, `parameter Real rho = ${rho}`);
+
+              if (updatedMoText !== moText) {
+                const edit = new vscode.WorkspaceEdit();
+                edit.replace(
+                  moUri,
+                  new vscode.Range(moDoc.positionAt(0), moDoc.positionAt(moText.length)),
+                  updatedMoText,
+                );
+                await vscode.workspace.applyEdit(edit);
+              }
             }
           } catch {
             // Optional config read or best-effort workspace edit ignored

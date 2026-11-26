@@ -1,11 +1,11 @@
 ---
 title: CLI Commands Reference
-description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 105 documented engineering formats.
+description: Complete command, subcommand, and flag reference for the modelscript (msx) CLI across compilation, simulation, verification, digital thread, and 169 documented engineering formats.
 ---
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **146 registered commands** across **105 documented engineering formats** (106 total monorepo packages) can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **178 registered commands** across **169 documented engineering formats** (106 total monorepo packages) can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -363,7 +363,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 105 documented engineering formats.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 169 documented engineering formats.
 
 <CliCommand name="polyglot" :show-actions="false" />
 
@@ -1244,7 +1244,7 @@ Resolves semantic version constraints, verifies SHA-256 content-addressable dige
 
 ### `stdlib`
 
-Browses, searches, and bootstraps official standard libraries across all 105 documented engineering formats.
+Browses, searches, and bootstraps official standard libraries across all 169 documented engineering formats.
 
 <CliCommand name="stdlib" />
 

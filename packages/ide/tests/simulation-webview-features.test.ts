@@ -3,7 +3,12 @@
 import assert from "node:assert";
 import { describe, it } from "node:test";
 import * as vscode from "vscode";
-import { SimulationPanel } from "../src/simulation-panel.js";
+import {
+  computeSignalStatistics,
+  encodeSimulationParquetBase64,
+  evaluateWaterCompliance,
+  SimulationPanel,
+} from "../src/simulation-panel.js";
 import { lttbDecimate } from "../src/utils/lttb.js";
 
 describe("Simulation Results Webview Upgrades (P0-P3 Features)", () => {
@@ -204,6 +209,159 @@ describe("Simulation Results Webview Upgrades (P0-P3 Features)", () => {
     assert.ok(html.includes('id="btn-simulate"'), "Must contain simulate button");
     assert.ok(html.includes('id="sim-telemetry"'), "Must contain simulation telemetry badge");
 
+    panel.dispose();
+  });
+
+  it("renders Parquet/JSON export buttons, signal statistics drawer, baseline compare toggle, and Studio/Compliance tabs", () => {
+    const fakeUri = vscode.Uri.parse("file:///workspace");
+    const fakeWebviewPanel = {
+      webview: {
+        asWebviewUri: (uri: vscode.Uri) => uri,
+        html: "",
+        onDidReceiveMessage: () => ({ dispose: () => {} }),
+        postMessage: () => Promise.resolve(true),
+      },
+      onDidDispose: () => ({ dispose: () => {} }),
+      reveal: () => {},
+      dispose: () => {},
+    } as unknown as vscode.WebviewPanel;
+
+    const panel = new (SimulationPanel as any)(fakeWebviewPanel, fakeUri, false);
+    const html = (panel as unknown as { getHtmlForWebview: () => string }).getHtmlForWebview();
+
+    assert.ok(html.includes('id="btn-export-parquet"'), "Must contain Parquet export button");
+    assert.ok(html.includes('id="btn-export-json"'), "Must contain JSON export button");
+    assert.ok(html.includes('id="btn-toggle-stats"'), "Must contain signal statistics drawer toggle");
+    assert.ok(html.includes('id="btn-compare-baseline"'), "Must contain baseline comparison toggle");
+    assert.ok(html.includes('id="stats-drawer"'), "Must contain signal statistics drawer element");
+    assert.ok(html.includes('data-sim-tab="studio"'), "Must contain Studio View tab");
+    assert.ok(html.includes('id="studio-results-container"'), "Must contain Studio View React mount container");
+    assert.ok(html.includes('id="phasor-fft-container"'), "Must contain Phasor & FFT container");
+    assert.ok(html.includes('id="ieee2800-container"'), "Must contain Compliance cards container");
+
+    panel.dispose();
+  });
+
+  it("computes signal statistics (min, max, mean, RMS, 2% settling time) and baseline deltas accurately", () => {
+    // Exponential step response settling to 1.0: y(t) = 1 - exp(-t)
+    const t = [0, 1, 2, 3, 4, 5, 6];
+    const y = t.map((ti) => 1 - Math.exp(-ti));
+    const baseline = t.map(() => 1.0);
+
+    const stats = computeSignalStatistics(t, y, baseline);
+    assert.strictEqual(stats.min, 0);
+    assert.ok(Math.abs(stats.max - y[6]!) < 1e-12);
+    assert.ok(Math.abs(stats.finalVal - y[6]!) < 1e-12);
+    assert.ok(stats.rms > 0 && stats.rms <= 1.0);
+    // exp(-4) ≈ 0.0183 < 0.02, so 2% settling time should be at t = 4
+    assert.strictEqual(stats.settlingTime, 4);
+    assert.ok(stats.baselineDeltaMean !== undefined && stats.baselineDeltaMean < 0);
+    assert.ok(stats.baselineRmse !== undefined && stats.baselineRmse > 0);
+  });
+
+  it("encodes valid Apache Parquet binary as base64 and handles exportFile via attachExtensionWebviewBridge", async () => {
+    const t = [0.0, 0.5, 1.0];
+    const states = ["h", "v"];
+    const y = [
+      [10.0, 0.0],
+      [8.77, -4.9],
+      [5.1, -9.8],
+    ];
+
+    const b64 = encodeSimulationParquetBase64(t, y, states);
+    const decoded = Buffer.from(b64, "base64");
+    assert.strictEqual(decoded.subarray(0, 4).toString("ascii"), "PAR1", "Parquet must start with PAR1 magic");
+    assert.strictEqual(
+      decoded.subarray(decoded.length - 4).toString("ascii"),
+      "PAR1",
+      "Parquet must end with PAR1 magic",
+    );
+
+    const handlers: ((msg: unknown) => Promise<void>)[] = [];
+    const fakeUri = vscode.Uri.parse("file:///workspace");
+    const fakeWebviewPanel = {
+      webview: {
+        asWebviewUri: (uri: vscode.Uri) => uri,
+        html: "",
+        onDidReceiveMessage: (fn: (msg: unknown) => Promise<void>) => {
+          handlers.push(fn);
+          return { dispose: () => {} };
+        },
+        postMessage: () => Promise.resolve(true),
+      },
+      onDidDispose: () => ({ dispose: () => {} }),
+      reveal: () => {},
+      dispose: () => {},
+    } as unknown as vscode.WebviewPanel;
+
+    const origShowSave = vscode.window.showSaveDialog;
+    const origWriteFile = vscode.workspace.fs.writeFile;
+    let writtenBytes: Uint8Array | undefined;
+    (vscode.window as any).showSaveDialog = async () => vscode.Uri.file("/workspace/sim_export.parquet");
+    vscode.workspace.fs.writeFile = async (_uri: vscode.Uri, bytes: Uint8Array) => {
+      writtenBytes = bytes;
+    };
+
+    try {
+      const panel = new (SimulationPanel as any)(fakeWebviewPanel, fakeUri, false);
+      assert.strictEqual(handlers.length, 1);
+      await handlers[0]!({
+        type: "exportFile",
+        filename: "sim_export.parquet",
+        content: b64,
+        encoding: "base64",
+        mimeType: "application/vnd.apache.parquet",
+      });
+      assert.ok(writtenBytes && writtenBytes.length === decoded.length, "Must write decoded binary Parquet bytes");
+      assert.strictEqual(Buffer.from(writtenBytes.subarray(0, 4)).toString("ascii"), "PAR1");
+      panel.dispose();
+    } finally {
+      (vscode.window as any).showSaveDialog = origShowSave;
+      vscode.workspace.fs.writeFile = origWriteFile;
+    }
+  });
+
+  it("evaluates water/hydraulics domain compliance and forwards compliance reports to the webview", () => {
+    const t = [0, 1, 2];
+    const states = ["junction1.pressure", "node1.chlorine", "pipe1.pipe_velocity"];
+    const y = [
+      [42.0, 0.8, 1.5],
+      [38.5, 0.6, 2.1],
+      [15.0, 0.5, 2.4], // pressure drops below 20 psi limit
+    ];
+
+    const report = evaluateWaterCompliance(t, y, states);
+    assert.ok(report, "Must detect water-domain compliance metrics");
+    assert.strictEqual(report.overallPass, false);
+    assert.strictEqual(report.metrics.length, 3);
+    assert.strictEqual(report.metrics[0]!.pass, false);
+    assert.strictEqual(report.metrics[1]!.pass, true);
+    assert.strictEqual(report.metrics[2]!.pass, true);
+
+    const posted: unknown[] = [];
+    const fakeUri = vscode.Uri.parse("file:///workspace");
+    const fakeWebviewPanel = {
+      webview: {
+        asWebviewUri: (uri: vscode.Uri) => uri,
+        html: "",
+        onDidReceiveMessage: () => ({ dispose: () => {} }),
+        postMessage: (msg: unknown) => {
+          posted.push(msg);
+          return Promise.resolve(true);
+        },
+      },
+      onDidDispose: () => ({ dispose: () => {} }),
+      reveal: () => {},
+      dispose: () => {},
+    } as unknown as vscode.WebviewPanel;
+
+    const panel = new (SimulationPanel as any)(fakeWebviewPanel, fakeUri, false);
+    SimulationPanel.currentPanel = panel;
+    SimulationPanel.postComplianceReport(report, "water");
+    assert.ok(
+      posted.some((m: any) => m.type === "complianceReport" && m.kind === "water"),
+      "postComplianceReport must forward water compliance message to webview",
+    );
     panel.dispose();
   });
 });

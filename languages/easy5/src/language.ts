@@ -110,19 +110,15 @@ export const easy5Language = language({
 
   errorCodes: Easy5ErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
+  conflicts: ($) => [[$["Attribute"]!, $["Identifier"]!]],
+
   rules: {
     Model: ($) =>
       seq(
         optional($["ModelHeader"]!),
-        repeat(
-          choice(
-            $["ComponentsSection"]!,
-            $["ConnectionsSection"]!,
-            $["SimulationSection"]!,
-            $["LinearSection"]!,
-            $["Comment"]!,
-          ),
-        ),
+        repeat(choice($["ComponentsSection"]!, $["ConnectionsSection"]!, $["SimulationSection"]!, $["LinearSection"]!)),
       ),
 
     ModelHeader: ($) =>
@@ -131,8 +127,7 @@ export const easy5Language = language({
         seq("TITLE", ":", field("title", $["StringLiteral"]!)),
       ),
 
-    ComponentsSection: ($) =>
-      seq(choice("COMPONENTS:", "COMPONENTS"), repeat(choice($["ComponentDeclaration"]!, $["Comment"]!))),
+    ComponentsSection: ($) => seq(choice("COMPONENTS:", "COMPONENTS"), repeat($["ComponentDeclaration"]!)),
 
     ComponentDeclaration: ($) =>
       seq(
@@ -164,8 +159,7 @@ export const easy5Language = language({
     PortDeclaration: ($) =>
       seq(field("name", $["Identifier"]!), "=", field("kind", choice("input", "output", "bidirectional"))),
 
-    ConnectionsSection: ($) =>
-      seq(choice("CONNECTIONS:", "CONNECTIONS"), repeat(choice($["Connection"]!, $["Comment"]!))),
+    ConnectionsSection: ($) => seq(choice("CONNECTIONS:", "CONNECTIONS"), repeat($["Connection"]!)),
 
     Connection: ($) =>
       choice(
@@ -199,10 +193,9 @@ export const easy5Language = language({
         ),
       ),
 
-    SimulationSection: ($) =>
-      seq(choice("SIMULATION:", "SIMULATION"), repeat(choice($["ConfigAssignment"]!, $["Comment"]!))),
+    SimulationSection: ($) => seq(choice("SIMULATION:", "SIMULATION"), repeat($["ConfigAssignment"]!)),
 
-    LinearSection: ($) => seq(choice("LINEAR:", "LINEAR"), repeat(choice($["ConfigAssignment"]!, $["Comment"]!))),
+    LinearSection: ($) => seq(choice("LINEAR:", "LINEAR"), repeat($["ConfigAssignment"]!)),
 
     ConfigAssignment: ($) =>
       seq(

@@ -62,4 +62,31 @@ test("Repository Management and Billing REST Routes", async (t) => {
     assert.strictEqual(res.status, 200);
     assert.ok(Array.isArray(res.body.transactions));
   });
+
+  await t.test("Billing: personal getUserTransactions does NOT include organization transactions", () => {
+    const user = db.createUser("org_tx_isolation_user", "org_tx_iso@test.com", "pwd", "Org Tx Iso");
+    const org = db.createOrganization({ name: "Tx Isolation Org", slug: "tx-isolation-org", createdBy: user.id });
+
+    // Perform org wallet transactions attributed to this user
+    db.grantOrgCredits(org.id, 150.0, user.id, "Org Seed Top-Up");
+    db.deductOrgCredits(org.id, 20.0, user.id, null, "Org Compute Charge");
+    const orgJob = db.createJob("Org Scoped Job", "RUNNING", "ADHOC", "ide", null, {}, user.id);
+    db.holdOrgCredits(org.id, 30.0, user.id, orgJob, "Org Escrow Hold");
+    db.releaseOrgEscrow(org.id, orgJob, "Org Escrow Release");
+
+    // Personal transaction history must only contain personal transactions (initial_grant)
+    const personalTxs = db.getUserTransactions(user.id, 50, 0);
+    assert.strictEqual(personalTxs.length, 1);
+    assert.strictEqual(db.getUserTransactionCount(user.id), 1);
+    assert.strictEqual(personalTxs[0]!.type, "initial_grant");
+    assert.ok(
+      personalTxs.every((tx) => !tx.type.startsWith("org_") && (tx as { org_id?: number | null }).org_id == null),
+      "Personal transactions must not include any organization ledger entries",
+    );
+
+    // Organization wallet summary must contain the 4 org transactions
+    const orgSummary = db.getOrgWalletSummary(org.id);
+    assert.ok(orgSummary);
+    assert.strictEqual(orgSummary.transactions.length, 4);
+  });
 });

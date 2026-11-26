@@ -2066,6 +2066,66 @@
     "subcommands": []
   },
   {
+    "name": "dataset",
+    "specs": [
+      "dataset <action> [paths..]"
+    ],
+    "aliases": [],
+    "describe": "Compile engineering corpora into m_init-bucketed 4-column Relational Zonotope shards or inspect shards",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action to perform (compile | inspect)",
+        "choices": [
+          "compile",
+          "inspect"
+        ]
+      },
+      {
+        "name": "paths",
+        "aliases": [],
+        "type": "string",
+        "description": "Input files, directories, or JSONL shard paths",
+        "array": true
+      }
+    ],
+    "options": [
+      {
+        "name": "out-dir",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output directory for compiled m_init-bucketed shards",
+        "default": ".modelscript/datasets"
+      },
+      {
+        "name": "shard-size",
+        "aliases": [],
+        "type": "number",
+        "description": "Maximum examples per m_init-bucketed shard",
+        "default": 256
+      },
+      {
+        "name": "m-cap",
+        "aliases": [],
+        "type": "number",
+        "description": "Hard Dynamic-m generator safety ceiling",
+        "default": 32
+      },
+      {
+        "name": "recipe-name",
+        "aliases": [],
+        "type": "string",
+        "description": "Logical recipe name written into dataset-manifest.json",
+        "default": "@local/engineering-dataset"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "db",
     "specs": [
       "db <action>"
@@ -6649,6 +6709,68 @@
     "subcommands": []
   },
   {
+    "name": "memory",
+    "specs": [
+      "memory <action> [query]"
+    ],
+    "aliases": [],
+    "describe": "Query or inspect the federated/local DiskANN NVMe Vector Memory API",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Memory action (query | stats)",
+        "choices": [
+          "query",
+          "stats"
+        ]
+      },
+      {
+        "name": "query",
+        "aliases": [],
+        "type": "string",
+        "description": "Text/symbol query when action === 'query'"
+      }
+    ],
+    "options": [
+      {
+        "name": "api",
+        "aliases": [],
+        "type": "string",
+        "description": "Base URL of the ModelScript DiskANN Memory API",
+        "default": "http://localhost:3001"
+      },
+      {
+        "name": "pins",
+        "aliases": [],
+        "type": "string",
+        "description": "Comma-separated semver package pins (e.g. @ms/thermal-pack@1.0.0)"
+      },
+      {
+        "name": "dialects",
+        "aliases": [],
+        "type": "string",
+        "description": "Comma-separated dialect filter (e.g. modelica,scad,owl2)"
+      },
+      {
+        "name": "top-k",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of chunks to return",
+        "default": 6
+      },
+      {
+        "name": "include-social",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Include verified social posts & RLHF Fix-It solutions",
+        "default": true
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "merge",
     "specs": [
       "merge [base] [ours] [theirs]"
@@ -10114,6 +10236,41 @@
     "subcommands": []
   },
   {
+    "name": "search",
+    "specs": [
+      "search <query>"
+    ],
+    "aliases": [],
+    "describe": "Search packages in the Ansatz / ModelScript Package Registry",
+    "positionals": [
+      {
+        "name": "query",
+        "aliases": [],
+        "type": "string",
+        "description": "Search query (package name, domain, or keyword)"
+      }
+    ],
+    "options": [
+      {
+        "name": "limit",
+        "aliases": [
+          "n"
+        ],
+        "type": "number",
+        "description": "Maximum number of results to display",
+        "default": 20
+      },
+      {
+        "name": "json",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Output results as JSON",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "sel",
     "specs": [
       "sel <action> [files..]"
@@ -12240,6 +12397,72 @@
         ],
         "type": "string",
         "description": "Output file path (e.g. for DAE dump)"
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "train-llm",
+    "specs": [
+      "train-llm <action> [target]"
+    ],
+    "aliases": [],
+    "describe": "Run Dynamic-m LoRA smoke training, Formal Eval CI promotion gate, or export PyTorch/Slurm HPC bundles",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Action (smoke | eval | export-slurm)",
+        "choices": [
+          "smoke",
+          "eval",
+          "export-slurm"
+        ]
+      },
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "Eval suite JSON path (for eval) or recipe name (for export-slurm)"
+      }
+    ],
+    "options": [
+      {
+        "name": "out-dir",
+        "aliases": [
+          "o"
+        ],
+        "type": "string",
+        "description": "Output directory for export-slurm bundle",
+        "default": ".modelscript/slurm"
+      },
+      {
+        "name": "gpus",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of GPUs requested in Slurm script",
+        "default": 4
+      },
+      {
+        "name": "shards",
+        "aliases": [],
+        "type": "string",
+        "description": "Comma-separated SHA-256 shard IDs to pin in Slurm manifest"
+      },
+      {
+        "name": "steps",
+        "aliases": [],
+        "type": "number",
+        "description": "Number of LoRA SGD steps for smoke check",
+        "default": 10
+      },
+      {
+        "name": "m-cap",
+        "aliases": [],
+        "type": "number",
+        "description": "Dynamic-m generator safety cap",
+        "default": 16
       }
     ],
     "subcommands": []

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState } from "react";
+import { getUserPreferences, updateUserPreferences } from "./api/account";
+import { useAuth } from "./AuthContext";
 
 export interface ModelingPreferences {
   // Monaco Code Editor
@@ -134,6 +136,7 @@ interface ModelingPreferencesContextType {
 const ModelingPreferencesContext = createContext<ModelingPreferencesContextType | undefined>(undefined);
 
 export const ModelingPreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { token } = useAuth();
   const [preferences, setPreferences] = useState<ModelingPreferences>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -146,8 +149,10 @@ export const ModelingPreferencesProvider: React.FC<{ children: React.ReactNode }
     }
     return DEFAULT_MODELING_PREFERENCES;
   });
+  const preferencesRef = useRef<ModelingPreferences>(preferences);
 
   useEffect(() => {
+    preferencesRef.current = preferences;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
     } catch {
@@ -155,12 +160,76 @@ export const ModelingPreferencesProvider: React.FC<{ children: React.ReactNode }
     }
   }, [preferences]);
 
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void getUserPreferences()
+      .then((remote) => {
+        if (cancelled) return;
+        const remoteModeling = remote?.modeling;
+        if (remoteModeling && typeof remoteModeling === "object" && !Array.isArray(remoteModeling)) {
+          const merged = syncModelingPreferences(
+            DEFAULT_MODELING_PREFERENCES,
+            remoteModeling as Partial<ModelingPreferences>,
+          );
+          preferencesRef.current = merged;
+          setPreferences(merged);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          } catch {
+            // Ignore storage write errors
+          }
+        }
+      })
+      .catch(() => {
+        // Silent fallback to localStorage when offline or request fails
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      if (!e.newValue) {
+        preferencesRef.current = DEFAULT_MODELING_PREFERENCES;
+        setPreferences(DEFAULT_MODELING_PREFERENCES);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(e.newValue) as Partial<ModelingPreferences>;
+        const synced = syncModelingPreferences(DEFAULT_MODELING_PREFERENCES, parsed);
+        preferencesRef.current = synced;
+        setPreferences(synced);
+      } catch {
+        // Ignore malformed storage payload from other tabs
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
   const updatePreferences = (updates: Partial<ModelingPreferences>) => {
-    setPreferences((prev) => syncModelingPreferences(prev, updates));
+    const next = syncModelingPreferences(preferencesRef.current, updates);
+    preferencesRef.current = next;
+    setPreferences(next);
+    if (token) {
+      void updateUserPreferences({ modeling: { ...next } }).catch(() => {
+        // Silent fallback to localStorage when offline or request fails
+      });
+    }
   };
 
   const resetPreferences = () => {
+    preferencesRef.current = DEFAULT_MODELING_PREFERENCES;
     setPreferences(DEFAULT_MODELING_PREFERENCES);
+    if (token) {
+      void updateUserPreferences({ modeling: { ...DEFAULT_MODELING_PREFERENCES } }).catch(() => {
+        // Silent fallback to localStorage when offline or request fails
+      });
+    }
   };
 
   return (

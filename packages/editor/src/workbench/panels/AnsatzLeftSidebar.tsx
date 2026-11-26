@@ -16,6 +16,7 @@ import { ActionList, ActionMenu, Button, IconButton, TextInput } from "@primer/r
 import React, { useRef, useState } from "react";
 import { useEditorCapabilities as useCapabilities } from "../../host";
 import Spinner from "../../internal/Spinner";
+import { CadComponentTree, countCadFeatureNodes, type CadComponentTreeProps } from "../cad-viewer";
 import ComponentList from "../ComponentList";
 import { getLanguageInfo } from "../constants";
 import {
@@ -110,6 +111,10 @@ export interface AnsatzLeftSidebarProps {
   onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
   fileDiagnosticCounts?: Record<string, { errors: number; warnings: number }> | undefined;
   dirtyFiles?: string[] | Set<string> | undefined;
+  /** Unified CAD Assembly / Procedural CSG Feature Tree rendered in the COMPONENTS panel for CAD models. */
+  cadTree?: CadComponentTreeProps | undefined;
+  /** Prefer showing the CAD tree over 2D diagram nodes when 3D view is active or for CAD-native languages. */
+  preferCadTree?: boolean | undefined;
 }
 
 export type MobileSidebarSection = "parameters" | "variables" | "components" | "libraries" | "solver";
@@ -170,6 +175,8 @@ export const AnsatzLeftSidebar: React.FC<AnsatzLeftSidebarProps> = ({
   onMoveProjectFile,
   fileDiagnosticCounts,
   dirtyFiles,
+  cadTree,
+  preferCadTree = false,
 }) => {
   const { hasCapability } = useCapabilities();
   const isCaeComputeEnabled = hasCapability("caeCompute");
@@ -201,7 +208,7 @@ export const AnsatzLeftSidebar: React.FC<AnsatzLeftSidebarProps> = ({
 
   const isFloating = Boolean(floating && !isNarrow);
   const isStackedFloating = false;
-  const componentCount = Array.isArray(diagramData?.nodes)
+  const diagramComponentCount = Array.isArray(diagramData?.nodes)
     ? diagramData.nodes.filter((c) => {
         if (!c?.id || c.id.startsWith("__diagram_") || c.id.startsWith("solder_dot_")) return false;
         if (!c.properties || c.shape === "circle") return false;
@@ -209,6 +216,13 @@ export const AnsatzLeftSidebar: React.FC<AnsatzLeftSidebarProps> = ({
         return !(kind && kind.includes("connector"));
       }).length
     : 0;
+  const cadFeatureCount = countCadFeatureNodes(cadTree?.featureNodes ?? []);
+  const cadBodyCount = (cadTree?.cadComponents ?? []).filter(
+    (c) => !c.name.startsWith("Debug_Cutter_") && !c.name.startsWith("Background_"),
+  ).length;
+  const hasCadTree = cadFeatureCount > 0 || cadBodyCount > 0;
+  const useCadTree = hasCadTree && (preferCadTree || diagramComponentCount === 0);
+  const componentCount = useCadTree ? cadFeatureCount || cadBodyCount : diagramComponentCount;
   const isSearchActive = Boolean(isSearchExpanded || libraryFilter);
 
   const dividerColor =
@@ -875,16 +889,20 @@ export const AnsatzLeftSidebar: React.FC<AnsatzLeftSidebarProps> = ({
               }}
             >
               {showComponentsSection ? (
-                <ComponentList
-                  components={diagramData?.nodes ?? null}
-                  onSelect={onSelectComponent}
-                  onHighlight={onTreeHighlight}
-                  selectedName={selectedComponent}
-                  language={language}
-                  translations={translations}
-                  uri={documentUri}
-                  colorMode={_colorMode}
-                />
+                useCadTree && cadTree ? (
+                  <CadComponentTree {...cadTree} colorMode={_colorMode} />
+                ) : (
+                  <ComponentList
+                    components={diagramData?.nodes ?? null}
+                    onSelect={onSelectComponent}
+                    onHighlight={onTreeHighlight}
+                    selectedName={selectedComponent}
+                    language={language}
+                    translations={translations}
+                    uri={documentUri}
+                    colorMode={_colorMode}
+                  />
+                )
               ) : (
                 <VariablesTree
                   variables={simulationVariables ?? []}

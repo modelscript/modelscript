@@ -7,12 +7,7 @@
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
-
-interface CalibrationProgress {
-  iteration: number;
-  cost: number;
-  parameters: Record<string, number>;
-}
+import { attachExtensionWebviewBridge } from "./webview/shared/extension-lsp-bridge.js";
 
 export class CalibrationPanel extends BaseWebviewPanel {
   static currentPanel: CalibrationPanel | undefined;
@@ -20,9 +15,11 @@ export class CalibrationPanel extends BaseWebviewPanel {
 
   public sourceUri?: string | undefined;
   private client?: LanguageClient | undefined;
+  private document?: vscode.TextDocument | undefined;
 
   static createOrShow(extensionUri: vscode.Uri, client: LanguageClient, uri?: string) {
-    const sourceUri = uri ?? vscode.window.activeTextEditor?.document.uri.toString();
+    const activeDoc = vscode.window.activeTextEditor?.document;
+    const sourceUri = uri ?? activeDoc?.uri.toString();
     if (!sourceUri) {
       vscode.window.showWarningMessage("Open a model file to run calibration.");
       return;
@@ -30,7 +27,9 @@ export class CalibrationPanel extends BaseWebviewPanel {
 
     if (CalibrationPanel.currentPanel) {
       CalibrationPanel.currentPanel.sourceUri = sourceUri;
+      CalibrationPanel.currentPanel.document = activeDoc;
       CalibrationPanel.currentPanel._panel.reveal(vscode.ViewColumn.Beside);
+      void CalibrationPanel.currentPanel.syncDocument();
       return;
     }
 
@@ -45,147 +44,91 @@ export class CalibrationPanel extends BaseWebviewPanel {
       },
     );
 
-    CalibrationPanel.currentPanel = new CalibrationPanel(panel, extensionUri, client, sourceUri);
-
-    // Register progress listener and track its disposal
-    const progressDisposable = client.onNotification(
-      "modelscript/calibrationProgress",
-      (params: CalibrationProgress) => {
-        CalibrationPanel.currentPanel?._panel.webview.postMessage({
-          type: "calibrationProgress",
-          data: params,
-        });
-      },
-    );
-    CalibrationPanel.currentPanel._disposables.push(progressDisposable);
+    CalibrationPanel.currentPanel = new CalibrationPanel(panel, extensionUri, client, sourceUri, activeDoc);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, client: LanguageClient, sourceUri: string) {
+  private constructor(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    client: LanguageClient,
+    sourceUri: string,
+    document?: vscode.TextDocument,
+  ) {
     super(panel, extensionUri);
     this.client = client;
     this.sourceUri = sourceUri;
+    this.document = document;
 
     this._panel.webview.html = this.getHtmlShell({
       title: "Calibration Dashboard",
       scriptName: "calibration-webview.js",
     });
 
-    this._panel.webview.onDidReceiveMessage(
-      async (msg) => {
-        if (msg.type === "webviewReady") {
-          if (this.client && this.sourceUri) {
-            this.client
-              .sendRequest<{ parameters: string[]; error?: string | undefined }>("modelscript/getParameters", {
-                uri: this.sourceUri,
-              })
-              .then((res) => {
-                if (res && res.parameters) {
-                  this._panel.webview.postMessage({
-                    type: "modelParameters",
-                    parameters: res.parameters,
-                  });
-                } else {
-                  this._panel.webview.postMessage({
-                    type: "modelParameters",
-                    parameters: [],
-                  });
-                }
-              })
-              .catch((e) => {
-                console.error("Failed to fetch parameters:", e);
-                this._panel.webview.postMessage({
-                  type: "modelParameters",
-                  parameters: [],
-                });
-              });
-          } else {
-            this._panel.webview.postMessage({
-              type: "modelParameters",
-              parameters: [],
-            });
-          }
-        } else if (msg.type === "calibrateRequest") {
-          try {
-            if (!this.client) return;
-            const result = await this.client.sendRequest("modelscript/calibrate", {
-              uri: this.sourceUri,
-              method: msg.payload?.method || "lm",
-              maxIterations: msg.payload?.maxIterations || 100,
-              tolerance: msg.payload?.tolerance || 1e-8,
-              csvData: msg.payload?.csvData,
-              timeColumn: msg.payload?.timeColumn,
-              columnMapping: msg.payload?.columnMapping,
-              parameters: msg.payload?.parameters,
-              parameterBounds: msg.payload?.parameterBounds,
-            });
-            const isDark =
-              vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
-              vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-            this._panel.webview.postMessage({
-              type: "calibrationResult",
-              data: result,
-              isDark,
-            });
-          } catch (e: unknown) {
-            const errMsg = e instanceof Error ? e.message : String(e);
-            vscode.window.showErrorMessage(`Calibration failed: ${errMsg}`);
-            this._panel.webview.postMessage({ type: "calibrationError", error: errMsg });
-          }
-        } else if (msg.type === "saveResultRequest") {
-          this.saveResult(msg.payload);
-        } else if (msg.type === "pickFile") {
-          const uris = await vscode.window.showOpenDialog({
-            canSelectMany: false,
-            openLabel: "Select CSV Data",
-            filters: { CSV: ["csv", "txt"] },
-          });
-          if (uris && uris[0]) {
+    const bridgeSub = attachExtensionWebviewBridge(this._panel.webview, {
+      client: this.client,
+      getDocument: () => this.document ?? vscode.window.activeTextEditor?.document,
+      title: "Calibration Dashboard",
+      languageId: this.document?.languageId ?? "modelica",
+      onUnhandledMessage: async (msg) => {
+        if (msg.type === "ready") {
+          await this.syncDocument();
+        }
+      },
+    });
+    this._disposables.push(bridgeSub);
+
+    const editorSub = vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor?.document) {
+        this.document = editor.document;
+        this.sourceUri = editor.document.uri.toString();
+        void this.syncDocument();
+      }
+    });
+    this._disposables.push(editorSub);
+  }
+
+  private async syncDocument(): Promise<void> {
+    if (!this.sourceUri) return;
+    let doc = this.document;
+    if (!doc) {
+      try {
+        doc = await vscode.workspace.openTextDocument(vscode.Uri.parse(this.sourceUri));
+        this.document = doc;
+      } catch {
+        // continue with URI only
+      }
+    }
+
+    const projectFiles: Record<string, string> = {};
+    if (doc?.uri) {
+      try {
+        const parentUri = vscode.Uri.joinPath(doc.uri, "..");
+        const entries = await vscode.workspace.fs.readDirectory(parentUri);
+        for (const [name, fileType] of entries) {
+          if (fileType === vscode.FileType.File && /\.(csv|cfg|cff)$/i.test(name)) {
             try {
-              const fileData = await vscode.workspace.fs.readFile(uris[0]);
-              const csvData = new TextDecoder().decode(fileData);
-              this._panel.webview.postMessage({
-                type: "filePicked",
-                path: uris[0].fsPath,
-                csvData,
-              });
-            } catch (e) {
-              vscode.window.showErrorMessage(`Failed to read file: ${e}`);
+              const raw = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(parentUri, name));
+              projectFiles[name] = new TextDecoder().decode(raw);
+            } catch {
+              // ignore unreadable sibling files
             }
           }
         }
+      } catch {
+        // ignore directory listing failures on virtual URIs
+      }
+    }
+
+    const activeFileName = this.sourceUri.split("/").pop() ?? "Main.mo";
+    void this._panel.webview.postMessage({
+      type: "syncCalibrationDocument",
+      data: {
+        documentUri: this.sourceUri,
+        activeFileName,
+        activeCode: doc?.getText() ?? "",
+        projectFiles,
       },
-      null,
-      this._disposables,
-    );
-  }
-
-  private async saveResult(payload: { className: string; optimizedParameters: Record<string, number> }) {
-    if (!this.sourceUri) return;
-
-    // Generate a Modelica class that extends the original with optimized parameters
-    const date = new Date().toISOString().split("T")[0]?.replace(/-/g, "") ?? "unknown";
-    const baseName = payload.className.split(".").pop() ?? payload.className;
-    const derivedName = `${baseName}_Optimized_${date}`;
-
-    const modifiers = Object.entries(payload.optimizedParameters)
-      .map(([name, value]) => `    ${name} = ${value}`)
-      .join(",\n");
-
-    const code = `\nmodel ${derivedName}\n  extends ${payload.className}(\n${modifiers}\n  );\n  annotation(experiment(__ModelScript_CalibrationResult(date = "${date}")));\nend ${derivedName};\n`;
-
-    // Apply as workspace edit at the end of the source file
-    const uri = vscode.Uri.parse(this.sourceUri);
-    const doc = await vscode.workspace.openTextDocument(uri);
-    const lastLine = doc.lineCount;
-
-    const edit = new vscode.WorkspaceEdit();
-    edit.insert(uri, new vscode.Position(lastLine, 0), code);
-    await vscode.workspace.applyEdit(edit);
-
-    // Trigger experiments tree refresh so the new derived class appears
-    vscode.commands.executeCommand("modelscript.refreshExperiments");
-
-    vscode.window.showInformationMessage(`Saved calibration result as ${derivedName}`);
+    });
   }
 
   public override dispose(): void {

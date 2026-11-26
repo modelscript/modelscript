@@ -5,18 +5,24 @@
 
 services:
   modelscript-appliance:
-    image: ghcr.io/modelscript/appliance:latest
+    image: ghcr.io/modelscript/appliance:${IMAGE_TAG:-latest}
     build:
       context: ../..
       target: appliance
     container_name: modelscript-intranet-appliance
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
-      - "8080:8080"
+      - "${APPLIANCE_BIND_HOST:-127.0.0.1}:${APPLIANCE_PORT:-8080}:8080"
     volumes:
-      # Local encrypted volume for database and model files (stays inside utility firewall)
+      # Local encrypted volumes for database, uploads, thumbnails, and model packages (stays inside utility firewall)
       - appliance-data:/app/apps/api/data
       - appliance-uploads:/app/apps/api/uploads
+      - appliance-thumbnails:/app/apps/api/public/thumbnails
+      - appliance-storage:/app/apps/api/storage
     environment:
       - NODE_ENV=production
       - PORT=8080
@@ -61,7 +67,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
-      - airgap-internal
+      - appliance-net
 
     healthcheck:
       test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:8080/health || exit 1"]
@@ -71,12 +77,18 @@ services:
       start_period: 10s
 
 networks:
-  # Internal network with no outbound internet gateway (Strict Air-Gap)
-  airgap-internal:
-    internal: true
+  # Isolated bridge network (host port bound to 127.0.0.1 by default; for strict
+  # zero-egress air-gap behind an in-cluster reverse proxy, set internal: true
+  # and remove the host `ports:` mapping).
+  appliance-net:
+    driver: bridge
 
 volumes:
   appliance-data:
     driver: local
   appliance-uploads:
+    driver: local
+  appliance-thumbnails:
+    driver: local
+  appliance-storage:
     driver: local

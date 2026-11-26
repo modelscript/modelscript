@@ -10,7 +10,7 @@ export class CloudStatusBar implements vscode.Disposable {
   private apiBaseUrl: string;
   private authToken: string | undefined;
 
-  constructor(apiBaseUrl = "http://localhost:3000/api/v1", authToken?: string) {
+  constructor(apiBaseUrl = "https://ansatz.social/api/v1", authToken?: string) {
     this.apiBaseUrl = apiBaseUrl.replace(/\/+$/, "");
     this.authToken = authToken;
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);

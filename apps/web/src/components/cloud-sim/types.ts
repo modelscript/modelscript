@@ -18,6 +18,8 @@ export type WizardStepId = "template" | "artifact" | "options" | "compute";
 
 export type SimPhase = "config" | "submitting" | "running" | "completed" | "failed";
 
+export type DispatchTarget = "simulate" | "cloud";
+
 export interface ParsedCsvData {
   headers: string[];
   rows: string[][];

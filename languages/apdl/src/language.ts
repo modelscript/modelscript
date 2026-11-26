@@ -37,21 +37,25 @@ export const apdlLanguage = language({
 
   extras: () => [/[ \t\r\n]+/, /![^\r\n]*/],
 
+  conflicts: ($) => [[$["_OptionalArgument"]!, $["Identifier"]!]],
+
   rules: {
     Program: ($) => repeat(choice($["Statement"]!, $["Comment"]!)),
 
     Statement: ($) =>
       choice($["ProcessorCommand"]!, $["MacroCommand"]!, $["AssignmentStatement"]!, $["CommandStatement"]!),
 
-    ProcessorCommand: ($) => seq(field("processor", $["SlashCommand"]!), repeat(seq(",", optional($["Argument"]!)))),
+    ProcessorCommand: ($) => seq(field("processor", $["SlashCommand"]!), repeat(seq(",", $["_OptionalArgument"]!))),
 
-    MacroCommand: ($) => seq(field("macro", $["StarCommand"]!), repeat(seq(",", optional($["Argument"]!)))),
+    MacroCommand: ($) => seq(field("macro", $["StarCommand"]!), repeat(seq(",", $["_OptionalArgument"]!))),
 
     AssignmentStatement: ($) => seq(field("target", $["LValue"]!), "=", field("value", $["Expression"]!)),
 
     LValue: ($) => seq(field("name", $["Identifier"]!), optional(seq("(", $["Expression"]!, ")"))),
 
-    CommandStatement: ($) => seq(field("command", $["Identifier"]!), repeat(seq(",", optional($["Argument"]!)))),
+    CommandStatement: ($) => seq(field("command", $["Identifier"]!), repeat(seq(",", $["_OptionalArgument"]!))),
+
+    _OptionalArgument: ($) => optional($["Argument"]!),
 
     Argument: ($) => choice($["Expression"]!, $["StringLiteral"]!),
 

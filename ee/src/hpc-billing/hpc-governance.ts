@@ -12,19 +12,51 @@ export interface EnterpriseHpcBillingRouters {
   billingRouter: Router;
 }
 
-function assertRouterPrefix(router: Router, prefixes: string[], routerName: string): void {
-  const stack = (router as unknown as { stack?: Array<{ route?: { path?: string | string[] } }> }).stack;
+interface ExpressLayer {
+  route?: { path?: string | string[] };
+  path?: string;
+  handle?: { stack?: ExpressLayer[] };
+}
+
+function joinRoutePath(base: string, child: string): string {
+  if (!base || base === "/") return child;
+  if (!child || child === "/") return base;
+  return `${base.replace(/\/+$/, "")}/${child.replace(/^\/+/, "")}`;
+}
+
+function assertRouterPrefix(
+  router: Router,
+  prefixes: string[],
+  routerName: string,
+  mountPrefix = "",
+  visited = new Set<unknown>(),
+): void {
+  if (visited.has(router)) return;
+  visited.add(router);
+
+  const stack = (router as unknown as { stack?: ExpressLayer[] }).stack;
   if (!Array.isArray(stack)) return;
   for (const layer of stack) {
     const rawPath = layer.route?.path;
-    if (!rawPath) continue;
-    const paths = Array.isArray(rawPath) ? rawPath : [rawPath];
-    for (const p of paths) {
-      if (typeof p === "string" && !prefixes.some((prefix) => p === prefix || p.startsWith(`${prefix}/`))) {
-        throw new Error(
-          `[ee/hpc-governance] Route '${p}' on ${routerName} does not start with any guarded prefix (${prefixes.join(", ")}) and would bypass slurm_hpc license enforcement.`,
-        );
+    if (rawPath) {
+      const paths = Array.isArray(rawPath) ? rawPath : [rawPath];
+      for (const p of paths) {
+        if (typeof p === "string") {
+          const fullPath = joinRoutePath(mountPrefix, p);
+          if (!prefixes.some((prefix) => fullPath === prefix || fullPath.startsWith(`${prefix}/`))) {
+            throw new Error(
+              `[ee/hpc-governance] Route '${fullPath}' on ${routerName} does not start with any guarded prefix (${prefixes.join(", ")}) and would bypass slurm_hpc license enforcement.`,
+            );
+          }
+        }
       }
+      continue;
+    }
+
+    if (layer.handle && Array.isArray(layer.handle.stack)) {
+      const subMount = typeof layer.path === "string" && layer.path.startsWith("/") ? layer.path : "";
+      const nextPrefix = subMount ? joinRoutePath(mountPrefix, subMount) : mountPrefix;
+      assertRouterPrefix(layer.handle as unknown as Router, prefixes, routerName, nextPrefix, visited);
     }
   }
 }
@@ -40,7 +72,9 @@ export function mountEnterpriseHpcAndBilling(app: Express, routers: EnterpriseHp
 
   app.use(
     "/api/v1/cae",
-    requireEnterpriseFeature("slurm_hpc", { exemptPaths: ["/cluster/status", "/cae/cluster/status"] }),
+    requireEnterpriseFeature("slurm_hpc", {
+      exemptPaths: ["/cluster/status", "/cae/cluster/status", "/api/v1/cae/cluster/status"],
+    }),
     routers.optionalAuthMiddleware,
     routers.caeFeatureGuard,
   );
@@ -54,11 +88,26 @@ export function mountEnterpriseHpcAndBilling(app: Express, routers: EnterpriseHp
   );
   app.use("/api/v1", routers.cloudRouter);
 
+  const billingFeatureGuardWithWebhookExempt: RequestHandler = (req, res, next) => {
+    const normalizedPath = (req.path || "").replace(/\/+$/, "") || "/";
+    const normalizedOriginal = ((req.originalUrl || "").split("?")[0] || "").replace(/\/+$/, "") || "/";
+    if (
+      normalizedPath === "/webhook" ||
+      normalizedPath === "/billing/webhook" ||
+      normalizedOriginal === "/billing/webhook" ||
+      normalizedOriginal === "/api/v1/billing/webhook"
+    ) {
+      next();
+      return;
+    }
+    routers.billingFeatureGuard(req, res, next);
+  };
+
   app.use(
     "/api/v1/billing",
     requireEnterpriseFeature("slurm_hpc"),
     routers.optionalAuthMiddleware,
-    routers.billingFeatureGuard,
+    billingFeatureGuardWithWebhookExempt,
   );
   app.use("/api/v1", routers.billingRouter);
 }

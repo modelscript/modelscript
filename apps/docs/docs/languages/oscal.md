@@ -1,6 +1,6 @@
 ---
 title: "NIST OSCAL Cyber-Physical Security & Compliance (.oscal.json, .oscal.yaml, .oscal.xml)"
-description: "@modelscript/oscal (languages/oscal) provides native WebAssembly parsing, NIST SP 800-53 Rev. 5 and SP 800-82 Cyber-Physical Systems (CPS) compliance auditing, profile baseline resolution, and SysM..."
+description: "@modelscript/oscal provides WASM parsing, NIST SP 800-53/800-82 CPS compliance auditing, baseline resolution, and SysML v2/ReqIF projections for OSCAL 1.1."
 ---
 
 # NIST OSCAL Cyber-Physical Security & Compliance (`.oscal.json`, `.oscal.yaml`, `.oscal.xml`)

@@ -44,6 +44,10 @@ export const sparqlLanguage = language({
 
   word: ($) => $["IDENT"]!,
 
+  conflicts: ($) => [
+    [$["_OptionalPropertyObjectPair"]!, $["VAR"]!, $["PathPrimary"]!, $["IRIREF"]!, $["PNAME_LN"]!, $["PNAME_NS"]!],
+  ],
+
   rules: {
     QueryUnit: ($) =>
       seq(
@@ -241,8 +245,9 @@ export const sparqlLanguage = language({
 
     TriplesSameSubject: ($) => seq(field("subject", $["VarOrTerm"]!), $["PropertyListNotEmpty"]!),
 
-    PropertyListNotEmpty: ($) =>
-      seq($["PropertyObjectPair"]!, repeat(seq(";", $["PropertyObjectPair"]!)), optional(";")),
+    PropertyListNotEmpty: ($) => seq($["PropertyObjectPair"]!, repeat(seq(";", $["_OptionalPropertyObjectPair"]!))),
+
+    _OptionalPropertyObjectPair: ($) => optional($["PropertyObjectPair"]!),
 
     PropertyObjectPair: ($) => seq(field("verb", $["VerbPathOrSimple"]!), field("objects", $["ObjectList"]!)),
 

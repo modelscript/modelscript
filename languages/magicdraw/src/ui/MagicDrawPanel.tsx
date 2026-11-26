@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { PanelButton, PanelShell, PanelToolbar, type LanguagePanelProps } from "@modelscript/design-tokens/panel";
+import {
+  PanelButton,
+  PanelShell,
+  PanelSvgStage,
+  PanelToolbar,
+  type LanguagePanelProps,
+} from "@modelscript/design-tokens/panel";
 import React, { useMemo, useState } from "react";
 import { renderMagicDrawDiagramSvg } from "../diagram.js";
 import { parseMagicDraw } from "../parser/index.js";
@@ -232,9 +238,26 @@ export function MagicDrawPanel({
             )}
           </aside>
 
-          <main style={{ flex: 1, overflow: "auto", padding: 12 }}>
+          <main
+            style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "auto", padding: 12 }}
+          >
             {svg ? (
-              <div dangerouslySetInnerHTML={{ __html: svg }} />
+              <div
+                style={{
+                  minHeight: 360,
+                  height: "60%",
+                  display: "flex",
+                  border: `1px solid ${borderColor}`,
+                  borderRadius: 6,
+                  overflow: "hidden",
+                }}
+              >
+                <PanelSvgStage
+                  svg={svg}
+                  onRevealLine={host?.onRevealLine}
+                  emptyMessage={`No diagram elements to render for ${selectedKind}.`}
+                />
+              </div>
             ) : (
               <div style={{ color: mutedText, fontSize: 12 }}>No diagram elements to render for {selectedKind}.</div>
             )}

@@ -10,19 +10,24 @@ import {
   createBulkPropertyEditActions,
   DiagramActionQueue,
   dropComponentGhost,
+  ensureMinimapHud,
+  flipSelectedNodes,
   getGraph,
   getTypicalNodeSize,
   getVisiblePropertyTabs,
   hydrateDiagramWasm,
   initGraph,
+  isMinimapVisible,
   mergeMultiSelectPropertyData,
   MIXED_PROPERTY_VALUE,
   reconcilePropertiesDOM,
   rerouteEdgeOrthogonal,
   resolveActivePropertyTabId,
+  rotateSelectedNodes,
   setDiagramGrid,
   setDiagramOptions,
   toggleMinimap,
+  updateMinimapHud,
   updateParameterText,
   type ComponentPropertyData,
   type DiagramGridMode,
@@ -402,6 +407,12 @@ function initDiagramBridge() {
 
   window.addEventListener("pointerup", onPointerUpOrMouseUp, false);
 
+  let validateReqSeq = 0;
+  const pendingValidateRequests = new Map<
+    number,
+    (res: { compatible: boolean; reason?: string | undefined }) => void
+  >();
+
   const baseDiagramOptions = {
     container,
     isDark,
@@ -422,15 +433,46 @@ function initDiagramBridge() {
     onUndo: () => vscode.postMessage({ type: "undo" }),
     onRedo: () => vscode.postMessage({ type: "redo" }),
     onMessage: (msg: Record<string, unknown>) => vscode.postMessage(msg),
+    onValidateConnection: (params: {
+      sourceNode: string;
+      sourcePort: string;
+      targetNode: string;
+      targetPort: string;
+    }) => {
+      const requestId = ++validateReqSeq;
+      return new Promise<{ compatible: boolean; reason?: string | undefined }>((resolve) => {
+        const timer = setTimeout(() => {
+          pendingValidateRequests.delete(requestId);
+          resolve({ compatible: true });
+        }, 1500);
+        pendingValidateRequests.set(requestId, (res) => {
+          clearTimeout(timer);
+          resolve(res);
+        });
+        vscode.postMessage({
+          type: "validateConnection",
+          requestId,
+          ...params,
+        });
+      });
+    },
   };
 
   // Handle messages forwarded from the top-level workbench or extension host
   window.addEventListener("message", (e) => {
     if (!e.data || typeof e.data !== "object") return;
+    if (e.data.type === "validateConnectionResult") {
+      const cb = pendingValidateRequests.get(e.data.requestId);
+      if (cb) {
+        pendingValidateRequests.delete(e.data.requestId);
+        cb(e.data.result ?? { compatible: true });
+      }
+      return;
+    }
     if (e.data.type === "setLanguage") {
       activeLanguage = e.data.language || "modelica";
       const snap = getSnapGrid(activeLanguage);
-      setDiagramOptions({ ...baseDiagramOptions, snapGrid: snap });
+      setDiagramOptions({ ...baseDiagramOptions, language: activeLanguage, snapGrid: snap });
       getGraph()?.setGridSize?.(snap);
       const isPscad = isPscadLanguage(activeLanguage);
       const canvasHud = document.getElementById("canvas-hud");
@@ -473,12 +515,42 @@ function initDiagramBridge() {
         runBtn.style.background = "#10b981";
       }
       updateAllPinnedScopes();
+      updateAllPinnedStickies();
+    } else if (e.data.type === "simulationFrame") {
+      const sv = e.data.stateVector;
+      if (sv && typeof sv === "object" && !ArrayBuffer.isView(sv)) {
+        updateStickyValuesFromFrame(sv as Record<string, number>);
+      }
+    } else if (e.data.type === "breadcrumbsUpdate") {
+      if (Array.isArray(e.data.breadcrumbs)) {
+        renderBreadcrumbsBar(e.data.breadcrumbs);
+      }
+    } else if (e.data.type === "diagramData") {
+      if (Array.isArray(e.data.data?.breadcrumbs) && e.data.data.breadcrumbs.length > 0) {
+        renderBreadcrumbsBar(e.data.data.breadcrumbs);
+      } else if (currentBreadcrumbs.length > 1) {
+        renderBreadcrumbsBar(currentBreadcrumbs);
+      }
+      requestAnimationFrame(() => {
+        syncMinimapToggleButton();
+      });
+    } else if (e.data.type === "pinPlotWidget" && e.data.spec) {
+      const spec = e.data.spec as {
+        id?: string;
+        title?: string;
+        kind?: PinnedPlotMode;
+      };
+      pinSparklineScope(spec.id || spec.title || `plot_${Date.now()}`, spec.title || spec.id || "Plot", spec.kind);
+    } else if (e.data.type === "pinStickyWidget" && e.data.spec) {
+      const spec = e.data.spec as PinStickyWidgetSpec;
+      pinStickyValueWidget(spec);
     }
   });
 
   setDiagramOptions({ ...baseDiagramOptions, snapGrid: getSnapGrid(activeLanguage) });
 
   initCanvasHud();
+  initDiagramActionBar();
   initContextMenu();
   initKeyboardAccelerators();
 }
@@ -645,22 +717,225 @@ function initCanvasHud() {
   });
 }
 
+// ── Toggleable Minimap Overlay, Action Bar & Breadcrumbs ──
+
+interface DiagramBreadcrumbEntry {
+  id: string;
+  label: string;
+  diagramType?: string | undefined;
+}
+
+let currentBreadcrumbs: DiagramBreadcrumbEntry[] = [];
+
+function syncMinimapToggleButton() {
+  const container = document.getElementById("container");
+  const btn = document.getElementById("action-minimap");
+  if (!btn) return;
+  const open = isMinimapVisible(container);
+  btn.classList.toggle("active", open);
+  btn.setAttribute("aria-pressed", open ? "true" : "false");
+}
+
+function toggleMinimapOverlay(): boolean {
+  const container = document.getElementById("container");
+  if (!container) return false;
+  const g = getGraph();
+  if (!container.querySelector("#modelscript-minimap-hud")) {
+    ensureMinimapHud(
+      container,
+      (wx: number, wy: number) => {
+        const active = getGraph();
+        if (active && typeof active.centerPoint === "function") {
+          active.centerPoint(wx, wy);
+        }
+      },
+      false,
+    );
+  }
+  const isOpen = toggleMinimap(container);
+  if (isOpen && g) {
+    const hud = container.querySelector("#modelscript-minimap-hud") as HTMLElement | null;
+    if (hud) {
+      updateMinimapHud(hud, g);
+    }
+  }
+  syncMinimapToggleButton();
+  return isOpen;
+}
+
+function syncActionBarSelectionState() {
+  const g = getGraph();
+  const selectedNodes = g
+    ? (g.getSelectedCells() as DiagramNodeCell[]).filter((c) => typeof c.isNode === "function" && c.isNode())
+    : [];
+  const hasNodeSelection = selectedNodes.length > 0;
+  for (const id of ["action-flip-h", "action-flip-v", "action-rotate", "action-pin-plot", "action-pin-sticky"]) {
+    const btn = document.getElementById(id) as HTMLButtonElement | null;
+    if (btn) btn.disabled = !hasNodeSelection;
+  }
+}
+
+function renderBreadcrumbsBar(breadcrumbs: DiagramBreadcrumbEntry[]) {
+  currentBreadcrumbs = Array.isArray(breadcrumbs) ? breadcrumbs : [];
+  const bar = document.getElementById("breadcrumb-bar");
+  if (!bar) return;
+  if (currentBreadcrumbs.length <= 1) {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+    return;
+  }
+
+  bar.style.display = "flex";
+  bar.innerHTML = "";
+
+  currentBreadcrumbs.forEach((crumb, idx) => {
+    if (idx > 0) {
+      const sep = document.createElement("span");
+      sep.className = "breadcrumb-separator";
+      sep.textContent = "›";
+      bar.appendChild(sep);
+    }
+    const item = document.createElement("span");
+    const isLast = idx === currentBreadcrumbs.length - 1;
+    item.className = `breadcrumb-item${isLast ? " active" : ""}`;
+    item.textContent = crumb.label;
+    if (!isLast) {
+      item.title = `Jump to ${crumb.label}`;
+      item.onclick = () => {
+        vscode.postMessage({
+          type: "drillUp",
+          depth: idx,
+          className: crumb.id,
+          diagramType: crumb.diagramType,
+        });
+      };
+    }
+    bar.appendChild(item);
+  });
+
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.className = "breadcrumb-back-btn";
+  upBtn.title = "Drill Up one level (Alt+Up)";
+  upBtn.textContent = "▲ Up";
+  upBtn.onclick = () => {
+    vscode.postMessage({ type: "drillUp" });
+  };
+  bar.appendChild(upBtn);
+
+  if (currentBreadcrumbs.length > 2) {
+    const rootBtn = document.createElement("button");
+    rootBtn.type = "button";
+    rootBtn.className = "breadcrumb-back-btn";
+    rootBtn.title = "Back to Root Overview";
+    rootBtn.textContent = "◀ Root";
+    rootBtn.onclick = () => {
+      vscode.postMessage({ type: "drillUp", depth: 0 });
+    };
+    bar.appendChild(rootBtn);
+  }
+}
+
+function initDiagramActionBar() {
+  const minimapBtn = document.getElementById("action-minimap");
+  const flipHBtn = document.getElementById("action-flip-h");
+  const flipVBtn = document.getElementById("action-flip-v");
+  const rotateBtn = document.getElementById("action-rotate");
+  const pinPlotBtn = document.getElementById("action-pin-plot");
+  const pinStickyBtn = document.getElementById("action-pin-sticky");
+  const spatial3DBtn = document.getElementById("action-spatial-3d");
+
+  minimapBtn?.addEventListener("click", () => {
+    toggleMinimapOverlay();
+  });
+
+  flipHBtn?.addEventListener("click", () => {
+    const g = getGraph();
+    if (g) flipSelectedNodes("x", g);
+  });
+
+  flipVBtn?.addEventListener("click", () => {
+    const g = getGraph();
+    if (g) flipSelectedNodes("y", g);
+  });
+
+  rotateBtn?.addEventListener("click", () => {
+    const g = getGraph();
+    if (g) rotateSelectedNodes(90, g);
+  });
+
+  pinPlotBtn?.addEventListener("click", () => {
+    const g = getGraph();
+    if (!g) return;
+    const selectedNodes = (g.getSelectedCells() as DiagramNodeCell[]).filter(
+      (c) => typeof c.isNode === "function" && c.isNode(),
+    );
+    const first = selectedNodes[0];
+    if (first) {
+      pinSparklineScope(first.id, first.getData()?.name || first.id, "timeseries");
+    }
+  });
+
+  pinStickyBtn?.addEventListener("click", () => {
+    const g = getGraph();
+    if (!g) return;
+    const selectedNodes = (g.getSelectedCells() as DiagramNodeCell[]).filter(
+      (c) => typeof c.isNode === "function" && c.isNode(),
+    );
+    const first = selectedNodes[0];
+    if (first) {
+      pinStickyValueWidget({
+        id: first.id,
+        label: first.getData()?.name || first.id,
+      });
+    }
+  });
+
+  spatial3DBtn?.addEventListener("click", () => {
+    vscode.postMessage({ type: "openSpatialDiagram3D" });
+  });
+
+  syncMinimapToggleButton();
+  syncActionBarSelectionState();
+}
+
+export type PinnedPlotMode = "timeseries" | "xy" | "bode" | "scatter" | "pareto";
+
+export interface PinStickyWidgetSpec {
+  id?: string | undefined;
+  label: string;
+  value?: string | undefined;
+  unit?: string | undefined;
+  status?: "ok" | "warning" | "error" | "stale" | undefined;
+}
+
 export interface SimulationTelemetryData {
   time: number[];
-  busVoltages: Record<string, number[]>;
-  busPhaseVoltages?: Record<string, { a: number[]; b: number[]; c: number[] }>;
-  branchCurrents: Record<string, number[]>;
-  branchPhaseCurrents?: Record<string, { a: number[]; b: number[]; c: number[] }>;
+  busVoltages?: Record<string, number[]> | undefined;
+  busPhaseVoltages?: Record<string, { a: number[]; b: number[]; c: number[] }> | undefined;
+  branchCurrents?: Record<string, number[]> | undefined;
+  branchPhaseCurrents?: Record<string, { a: number[]; b: number[]; c: number[] }> | undefined;
+  signals?: Record<string, number[]> | undefined;
 }
 
 let currentSimData: SimulationTelemetryData | null = null;
-const pinnedScopes = new Map<string, { name: string; element: HTMLElement }>();
+const pinnedScopes = new Map<string, { name: string; mode: PinnedPlotMode; element: HTMLElement }>();
+const pinnedStickies = new Map<
+  string,
+  {
+    label: string;
+    unit?: string | undefined;
+    overrideValue?: string | undefined;
+    status?: "ok" | "warning" | "error" | "stale" | undefined;
+    element: HTMLElement;
+  }
+>();
 
 function findWaveform(
   id: string,
   name?: string,
 ): {
-  kind: "voltage" | "current";
+  kind: "voltage" | "current" | "signal";
   label: string;
   unit: string;
   isThreePhase: boolean;
@@ -733,6 +1008,25 @@ function findWaveform(
     }
   }
 
+  // 5. Check generic simulation signals (e.g. Modelica trajectories)
+  if (currentSimData.signals) {
+    for (const [sigName, arr] of Object.entries(currentSimData.signals)) {
+      if (
+        cleanCandidates.some(
+          (c) => sigName.toLowerCase() === c.toLowerCase() || sigName.toLowerCase().startsWith(`${c.toLowerCase()}.`),
+        )
+      ) {
+        return {
+          kind: "signal",
+          label: sigName,
+          unit: "",
+          isThreePhase: false,
+          values: arr,
+        };
+      }
+    }
+  }
+
   return null;
 }
 
@@ -752,9 +1046,10 @@ function computeWaveformMetrics(vals: number[]) {
 
 function formatEngineeringValue(val: number, unit: string): string {
   const abs = Math.abs(val);
+  const u = unit ? ` ${unit}` : "";
   if (abs >= 1e6) return `${(val / 1e6).toFixed(2)} M${unit}`;
   if (abs >= 1e3) return `${(val / 1e3).toFixed(2)} k${unit}`;
-  if (abs >= 1 || abs === 0) return `${val.toFixed(2)} ${unit}`;
+  if (abs >= 1 || abs === 0) return `${val.toFixed(2)}${u}`;
   if (abs >= 1e-3) return `${(val * 1e3).toFixed(2)} m${unit}`;
   return `${(val * 1e6).toFixed(2)} µ${unit}`;
 }
@@ -811,12 +1106,196 @@ function generateSparklineSvg(
   </svg>`;
 }
 
-function pinSparklineScope(id: string, name: string) {
+function generatePlotSvg(
+  wf: { values: number[]; phases?: { a: number[]; b: number[]; c: number[] }; isThreePhase: boolean },
+  mode: PinnedPlotMode,
+  width = 256,
+  height = 68,
+): string {
+  if (mode === "timeseries") {
+    return generateSparklineSvg(wf, width, height);
+  }
+
+  const vals = wf.values;
+  const n = vals.length;
+  if (n < 2) {
+    return generateSparklineSvg(wf, width, height);
+  }
+
+  const pad = 6;
+  const plotW = Math.max(20, width - pad * 2);
+  const plotH = Math.max(20, height - pad * 2);
+
+  if (mode === "xy") {
+    // Phase portrait: Phase A vs Phase B for 3-phase, or y(t) vs dy/dt for 1-phase
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const step = Math.max(1, Math.floor(n / 80));
+    if (wf.isThreePhase && wf.phases && wf.phases.b.length === n) {
+      for (let i = 0; i < n; i += step) {
+        xs.push(wf.phases.a[i]!);
+        ys.push(wf.phases.b[i]!);
+      }
+    } else {
+      for (let i = 1; i < n; i += step) {
+        xs.push(vals[i]!);
+        ys.push(vals[i]! - vals[i - 1]!);
+      }
+    }
+    let minX = Math.min(...xs);
+    let maxX = Math.max(...xs);
+    let minY = Math.min(...ys);
+    let maxY = Math.max(...ys);
+    if (!Number.isFinite(minX) || minX === maxX) {
+      minX = -1;
+      maxX = 1;
+    }
+    if (!Number.isFinite(minY) || minY === maxY) {
+      minY = -1;
+      maxY = 1;
+    }
+    const pts = xs.map((x, idx) => {
+      const px = pad + ((x - minX) / (maxX - minX)) * plotW;
+      const py = height - pad - ((ys[idx]! - minY) / (maxY - minY)) * plotH;
+      return [px, py] as [number, number];
+    });
+    const d = pts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+    const endPt = pts[pts.length - 1]!;
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow:visible; display:block;">
+      <line x1="${pad}" y1="${height / 2}" x2="${width - pad}" y2="${height / 2}" stroke="rgba(148,163,184,0.2)" stroke-dasharray="2,2"/>
+      <line x1="${width / 2}" y1="${pad}" x2="${width / 2}" y2="${height - pad}" stroke="rgba(148,163,184,0.2)" stroke-dasharray="2,2"/>
+      <path d="${d}" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="${endPt[0].toFixed(1)}" cy="${endPt[1].toFixed(1)}" r="2.8" fill="#38bdf8"/>
+    </svg>`;
+  }
+
+  if (mode === "bode") {
+    // Discrete Fourier magnitude spectrum in dB on log-spaced bins
+    const sampleCount = Math.min(64, n);
+    const step = Math.max(1, Math.floor(n / sampleCount));
+    const sampled: number[] = [];
+    for (let i = 0; i < n && sampled.length < sampleCount; i += step) {
+      sampled.push(vals[i]!);
+    }
+    const N = sampled.length;
+    const half = Math.max(2, Math.floor(N / 2));
+    const magsDb: number[] = [];
+    for (let k = 1; k <= half; k++) {
+      let re = 0;
+      let im = 0;
+      for (let t = 0; t < N; t++) {
+        const angle = (2 * Math.PI * k * t) / N;
+        re += sampled[t]! * Math.cos(angle);
+        im -= sampled[t]! * Math.sin(angle);
+      }
+      const mag = Math.hypot(re, im) / N;
+      magsDb.push(20 * Math.log10(Math.max(mag, 1e-6)));
+    }
+    let minDb = Math.min(...magsDb);
+    let maxDb = Math.max(...magsDb);
+    if (!Number.isFinite(minDb) || minDb === maxDb) {
+      minDb = -60;
+      maxDb = 0;
+    }
+    const pts = magsDb.map((db, idx) => {
+      const logX = Math.log10(idx + 1) / Math.max(1e-6, Math.log10(magsDb.length));
+      const px = pad + logX * plotW;
+      const py = height - pad - ((db - minDb) / (maxDb - minDb)) * plotH;
+      return [px, py] as [number, number];
+    });
+    const d = pts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow:visible; display:block;">
+      <line x1="${pad}" y1="${pad + plotH * 0.5}" x2="${width - pad}" y2="${pad + plotH * 0.5}" stroke="rgba(148,163,184,0.2)" stroke-dasharray="2,2"/>
+      <path d="${d}" fill="none" stroke="#34d399" stroke-width="1.6" stroke-linecap="round"/>
+      <text x="${width - pad}" y="${pad + 8}" text-anchor="end" fill="#94a3b8" font-size="8" font-family="monospace">${maxDb.toFixed(0)} dB</text>
+      <text x="${width - pad}" y="${height - pad}" text-anchor="end" fill="#64748b" font-size="8" font-family="monospace">${minDb.toFixed(0)} dB</text>
+    </svg>`;
+  }
+
+  if (mode === "scatter") {
+    const step = Math.max(1, Math.floor(n / 40));
+    let min = Infinity;
+    let max = -Infinity;
+    let sum = 0;
+    let cnt = 0;
+    for (let i = 0; i < n; i += step) {
+      const v = vals[i]!;
+      if (v < min) min = v;
+      if (v > max) max = v;
+      sum += v;
+      cnt++;
+    }
+    if (!Number.isFinite(min) || min === max) {
+      min = -1;
+      max = 1;
+    }
+    const mean = cnt > 0 ? sum / cnt : 0;
+    const meanY = height - pad - ((mean - min) / (max - min)) * plotH;
+    const circles: string[] = [];
+    for (let i = 0; i < n; i += step) {
+      const px = pad + (i / Math.max(1, n - 1)) * plotW;
+      const py = height - pad - ((vals[i]! - min) / (max - min)) * plotH;
+      circles.push(`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="2.2" fill="#f59e0b" opacity="0.88"/>`);
+    }
+    return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow:visible; display:block;">
+      <line x1="${pad}" y1="${meanY.toFixed(1)}" x2="${width - pad}" y2="${meanY.toFixed(1)}" stroke="rgba(56,189,248,0.45)" stroke-dasharray="3,2"/>
+      ${circles.join("")}
+    </svg>`;
+  }
+
+  // Pareto chart: top-8 magnitude bins sorted descending + cumulative percentage curve
+  const binCount = 8;
+  const binSize = Math.max(1, Math.floor(n / binCount));
+  const bins: number[] = [];
+  for (let b = 0; b < binCount; b++) {
+    let peak = 0;
+    const start = b * binSize;
+    const end = Math.min(n, start + binSize);
+    for (let i = start; i < end; i++) {
+      const a = Math.abs(vals[i]!);
+      if (a > peak) peak = a;
+    }
+    bins.push(peak);
+  }
+  bins.sort((a, b) => b - a);
+  const total = bins.reduce((acc, v) => acc + v, 0) || 1;
+  const maxBin = bins[0] || 1;
+  const barGap = 4;
+  const barW = Math.max(6, (plotW - barGap * (binCount - 1)) / binCount);
+  let cum = 0;
+  const bars: string[] = [];
+  const cumPts: [number, number][] = [];
+  bins.forEach((v, idx) => {
+    const bh = (v / maxBin) * plotH;
+    const bx = pad + idx * (barW + barGap);
+    const by = height - pad - bh;
+    bars.push(
+      `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" rx="2" fill="rgba(56,189,248,0.55)" stroke="#38bdf8" stroke-width="0.8"/>`,
+    );
+    cum += v;
+    const cy = height - pad - (cum / total) * plotH;
+    cumPts.push([bx + barW / 2, cy]);
+  });
+  const cumPath = cumPts.map((p, idx) => `${idx === 0 ? "M" : "L"} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" style="overflow:visible; display:block;">
+    ${bars.join("")}
+    <path d="${cumPath}" fill="none" stroke="#f472b6" stroke-width="1.5" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function pinSparklineScope(id: string, name: string, initialMode: PinnedPlotMode = "timeseries") {
   const container = document.getElementById("pinned-scopes-container");
   if (!container) return;
   if (pinnedScopes.has(id)) {
-    const existing = pinnedScopes.get(id);
-    existing?.element.scrollIntoView({ behavior: "smooth" });
+    const existing = pinnedScopes.get(id)!;
+    if (existing.mode !== initialMode) {
+      existing.mode = initialMode;
+      const sel = existing.element.querySelector(".scope-mode-select") as HTMLSelectElement | null;
+      if (sel) sel.value = initialMode;
+      const bodyEl = existing.element.querySelector(".scope-body") as HTMLElement | null;
+      if (bodyEl) updateScopeCard(id, bodyEl);
+    }
+    existing.element.scrollIntoView({ behavior: "smooth" });
     return;
   }
 
@@ -828,22 +1307,38 @@ function pinSparklineScope(id: string, name: string) {
   header.className = "scope-header";
   header.innerHTML = `
     <span>⚡ ${escapeHtml(name || id)}</span>
-    <button class="scope-close-btn" title="Close Scope">×</button>
+    <div class="scope-header-controls">
+      <select class="scope-mode-select" title="Plot mode" aria-label="Plot mode">
+        <option value="timeseries"${initialMode === "timeseries" ? " selected" : ""}>Time</option>
+        <option value="xy"${initialMode === "xy" ? " selected" : ""}>X-Y</option>
+        <option value="bode"${initialMode === "bode" ? " selected" : ""}>Bode</option>
+        <option value="scatter"${initialMode === "scatter" ? " selected" : ""}>Scatter</option>
+        <option value="pareto"${initialMode === "pareto" ? " selected" : ""}>Pareto</option>
+      </select>
+      <button class="scope-close-btn" title="Close Plot">×</button>
+    </div>
   `;
+
+  const body = document.createElement("div");
+  body.className = "scope-body";
+
+  header.querySelector(".scope-mode-select")?.addEventListener("change", (ev) => {
+    const scope = pinnedScopes.get(id);
+    if (!scope) return;
+    scope.mode = (ev.target as HTMLSelectElement).value as PinnedPlotMode;
+    updateScopeCard(id, body);
+  });
 
   header.querySelector(".scope-close-btn")?.addEventListener("click", () => {
     card.remove();
     pinnedScopes.delete(id);
   });
 
-  const body = document.createElement("div");
-  body.className = "scope-body";
-
   card.appendChild(header);
   card.appendChild(body);
   container.appendChild(card);
 
-  pinnedScopes.set(id, { name, element: card });
+  pinnedScopes.set(id, { name, mode: initialMode, element: card });
   updateScopeCard(id, body);
 }
 
@@ -852,14 +1347,14 @@ function updateScopeCard(id: string, bodyEl: HTMLElement) {
   if (!scope) return;
   const wf = findWaveform(id, scope.name);
   if (!wf) {
-    bodyEl.innerHTML = `<div style="color: #94a3b8; font-size: 11px;">Waiting for simulation telemetry...</div>`;
+    bodyEl.innerHTML = `<div style="color: #94a3b8; font-size: 11px;">Waiting for simulation telemetry (${escapeHtml(scope.mode)})...</div>`;
     return;
   }
 
   const metrics = computeWaveformMetrics(wf.values);
   const rmsStr = formatEngineeringValue(metrics.rms, wf.unit);
   const pkStr = formatEngineeringValue(metrics.peak, wf.unit);
-  const sparkline = generateSparklineSvg(wf, 256, 44);
+  const plotSvg = generatePlotSvg(wf, scope.mode, 256, scope.mode === "timeseries" ? 48 : 68);
 
   const freqStr = (() => {
     const times = currentSimData?.time;
@@ -889,7 +1384,7 @@ function updateScopeCard(id: string, bodyEl: HTMLElement) {
       <span>f: <strong style="color:#34d399;">${freqStr}</strong></span>
     </div>
     <div style="background: rgba(15,23,42,0.6); padding: 4px; border-radius: 4px; border: 1px solid rgba(51,65,85,0.4);">
-      ${sparkline}
+      ${plotSvg}
     </div>
   `;
 }
@@ -898,6 +1393,117 @@ function updateAllPinnedScopes() {
   for (const [id, scope] of pinnedScopes) {
     const body = scope.element.querySelector(".scope-body") as HTMLElement;
     if (body) updateScopeCard(id, body);
+  }
+}
+
+function pinStickyValueWidget(spec: PinStickyWidgetSpec) {
+  const container = document.getElementById("pinned-scopes-container");
+  if (!container) return;
+  const id = spec.id || spec.label || `sticky_${Date.now()}`;
+  const existing = pinnedStickies.get(id);
+  if (existing) {
+    existing.label = spec.label || existing.label;
+    if (spec.value !== undefined) existing.overrideValue = spec.value;
+    if (spec.unit !== undefined) existing.unit = spec.unit;
+    if (spec.status !== undefined) existing.status = spec.status;
+    updateStickyCard(id);
+    existing.element.scrollIntoView({ behavior: "smooth" });
+    return;
+  }
+
+  const card = document.createElement("div");
+  card.className = "pinned-sticky-card";
+  card.id = `pinned-sticky-${id}`;
+  card.innerHTML = `
+    <div class="sticky-header">
+      <span class="sticky-title">
+        <span class="sticky-dot status-${escapeHtml(spec.status || "stale")}"></span>
+        <span>${escapeHtml(spec.label || id)}</span>
+      </span>
+      <span class="scope-header-controls">
+        <button class="sticky-action-btn sticky-expand-btn" title="Open Multi-Type Plot">📈</button>
+        <button class="scope-close-btn" title="Remove Sticky">×</button>
+      </span>
+    </div>
+    <div class="sticky-value-row">
+      <span class="sticky-value">—</span>
+      <span class="sticky-unit">${escapeHtml(spec.unit || "")}</span>
+    </div>
+  `;
+
+  card.querySelector(".sticky-expand-btn")?.addEventListener("click", () => {
+    pinSparklineScope(id, spec.label || id, "timeseries");
+  });
+
+  card.querySelector(".scope-close-btn")?.addEventListener("click", () => {
+    card.remove();
+    pinnedStickies.delete(id);
+  });
+
+  container.appendChild(card);
+  pinnedStickies.set(id, {
+    label: spec.label || id,
+    unit: spec.unit,
+    overrideValue: spec.value,
+    status: spec.status,
+    element: card,
+  });
+  updateStickyCard(id);
+}
+
+function updateStickyCard(id: string) {
+  const sticky = pinnedStickies.get(id);
+  if (!sticky) return;
+  const valEl = sticky.element.querySelector(".sticky-value") as HTMLElement | null;
+  const unitEl = sticky.element.querySelector(".sticky-unit") as HTMLElement | null;
+  const dotEl = sticky.element.querySelector(".sticky-dot") as HTMLElement | null;
+  if (!valEl) return;
+
+  const wf = findWaveform(id, sticky.label);
+  if (wf && wf.values.length > 0) {
+    const metrics = computeWaveformMetrics(wf.values);
+    valEl.textContent = formatEngineeringValue(metrics.last, "");
+    if (unitEl) unitEl.textContent = sticky.unit || wf.unit || "";
+    if (dotEl) {
+      dotEl.className = `sticky-dot status-${sticky.status || "ok"}`;
+    }
+  } else if (sticky.overrideValue !== undefined) {
+    valEl.textContent = sticky.overrideValue;
+    if (unitEl) unitEl.textContent = sticky.unit || "";
+    if (dotEl) {
+      dotEl.className = `sticky-dot status-${sticky.status || "ok"}`;
+    }
+  } else {
+    valEl.textContent = "—";
+    if (dotEl) {
+      dotEl.className = "sticky-dot status-stale";
+    }
+  }
+}
+
+function updateAllPinnedStickies() {
+  for (const id of pinnedStickies.keys()) {
+    updateStickyCard(id);
+  }
+}
+
+function updateStickyValuesFromFrame(stateVector: Record<string, number>) {
+  for (const [id, sticky] of pinnedStickies) {
+    const candidates = [id, sticky.label].filter(Boolean);
+    for (const [sigName, val] of Object.entries(stateVector)) {
+      if (
+        typeof val === "number" &&
+        Number.isFinite(val) &&
+        candidates.some(
+          (c) => sigName.toLowerCase() === c.toLowerCase() || sigName.toLowerCase().startsWith(`${c.toLowerCase()}.`),
+        )
+      ) {
+        sticky.overrideValue = formatEngineeringValue(val, "");
+        sticky.status = "ok";
+        updateStickyCard(id);
+        break;
+      }
+    }
   }
 }
 
@@ -1162,12 +1768,23 @@ function initContextMenu() {
         });
       }
 
-      items.push({
-        label: "Pin Sparkline Scope",
-        action: () => {
-          pinSparklineScope(node.id, node.getData()?.name || node.id);
+      items.push(
+        {
+          label: "Pin Plot Widget (Time / XY / Bode / Scatter / Pareto)",
+          action: () => {
+            pinSparklineScope(node.id, node.getData()?.name || node.id, "timeseries");
+          },
         },
-      });
+        {
+          label: "Pin Live Sticky Value",
+          action: () => {
+            pinStickyValueWidget({
+              id: node.id,
+              label: node.getData()?.name || node.id,
+            });
+          },
+        },
+      );
 
       items.push(
         { isDivider: true, label: "", action: () => {} },
@@ -1175,20 +1792,44 @@ function initContextMenu() {
           label: "Rotate 90° Clockwise",
           shortcut: "R",
           action: () => {
-            const curAngle = node.getAngle() || 0;
-            const newAngle = (((curAngle + 90) % 360) + 360) % 360;
-            node.rotate(90);
-            enqueueDiagramAction({ type: "rotate", item: { name: node.id, rotation: newAngle } });
+            if (!g.isSelected?.(node)) {
+              g.cleanSelection?.();
+              g.select?.(node);
+            }
+            rotateSelectedNodes(90, g);
           },
         },
         {
           label: "Rotate 90° Counter-Clockwise",
           shortcut: "Shift+R",
           action: () => {
-            const curAngle = node.getAngle() || 0;
-            const newAngle = (((curAngle - 90) % 360) + 360) % 360;
-            node.rotate(-90);
-            enqueueDiagramAction({ type: "rotate", item: { name: node.id, rotation: newAngle } });
+            if (!g.isSelected?.(node)) {
+              g.cleanSelection?.();
+              g.select?.(node);
+            }
+            rotateSelectedNodes(-90, g);
+          },
+        },
+        {
+          label: "Flip Horizontal",
+          shortcut: "H",
+          action: () => {
+            if (!g.isSelected?.(node)) {
+              g.cleanSelection?.();
+              g.select?.(node);
+            }
+            flipSelectedNodes("x", g);
+          },
+        },
+        {
+          label: "Flip Vertical",
+          shortcut: "V",
+          action: () => {
+            if (!g.isSelected?.(node)) {
+              g.cleanSelection?.();
+              g.select?.(node);
+            }
+            flipSelectedNodes("y", g);
           },
         },
         {
@@ -1206,10 +1847,17 @@ function initContextMenu() {
           label: "Drill into Definition",
           shortcut: "F12",
           action: () => {
-            const targetMod = node.getData()?.targetModule || (node.getData()?.isModule ? node.id : undefined);
-            if (targetMod) {
-              vscode.postMessage({ type: "navigateTo", className: targetMod, diagramType: "All" });
-            }
+            const data = node.getData();
+            const targetMod = data?.targetModule || (data?.isModule ? node.id : undefined);
+            vscode.postMessage({
+              type: "drillDown",
+              nodeId: node.id,
+              componentId: node.id,
+              componentName: data?.name || node.id,
+              className: targetMod || data?.definition,
+              fallbackClassName: targetMod,
+              label: data?.name || node.id,
+            });
           },
         },
         {
@@ -1233,9 +1881,18 @@ function initContextMenu() {
 
       showMenuAt(clientX, clientY, [
         {
-          label: "Pin Sparkline Scope",
+          label: "Pin Plot Widget",
           action: () => {
-            pinSparklineScope(wireId, `Wire ${wireId}`);
+            pinSparklineScope(wireId, `Wire ${wireId}`, "timeseries");
+          },
+        },
+        {
+          label: "Pin Live Sticky Value",
+          action: () => {
+            pinStickyValueWidget({
+              id: wireId,
+              label: `Wire ${wireId}`,
+            });
           },
         },
         { isDivider: true, label: "", action: () => {} },
@@ -1358,7 +2015,13 @@ function initContextMenu() {
           label: "Toggle Minimap",
           shortcut: "M",
           action: () => {
-            toggleMinimap(document.getElementById("container"));
+            toggleMinimapOverlay();
+          },
+        },
+        {
+          label: "Open 3D / VR Stage",
+          action: () => {
+            vscode.postMessage({ type: "openSpatialDiagram3D" });
           },
         },
         {
@@ -1392,10 +2055,40 @@ function initContextMenu() {
         },
       );
 
+      if (currentBreadcrumbs.length > 1) {
+        menuItems.push(
+          { isDivider: true, label: "", action: () => {} },
+          {
+            label: "Drill Up to Parent",
+            shortcut: "Alt+↑",
+            action: () => {
+              vscode.postMessage({ type: "drillUp" });
+            },
+          },
+        );
+      }
+
       showMenuAt(clientX, clientY, menuItems);
     });
 
+    g.on("node:dblclick", ({ node }: { node: DiagramNodeCell }) => {
+      const data = node.getData();
+      const targetMod = data?.targetModule || (data?.isModule ? node.id : undefined);
+      if (targetMod) {
+        vscode.postMessage({
+          type: "drillDown",
+          nodeId: node.id,
+          componentId: node.id,
+          componentName: data?.name || node.id,
+          className: targetMod,
+          fallbackClassName: targetMod,
+          label: data?.name || node.id,
+        });
+      }
+    });
+
     g.on("selection:changed", () => {
+      syncActionBarSelectionState();
       const selectedNodes = (g.getSelectedCells() as DiagramNodeCell[]).filter((c) => c.isNode());
       if (selectedNodes.length >= 2) {
         showBulkProperties(selectedNodes);
@@ -1563,8 +2256,61 @@ function initKeyboardAccelerators() {
       return;
     }
 
+    // Minimap toggle sync: M
+    if (e.key.toLowerCase() === "m" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!e.defaultPrevented) {
+        e.preventDefault();
+        toggleMinimapOverlay();
+      } else {
+        requestAnimationFrame(() => syncMinimapToggleButton());
+      }
+      return;
+    }
+
+    // Drill up: Alt+ArrowUp
+    if (e.altKey && e.key === "ArrowUp" && !e.ctrlKey && !e.metaKey) {
+      if (currentBreadcrumbs.length > 1) {
+        e.preventDefault();
+        vscode.postMessage({ type: "drillUp" });
+        return;
+      }
+    }
+
     const selectedCells = g.getSelectedCells() as DiagramNodeCell[];
     const selectedNodes = selectedCells.filter((c: DiagramNodeCell) => c.isNode());
+
+    // Flip Horizontal: H / Flip Vertical: V (fallback if not already handled by canvas-ui-handlers)
+    if (
+      (e.key.toLowerCase() === "h" || e.key.toLowerCase() === "v") &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      !e.altKey &&
+      !e.repeat &&
+      !e.defaultPrevented &&
+      selectedNodes.length > 0
+    ) {
+      e.preventDefault();
+      flipSelectedNodes(e.key.toLowerCase() === "h" ? "x" : "y", g);
+      return;
+    }
+
+    // Drill into definition: F12
+    if (e.key === "F12" && !e.ctrlKey && !e.metaKey && !e.altKey && selectedNodes.length > 0) {
+      const node = selectedNodes[0]!;
+      const data = node.getData();
+      const targetMod = data?.targetModule || (data?.isModule ? node.id : undefined);
+      e.preventDefault();
+      vscode.postMessage({
+        type: "drillDown",
+        nodeId: node.id,
+        componentId: node.id,
+        componentName: data?.name || node.id,
+        className: targetMod || data?.definition,
+        fallbackClassName: targetMod,
+        label: data?.name || node.id,
+      });
+      return;
+    }
 
     // Toggle Disable/Bypass: D
     if (e.key.toLowerCase() === "d" && !e.ctrlKey && !e.metaKey) {

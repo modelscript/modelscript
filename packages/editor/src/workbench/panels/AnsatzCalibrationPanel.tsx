@@ -89,14 +89,34 @@ const OverlaySvgChart: React.FC<{
 
   const buildPath = (series?: { t: number[]; y: number[] }) => {
     if (!series || series.t.length === 0) return "";
-    const stride = Math.max(1, Math.floor(series.t.length / 240));
-    const pts: string[] = [];
-    for (let i = 0; i < series.t.length; i += stride) {
-      pts.push(`${pts.length === 0 ? "M" : "L"}${toX(series.t[i]!).toFixed(1)},${toY(series.y[i]!).toFixed(1)}`);
+    const n = series.t.length;
+    const maxBuckets = 240;
+    if (n <= maxBuckets * 2) {
+      return series.t
+        .map((ti, idx) => `${idx === 0 ? "M" : "L"}${toX(ti).toFixed(1)},${toY(series.y[idx]!).toFixed(1)}`)
+        .join(" ");
     }
-    const last = series.t.length - 1;
-    if (last % stride !== 0) {
-      pts.push(`L${toX(series.t[last]!).toFixed(1)},${toY(series.y[last]!).toFixed(1)}`);
+    // Min/max envelope decimation preserves peaks/troughs of high-frequency COMTRADE waveforms
+    const bucketSize = n / maxBuckets;
+    const pts: string[] = [];
+    for (let b = 0; b < maxBuckets; b++) {
+      const start = Math.floor(b * bucketSize);
+      const end = Math.min(n, Math.floor((b + 1) * bucketSize));
+      if (start >= end) continue;
+      let minIdx = start;
+      let maxIdx = start;
+      for (let i = start + 1; i < end; i++) {
+        if (series.y[i]! < series.y[minIdx]!) minIdx = i;
+        if (series.y[i]! > series.y[maxIdx]!) maxIdx = i;
+      }
+      const firstIdx = Math.min(minIdx, maxIdx);
+      const secondIdx = Math.max(minIdx, maxIdx);
+      pts.push(
+        `${pts.length === 0 ? "M" : "L"}${toX(series.t[firstIdx]!).toFixed(1)},${toY(series.y[firstIdx]!).toFixed(1)}`,
+      );
+      if (secondIdx !== firstIdx) {
+        pts.push(`L${toX(series.t[secondIdx]!).toFixed(1)},${toY(series.y[secondIdx]!).toFixed(1)}`);
+      }
     }
     return pts.join(" ");
   };
@@ -287,11 +307,11 @@ export const AnsatzCalibrationPanel: React.FC<AnsatzCalibrationPanelProps> = ({
     setChannelMapping((prev) => {
       const next: Record<string, string> = {};
       for (const ch of channels) {
-        if (prev[ch]) {
+        if (prev[ch] !== undefined) {
           next[ch] = prev[ch]!;
         } else {
           const exact = modelVars.find((v) => v.toLowerCase() === ch.toLowerCase());
-          next[ch] = exact ?? modelVars[0] ?? ch;
+          next[ch] = exact ?? "";
         }
       }
       return next;
@@ -679,6 +699,55 @@ export const AnsatzCalibrationPanel: React.FC<AnsatzCalibrationPanelProps> = ({
               {appliedBanner ? "Applied to Model ✓" : "Apply Calibrated Parameters"}
             </Button>
           </div>
+
+          {Array.isArray(result.costHistory) &&
+            result.costHistory.length >= 2 &&
+            (() => {
+              const hist = result.costHistory.filter((v) => Number.isFinite(v));
+              if (hist.length < 2) return null;
+              const minC = Math.min(...hist);
+              const maxC = Math.max(...hist);
+              const span = Math.max(maxC - minC, 1e-12);
+              const w = 420;
+              const h = 72;
+              const pts = hist
+                .map((v, idx) => {
+                  const x = 8 + (idx / (hist.length - 1)) * (w - 16);
+                  const y = h - 10 - ((v - minC) / span) * (h - 20);
+                  return `${idx === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+                })
+                .join(" ");
+              return (
+                <div
+                  style={{
+                    border: `1px solid ${borderCol}`,
+                    borderRadius: 6,
+                    padding: "6px 10px",
+                    background: isDark ? "rgba(255,255,255,0.02)" : "rgba(15,23,42,0.015)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 11,
+                      color: mutedText,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <strong style={{ color: "var(--ms-text-1, inherit)" }}>
+                      Objective Cost Convergence ({hist.length} steps)
+                    </strong>
+                    <span style={{ fontFamily: "monospace" }}>
+                      {hist[0]!.toExponential(2)} → {hist[hist.length - 1]!.toExponential(2)}
+                    </span>
+                  </div>
+                  <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 64, display: "block" }}>
+                    <path d={pts} fill="none" stroke="var(--ms-brand, #0891b2)" strokeWidth={2} />
+                  </svg>
+                </div>
+              );
+            })()}
 
           {/* Parameter Comparison Table */}
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>

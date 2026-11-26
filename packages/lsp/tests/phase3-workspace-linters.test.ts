@@ -97,6 +97,18 @@ test("Phase 3: Fortran workspace linter resolves USE modules and INCLUDE files",
 
   const bad = new Map([["main.f90", main]]);
   assert.ok(lintFortranWorkspace(bad, "main.f90").some((d) => d.rule === "unresolved-fortran-module"));
+
+  const syntaxBad = new Map([
+    [
+      "droop.f90",
+      `subroutine droop(x, y)\n  implicit none\n  real, intent(in) :: x\n  real, intent(out) :: y\n  1\n  y = x\nend subroutine droop\n`,
+    ],
+  ]);
+  const syntaxDiags = lintFortranWorkspace(syntaxBad, "droop.f90");
+  const m4082 = syntaxDiags.find((d) => d.code === "M4082");
+  assert.ok(m4082, "Expected M4082 code from lintFortranWorkspace");
+  assert.equal(m4082.line, 5);
+  assert.equal(m4082.column, 3);
 });
 
 test("Phase 3: AMPL workspace linter cross-checks .dat and .run against .mod", () => {

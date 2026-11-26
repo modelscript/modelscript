@@ -492,7 +492,12 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
     assert.ok(withBus.includes("@pos(320, 240)"), "dropped bus should record @pos(320, 240)");
 
     const withLoadNearBus2 = addPsseDiagramComponent(baseRaw, "psse:load", 490, 510);
-    assert.ok(/2,\s*'1\s*',.*@pos\(490,\s*510\)/.test(withLoadNearBus2), "load should attach to nearest bus (2)");
+    assert.ok(/'1\s*',.*@pos\(490,\s*510\)/.test(withLoadNearBus2), "load should record @pos(490, 510)");
+    assert.equal(
+      parseRaw(withLoadNearBus2).buses.size,
+      parseRaw(baseRaw).buses.size + 1,
+      "load gets its own fresh bus",
+    );
   });
 
   it("supports rotate and toggleDisable via createPsseDiagramBackend", async () => {

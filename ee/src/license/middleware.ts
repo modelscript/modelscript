@@ -14,12 +14,16 @@ export interface RequireEnterpriseFeatureOptions {
 export function requireEnterpriseFeature(feature?: EnterpriseFeature, options?: RequireEnterpriseFeatureOptions) {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (options?.exemptPaths && options.exemptPaths.length > 0) {
-      const path = req.path || "";
-      const originalPath = (req.originalUrl || "").split("?")[0] || "";
-      const isExempt = options.exemptPaths.some(
-        (exempt) =>
-          path === exempt || path.endsWith(exempt) || originalPath === exempt || originalPath.endsWith(exempt),
-      );
+      const normalizePath = (p: string): string => {
+        const trimmed = p.replace(/\/+$/, "");
+        return trimmed || "/";
+      };
+      const normalizedPath = normalizePath(req.path || "");
+      const normalizedOriginalPath = normalizePath((req.originalUrl || "").split("?")[0] || "");
+      const isExempt = options.exemptPaths.some((exempt) => {
+        const normalizedExempt = normalizePath(exempt);
+        return normalizedPath === normalizedExempt || normalizedOriginalPath === normalizedExempt;
+      });
       if (isExempt) {
         next();
         return;

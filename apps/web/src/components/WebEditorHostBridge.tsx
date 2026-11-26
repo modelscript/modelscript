@@ -22,9 +22,11 @@ import { useFeatureFlags } from "../FeatureFlagContext";
 import { useModelingPreferences } from "../ModelingPreferencesContext";
 import { HERO_EXAMPLES } from "../pages/ansatz-editor/constants";
 import { useTheme } from "../theme";
-import { CloudSimulationModal } from "./cloud-sim/CloudSimulationModal";
 import { useToast } from "./ToastContext";
 
+const LazyCloudSimulationModal = React.lazy(() =>
+  import("./cloud-sim/CloudSimulationModal").then((m) => ({ default: m.CloudSimulationModal })),
+);
 const LazyReqifViewer = React.lazy(() => import("./artifacts/ReqifViewer").then((m) => ({ default: m.ReqifViewer })));
 
 registerEditorLanguageUi({
@@ -63,7 +65,11 @@ export const WebEditorHostBridge: React.FC<{ children: React.ReactNode }> = ({ c
       heroExamples: HERO_EXAMPLES as unknown as Array<Record<string, unknown>>,
       navigate: (path) => navigate(path),
       renderCloudSimulationModal: (modalProps) => (
-        <CloudSimulationModal {...(modalProps as unknown as React.ComponentProps<typeof CloudSimulationModal>)} />
+        <React.Suspense fallback={null}>
+          <LazyCloudSimulationModal
+            {...(modalProps as unknown as React.ComponentProps<typeof LazyCloudSimulationModal>)}
+          />
+        </React.Suspense>
       ),
       renderReqifViewer: (viewerProps) => (
         <React.Suspense fallback={null}>

@@ -78,18 +78,35 @@ function extractTitleAndDesc(content: string, fallbackTitle: string): { title: s
   return { title, subtitle };
 }
 
-function main(): void {
+async function main(): Promise<void> {
   fs.mkdirSync(ogDir, { recursive: true });
 
-  const legacyIndexPng = path.join(ogDir, "index.png");
-  if (fs.existsSync(legacyIndexPng)) {
-    fs.unlinkSync(legacyIndexPng);
+  let ResvgCtor: (new (svg: string, opts?: Record<string, unknown>) => { render(): { asPng(): Buffer } }) | null = null;
+  try {
+    const mod = await import("@resvg/resvg-js");
+    ResvgCtor = mod.Resvg as typeof ResvgCtor;
+  } catch {
+    console.warn("⚠ @resvg/resvg-js unavailable; falling back to SVG OG cards.");
   }
 
   let count = 0;
   const writeCard = (slug: string, title: string, subtitle: string, eyebrow = "MODELSCRIPT"): void => {
-    const svgPath = path.join(ogDir, `${slug}.svg`);
-    fs.writeFileSync(svgPath, renderOgSvg(title, subtitle, eyebrow), "utf8");
+    const svg = renderOgSvg(title, subtitle, eyebrow);
+    if (ResvgCtor) {
+      const pngPath = path.join(ogDir, `${slug}.png`);
+      const resvg = new ResvgCtor(svg, {
+        fitTo: { mode: "width", value: 1200 },
+        font: { loadSystemFonts: true },
+      });
+      fs.writeFileSync(pngPath, resvg.render().asPng());
+      const legacySvg = path.join(ogDir, `${slug}.svg`);
+      if (fs.existsSync(legacySvg)) {
+        fs.unlinkSync(legacySvg);
+      }
+    } else {
+      const svgPath = path.join(ogDir, `${slug}.svg`);
+      fs.writeFileSync(svgPath, svg, "utf8");
+    }
     count++;
   };
 
@@ -116,8 +133,8 @@ function main(): void {
   }
 
   console.log(
-    `✓ Generated ${count} OG preview assets in ${path.relative(process.cwd(), ogDir)} (${LANGUAGES.length} languages, ${INDUSTRIES.length} industries).`,
+    `✓ Generated ${count} ${ResvgCtor ? "PNG" : "SVG"} OG preview assets in ${path.relative(process.cwd(), ogDir)} (${LANGUAGES.length} languages, ${INDUSTRIES.length} industries).`,
   );
 }
 
-main();
+void main();

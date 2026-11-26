@@ -44,7 +44,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
   };
 
   // GET /api/v1/historian/sessions — List recorded sessions
-  router.get("/sessions", async (_req, res) => {
+  router.get("/sessions", requireHistorianAuthInProd, async (_req, res) => {
     if (!pool) return res.json({ sessions: listCosimSessionsForHistorian() });
 
     try {
@@ -68,8 +68,8 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
   });
 
   // GET /api/v1/historian/sessions/:id — Get session metadata
-  router.get("/sessions/:id", async (req, res) => {
-    const sessionId = req.params["id"] ?? "";
+  router.get("/sessions/:id", requireHistorianAuthInProd, async (req, res) => {
+    const sessionId = String(req.params["id"] ?? "");
     if (!pool) {
       const memSession = getCosimSessionForHistorian(sessionId);
       if (memSession) {

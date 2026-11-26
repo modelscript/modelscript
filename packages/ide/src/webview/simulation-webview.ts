@@ -8,14 +8,21 @@
 // 1. Batch mode: static data from a completed simulation
 // 2. Live mode: streaming data from MQTT broker via WebSocket
 
+import { generateParquetBuffer } from "@modelscript/editor/internal/binary-export.js";
+import type { SimulationResultsProps } from "@modelscript/editor/workbench/SimulationResults.js";
 import {
   CanvasPlotController,
+  simulationToDataset,
   type ChartViewMode,
   type IndexedDataset,
-  simulationToDataset,
   type TrackConfig,
 } from "@modelscript/simulate/charts";
 import { lttbDecimate } from "../utils/lttb.js";
+import {
+  mountSimulationReactPanels,
+  type MountedSimulationReactPanels,
+  type WaterComplianceReport,
+} from "./simulation-results-webview.js";
 
 interface SimulationData {
   t: number[];
@@ -26,6 +33,9 @@ interface SimulationData {
   comtrade?: { cfg: string; dat: string };
   pscadOut?: { inf: string; out: { suffix: string; content: string }[] };
   pscadPsout?: Uint8Array | string;
+  complianceReport?: unknown;
+  waterCompliance?: WaterComplianceReport;
+  pscadExports?: SimulationResultsProps["pscadExports"];
   projectName?: string;
 }
 
@@ -202,6 +212,8 @@ const selectXAxis = document.getElementById("select-xaxis") as HTMLSelectElement
 const checkboxNormalize = document.getElementById("checkbox-normalize") as HTMLInputElement | null;
 const checkboxDualY = document.getElementById("checkbox-dual-y") as HTMLInputElement | null;
 const btnExportCsv = document.getElementById("btn-export-csv");
+const btnExportJson = document.getElementById("btn-export-json");
+const btnExportParquet = document.getElementById("btn-export-parquet");
 const btnExportComtrade = document.getElementById("btn-export-comtrade");
 const btnExportOut = document.getElementById("btn-export-out");
 const btnExportPsout = document.getElementById("btn-export-psout");
@@ -209,6 +221,12 @@ const btnExportPng = document.getElementById("btn-export-png");
 const btnCopyCsv = document.getElementById("btn-copy-csv");
 const btnToggleCursors = document.getElementById("btn-toggle-cursors");
 const btnPinRun = document.getElementById("btn-pin-run");
+const btnCompareBaseline = document.getElementById("btn-compare-baseline");
+const btnToggleStats = document.getElementById("btn-toggle-stats");
+const statsDrawerEl = document.getElementById("stats-drawer");
+const studioResultsContainerEl = document.getElementById("studio-results-container");
+const phasorFftContainerEl = document.getElementById("phasor-fft-container");
+const ieee2800ContainerEl = document.getElementById("ieee2800-container");
 const cursorHudEl = document.getElementById("cursor-hud");
 const viewModeGroupEl = document.getElementById("view-mode-group");
 const overlayControlsEl = document.getElementById("overlay-controls");
@@ -225,6 +243,11 @@ let isNormalized = false;
 let isDualY = false;
 let selectedXVar = "__time__";
 let cursorsEnabled = false;
+let showStatsDrawer = false;
+let isComparingBaseline = false;
+let reactPanels: MountedSimulationReactPanels | null = null;
+let latestComplianceReport: unknown = undefined;
+let latestWaterCompliance: WaterComplianceReport | undefined = undefined;
 let cursorA: number | null = null;
 let cursorB: number | null = null;
 let draggingCursor: "A" | "B" | null = null;
@@ -818,7 +841,17 @@ function exportPscadPsout() {
   } else {
     bytes = new Uint8Array(Object.values(currentData.pscadPsout));
   }
-  const blob = new Blob([bytes], { type: "application/octet-stream" });
+  if (vscodeApi) {
+    vscodeApi.postMessage({
+      type: "exportFile",
+      filename: `${baseName}.psout`,
+      content: bytesToBase64(bytes),
+      encoding: "base64",
+      mimeType: "application/octet-stream",
+    });
+    return;
+  }
+  const blob = new Blob([bytes as unknown as BlobPart], { type: "application/octet-stream" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -829,8 +862,90 @@ function exportPscadPsout() {
   URL.revokeObjectURL(url);
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+function buildVisibleRecords(): { columns: string[]; records: Record<string, number | string>[] } | null {
+  if (!currentData || currentData.t.length === 0) return null;
+  const { t, y, states } = currentData;
+  const visibleIndices: number[] = [];
+  for (let vi = 0; vi < states.length; vi++) {
+    if (!hiddenVars.has(states[vi])) visibleIndices.push(vi);
+  }
+  const indices = visibleIndices.length > 0 ? visibleIndices : states.map((_, idx) => idx);
+  const columns = ["time", ...indices.map((vi) => states[vi])];
+  const records: Record<string, number | string>[] = new Array(t.length);
+  for (let i = 0; i < t.length; i++) {
+    const row: Record<string, number | string> = { time: t[i] };
+    for (const vi of indices) {
+      const val = y[i]?.[vi];
+      row[states[vi]] = val !== undefined && isFinite(val) ? val : 0;
+    }
+    records[i] = row;
+  }
+  return { columns, records };
+}
+
+function exportJson() {
+  const built = buildVisibleRecords();
+  if (!built) return;
+  const filename = `${currentData?.projectName || "simulation_data"}_${Date.now()}.json`;
+  const jsonContent = JSON.stringify(built.records, null, 2);
+  if (vscodeApi) {
+    vscodeApi.postMessage({
+      type: "exportFile",
+      filename,
+      content: jsonContent,
+      encoding: "utf8",
+      mimeType: "application/json",
+    });
+    return;
+  }
+  downloadTextFile(filename, jsonContent, "application/json");
+}
+
+function exportParquet() {
+  const built = buildVisibleRecords();
+  if (!built) return;
+  const filename = `${currentData?.projectName || "simulation_data"}_${Date.now()}.parquet`;
+  const parquetBytes = generateParquetBuffer(built.records, built.columns);
+  if (vscodeApi) {
+    vscodeApi.postMessage({
+      type: "exportFile",
+      filename,
+      content: bytesToBase64(parquetBytes),
+      encoding: "base64",
+      mimeType: "application/vnd.apache.parquet",
+    });
+    return;
+  }
+  const blob = new Blob([parquetBytes as unknown as BlobPart], { type: "application/vnd.apache.parquet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 btnExportCsv?.addEventListener("click", () => {
   exportCsv();
+});
+
+btnExportJson?.addEventListener("click", () => {
+  exportJson();
+});
+
+btnExportParquet?.addEventListener("click", () => {
+  exportParquet();
 });
 
 btnExportComtrade?.addEventListener("click", () => {
@@ -971,12 +1086,179 @@ function renderRunChips() {
   }
 }
 
+function computeLocalSignalStats(
+  t: number[],
+  vals: number[],
+  baselineVals?: number[],
+): {
+  min: number;
+  max: number;
+  peakToPeak: number;
+  mean: number;
+  rms: number;
+  finalVal: number;
+  settlingTime: number | null;
+  baselineDeltaMean?: number;
+  baselineRmse?: number;
+} {
+  const n = Math.min(t.length, vals.length);
+  let min = Infinity;
+  let max = -Infinity;
+  let sum = 0;
+  let sumSq = 0;
+  let valid = 0;
+  let finalVal = 0;
+  for (let i = 0; i < n; i++) {
+    const v = vals[i];
+    if (!Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    sumSq += v * v;
+    valid++;
+    finalVal = v;
+  }
+  if (valid === 0) {
+    return { min: 0, max: 0, peakToPeak: 0, mean: 0, rms: 0, finalVal: 0, settlingTime: null };
+  }
+  const peakToPeak = max - min;
+  const mean = sum / valid;
+  const rms = Math.sqrt(sumSq / valid);
+  let settlingTime: number | null = null;
+  if (n >= 2) {
+    const band = Math.max(0.02 * Math.abs(finalVal), 0.02 * peakToPeak, 1e-9);
+    let lastOutside = -1;
+    for (let i = n - 1; i >= 0; i--) {
+      if (Number.isFinite(vals[i]) && Math.abs(vals[i] - finalVal) > band) {
+        lastOutside = i;
+        break;
+      }
+    }
+    if (lastOutside === -1) settlingTime = t[0] ?? 0;
+    else if (lastOutside + 1 < n) settlingTime = t[lastOutside + 1] ?? null;
+  }
+  let baselineDeltaMean: number | undefined;
+  let baselineRmse: number | undefined;
+  if (baselineVals && baselineVals.length > 0) {
+    const bn = Math.min(n, baselineVals.length);
+    let deltaSum = 0;
+    let sqSum = 0;
+    let cnt = 0;
+    for (let i = 0; i < bn; i++) {
+      const v = vals[i];
+      const bv = baselineVals[i];
+      if (Number.isFinite(v) && Number.isFinite(bv)) {
+        const d = v - bv;
+        deltaSum += d;
+        sqSum += d * d;
+        cnt++;
+      }
+    }
+    if (cnt > 0) {
+      baselineDeltaMean = deltaSum / cnt;
+      baselineRmse = Math.sqrt(sqSum / cnt);
+    }
+  }
+  return { min, max, peakToPeak, mean, rms, finalVal, settlingTime, baselineDeltaMean, baselineRmse };
+}
+
+function renderStatsDrawer() {
+  if (!statsDrawerEl) return;
+  statsDrawerEl.classList.toggle("visible", showStatsDrawer);
+  btnToggleStats?.classList.toggle("active", showStatsDrawer);
+  if (!showStatsDrawer || !currentData || currentData.t.length === 0) {
+    statsDrawerEl.innerHTML = "";
+    return;
+  }
+  const { t, y, states } = currentData;
+  const activeBaseline = isComparingBaseline ? pinnedRuns.find((r) => r.visible) : undefined;
+  const visibleVars = states.map((name, vi) => ({ name, vi })).filter((entry) => !hiddenVars.has(entry.name));
+
+  if (visibleVars.length === 0) {
+    statsDrawerEl.innerHTML = `<div style="color:var(--vscode-descriptionForeground,#888)">Select one or more variables to view signal statistics.</div>`;
+    return;
+  }
+
+  const rowsHtml = visibleVars
+    .map(({ name, vi }) => {
+      const col = new Array<number>(t.length);
+      for (let i = 0; i < t.length; i++) col[i] = y[i]?.[vi] ?? NaN;
+      let baseCol: number[] | undefined;
+      if (activeBaseline) {
+        const bVi = activeBaseline.data.states.indexOf(name);
+        if (bVi >= 0) {
+          baseCol = activeBaseline.data.y.map((r) => r[bVi] ?? NaN);
+        }
+      }
+      const s = computeLocalSignalStats(t, col, baseCol);
+      const color = COLORS[vi % COLORS.length];
+      const settleTxt = s.settlingTime !== null ? `${formatTick(s.settlingTime)}s` : "—";
+      const baseCell = activeBaseline
+        ? `<td>${s.baselineDeltaMean !== undefined ? formatTick(s.baselineDeltaMean) : "—"}</td><td>${s.baselineRmse !== undefined ? formatTick(s.baselineRmse) : "—"}</td>`
+        : "";
+      return `<tr>
+        <td><span class="stats-dot" style="background:${color}"></span>${escapeHtmlSim(name)}</td>
+        <td>${formatTick(s.min)}</td>
+        <td>${formatTick(s.max)}</td>
+        <td>${formatTick(s.peakToPeak)}</td>
+        <td>${formatTick(s.mean)}</td>
+        <td>${formatTick(s.rms)}</td>
+        <td>${formatTick(s.finalVal)}</td>
+        <td>${settleTxt}</td>
+        ${baseCell}
+      </tr>`;
+    })
+    .join("");
+
+  statsDrawerEl.innerHTML = `<table>
+    <thead><tr>
+      <th>Variable</th><th>Min</th><th>Max</th><th>Pk-Pk</th><th>Mean</th><th>RMS</th><th>Final</th><th>Settling (2%)</th>
+      ${activeBaseline ? `<th>Δ Mean (${escapeHtmlSim(activeBaseline.name)})</th><th>RMSE</th>` : ""}
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>`;
+}
+
+function syncReactPanels() {
+  if (!studioResultsContainerEl && !phasorFftContainerEl && !ieee2800ContainerEl) return;
+  if (!reactPanels) {
+    reactPanels = mountSimulationReactPanels({
+      studioEl: studioResultsContainerEl,
+      phasorFftEl: phasorFftContainerEl,
+      complianceEl: ieee2800ContainerEl,
+    });
+  }
+  const rows: Record<string, number | string>[] = [];
+  const variables = currentData?.states ?? [];
+  if (currentData && currentData.t.length > 0) {
+    const { t, y, states } = currentData;
+    for (let i = 0; i < t.length; i++) {
+      const row: Record<string, number | string> = { time: t[i] };
+      for (let vi = 0; vi < states.length; vi++) {
+        const val = y[i]?.[vi];
+        if (val !== undefined) row[states[vi]] = val;
+      }
+      rows.push(row);
+    }
+  }
+  reactPanels.update({
+    data: rows,
+    variables,
+    sweepResults: currentData?.sweepResults,
+    complianceReport: currentData?.complianceReport ?? latestComplianceReport,
+    waterCompliance: currentData?.waterCompliance ?? latestWaterCompliance,
+    pscadExports: currentData?.pscadExports,
+    modelName: currentData?.projectName,
+    colorMode: isDark ? "dark" : "light",
+  });
+}
+
 btnPinRun?.addEventListener("click", () => {
   if (!currentData) return;
   pinnedRunSeq++;
   pinnedRuns.push({
     id: pinnedRunSeq,
-    name: `Run ${pinnedRunSeq}`,
+    name: pinnedRuns.length === 0 ? "Baseline" : `Run ${pinnedRunSeq}`,
     visible: true,
     data: {
       t: [...currentData.t],
@@ -984,8 +1266,43 @@ btnPinRun?.addEventListener("click", () => {
       states: [...currentData.states],
     },
   });
+  isComparingBaseline = true;
+  btnCompareBaseline?.classList.add("active");
   renderRunChips();
+  renderStatsDrawer();
   redrawChart();
+});
+
+btnCompareBaseline?.addEventListener("click", () => {
+  if (pinnedRuns.length === 0 && currentData) {
+    pinnedRunSeq++;
+    pinnedRuns.push({
+      id: pinnedRunSeq,
+      name: "Baseline",
+      visible: true,
+      data: {
+        t: [...currentData.t],
+        y: currentData.y.map((row) => [...row]),
+        states: [...currentData.states],
+      },
+    });
+    isComparingBaseline = true;
+  } else {
+    isComparingBaseline = !isComparingBaseline;
+    for (const run of pinnedRuns) {
+      run.visible = isComparingBaseline;
+    }
+  }
+  btnCompareBaseline.classList.toggle("active", isComparingBaseline);
+  renderRunChips();
+  renderStatsDrawer();
+  redrawChart();
+});
+
+btnToggleStats?.addEventListener("click", () => {
+  showStatsDrawer = !showStatsDrawer;
+  renderStatsDrawer();
+  requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
 });
 
 selectXAxis?.addEventListener("change", () => {
@@ -1017,11 +1334,33 @@ checkboxDualY?.addEventListener("change", () => {
 // Handle messages from extension
 window.addEventListener("message", (event) => {
   const msg = event.data;
+  if (msg.type === "syncTheme" || msg.type === "hostConfig") {
+    if (msg.colorMode === "dark" || msg.colorMode === "light") {
+      isDark = msg.colorMode === "dark";
+      syncCanvasPlotConfig();
+      syncReactPanels();
+      redrawChart();
+    }
+    return;
+  }
+  if (msg.type === "complianceReport" && msg.report) {
+    if (msg.kind === "water") {
+      latestWaterCompliance = msg.report as WaterComplianceReport;
+      if (currentData) currentData.waterCompliance = latestWaterCompliance;
+    } else {
+      latestComplianceReport = msg.report;
+      if (currentData) currentData.complianceReport = latestComplianceReport;
+    }
+    syncReactPanels();
+    return;
+  }
   if (msg.type === "simulationData") {
     // Batch mode
     isLiveMode = false;
     currentData = msg.data;
     isDark = msg.isDark;
+    if (msg.data.complianceReport) latestComplianceReport = msg.data.complianceReport;
+    if (msg.data.waterCompliance) latestWaterCompliance = msg.data.waterCompliance;
 
     const hadNoVisible = msg.data.states.every((state: string) => hiddenVars.has(state));
     msg.data.states.forEach((state: string, idx: number) => {
@@ -1046,6 +1385,8 @@ window.addEventListener("message", (event) => {
     toolbarEl.classList.remove("live-mode");
     stopLiveLoop();
     buildTreeView(msg.data.states);
+    renderStatsDrawer();
+    syncReactPanels();
 
     // Populate X-Axis selector for Phase Portrait
     if (selectXAxis && msg.data.states) {

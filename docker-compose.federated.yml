@@ -1,0 +1,151 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ModelScript / Ansatz Federated Node — Standalone Production Compose Stack
+#
+# Quick Start (Community Edition — AGPL-3.0, ActivityPub federated):
+#   export PUBLIC_DOMAIN=models.example.edu
+#   export PUBLIC_URL=https://models.example.edu
+#   export JWT_SECRET=$(openssl rand -hex 32)
+#   docker compose -f docker-compose.federated.yml up -d
+#
+# Upgrade to a specific release tag:
+#   IMAGE_TAG=0.1.0 docker compose -f docker-compose.federated.yml pull
+#   IMAGE_TAG=0.1.0 docker compose -f docker-compose.federated.yml up -d
+#
+# Optional profiles:
+#   --profile historian  : adds TimescaleDB + Mosquitto MQTT broker (set ENABLE_TIMESCALE=true ENABLE_MQTT=true)
+#   --profile tunnel     : adds Cloudflare Tunnel (requires CLOUDFLARE_TUNNEL_TOKEN)
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      - PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-localhost}
+    volumes:
+      - ./config/Caddyfile.federated:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  api:
+    # Defaults to open-source Community Edition (api-ce). Enterprise licensees may set
+    # MSX_API_IMAGE=ghcr.io/modelscript/api-ee and MSX_EDITION=ee.
+    image: ${MSX_API_IMAGE:-ghcr.io/modelscript/api-ce}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - api-data:/app/apps/api/data
+      - api-backups:/app/apps/api/data/backups
+      - api-uploads:/app/apps/api/uploads
+      - api-thumbnails:/app/apps/api/public/thumbnails
+      - api-packages:/app/apps/api/storage
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - MSX_EDITION=${MSX_EDITION:-ce}
+      - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-false}
+      - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
+      - DEPLOYMENT_PRESET=${DEPLOYMENT_PRESET:-federated}
+      - FEDERATION_MODE=${FEDERATION_MODE:-enabled}
+      - MSX_FEDERATION_MODE=${MSX_FEDERATION_MODE:-enabled}
+      - MSX_REGISTRATION_MODE=${MSX_REGISTRATION_MODE:-open}
+      - TRUST_PROXY=true
+      - PUBLIC_URL=${PUBLIC_URL:-https://${PUBLIC_DOMAIN:-localhost}}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a cryptographically strong secret (e.g., openssl rand -hex 32)}
+      - DATA_DIR=/app/apps/api/data
+      - DB_PATH=/app/apps/api/data/modelscript.db
+      - STORAGE_DIR=/app/apps/api/storage
+      - AUTO_SEED_ADMIN=${AUTO_SEED_ADMIN:-true}
+      - ADMIN_INIT_USERNAME=${ADMIN_INIT_USERNAME:-admin}
+      - ADMIN_INIT_PASSWORD=${ADMIN_INIT_PASSWORD:-}
+      - ENABLE_TIMESCALE=${ENABLE_TIMESCALE:-false}
+      - TIMESCALE_URL=${TIMESCALE_URL:-postgres://modelscript:${TIMESCALE_PASSWORD:-changeme}@timescaledb:5432/historian}
+      - ENABLE_MQTT=${ENABLE_MQTT:-false}
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://mqtt:1883}
+      - EMAIL_DRIVER=${EMAIL_DRIVER:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-}
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  web:
+    image: ghcr.io/modelscript/web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:80/healthz || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    profiles: ["historian"]
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=modelscript
+      - POSTGRES_PASSWORD=${TIMESCALE_PASSWORD:?Set TIMESCALE_PASSWORD when using --profile historian}
+      - POSTGRES_DB=historian
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./config/init-timescaledb.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U modelscript -d historian"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    profiles: ["historian"]
+    restart: unless-stopped
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt-data:/mosquitto/data
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-${TUNNEL_TOKEN:-}}
+      - TUNNEL_METRICS=0.0.0.0:2000
+    depends_on:
+      - caddy
+
+volumes:
+  caddy-data:
+  caddy-config:
+  api-data:
+  api-backups:
+  api-uploads:
+  api-thumbnails:
+  api-packages:
+  timescale-data:
+  mqtt-data:

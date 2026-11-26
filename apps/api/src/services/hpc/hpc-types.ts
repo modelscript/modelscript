@@ -15,6 +15,7 @@ export interface HpcSandboxConfig {
   image?: string | undefined;
   seccompProfile?: string | undefined;
   dropCapabilities?: boolean | undefined;
+  allowUnsandboxedFallback?: boolean | undefined;
 }
 
 export interface HpcResourceSpec {
@@ -96,4 +97,6 @@ export interface HpcDriver {
   cancel(nativeJobId: string): Promise<boolean>;
   getMetrics(nativeJobId: string, workingDir: string, profile: ComputeProfile): Promise<HpcUsageMetrics>;
   getLogPath(nativeJobId: string, workingDir: string): string;
+  healthCheck?(): Promise<{ ok: boolean; details?: string | undefined }>;
+  shutdown?(): Promise<void>;
 }

@@ -22,26 +22,29 @@ export interface UnifiedJobCardProps {
   onInspect: (jobId: string | number) => void;
   onRerun?: ((job: UnifiedJobItem) => void) | undefined;
   onSaveAsTemplate?: ((job: UnifiedJobItem) => void) | undefined;
+  onCancel?: ((job: UnifiedJobItem) => void) | undefined;
 }
 
-export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, onRerun, onSaveAsTemplate }) => {
-  const isRunning = job.status === "RUNNING";
-  const isDone = job.status === "SUCCESS";
-  const isFailed = job.status === "FAILED";
+export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({
+  job,
+  onInspect,
+  onRerun,
+  onSaveAsTemplate,
+  onCancel,
+}) => {
+  const normalizedStatus = String(job.status || "").toUpperCase();
+  const isRunning =
+    normalizedStatus === "RUNNING" || normalizedStatus === "PROCESSING" || normalizedStatus === "IN_PROGRESS";
+  const isQueued = normalizedStatus === "QUEUED" || normalizedStatus === "PENDING";
+  const isDone = normalizedStatus === "SUCCESS" || normalizedStatus === "COMPLETED";
+  const isFailed = normalizedStatus === "FAILED" || normalizedStatus === "ERROR";
+  const isCancelled = normalizedStatus === "CANCELLED" || normalizedStatus === "CANCELED";
+  const clampedProgress = Math.max(0, Math.min(100, Number(job.progress ?? 0) || 0));
   const isLocalWasm = job.executionTarget === "local-wasm" || job.profile === "wasm-edge";
   const stdFmt = job.standardFormat || job.studyInstanceArtifact?.format;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onInspect(job.id)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onInspect(job.id);
-        }
-      }}
+    <article
       style={{
         padding: "16px 20px",
         borderRadius: "12px",
@@ -49,11 +52,10 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
         border: `1px solid ${
           isRunning
             ? "var(--domain-core-border)"
-            : isFailed
+            : isFailed || isCancelled
               ? "var(--ms-status-fail-border)"
               : "var(--color-card-border)"
         }`,
-        cursor: "pointer",
         display: "flex",
         flexDirection: "column",
         gap: "12px",
@@ -66,7 +68,7 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = isRunning
           ? "var(--domain-core-border)"
-          : isFailed
+          : isFailed || isCancelled
             ? "var(--ms-status-fail-border)"
             : "var(--color-card-border)";
         e.currentTarget.style.transform = "none";
@@ -85,7 +87,7 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
             />
           ) : isDone ? (
             <CheckCircleFillIcon size={18} fill="var(--ms-status-pass-fg)" />
-          ) : isFailed ? (
+          ) : isFailed || isCancelled ? (
             <XCircleFillIcon size={18} fill="var(--ms-status-fail-fg)" />
           ) : (
             <ClockIcon size={18} style={{ color: "var(--ms-status-warn-fg)" }} />
@@ -93,15 +95,23 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
 
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span
+              <button
+                type="button"
+                onClick={() => onInspect(job.id)}
                 style={{
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
+                  margin: 0,
+                  cursor: "pointer",
                   fontWeight: 700,
                   fontSize: "15px",
                   color: "var(--color-text-primary)",
+                  textAlign: "left",
                 }}
               >
                 {job.name}
-              </span>
+              </button>
               <code
                 style={{
                   fontSize: "11px",
@@ -193,14 +203,14 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
                 ? "rgba(6, 182, 212, 0.15)"
                 : isDone
                   ? "rgba(16, 185, 129, 0.15)"
-                  : isFailed
+                  : isFailed || isCancelled
                     ? "rgba(239, 68, 68, 0.15)"
                     : "rgba(245, 158, 11, 0.15)",
               color: isRunning
                 ? "var(--color-accent-cyan, #06b6d4)"
                 : isDone
                   ? "var(--color-status-verified, #10b981)"
-                  : isFailed
+                  : isFailed || isCancelled
                     ? "#f87171"
                     : "#fbbf24",
               border: `1px solid ${
@@ -208,23 +218,44 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
                   ? "rgba(6, 182, 212, 0.4)"
                   : isDone
                     ? "rgba(16, 185, 129, 0.4)"
-                    : isFailed
+                    : isFailed || isCancelled
                       ? "rgba(239, 68, 68, 0.4)"
                       : "rgba(245, 158, 11, 0.4)"
               }`,
               letterSpacing: "0.5px",
             }}
           >
-            {job.status}
+            {normalizedStatus}
           </span>
+
+          {(isRunning || isQueued) && onCancel && (
+            <button
+              type="button"
+              onClick={() => onCancel(job)}
+              title="Cancel this active job"
+              style={{
+                background: "rgba(239, 68, 68, 0.12)",
+                border: "1px solid rgba(239, 68, 68, 0.4)",
+                color: "#f87171",
+                borderRadius: "6px",
+                padding: "5px 10px",
+                fontSize: "11.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+              }}
+            >
+              <XCircleFillIcon size={12} />
+              <span>Cancel</span>
+            </button>
+          )}
 
           {onRerun && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRerun(job);
-              }}
+              onClick={() => onRerun(job)}
               title="Re-run this study instance with the exact same configuration"
               style={{
                 background: "rgba(6, 182, 212, 0.12)",
@@ -248,10 +279,7 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
           {onSaveAsTemplate && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSaveAsTemplate(job);
-              }}
+              onClick={() => onSaveAsTemplate(job)}
               title="Save this study instance as a reusable Study Template"
               style={{
                 background: "rgba(168, 85, 247, 0.12)",
@@ -274,10 +302,7 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
 
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onInspect(job.id);
-            }}
+            onClick={() => onInspect(job.id)}
             style={{
               background: "rgba(255, 255, 255, 0.06)",
               border: "1px solid var(--color-border-glass, rgba(255, 255, 255, 0.12))",
@@ -340,8 +365,12 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
       )}
 
       {/* Progress Bar (if running or completed) */}
-      {(isRunning || job.progress > 0) && (
+      {(isRunning || clampedProgress > 0) && (
         <div
+          role="progressbar"
+          aria-valuenow={clampedProgress}
+          aria-valuemin={0}
+          aria-valuemax={100}
           style={{
             height: "4px",
             background: "rgba(255, 255, 255, 0.08)",
@@ -352,12 +381,13 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
           <div
             style={{
               height: "100%",
-              width: `${job.progress}%`,
-              background: isFailed
-                ? "#ef4444"
-                : isDone
-                  ? "var(--color-status-verified, #10b981)"
-                  : "linear-gradient(90deg, #06b6d4, #8b5cf6, #06b6d4)",
+              width: `${clampedProgress}%`,
+              background:
+                isFailed || isCancelled
+                  ? "#ef4444"
+                  : isDone
+                    ? "var(--color-status-verified, #10b981)"
+                    : "linear-gradient(90deg, #06b6d4, #8b5cf6, #06b6d4)",
               backgroundSize: "200% 100%",
               animation: isRunning ? "shimmer 2s linear infinite" : "none",
               borderRadius: "9999px",
@@ -391,7 +421,6 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
             <>
               <Link
                 to={`/packages/${job.packageName}/${job.packageVersion || "latest"}?tab=studies`}
-                onClick={(e) => e.stopPropagation()}
                 title={`View linked Studies & Jobs on package ${job.packageName}`}
                 style={{
                   display: "inline-flex",
@@ -443,6 +472,6 @@ export const UnifiedJobCard: React.FC<UnifiedJobCardProps> = ({ job, onInspect, 
           </span>
         </Box>
       </Box>
-    </div>
+    </article>
   );
 };

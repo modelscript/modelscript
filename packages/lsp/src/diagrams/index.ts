@@ -21,8 +21,7 @@ const lspCrossLanguageDrop = {
   mergeCoincidentInsertEdits,
   computeSpiceComponentDropEdits,
   computeSimulinkComponentDropEdits,
-  computePscadComponentDropEdits: (...args: Parameters<typeof computePscadComponentDropEdits>) =>
-    computePscadComponentDropEdits(...args) ?? [],
+  computePscadComponentDropEdits,
   resolveCrossLanguageComponentDrop,
 };
 

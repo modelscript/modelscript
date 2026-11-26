@@ -4,7 +4,7 @@ import assert from "node:assert";
 import test from "node:test";
 import { COMPUTE_PROFILES } from "../src/services/hpc/compute-profiles.js";
 import type { HpcJobSpec } from "../src/services/hpc/hpc-types.js";
-import { generateSbatchScript } from "../src/services/hpc/sbatch-generator.js";
+import { generateSbatchScript, sanitizeUserEnv } from "../src/services/hpc/sbatch-generator.js";
 
 test("HPC .sbatch Generator", async (t) => {
   await t.test("generates standard single-node CPU script", () => {
@@ -158,7 +158,44 @@ test("HPC .sbatch Generator", async (t) => {
     assert.ok(!sbatch.includes("\nrm -rf /"), "Must strip injected newline commands");
     assert.ok(!sbatch.includes("INVALID-KEY"), "Must reject invalid env variable keys");
     assert.ok(sbatch.includes('export VALID_KEY="val\\"\\$(id)\\`uname\\`"'), "Must escape $, `, and quotes in env");
-    assert.ok(sbatch.includes('"hello; rm -rf /"'), "Must quote args with semicolons");
-    assert.ok(sbatch.includes('"\\$(whoami)"'), "Must escape command substitution in args");
+    assert.ok(sbatch.includes("'hello; rm -rf /'"), "Must quote args with semicolons");
+    assert.ok(sbatch.includes("'$(whoami)'"), "Must escape command substitution in args");
+  });
+
+  await t.test("sanitizeUserEnv and generateSbatchScript strip dangerous linker/shell/runtime env vars", () => {
+    const rawEnv: Record<string, string> = {
+      LD_PRELOAD: "/tmp/evil.so",
+      LD_LIBRARY_PATH: "/tmp/evil-libs",
+      BASH_ENV: "/tmp/hook.sh",
+      PATH: "/tmp/evil-bin",
+      PYTHONPATH: "/tmp/evil-py",
+      NODE_OPTIONS: "--require /tmp/evil.js",
+      IFS: "/",
+      MY_CUSTOM_VAR: "safe-value-123",
+    };
+
+    const sanitized = sanitizeUserEnv(rawEnv);
+    for (const blocked of ["LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV", "PATH", "PYTHONPATH", "NODE_OPTIONS", "IFS"]) {
+      assert.strictEqual(sanitized[blocked], undefined, `sanitizeUserEnv must strip ${blocked}`);
+    }
+    assert.strictEqual(sanitized["MY_CUSTOM_VAR"], "safe-value-123", "sanitizeUserEnv must preserve safe user vars");
+
+    const sbatch = generateSbatchScript({
+      jobId: "env-filter-1",
+      name: "EnvFilterTest",
+      command: "echo",
+      args: ["ok"],
+      workingDir: "/workspace",
+      resources: {},
+      env: rawEnv,
+    });
+
+    for (const blocked of ["LD_PRELOAD", "LD_LIBRARY_PATH", "BASH_ENV", "PATH", "PYTHONPATH", "NODE_OPTIONS", "IFS"]) {
+      assert.ok(!sbatch.includes(`export ${blocked}=`), `generateSbatchScript must strip ${blocked}`);
+    }
+    assert.ok(
+      sbatch.includes('export MY_CUSTOM_VAR="safe-value-123"'),
+      "generateSbatchScript must preserve safe user vars",
+    );
   });
 });

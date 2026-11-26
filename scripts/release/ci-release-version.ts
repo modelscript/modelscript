@@ -279,7 +279,7 @@ function run(): void {
       nxArgs.push("--dry-run");
     }
 
-    const shimPath = path.join(REPO_ROOT, "scripts", "nx-minimatch-shim.cjs");
+    const shimPath = path.join(REPO_ROOT, "scripts", "release", "nx-minimatch-shim.cjs");
     const existingNodeOptions = process.env["NODE_OPTIONS"] || "";
     const nodeOptions = `${existingNodeOptions} --require ${shimPath}`.trim();
 

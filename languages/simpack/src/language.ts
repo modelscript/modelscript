@@ -68,6 +68,8 @@ export const simpackLanguage = language({
     },
   },
 
+  conflicts: ($) => [[$["GenericCard"]!, $["Identifier"]!]],
+
   rules: {
     Deck: ($) => repeat(choice($["CardStatement"]!, $["Comment"]!)),
 

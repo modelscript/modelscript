@@ -1,6 +1,6 @@
 ---
 title: "NASA ROCETS Liquid Propulsion Modeling (.roc, .deck)"
-description: "The @modelscript/rocets package (languages/rocets) provides native compilation, simulation, and analysis for NASA ROCETS (Rocket Engine Transient Simulator) liquid propellant rocket engine decks an..."
+description: "@modelscript/rocets provides native compilation, Fortran routine bridging, steady-state/transient propulsion solvers, DAE lowering, and P&IDs for NASA ROCETS."
 ---
 
 # NASA ROCETS Liquid Propulsion Modeling (`.roc`, `.deck`)

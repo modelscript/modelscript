@@ -25,10 +25,14 @@ import {
   ZapIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  cancelCloudJob,
+  cancelJob,
   dispatchCloudJob,
+  getCloudJobResult,
+  getCloudJobStatus,
   getCloudSimulationResultCsv,
   getCloudSimulationStatus,
   getCompatibleModels,
@@ -36,7 +40,6 @@ import {
   getJobTemplates,
   getTimeline,
   getUserWallet,
-  runStudyJob,
   submitCloudSimulation,
   type CloudSimulationStatus,
   type ComputeProfileInfo,
@@ -76,7 +79,24 @@ import {
   WizardStepperBar,
   WizardStepTab,
 } from "./styles";
-import type { CloudSimulationModalProps, ParsedCsvData, SimPhase, WizardStepId } from "./types";
+import type { CloudSimulationModalProps, DispatchTarget, ParsedCsvData, SimPhase, WizardStepId } from "./types";
+
+function normalizeComputeProfileId(profile?: string | null): "standard" | "high-memory" | "gpu-a100" | "hpc-mpi-64" {
+  switch (profile) {
+    case "standard":
+    case "high-memory":
+    case "gpu-a100":
+    case "hpc-mpi-64":
+      return profile;
+    case "cpu-medium":
+    case "high-cpu":
+      return "high-memory";
+    case "cpu-large":
+      return "hpc-mpi-64";
+    default:
+      return "standard";
+  }
+}
 
 export interface ExtendedCloudSimulationModalProps extends CloudSimulationModalProps {
   modelName?: string | undefined;
@@ -311,14 +331,36 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
   const { refreshWallet } = useAuth();
   const [profiles, setProfiles] = useState<ComputeProfileInfo[]>([]);
   const [wallet, setWallet] = useState<UserWalletInfo | null>(null);
+  const [walletLoading, setWalletLoading] = useState<boolean>(false);
 
   // Job lifecycle states
   const [phase, setPhase] = useState<SimPhase>("config");
+  const [dispatchTarget, setDispatchTarget] = useState<DispatchTarget>("simulate");
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<CloudSimulationStatus | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  const [cancelling, setCancelling] = useState<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [csvContent, setCsvContent] = useState<string | null>(null);
+  const wasOpenRef = useRef(false);
+
+  // Reset stale finished/failed run state when modal is reopened
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      if (phase === "completed" || phase === "failed") {
+        setPhase("config");
+        setJobId(null);
+        setJobStatus(null);
+        setErrorMessage(null);
+        setErrorStatus(null);
+        setCsvContent(null);
+        setElapsedSeconds(0);
+        setCancelling(false);
+      }
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, phase]);
 
   // Sync model name and experiment settings when active artifact changes
   useEffect(() => {
@@ -336,7 +378,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
       defaults[f.key] = f.defaultValue;
     }
     setTemplateFieldValues(defaults);
-    setSelectedProfile(selectedTemplate.recommendedProfile);
+    setSelectedProfile(normalizeComputeProfileId(selectedTemplate.recommendedProfile));
     if (
       selectedTemplate.id.includes("sweep") ||
       selectedTemplate.id.includes("monte-carlo") ||
@@ -371,27 +413,48 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
   // Load profiles, wallet, server study templates, and recent timeline model artifacts on open
   useEffect(() => {
     if (!isOpen) return;
-    getComputeProfiles().then(setProfiles).catch(console.error);
-    getUserWallet().then(setWallet).catch(console.error);
+    let active = true;
+    setWalletLoading(true);
+
+    getComputeProfiles()
+      .then((res) => {
+        if (active) setProfiles(res);
+      })
+      .catch(console.error);
+
+    getUserWallet()
+      .then((res) => {
+        if (active) setWallet(res);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (active) setWallet(null);
+      })
+      .finally(() => {
+        if (active) setWalletLoading(false);
+      });
+
     getJobTemplates()
       .then((res) => {
-        if (!Array.isArray(res?.templates)) return;
+        if (!active || !Array.isArray(res?.templates)) return;
         const mapped: HpcWizardTemplate[] = [];
         for (const tpl of res.templates) {
-          const def = tpl.studyDefinition;
-          if (!def) continue;
-          const cat: HpcTemplateCategory = def.category.includes("CFD")
+          const def = tpl.studyDefinition ?? tpl;
+          if (!def?.slug || !def?.name) continue;
+          const catStr = def.category ?? "";
+          const cat: HpcTemplateCategory = catStr.includes("CFD")
             ? "Fluid Dynamics (CFD)"
-            : def.category.includes("FEA") || def.category.includes("Structural")
+            : catStr.includes("FEA") || catStr.includes("Structural")
               ? "Structural & Thermal FEA"
-              : def.category.includes("Uncertainty") || def.category.includes("Optimization")
+              : catStr.includes("Uncertainty") || catStr.includes("Optimization")
                 ? "Design & UQ"
-                : def.category.includes("Verification") || def.category.includes("Requirements")
+                : catStr.includes("Verification") || catStr.includes("Requirements")
                   ? "Verification & V&V"
                   : "System Dynamics";
-          const dom: HpcWizardTemplate["domain"] = def.modelContract.domains.includes("cfd")
+          const domains = def.modelContract?.domains ?? [];
+          const dom: HpcWizardTemplate["domain"] = domains.includes("cfd")
             ? "cfd"
-            : def.modelContract.domains.includes("fea")
+            : domains.includes("fea")
               ? "fea"
               : def.kind === "monte-carlo"
                 ? "monte-carlo"
@@ -400,31 +463,40 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                   : def.kind === "optimization"
                     ? "optimization"
                     : "modelica";
+          const recommendedProfile = normalizeComputeProfileId(def.execution?.recommendedProfile);
+          const inputs = def.inputs ?? [];
+          const pipelineSteps = def.execution?.pipelineSteps ?? [];
+          const solverName = def.execution?.recommendedSolver || def.solver || "cvode";
+          const engine: HpcWizardTemplate["engine"] =
+            dom === "cfd" ? "openfoam" : dom === "fea" ? "calculix" : "modelscript";
+
           mapped.push({
             id: def.slug,
             slug: def.slug,
-            dbTemplateId: tpl.id,
+            dbTemplateId: tpl.dbId,
             name: def.name,
             shortTitle: def.name.slice(0, 28),
             category: cat,
             domain: dom,
-            compatibleDialects: def.modelContract.domains,
+            compatibleDialects: domains.length > 0 ? domains : ["modelica"],
             badge:
               def.standardFormat === "dakota" ? "DAKOTA" : def.standardFormat === "ssp-ssv" ? "SSP .SSV" : "SED-ML",
             accentColor:
               def.standardFormat === "dakota" ? "#f59e0b" : def.standardFormat === "ssp-ssv" ? "#10b981" : "#06b6d4",
             icon: "beaker",
-            solver: def.execution.recommendedSolver,
-            recommendedProfile: def.execution.recommendedProfile,
-            estimatedDuration: "~8s",
-            estimatedCredits: `${def.execution.estimatedCredits} credits`,
-            description: def.description,
+            solver: solverName,
+            engine,
+            recommendedProfile,
+            estimatedDuration: def.estimatedDuration || "~8s",
+            estimatedCredits: `${def.execution?.estimatedCredits ?? 0.5} credits`,
+            description: def.description || "",
             featured: Boolean(def.featured),
             defaultExperiment: {
               startTime: 0,
-              stopTime: Number(def.inputs.find((i) => i.key === "stopTime")?.defaultValue ?? 5),
-              numberOfIntervals: Number(def.inputs.find((i) => i.key === "numberOfIntervals")?.defaultValue ?? 500),
-              tolerance: String(def.inputs.find((i) => i.key === "tolerance")?.defaultValue ?? "1e-6"),
+              stopTime: Number(inputs.find((i) => i.key === "stopTime")?.defaultValue ?? 5),
+              numberOfIntervals: Number(inputs.find((i) => i.key === "numberOfIntervals")?.defaultValue ?? 500),
+              tolerance: String(inputs.find((i) => i.key === "tolerance")?.defaultValue ?? "1e-6"),
+              solverMethod: solverName,
             },
             presets: [
               {
@@ -434,7 +506,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                 description: "Coarse discretization for rapid interactive feedback",
                 intervals: 200,
                 tolerance: "1e-4",
-                recommendedProfile: "cpu-small",
+                recommendedProfile: "standard",
               },
               {
                 id: "balanced",
@@ -443,7 +515,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                 description: "Standard industrial verification fidelity",
                 intervals: 500,
                 tolerance: "1e-6",
-                recommendedProfile: def.execution.recommendedProfile || "cpu-medium",
+                recommendedProfile,
               },
               {
                 id: "high",
@@ -452,10 +524,10 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                 description: "Fine step control for formal sign-off",
                 intervals: 2000,
                 tolerance: "1e-8",
-                recommendedProfile: "cpu-large",
+                recommendedProfile: dom === "cfd" ? "hpc-mpi-64" : "high-memory",
               },
             ],
-            fields: def.inputs.map((inp) => ({
+            fields: inputs.map((inp) => ({
               key: inp.key,
               label: inp.label,
               type: inp.type === "select" ? ("select" as const) : ("number" as const),
@@ -467,7 +539,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
               options: inp.options,
               description: inp.description,
             })),
-            pipelineSteps: def.execution.pipelineSteps.map((st, idx) => ({
+            pipelineSteps: pipelineSteps.map((st, idx) => ({
               title: st,
               detail: `Stage ${idx + 1}`,
               command: `msx study run ${def.slug}`,
@@ -478,9 +550,64 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
       })
       .catch(() => {});
 
+    getTimeline({ limit: 15 })
+      .then((res) => {
+        if (!active) return;
+        const items: HpcModelArtifactItem[] = [];
+        for (const post of res?.posts || []) {
+          const art = post?.artifact_view || post?.artifactView;
+          if (!art) continue;
+          const cfg = safeJsonParse<Record<string, unknown>>(art.view_config, {});
+          const code = typeof cfg["code"] === "string" ? (cfg["code"] as string) : "";
+          if (!code || code.trim().length < 20) continue;
+          const dialect = String(cfg["dialect"] || art.view_type || "modelica").toLowerCase();
+          const meta = extractArtifactMetadata(
+            code,
+            art.title || (typeof cfg["title"] === "string" ? (cfg["title"] as string) : "Model"),
+          );
+          items.push({
+            id: `feed-art-${art.id}`,
+            artifactId: art.id,
+            title: art.title || (typeof cfg["title"] === "string" ? (cfg["title"] as string) : meta.modelName),
+            modelName: meta.modelName,
+            dialect: dialect.includes("modelica") ? "modelica" : dialect,
+            author: post.username ? `@${post.username}` : undefined,
+            category: "Timeline Model Artifact",
+            summary:
+              typeof post.content === "string" && post.content.length > 0
+                ? post.content.slice(0, 120) + (post.content.length > 120 ? "…" : "")
+                : `${dialect.toUpperCase()} model artifact with ${meta.parameters.length} parameters.`,
+            code,
+            sourceType: "feed",
+          });
+        }
+        if (items.length > 0) {
+          setDiscoveredArtifacts((prev) => {
+            const combined = [...prev];
+            for (const it of items) {
+              if (!combined.some((x) => x.modelName === it.modelName)) combined.push(it);
+            }
+            return combined;
+          });
+        }
+      })
+      .catch(() => {
+        /* ignore timeline discovery errors */
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen]);
+
+  // Fetch compatible models separately when template changes so clicking templates doesn't re-fetch profiles/wallet/templates
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+
     getCompatibleModels({ templateSlug: selectedTemplate.slug })
       .then((res) => {
-        if (!Array.isArray(res?.models)) return;
+        if (!active || !Array.isArray(res?.models)) return;
         const pkgItems: HpcModelArtifactItem[] = res.models
           .filter((m) => m.code && m.code.trim().length > 10)
           .map((m) => ({
@@ -508,49 +635,9 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
         /* ignore compatible model discovery errors */
       });
 
-    getTimeline({ limit: 15 })
-      .then((res) => {
-        const items: HpcModelArtifactItem[] = [];
-        for (const post of res?.posts || []) {
-          const art = post?.artifact_view || post?.artifactView;
-          if (!art) continue;
-          const cfg = safeJsonParse<Record<string, unknown>>(art.view_config, {});
-          const code = typeof cfg["code"] === "string" ? (cfg["code"] as string) : "";
-          if (!code || code.trim().length < 20) continue;
-          const dialect = String(cfg["dialect"] || art.view_type || "modelica").toLowerCase();
-          const meta = extractArtifactMetadata(
-            code,
-            art.title || (typeof cfg["title"] === "string" ? (cfg["title"] as string) : "Model"),
-          );
-          items.push({
-            id: `feed-art-${art.id}`,
-            artifactId: art.id,
-            title: art.title || cfg.title || meta.modelName,
-            modelName: meta.modelName,
-            dialect: dialect.includes("modelica") ? "modelica" : dialect,
-            author: post.username ? `@${post.username}` : undefined,
-            category: "Timeline Model Artifact",
-            summary:
-              typeof post.content === "string" && post.content.length > 0
-                ? post.content.slice(0, 120) + (post.content.length > 120 ? "…" : "")
-                : `${dialect.toUpperCase()} model artifact with ${meta.parameters.length} parameters.`,
-            code,
-            sourceType: "feed",
-          });
-        }
-        if (items.length > 0) {
-          setDiscoveredArtifacts((prev) => {
-            const combined = [...prev];
-            for (const it of items) {
-              if (!combined.some((x) => x.modelName === it.modelName)) combined.push(it);
-            }
-            return combined;
-          });
-        }
-      })
-      .catch(() => {
-        /* ignore timeline discovery errors */
-      });
+    return () => {
+      active = false;
+    };
   }, [isOpen, selectedTemplate.slug]);
 
   // Close on Escape key
@@ -565,26 +652,35 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Elapsed time counter
+  // Elapsed time counter (gated on isOpen so closing stops background interval)
   useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    if (phase === "running" || phase === "submitting") {
-      timer = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [phase]);
+    if (!isOpen || (phase !== "running" && phase !== "submitting")) return;
+    const timer = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [isOpen, phase]);
 
-  // Status poller
+  // Resilient sequential status poller (gated on isOpen, routes to simulate vs cloud endpoint)
   useEffect(() => {
-    if (!jobId || phase !== "running") return;
+    if (!isOpen || !jobId || phase !== "running") return;
 
     let active = true;
-    const interval = setInterval(async () => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 5;
+
+    const scheduleNext = (delayMs: number) => {
+      if (!active) return;
+      timeoutId = setTimeout(() => {
+        void pollOnce();
+      }, delayMs);
+    };
+
+    const pollOnce = async () => {
       try {
-        const status = await getCloudSimulationStatus(jobId);
+        const status =
+          dispatchTarget === "cloud" ? await getCloudJobStatus(jobId) : await getCloudSimulationStatus(jobId);
         if (!active) return;
+        consecutiveErrors = 0;
         setJobStatus(status);
 
         const s = String(status.status || "").toLowerCase();
@@ -592,10 +688,14 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
           setPhase("completed");
           void refreshWallet();
           getUserWallet()
-            .then(setWallet)
+            .then((w) => {
+              if (active) setWallet(w);
+            })
             .catch(() => {});
           try {
-            const csv = await getCloudSimulationResultCsv(jobId);
+            const csv =
+              dispatchTarget === "cloud" ? await getCloudJobResult(jobId) : await getCloudSimulationResultCsv(jobId);
+            if (!active) return;
             setCsvContent(csv);
             const parsedTrajectory = parseSimulationCsvTrajectory(csv);
             if (parsedTrajectory) {
@@ -605,38 +705,92 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
           } catch (e) {
             console.error("Failed to retrieve simulation CSV:", e);
           }
-        } else if (s === "failed" || s === "cancelled") {
+          return;
+        } else if (s === "failed" || s === "cancelled" || s === "canceled") {
           setPhase("failed");
-          setErrorMessage(status.error || "Simulation run failed on cluster.");
+          setErrorStatus(null);
+          setErrorMessage(
+            status.error ||
+              (s === "cancelled" || s === "canceled"
+                ? "Simulation run was cancelled."
+                : "Simulation run failed on cluster."),
+          );
           void refreshWallet();
           getUserWallet()
-            .then(setWallet)
+            .then((w) => {
+              if (active) setWallet(w);
+            })
             .catch(() => {});
+          return;
         }
+
+        scheduleNext(1500);
       } catch (err: unknown) {
         if (!active) return;
-        setPhase("failed");
-        setErrorMessage(err instanceof Error ? err.message : "Failed to poll job status.");
+        consecutiveErrors += 1;
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          setPhase("failed");
+          setErrorStatus(null);
+          setErrorMessage(
+            err instanceof Error
+              ? `Lost connection while polling job status (${consecutiveErrors} retries): ${err.message}`
+              : "Failed to poll job status after multiple retries.",
+          );
+          return;
+        }
+        const backoffMs = Math.min(12000, 1500 * Math.pow(2, consecutiveErrors - 1));
+        scheduleNext(backoffMs);
       }
-    }, 1500);
+    };
+
+    scheduleNext(1500);
 
     return () => {
       active = false;
-      clearInterval(interval);
+      if (timeoutId !== null) clearTimeout(timeoutId);
     };
-  }, [jobId, phase, onResultLoaded, onResultsLoaded, refreshWallet]);
+  }, [isOpen, jobId, phase, dispatchTarget, onResultLoaded, onResultsLoaded, refreshWallet]);
 
+  // Single-pass CSV parser for both table preview and trajectory plot
   const parsedCsv = useMemo<ParsedCsvData | null>(() => {
     if (!csvContent) return null;
-    const lines = csvContent.split(/\r?\n/).filter((l) => l.trim().length > 0);
+    const lines = csvContent
+      .trim()
+      .split(/\r?\n/)
+      .filter((l) => l.trim().length > 0);
     if (lines.length === 0) return null;
+
     const headers = lines[0]!.split(",").map((h) => h.replace(/^["']|["']$/g, "").trim());
-    const rows = lines.slice(1, 11).map((row) => row.split(",").map((c) => c.replace(/^["']|["']$/g, "").trim()));
+    const timeIdx = headers.findIndex((h) => h.toLowerCase() === "time");
+    const validTimeIdx = timeIdx >= 0 ? timeIdx : 0;
+
+    const rows: string[][] = [];
+    const t: number[] = [];
+    const states = headers.filter((_, idx) => idx !== validTimeIdx);
+    const y: number[][] = states.map(() => []);
+
+    for (let i = 1; i < lines.length; i++) {
+      const rawCells = lines[i]!.split(",").map((c) => c.replace(/^["']|["']$/g, "").trim());
+      if (i <= 10) {
+        rows.push(rawCells);
+      }
+      if (rawCells.length === headers.length) {
+        t.push(Number(rawCells[validTimeIdx]) || 0);
+        let varCounter = 0;
+        for (let j = 0; j < rawCells.length; j++) {
+          if (j !== validTimeIdx) {
+            y[varCounter]?.push(Number(rawCells[j]) || 0);
+            varCounter++;
+          }
+        }
+      }
+    }
+
     return {
       headers,
       rows,
       totalRows: lines.length - 1,
-      trajectory: parseSimulationCsvTrajectory(csvContent),
+      trajectory: lines.length >= 2 ? { t, y, states } : null,
     };
   }, [csvContent]);
 
@@ -714,13 +868,16 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
 
   if (!isOpen) return null;
 
+  const minEscrow = (currentProfile?.costCreditsPerHour ?? 10) * 0.05;
+  const isInsufficientBalance = wallet !== null && wallet.creditBalance < minEscrow;
+
   const handleSelectPreset = (presetId: "fast" | "balanced" | "high") => {
     setSelectedPresetId(presetId);
     const preset = selectedTemplate.presets.find((p) => p.id === presetId);
     if (!preset) return;
     setNumberOfIntervals(preset.intervals);
     setTolerance(preset.tolerance);
-    setSelectedProfile(preset.recommendedProfile);
+    setSelectedProfile(normalizeComputeProfileId(preset.recommendedProfile));
     if (preset.extraOverrides) {
       setTemplateFieldValues((prev) => ({ ...prev, ...preset.extraOverrides }));
     }
@@ -730,8 +887,11 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
     const tpl = overrideTemplate || selectedTemplate;
     setPhase("submitting");
     setErrorMessage(null);
+    setErrorStatus(null);
     setElapsedSeconds(0);
     setCsvContent(null);
+    setJobStatus(null);
+    setCancelling(false);
 
     const targetName = (modelName || extractedMeta.modelName || "Model").trim();
     const solverMethod = String(
@@ -741,79 +901,51 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
         tpl.solver ||
         "cvode",
     );
+    const validProfile = normalizeComputeProfileId(selectedProfile);
 
-    // Also synthesize & link the Open-Standard Study Instance (.sedml / .ssv / .dakota)
-    if (saveInstanceToPackage || tpl.dbTemplateId) {
-      void runStudyJob({
-        templateSlug: tpl.slug,
-        name: `${tpl.shortTitle} — ${targetName}`,
-        modelName: targetName,
-        modelDomain: activeArtifact.dialect || "modelica",
-        packageName: libraryName,
-        packageVersion: libraryVersion,
-        targetArtifact: targetName,
-        modelCode: effectiveSourceCode || undefined,
-        parameterOverrides: paramOverrides,
-        inputs: {
-          ...templateFieldValues,
-          stopTime,
-          numberOfIntervals,
-          tolerance,
-          solver: solverMethod,
-        },
-        executionTarget: "hpc-cluster",
-        computeProfile: selectedProfile,
-        standardFormat: studyStandardFormat,
-        saveInstanceToPackage,
-        linkToPackage: saveInstanceToPackage || Boolean(libraryName),
-      }).catch(() => {});
-    }
+    // Single canonical dispatch path per template domain (no duplicate dual-job dispatch)
+    const useCloudDispatch = tpl.domain === "cfd" || tpl.domain === "fea" || tpl.domain === "monte-carlo";
 
     try {
-      const res = await submitCloudSimulation({
-        modelName: targetName,
-        modelSource: effectiveSourceCode || undefined,
-        libraryName,
-        libraryVersion,
-        profile: selectedProfile,
-        startTime: parseFloat(String(startTime)) || 0,
-        stopTime,
-        numberOfIntervals,
-        tolerance: parseFloat(tolerance) || 1e-6,
-        solver: solverMethod,
-      });
-
-      setJobId(res.jobId);
-      setPhase("running");
+      if (useCloudDispatch) {
+        const dispatchRes = await dispatchCloudJob({
+          domain: tpl.domain,
+          name: (modelName || extractedMeta.modelName || tpl.shortTitle).trim(),
+          profile: validProfile,
+          sourceContent: effectiveSourceCode,
+          experiment: {
+            startTime: parseFloat(String(startTime)) || 0,
+            stopTime,
+            numberOfIntervals,
+            tolerance: parseFloat(tolerance) || 1e-6,
+          },
+          parameters: { ...templateFieldValues, ...paramOverrides },
+        });
+        setDispatchTarget("cloud");
+        setJobId(dispatchRes.jobId);
+        setPhase("running");
+      } else {
+        const res = await submitCloudSimulation({
+          modelName: targetName,
+          modelSource: effectiveSourceCode || undefined,
+          libraryName,
+          libraryVersion,
+          profile: validProfile,
+          startTime: parseFloat(String(startTime)) || 0,
+          stopTime,
+          numberOfIntervals,
+          tolerance: parseFloat(tolerance) || 1e-6,
+          solver: solverMethod,
+        });
+        setDispatchTarget("simulate");
+        setJobId(res.jobId);
+        setPhase("running");
+      }
       void refreshWallet();
       getUserWallet()
         .then(setWallet)
         .catch(() => {});
     } catch (err: unknown) {
-      // If the user selected a non-Modelica CAE/Monte-Carlo domain and /simulate rejected, try unified /cloud/dispatch
-      if (tpl.domain === "cfd" || tpl.domain === "fea" || tpl.domain === "monte-carlo") {
-        try {
-          const dispatchRes = await dispatchCloudJob({
-            domain: tpl.domain,
-            name: (modelName || extractedMeta.modelName || tpl.shortTitle).trim(),
-            profile: selectedProfile,
-            sourceContent: effectiveSourceCode,
-            experiment: {
-              startTime,
-              stopTime,
-              numberOfIntervals,
-              tolerance: parseFloat(tolerance) || 1e-6,
-            },
-            parameters: { ...templateFieldValues, ...paramOverrides },
-          });
-          setJobId(dispatchRes.jobId);
-          setPhase("running");
-          return;
-        } catch {
-          // Fall through to standard error reporting
-        }
-      }
-
       setPhase("failed");
       const axiosErr = err as {
         response?:
@@ -824,14 +956,51 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
           | undefined;
         message?: string | undefined;
       };
+      const status = axiosErr.response?.status ?? null;
       const errData = axiosErr.response?.data;
-      if (axiosErr.response?.status === 402) {
+      setErrorStatus(status);
+
+      if (status === 402) {
         setErrorMessage(
-          `Insufficient Compute Credits: ${errData?.message || "Please top up your wallet to burst this workload."}`,
+          `Insufficient Compute Credits: ${errData?.message || errData?.error || "Please top up your wallet to burst this workload."}`,
+        );
+      } else if (status === 429) {
+        setErrorMessage(
+          `Rate Limit / Quota Reached: ${errData?.message || errData?.error || "Too many concurrent requests. Please wait a moment and retry."}`,
+        );
+      } else if (status === 403) {
+        setErrorMessage(
+          `Access Denied: ${errData?.message || errData?.error || "Please sign in or verify your workspace permissions."}`,
         );
       } else {
-        setErrorMessage(errData?.error || axiosErr.message || "Cloud simulation submission failed.");
+        setErrorMessage(
+          errData?.error || errData?.message || axiosErr.message || "Cloud simulation submission failed.",
+        );
       }
+    }
+  };
+
+  const handleCancelJob = async () => {
+    if (!jobId || cancelling) return;
+    setCancelling(true);
+    try {
+      if (dispatchTarget === "cloud") {
+        await cancelCloudJob(jobId);
+      } else {
+        await cancelJob(jobId);
+      }
+      setPhase("failed");
+      setErrorStatus(null);
+      setErrorMessage("Simulation job was cancelled.");
+      void refreshWallet();
+      getUserWallet()
+        .then(setWallet)
+        .catch(() => {});
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to cancel job.";
+      setErrorMessage(`Cancellation request failed: ${msg}`);
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -1735,6 +1904,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
               selectedProfile={selectedProfile}
               setSelectedProfile={setSelectedProfile}
               wallet={wallet}
+              walletLoading={walletLoading}
               currentProfile={currentProfile}
               recommendedProfileId={selectedTemplate.recommendedProfile}
               sbatchPreview={sbatchPreview}
@@ -1750,6 +1920,7 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
               numberOfIntervals={numberOfIntervals}
               template={selectedTemplate}
               modelName={modelName}
+              jobStatus={jobStatus}
             />
           )}
 
@@ -1766,21 +1937,50 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                 border="1px solid var(--color-danger-fg, #f85149)"
                 display="flex"
                 alignItems="flex-start"
-                gap={2}
+                justifyContent="space-between"
+                flexWrap="wrap"
+                gap={3}
               >
-                <XCircleIcon
-                  size={20}
-                  fill="var(--color-danger-fg, #f85149)"
-                  style={{ flexShrink: 0, marginTop: "2px" }}
-                />
-                <Box>
-                  <Text fontWeight="bold" fontSize="14px" color="var(--color-danger-fg, #f85149)" display="block">
-                    Simulation Failed
-                  </Text>
-                  <Text fontSize="13px" color="var(--color-fg-muted)" style={{ whiteSpace: "pre-wrap" }}>
-                    {errorMessage || "An unknown error occurred during execution."}
-                  </Text>
+                <Box display="flex" alignItems="flex-start" gap={2} flex={1}>
+                  <XCircleIcon
+                    size={20}
+                    fill="var(--color-danger-fg, #f85149)"
+                    style={{ flexShrink: 0, marginTop: "2px" }}
+                  />
+                  <Box>
+                    <Text fontWeight="bold" fontSize="14px" color="var(--color-danger-fg, #f85149)" display="block">
+                      {errorStatus === 402
+                        ? "Insufficient Compute Credits"
+                        : errorStatus === 429
+                          ? "Rate Limit Reached"
+                          : errorStatus === 403
+                            ? "Access Denied"
+                            : "Simulation Failed"}
+                    </Text>
+                    <Text fontSize="13px" color="var(--color-fg-muted)" style={{ whiteSpace: "pre-wrap" }}>
+                      {errorMessage || "An unknown error occurred during execution."}
+                    </Text>
+                  </Box>
                 </Box>
+                {errorStatus === 402 && (
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent("modelscript:open-topup"))}
+                    style={{
+                      background: "linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)",
+                      color: "#ffffff",
+                      border: "none",
+                      borderRadius: "9999px",
+                      padding: "7px 16px",
+                      fontSize: "12.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    Top Up Credits
+                  </button>
+                )}
               </Box>
             </Box>
           )}
@@ -1840,15 +2040,29 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                   py={1}
                   borderRadius="999px"
                   bg="var(--color-canvas-default)"
-                  border="1px solid var(--color-border-default)"
+                  border={`1px solid ${
+                    isInsufficientBalance ? "var(--color-danger-fg, #f85149)" : "var(--color-border-default)"
+                  }`}
                   fontSize="11.5px"
                   color="var(--color-fg-muted)"
+                  title={
+                    isInsufficientBalance
+                      ? `Wallet balance (${wallet?.creditBalance.toFixed(2)} cr) is below the 3-minute minimum escrow (${minEscrow.toFixed(2)} cr)`
+                      : "Estimated minimum escrow (3 minutes at profile rate)"
+                  }
                 >
                   <CpuIcon size={12} />
                   <span>{currentProfile?.name || "Standard Compute"}</span>
                   <span>·</span>
-                  <span style={{ color: "var(--color-accent-purple, #a855f7)", fontWeight: 700 }}>
-                    ~{((currentProfile?.costCreditsPerHour ?? 10) / 60).toFixed(2)} cr
+                  <span
+                    style={{
+                      color: isInsufficientBalance
+                        ? "var(--color-danger-fg, #f85149)"
+                        : "var(--color-accent-purple, #a855f7)",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ~{minEscrow.toFixed(2)} cr min
                   </span>
                 </Box>
 
@@ -1914,22 +2128,44 @@ export const CloudSimulationModal: React.FC<ExtendedCloudSimulationModalProps> =
                   Cluster Job ID: {jobId || "Assigning..."}
                 </Text>
               </Box>
-              <button
-                type="button"
-                onClick={onClose}
-                style={{
-                  background: "transparent",
-                  border: "1px solid var(--color-border-default)",
-                  borderRadius: "9999px",
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  color: "var(--color-fg-default)",
-                }}
-              >
-                Run in Background
-              </button>
+              <Box display="flex" alignItems="center" gap={2}>
+                {jobId && (
+                  <button
+                    type="button"
+                    onClick={() => void handleCancelJob()}
+                    disabled={cancelling}
+                    style={{
+                      background: "rgba(248, 81, 73, 0.12)",
+                      border: "1px solid rgba(248, 81, 73, 0.45)",
+                      borderRadius: "9999px",
+                      padding: "8px 16px",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      cursor: cancelling ? "not-allowed" : "pointer",
+                      color: "var(--color-danger-fg, #f85149)",
+                      opacity: cancelling ? 0.6 : 1,
+                    }}
+                  >
+                    {cancelling ? "Cancelling..." : "Cancel Job"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid var(--color-border-default)",
+                    borderRadius: "9999px",
+                    padding: "8px 16px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "var(--color-fg-default)",
+                  }}
+                >
+                  Run in Background
+                </button>
+              </Box>
             </>
           )}
 

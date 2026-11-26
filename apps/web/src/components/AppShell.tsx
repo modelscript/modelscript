@@ -3,16 +3,21 @@
 import Box from "./Box";
 
 import {
+  BeakerIcon,
   BookIcon,
   BookmarkIcon,
   CodeIcon,
+  CpuIcon,
+  DatabaseIcon,
   GearIcon,
+  GraphIcon,
   HomeIcon,
   InboxIcon,
   MoonIcon,
   PackageIcon,
   PersonIcon,
   PlusIcon,
+  PulseIcon,
   RepoIcon,
   RssIcon,
   SearchIcon,
@@ -25,7 +30,7 @@ import { Button, Dialog, Text } from "@primer/react";
 import React from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import styled from "styled-components";
-import { getClusterStatus, resetDevDb, topUpCredits, type ClusterStatus } from "../api";
+import { createCheckoutSession, getClusterStatus, resetDevDb, topUpCredits, type ClusterStatus } from "../api";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
 import DevModeBar from "./DevModeBar";
@@ -400,6 +405,82 @@ const BannerActions = styled.div`
   }
 `;
 
+const ML_ARENA_NAV_ITEMS = [
+  { to: "/arena", label: "RLHF Arena", icon: BeakerIcon },
+  { to: "/datasets", label: "Datasets & Recipes", icon: DatabaseIcon },
+  { to: "/models", label: "Model Hub", icon: CpuIcon },
+  { to: "/runs", label: "Training Runs", icon: PulseIcon },
+  { to: "/leaderboards", label: "Leaderboards", icon: GraphIcon },
+] as const;
+
+const MlArenaNavBar = styled.nav`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--surface-hud, transparent);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
+const MlArenaSectionLabel = styled.span`
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  margin-right: 4px;
+  user-select: none;
+`;
+
+const MlArenaNavLink = styled(Link)<{ $active?: boolean | undefined }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: ${(props) => (props.$active ? 650 : 550)};
+  white-space: nowrap;
+  text-decoration: none;
+  color: ${(props) => (props.$active ? "var(--color-text-heading)" : "var(--color-text-secondary, var(--color-text-muted))")};
+  background: ${(props) => (props.$active ? "var(--surface-selected)" : "transparent")};
+  border: 1px solid ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "transparent")};
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+
+  svg {
+    color: ${(props) => (props.$active ? "var(--ms-brand)" : "currentColor")};
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    text-decoration: none;
+    color: var(--color-text-heading);
+    background: ${(props) => (props.$active ? "var(--surface-selected)" : "var(--surface-row-hover)")};
+    border-color: ${(props) => (props.$active ? "var(--color-accent-blue-border)" : "var(--color-border-subtle, transparent)")};
+  }
+`;
+
+const MoreSectionLabel = styled.div`
+  padding: 6px 14px 2px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  user-select: none;
+`;
+
 const AppShell: React.FC = () => {
   const [isComposeOpen, setIsComposeOpen] = React.useState(false);
   const [isResetDbDialogOpen, setIsResetDbDialogOpen] = React.useState(false);
@@ -504,13 +585,19 @@ const AppShell: React.FC = () => {
     return false;
   }, [location.pathname]);
 
-  // Make wide layout for /settings/*, /admin/*, /inbox, /notifications, /bookmarks, /packages/* detail pages, and Spaces environment (no right rail, spans exactly across main + right rail width: 1066px inside 1410px centered container)
+  // Make wide layout for /settings/*, /admin/*, /inbox, /notifications, /bookmarks, /packages/* detail pages, ML & Arena hubs, and Spaces environment (no right rail, spans exactly across main + right rail width: 1066px inside 1410px centered container)
   const isWideLayout =
     location.pathname.startsWith("/settings") ||
     location.pathname.startsWith("/admin") ||
     location.pathname.startsWith("/inbox") ||
     location.pathname.startsWith("/notifications") ||
     location.pathname.startsWith("/bookmarks") ||
+    location.pathname.startsWith("/arena") ||
+    location.pathname.startsWith("/datasets") ||
+    location.pathname.startsWith("/models") ||
+    location.pathname.startsWith("/runs") ||
+    location.pathname.startsWith("/leaderboards") ||
+    location.pathname.startsWith("/annotate") ||
     (location.pathname.startsWith("/packages") &&
       location.pathname !== "/packages" &&
       location.pathname !== "/packages/") ||
@@ -727,6 +814,29 @@ const AppShell: React.FC = () => {
                   $isInspectorLayout={isInspectorLayout}
                   $isChatLayout={isChatLayout}
                 >
+                  {!isChatLayout && (
+                    <MlArenaNavBar aria-label="ML & Arena navigation" data-testid="ml-arena-nav">
+                      <MlArenaSectionLabel>ML &amp; Arena</MlArenaSectionLabel>
+                      {ML_ARENA_NAV_ITEMS.map((item) => {
+                        const Icon = item.icon;
+                        const active = location.pathname === item.to || location.pathname.startsWith(`${item.to}/`);
+                        return (
+                          <MlArenaNavLink
+                            key={item.to}
+                            to={item.to}
+                            $active={active}
+                            aria-current={active ? "page" : undefined}
+                            onClick={() => {
+                              scrollToTop({ smooth: location.pathname === item.to });
+                            }}
+                          >
+                            <Icon size={13} />
+                            <span>{item.label}</span>
+                          </MlArenaNavLink>
+                        );
+                      })}
+                    </MlArenaNavBar>
+                  )}
                   <ErrorBoundary>
                     <Outlet context={{ openCompose: handleOpenComposeContext }} />
                   </ErrorBoundary>
@@ -954,6 +1064,16 @@ const AppShell: React.FC = () => {
                     </Link>
                   )}
                   <hr />
+                  <MoreSectionLabel>ML &amp; Arena</MoreSectionLabel>
+                  {ML_ARENA_NAV_ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link key={item.to} to={item.to} onClick={() => handleMoreLinkClick(item.to)}>
+                        <Icon size={20} /> {item.label}
+                      </Link>
+                    );
+                  })}
+                  <hr />
                   {user && isAdmin && (
                     <Link to="/admin" onClick={() => handleMoreLinkClick("/admin")}>
                       <ShieldLockIcon size={20} />
@@ -1148,7 +1268,11 @@ const AppShell: React.FC = () => {
                 </Box>
               )}
 
-              <Text style={{ fontSize: "13px", fontWeight: 600 }}>Quick Credit Reload (Instant Sandbox / Dev):</Text>
+              <Text style={{ fontSize: "13px", fontWeight: 600 }}>
+                {isDev
+                  ? "Quick Credit Reload (Instant Sandbox / Dev — $1.00 / cr):"
+                  : "Quick Credit Top-Up (Stripe Checkout — $1.00 / cr):"}
+              </Text>
               <Box display="flex" gap={2}>
                 {[50, 200, 500].map((amt) => (
                   <button
@@ -1159,8 +1283,17 @@ const AppShell: React.FC = () => {
                       setTopUpSuccess(null);
                       setTopUpError(null);
                       try {
+                        if (!isDev) {
+                          const session = await createCheckoutSession(amt);
+                          if (!session.checkoutUrl) {
+                            throw new Error("Stripe Checkout URL was not returned by the server.");
+                          }
+                          window.location.assign(session.checkoutUrl);
+                          return;
+                        }
                         const res = await topUpCredits(amt);
                         await refreshWallet();
+                        window.dispatchEvent(new Event("modelscript:wallet-update"));
                         const resObj = res as { newBalance?: number; balance?: number } | null | undefined;
                         const newBal =
                           typeof resObj?.newBalance === "number"
@@ -1196,7 +1329,7 @@ const AppShell: React.FC = () => {
                   >
                     <span style={{ fontSize: "15px", color: "var(--color-accent-purple)" }}>+{amt} cr</span>
                     <span style={{ fontSize: "11px", color: "var(--color-text-muted)" }}>
-                      ${(amt * 0.1).toFixed(2)}
+                      ${(amt * 1.0).toFixed(2)}
                     </span>
                   </button>
                 ))}

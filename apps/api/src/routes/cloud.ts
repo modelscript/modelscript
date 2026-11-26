@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { simulateRateLimiter } from "../middleware/rate-limiter.js";
 import { CaeSolverRunner, getValidatedGeometryPath, type CaeJobSpec } from "../services/cae-solver-runner.js";
 import {
   CaeTelemetryStreamer,
@@ -24,12 +25,17 @@ import {
 import { getComputeProfile, listComputeProfiles } from "../services/hpc/compute-profiles.js";
 import { HpcEngine } from "../services/hpc/hpc-engine.js";
 import type { HpcJobSpec, HpcUsageMetrics } from "../services/hpc/hpc-types.js";
-import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 import { prepareNativeSimulation, type NativeSimPrepResult } from "../services/simulation/native-sim-runner.js";
 import type { LibraryStorage } from "../storage.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { resolveDataPackageLockfile } from "../util/datapackage-indexer.js";
 import { scanModelicaSource } from "../util/package-scanner.js";
+
+export const ALLOWED_CLOUD_DOMAINS = new Set<string>(["modelica", "cfd", "fea", "monte-carlo"]);
+const MAX_RETAINED_CLOUD_JOBS = 500;
+const MAX_CLOUD_JOB_LOGS = 2000;
+const MAX_RETAINED_PAYLOAD_BYTES = 256 * 1024; // 256 KB cap for in-memory replay payload
+const MAX_SSE_SUBSCRIBERS_PER_JOB = 20;
 
 export interface CloudDispatchPayload {
   domain: "modelica" | "cfd" | "fea" | "monte-carlo";
@@ -86,8 +92,32 @@ export interface CloudJobRecord {
   subscribers: ((event: { type: string; data: unknown }) => void)[];
 }
 
-const MAX_RETAINED_CLOUD_JOBS = 500;
 const activeJobs = new Map<string, CloudJobRecord>();
+const jobCancelHandlers = new WeakMap<CloudJobRecord, () => Promise<void>>();
+const jobEnqueueHandlers = new WeakMap<
+  CloudJobRecord,
+  (jobRecord: CloudJobRecord, payload: CloudDispatchPayload) => void
+>();
+
+function sanitizeDispositionName(value: string): string {
+  return String(value || "job").replace(/[^a-zA-Z0-9_.-]/g, "_") || "job";
+}
+
+function appendJobLog(jobRecord: CloudJobRecord, line: string): void {
+  if (jobRecord.logs.length >= MAX_CLOUD_JOB_LOGS) {
+    jobRecord.logs.splice(0, jobRecord.logs.length - MAX_CLOUD_JOB_LOGS + 1);
+  }
+  jobRecord.logs.push(line);
+}
+
+function getRetainablePayload(payload: CloudDispatchPayload): CloudDispatchPayload | undefined {
+  const sourceBytes = typeof payload.sourceContent === "string" ? Buffer.byteLength(payload.sourceContent, "utf8") : 0;
+  const deckBytes = typeof payload.deck?.content === "string" ? Buffer.byteLength(payload.deck.content, "utf8") : 0;
+  if (sourceBytes + deckBytes > MAX_RETAINED_PAYLOAD_BYTES) {
+    return undefined;
+  }
+  return payload;
+}
 
 function pruneCloudJobs(): void {
   if (activeJobs.size <= MAX_RETAINED_CLOUD_JOBS) return;
@@ -110,6 +140,73 @@ export function getActiveCloudJob(jobId: string): CloudJobRecord | undefined {
   return activeJobs.get(jobId);
 }
 
+/**
+ * Cancels an active cloud job: terminates the underlying HPC / CAE process FIRST,
+ * then marks the job cancelled, notifies SSE subscribers, and releases any held DB escrow.
+ */
+export async function cancelActiveCloudJob(
+  jobId: string,
+  database?: LibraryDatabase,
+  reason = "User requested cancellation",
+): Promise<{ found: boolean; alreadyTerminal: boolean; job?: CloudJobRecord | undefined }> {
+  const job = activeJobs.get(jobId);
+  if (!job) {
+    return { found: false, alreadyTerminal: false };
+  }
+  if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") {
+    return { found: true, alreadyTerminal: true, job };
+  }
+
+  // Terminate the underlying CAE solver or HPC cluster job before updating status/escrow
+  const cancelUnderlying = jobCancelHandlers.get(job);
+  if (cancelUnderlying) {
+    try {
+      await cancelUnderlying();
+    } catch {
+      // Best-effort termination of underlying cluster process
+    }
+  }
+
+  job.status = "cancelled";
+  job.endTime = Date.now();
+  appendJobLog(job, `[Cloud] Job was cancelled (${reason}).`);
+
+  for (const sub of [...job.subscribers]) {
+    try {
+      sub({ type: "status", data: { status: "cancelled" } });
+    } catch {
+      // Ignore disconnected SSE subscriber errors
+    }
+  }
+
+  if (database && job.dbJobId) {
+    database.updateJobStatus(job.dbJobId, "CANCELLED");
+    if (job.userId) {
+      database.releaseUserEscrow(job.userId, job.dbJobId, reason);
+    }
+  }
+
+  return { found: true, alreadyTerminal: false, job };
+}
+
+/**
+ * Registers and enqueues a retried cloud job using the original job's execution handler.
+ * Returns `false` if no execution handler or replay payload is available.
+ */
+export function enqueueRetriedCloudJob(
+  existingJob: CloudJobRecord,
+  retriedJob: CloudJobRecord,
+  payload: CloudDispatchPayload,
+): boolean {
+  const enqueueFn = jobEnqueueHandlers.get(existingJob);
+  if (!enqueueFn) {
+    return false;
+  }
+  activeJobs.set(retriedJob.jobId, retriedJob);
+  enqueueFn(retriedJob, payload);
+  return true;
+}
+
 export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, database?: LibraryDatabase): Router {
   const router = express.Router();
   const hpcEngine = new HpcEngine();
@@ -127,8 +224,17 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
     const dbJobId = jobRecord.dbJobId ?? null;
     const userId = jobRecord.userId ?? null;
 
+    jobEnqueueHandlers.set(jobRecord, enqueueCloudExecution);
+    jobCancelHandlers.set(jobRecord, async () => {
+      if (jobRecord.domain === "cfd" || jobRecord.domain === "fea") {
+        caeRunner.cancelJob(jobRecord.jobId);
+      } else {
+        await hpcEngine.cancel(jobRecord.nativeJobId || jobRecord.jobId);
+      }
+    });
+
     const broadcast = (event: { type: string; data: unknown }) => {
-      for (const sub of jobRecord.subscribers) {
+      for (const sub of [...jobRecord.subscribers]) {
         try {
           sub(event);
         } catch {
@@ -142,7 +248,7 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
         return;
       }
       jobRecord.status = "running";
-      jobRecord.logs.push(`[Cloud] Job started running on compute cluster.`);
+      appendJobLog(jobRecord, `[Cloud] Job started running on compute cluster.`);
       broadcast({ type: "status", data: { status: "running" } });
 
       if (domain === "cfd" || domain === "fea") {
@@ -156,16 +262,16 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           if (event.type === "iteration") {
             broadcast({ type: "iteration", data: event });
             if (event.rawLog) {
-              jobRecord.logs.push(event.rawLog);
+              appendJobLog(jobRecord, event.rawLog);
               broadcast({ type: "log", data: event.rawLog });
             }
           } else if (event.type === "phase") {
             if (event.message) {
-              jobRecord.logs.push(`[${event.phase}] ${event.message}`);
+              appendJobLog(jobRecord, `[${event.phase}] ${event.message}`);
               broadcast({ type: "log", data: `[${event.phase}] ${event.message}` });
             }
           } else if (event.type === "error") {
-            jobRecord.logs.push(`[Error] ${event.message}`);
+            appendJobLog(jobRecord, `[Error] ${event.message}`);
             broadcast({ type: "log", data: `[Error] ${event.message}` });
           }
         });
@@ -203,7 +309,7 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           if (result.status === "completed") {
             jobRecord.status = "completed";
             jobRecord.resultPath = result.resultVtuPath || path.join(resultDir, "result.vtu");
-            jobRecord.logs.push(`[Cloud] CAE computation completed successfully.`);
+            appendJobLog(jobRecord, `[Cloud] CAE computation completed successfully.`);
             broadcast({ type: "status", data: { status: "completed", resultPath: jobRecord.resultPath } });
 
             if (database && dbJobId) {
@@ -304,18 +410,26 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
           const source = payload.sourceContent || "";
           fs.writeFileSync(adhocMoPath, source, "utf8");
 
-          const stopTime = payload.experiment?.stopTime ?? 10.0;
-          const startTime = payload.experiment?.startTime ?? 0.0;
-          const numberOfIntervals = payload.experiment?.numberOfIntervals ?? 500;
-          const tolerance = payload.experiment?.tolerance ?? 1e-6;
+          // Enforce simulation parameter bounds matching simulate.ts
+          const rawStartTime = Number(payload.experiment?.startTime);
+          const startTime = Number.isFinite(rawStartTime) ? rawStartTime : 0.0;
+          const rawStopTime = Number(payload.experiment?.stopTime);
+          const unboundedStopTime = Number.isFinite(rawStopTime) ? rawStopTime : startTime + 10.0;
+          const stopTime = Math.min(Math.max(unboundedStopTime, startTime + 1e-6), startTime + 86_400);
+          const rawIntervals = Number(payload.experiment?.numberOfIntervals);
+          const numberOfIntervals = Number.isFinite(rawIntervals)
+            ? Math.min(Math.max(1, Math.floor(rawIntervals)), 50_000)
+            : 500;
+          const rawTolerance = Number(payload.experiment?.tolerance);
+          const tolerance = Number.isFinite(rawTolerance) ? Math.min(Math.max(rawTolerance, 1e-12), 1.0) : 1e-6;
 
           const safeModelName = String(name).replace(/[^a-zA-Z0-9_.]/g, "") || "Model";
           const simArgs = [
             safeModelName,
-            `startTime=${Number(startTime) || 0}`,
-            `stopTime=${Number(stopTime) || 10}`,
-            `numberOfIntervals=${Math.max(1, Math.floor(Number(numberOfIntervals) || 500))}`,
-            `tolerance=${Number(tolerance) || 1e-6}`,
+            `startTime=${startTime}`,
+            `stopTime=${stopTime}`,
+            `numberOfIntervals=${numberOfIntervals}`,
+            `tolerance=${tolerance}`,
             `outputFormat="csv"`,
           ];
           if (payload.parameters && Object.keys(payload.parameters).length > 0) {
@@ -355,6 +469,20 @@ getErrorString();
 
           const isNative = prep !== null;
 
+          const isSandboxEnabled =
+            process.env["HPC_SANDBOX_ENABLED"] === "true" ||
+            (process.env["NODE_ENV"] === "production" && process.env["HPC_SANDBOX_ENABLED"] !== "false");
+
+          const defaultSandbox = isSandboxEnabled
+            ? {
+                enabled: true,
+                networkIsolation: true,
+                readOnlyRoot: true,
+                dropCapabilities: true,
+                tmpfsSizeMb: 512,
+              }
+            : undefined;
+
           let hpcSpec: HpcJobSpec;
           if (isNative && prep) {
             hpcSpec = {
@@ -367,11 +495,14 @@ getErrorString();
                 OMP_NUM_THREADS: String(profile.cpus),
               },
               profileId: profile.id,
+              ...(userId ? { userId } : {}),
+              sandbox: defaultSandbox,
               resources: {
                 cpusPerTask: profile.cpus,
                 memoryMb: profile.memoryMb,
                 partition: profile.partition,
                 gpus: profile.gpus,
+                networkIsolation: isSandboxEnabled,
               },
             };
           } else {
@@ -385,11 +516,14 @@ getErrorString();
                 OMP_NUM_THREADS: String(profile.cpus),
               },
               profileId: profile.id,
+              ...(userId ? { userId } : {}),
+              sandbox: defaultSandbox,
               resources: {
                 cpusPerTask: profile.cpus,
                 memoryMb: profile.memoryMb,
                 partition: profile.partition,
                 gpus: profile.gpus,
+                networkIsolation: isSandboxEnabled,
               },
             };
           }
@@ -410,14 +544,45 @@ getErrorString();
 
           const csvFilePath = path.resolve(tmpDir, `${fileNamePrefix}_res.csv`);
           if (csvFilePath.startsWith(tmpDir + path.sep) && fs.existsSync(csvFilePath)) {
+            // Persist CSV result outside tmpDir so tmpDir is always cleaned up in finally
+            const resultDir = path.resolve(os.tmpdir(), "modelscript-cloud-results");
+            fs.mkdirSync(resultDir, { recursive: true });
+            try {
+              const existingFiles = fs.readdirSync(resultDir).filter((f) => f.endsWith("_res.csv"));
+              if (existingFiles.length > 200) {
+                const cutoffMs = Date.now() - 60 * 60 * 1000;
+                for (const file of existingFiles) {
+                  const fp = path.join(resultDir, file);
+                  try {
+                    const st = fs.statSync(fp);
+                    if (st.mtimeMs < cutoffMs) {
+                      fs.rmSync(fp, { force: true });
+                    }
+                  } catch {
+                    // Ignore individual stat/rm errors during stale cache sweep
+                  }
+                }
+              }
+            } catch {
+              // Best-effort stale cache sweep
+            }
+            const safeJobFileName = `${sanitizeDispositionName(path.basename(jobId))}_res.csv`;
+            const persistedCsvPath = path.resolve(resultDir, safeJobFileName);
+            const relPersisted = path.relative(resultDir, persistedCsvPath);
+            if (!relPersisted || relPersisted.startsWith("..") || path.isAbsolute(relPersisted)) {
+              throw new Error("Invalid CSV destination path");
+            }
+            fs.copyFileSync(csvFilePath, persistedCsvPath);
+
             jobRecord.status = "completed";
-            jobRecord.resultPath = csvFilePath;
+            jobRecord.resultPath = persistedCsvPath;
             jobRecord.usage = usage;
             jobRecord.endTime = Date.now();
-            jobRecord.logs.push(
+            appendJobLog(
+              jobRecord,
               `[Cloud] Modelica simulation completed in ${((jobRecord.endTime - jobRecord.startTime) / 1000).toFixed(1)}s.`,
             );
-            broadcast({ type: "status", data: { status: "completed", resultPath: csvFilePath, usage } });
+            broadcast({ type: "status", data: { status: "completed", resultPath: persistedCsvPath, usage } });
 
             if (database && dbJobId) {
               database.updateJobStatus(dbJobId, "SUCCESS");
@@ -446,7 +611,6 @@ getErrorString();
             if (fs.existsSync(logPath)) {
               details = fs.readFileSync(logPath, "utf8");
             }
-            fs.rmSync(tmpDir, { recursive: true, force: true });
             jobRecord.error = details || "Simulation failed to produce CSV results";
             broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
             if (database && dbJobId) {
@@ -472,7 +636,7 @@ getErrorString();
             }
           }
         } catch (err: unknown) {
-          fs.rmSync(tmpDir, { recursive: true, force: true });
+          if ((jobRecord.status as string) === "cancelled") return;
           jobRecord.status = "failed";
           jobRecord.error = err instanceof Error ? err.message : String(err);
           broadcast({ type: "status", data: { status: "failed", error: jobRecord.error } });
@@ -497,6 +661,13 @@ getErrorString();
               });
             }
           }
+        } finally {
+          try {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+          } catch {
+            // Best-effort cleanup of cloud job temp directory
+          }
+          jobRecord.tmpDir = undefined;
         }
       }
       pruneCloudJobs();
@@ -544,10 +715,18 @@ getErrorString();
   // Unified entry point for dispatching Modelica, CFD, FEA, or Monte Carlo jobs
   router.post(
     ["/cloud/dispatch", "/cloud/jobs", "/hpc/jobs"],
+    simulateRateLimiter,
     enforceExportCompliance(() => database),
     async (req: Request, res: Response): Promise<void> => {
-      const payload = req.body as CloudDispatchPayload;
+      const payload = (req.body ?? {}) as CloudDispatchPayload;
       const { domain = "modelica", name, profile: requestedProfile } = payload;
+
+      if (typeof domain !== "string" || !ALLOWED_CLOUD_DOMAINS.has(domain)) {
+        res.status(400).json({
+          error: `Invalid domain '${String(domain)}'. Allowed domains: modelica, cfd, fea, monte-carlo.`,
+        });
+        return;
+      }
 
       if (!name) {
         res.status(400).json({ error: "Missing required parameter: 'name'" });
@@ -574,7 +753,7 @@ getErrorString();
       }
       const { userId, profile, estimatedCost } = preflight;
 
-      const jobId = `cloud_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+      const jobId = `cloud_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`;
       let lockfile: DataPackageLockJson | undefined;
       if (database) {
         try {
@@ -613,7 +792,7 @@ getErrorString();
         domain,
         name,
         profile: profile.id,
-        payload,
+        payload: getRetainablePayload(payload),
         lockfile,
         status: "queued",
         logs: [
@@ -625,9 +804,9 @@ getErrorString();
         startTime: Date.now(),
         subscribers: [],
       };
-      activeJobs.set(jobId, jobRecord);
 
       let dbJobId: number | null = null;
+      const billingActive = Boolean(database && userId && estimatedCost > 0);
       if (database) {
         try {
           dbJobId = database.createJob(
@@ -640,25 +819,45 @@ getErrorString();
             userId,
           );
           jobRecord.dbJobId = dbJobId;
-        } catch {
-          // Optional tracking
+        } catch (err) {
+          console.error("[CloudRouter] Failed to create DB job record:", err);
+          if (billingActive) {
+            res.status(503).json({
+              error: "Compute billing service temporarily unavailable. Please try again later.",
+            });
+            return;
+          }
         }
       }
 
-      if (
-        database &&
-        !holdComputeEscrow({
-          database,
-          res,
-          userId,
-          dbJobId,
-          estimatedCost,
-          description: `HPC Escrow Hold: Cloud [${domain.toUpperCase()}] ${name}`,
-          metadata: { jobId, profile: profile.id, domain },
-        })
-      ) {
-        return;
+      if (database) {
+        try {
+          if (
+            !holdComputeEscrow({
+              database,
+              res,
+              userId,
+              dbJobId,
+              estimatedCost,
+              description: `HPC Escrow Hold: Cloud [${domain.toUpperCase()}] ${name}`,
+              metadata: { jobId, profile: profile.id, domain },
+            })
+          ) {
+            return;
+          }
+        } catch (err) {
+          console.error("[CloudRouter] Failed to hold compute escrow:", err);
+          if (billingActive) {
+            res.status(503).json({
+              error: "Compute billing service temporarily unavailable. Please try again later.",
+            });
+            return;
+          }
+        }
       }
+
+      // Only insert into activeJobs AFTER DB job creation and escrow succeed
+      activeJobs.set(jobId, jobRecord);
 
       // Dispatch asynchronously to job queue
       enqueueCloudExecution(jobRecord, payload);
@@ -676,14 +875,20 @@ getErrorString();
   );
 
   // ── 4. GET /api/v1/cloud/jobs ──
-  // List active and historical jobs
+  // List active and historical jobs (paginated)
   router.get("/cloud/jobs", (req: Request, res: Response): void => {
     const reqAny = req as { userId?: number | undefined };
-    const authUserId = resolveComputeActor(req, database).userId ?? reqAny.userId ?? undefined;
+    const actor = resolveComputeActor(req, database);
+    const authUserId = actor.userId ?? reqAny.userId ?? undefined;
     if (process.env["NODE_ENV"] === "production" && !authUserId) {
       res.status(401).json({ error: "Authentication required" });
       return;
     }
+
+    const rawLimit = parseInt(String(req.query["limit"] ?? ""), 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 50;
+    const rawOffset = parseInt(String(req.query["offset"] ?? ""), 10);
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
     const list: {
       jobId: string;
@@ -699,7 +904,16 @@ getErrorString();
     }[] = [];
 
     for (const [id, job] of activeJobs.entries()) {
-      if (authUserId !== undefined && job.userId !== undefined && job.userId !== null && job.userId !== authUserId) {
+      if (process.env["NODE_ENV"] === "production" && !actor.isAdmin) {
+        if (job.userId === undefined || job.userId === null || job.userId !== authUserId) {
+          continue;
+        }
+      } else if (
+        authUserId !== undefined &&
+        job.userId !== undefined &&
+        job.userId !== null &&
+        job.userId !== authUserId
+      ) {
         continue;
       }
       list.push({
@@ -716,8 +930,14 @@ getErrorString();
       });
     }
 
-    res.json({ jobs: list.reverse() });
+    const reversed = list.reverse();
+    const total = reversed.length;
+    const paginated = reversed.slice(offset, offset + limit);
+
+    res.json({ jobs: paginated, total, limit, offset });
   });
+
+  const allowUnownedCloudJob = () => process.env["NODE_ENV"] !== "production";
 
   // ── 5. GET /api/v1/cloud/jobs/:id ──
   // Inspect single job details and status
@@ -727,7 +947,9 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
+    if (
+      !assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: allowUnownedCloudJob() })
+    ) {
       return;
     }
 
@@ -756,14 +978,19 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
+    if (
+      !assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: allowUnownedCloudJob() })
+    ) {
       return;
     }
     if (!job.lockfile) {
       res.status(404).json({ error: `No lockfile recorded for job '${req.params["id"]}'` });
       return;
     }
-    res.setHeader("Content-Disposition", `attachment; filename="${job.jobId}.datapackage.lock.json"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${sanitizeDispositionName(job.jobId)}.datapackage.lock.json"`,
+    );
     res.json(job.lockfile);
   });
 
@@ -775,7 +1002,9 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
+    if (
+      !assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: allowUnownedCloudJob() })
+    ) {
       return;
     }
 
@@ -794,7 +1023,15 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
+    if (
+      !assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: allowUnownedCloudJob() })
+    ) {
+      return;
+    }
+
+    const isTerminal = job.status === "completed" || job.status === "failed" || job.status === "cancelled";
+    if (!isTerminal && job.subscribers.length >= MAX_SSE_SUBSCRIBERS_PER_JOB) {
+      res.status(429).json({ error: "Too many active event stream subscribers for this job" });
       return;
     }
 
@@ -806,22 +1043,55 @@ getErrorString();
     // Send initial status
     res.write(`data: ${JSON.stringify({ type: "init", status: job.status, logs: job.logs })}\n\n`);
 
-    const listener = (event: { type: string; data: unknown }) => {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-      const eventData = event.data as { status?: string | undefined } | null | undefined;
-      if (event.type === "status" && (eventData?.status === "completed" || eventData?.status === "failed")) {
-        res.end();
-      }
-    };
+    // Immediately close stream if job is already in a terminal state
+    if (isTerminal) {
+      res.end();
+      return;
+    }
 
-    job.subscribers.push(listener);
-
-    req.on("close", () => {
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      clearInterval(heartbeat);
       const idx = job.subscribers.indexOf(listener);
       if (idx !== -1) {
         job.subscribers.splice(idx, 1);
       }
-    });
+    };
+
+    const listener = (event: { type: string; data: unknown }) => {
+      if (res.writableEnded || res.destroyed) {
+        cleanup();
+        return;
+      }
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      const eventData = event.data as { status?: string | undefined } | null | undefined;
+      if (
+        event.type === "status" &&
+        (eventData?.status === "completed" || eventData?.status === "failed" || eventData?.status === "cancelled")
+      ) {
+        cleanup();
+        res.end();
+      }
+    };
+
+    const heartbeat = setInterval(() => {
+      if (res.writableEnded || res.destroyed) {
+        cleanup();
+        return;
+      }
+      try {
+        res.write(": keepalive\n\n");
+      } catch {
+        cleanup();
+      }
+    }, 25_000);
+    heartbeat.unref?.();
+
+    job.subscribers.push(listener);
+
+    req.on("close", cleanup);
   });
 
   // ── 8. GET /api/v1/cloud/jobs/:id/result ──
@@ -832,7 +1102,9 @@ getErrorString();
       res.status(404).json({ error: `Results for job '${req.params["id"]}' not available or job still in progress` });
       return;
     }
-    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
+    if (
+      !assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: allowUnownedCloudJob() })
+    ) {
       return;
     }
     if (!job.resultPath || !fs.existsSync(job.resultPath)) {
@@ -840,13 +1112,14 @@ getErrorString();
       return;
     }
 
+    const safeName = sanitizeDispositionName(job.name);
     const ext = path.extname(job.resultPath).toLowerCase();
     if (ext === ".csv") {
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader("Content-Disposition", `attachment; filename="${job.name}_res.csv"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}_res.csv"`);
     } else if (ext === ".vtu") {
       res.setHeader("Content-Type", "application/octet-stream");
-      res.setHeader("Content-Disposition", `attachment; filename="${job.name}_mesh.vtu"`);
+      res.setHeader("Content-Disposition", `attachment; filename="${safeName}_mesh.vtu"`);
     } else {
       res.setHeader("Content-Type", "application/octet-stream");
     }
@@ -862,39 +1135,16 @@ getErrorString();
       res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
       return;
     }
-    if (!assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: true })) {
+    if (
+      !assertComputeJobAccess(req, res, database, { ownerId: job.userId, allowWhenUnowned: allowUnownedCloudJob() })
+    ) {
       return;
     }
 
-    if (job.status === "cancelled" || job.status === "completed" || job.status === "failed") {
+    const result = await cancelActiveCloudJob(job.jobId, database, "User requested cancellation");
+    if (result.alreadyTerminal) {
       res.json({ success: true, message: `Job ${job.jobId} is already ${job.status}.` });
       return;
-    }
-
-    job.status = "cancelled";
-    job.endTime = Date.now();
-    job.logs.push("[Cloud] Job was cancelled by user request.");
-
-    // Terminate the underlying CAE solver or HPC cluster job
-    if (job.domain === "cfd" || job.domain === "fea") {
-      caeRunner.cancelJob(job.jobId);
-    } else {
-      await hpcEngine.cancel(job.nativeJobId || job.jobId);
-    }
-
-    for (const sub of job.subscribers) {
-      try {
-        sub({ type: "status", data: { status: "cancelled" } });
-      } catch {
-        // Ignore disconnected SSE subscriber errors
-      }
-    }
-
-    if (database && job.dbJobId) {
-      database.updateJobStatus(job.dbJobId, "CANCELLED");
-      if (job.userId) {
-        database.releaseUserEscrow(job.userId, job.dbJobId, "User requested cancellation");
-      }
     }
 
     res.json({ success: true, message: `Job ${job.jobId} cancelled.` });
@@ -902,109 +1152,125 @@ getErrorString();
 
   // ── 10. POST /api/v1/cloud/jobs/:id/retry ──
   // Re-dispatch a failed or cancelled cloud job
-  router.post("/cloud/jobs/:id/retry", (req: Request, res: Response): void => {
-    const existing = activeJobs.get(req.params["id"] as string);
-    if (!existing) {
-      res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
-      return;
-    }
-    if (!assertComputeJobAccess(req, res, database, { ownerId: existing.userId, allowWhenUnowned: true })) {
-      return;
-    }
+  router.post(
+    "/cloud/jobs/:id/retry",
+    simulateRateLimiter,
+    enforceExportCompliance(() => database),
+    (req: Request, res: Response): void => {
+      const existing = activeJobs.get(req.params["id"] as string);
+      if (!existing) {
+        res.status(404).json({ error: `Job '${req.params["id"]}' not found` });
+        return;
+      }
+      if (
+        !assertComputeJobAccess(req, res, database, {
+          ownerId: existing.userId,
+          allowWhenUnowned: allowUnownedCloudJob(),
+        })
+      ) {
+        return;
+      }
 
-    const reqUserId = database ? resolveComputeActor(req, database).userId : null;
-    const userId = existing.userId ?? reqUserId;
-    if (process.env["NODE_ENV"] === "production" && !userId) {
-      res.status(401).json({ error: "Authentication required" });
-      return;
-    }
-    let estimatedCost = 0;
-    if (database && userId) {
-      const quota = checkComputeQuota(userId, existing.profile, database);
-      if (!quota.allowed) {
-        res.status(402).json({
-          error: "Payment Required: Insufficient Compute Credits",
-          message: quota.reason,
-          balance: quota.userBalance,
-          required: quota.estimatedCost,
-          profile: quota.profileId,
+      if (!existing.payload) {
+        res.status(400).json({
+          error: "Cannot retry job: original dispatch payload is unavailable. Please submit a new dispatch request.",
         });
         return;
       }
-      estimatedCost = quota.estimatedCost;
-    }
 
-    const newJobId = `cloud-${existing.domain}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const retryPayload: CloudDispatchPayload = existing.payload ?? {
-      domain: (existing.domain as CloudDispatchPayload["domain"]) || "modelica",
-      name: existing.name,
-      profile: existing.profile,
-    };
-    const retried: CloudJobRecord = {
-      jobId: newJobId,
-      domain: existing.domain,
-      name: existing.name,
-      profile: existing.profile,
-      payload: retryPayload,
-      status: "queued",
-      startTime: Date.now(),
-      logs: [`[Cloud] Retried from job ${existing.jobId}`],
-      subscribers: [],
-      userId,
-    };
-
-    let dbJobId: number | null = null;
-    if (database) {
-      try {
-        dbJobId = database.createJob(
-          `Cloud [${existing.domain.toUpperCase()}]: ${existing.name} (Retry)`,
-          "RUNNING",
-          "ADHOC",
-          existing.domain === "modelica" ? "omc" : existing.domain,
-          null,
-          { jobId: newJobId, previousJobId: existing.jobId, profile: existing.profile, domain: existing.domain },
-          userId,
-        );
-        retried.dbJobId = dbJobId;
-      } catch {
-        // Optional tracking
+      // Bill and preflight the calling actor (reqUserId), not the original job owner
+      const preflight = runComputePreflight(req, res, database, {
+        profileId: existing.profile,
+        allowAnonymous: process.env["NODE_ENV"] !== "production",
+      });
+      if (!preflight.allowed) {
+        return;
       }
-    }
+      const { userId, estimatedCost } = preflight;
 
-    if (
-      database &&
-      !holdComputeEscrow({
-        database,
-        res,
+      const newJobId = `cloud-${existing.domain}-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+      const retryPayload = existing.payload;
+      const retried: CloudJobRecord = {
+        jobId: newJobId,
+        domain: existing.domain,
+        name: existing.name,
+        profile: existing.profile,
+        payload: getRetainablePayload(retryPayload),
+        status: "queued",
+        startTime: Date.now(),
+        logs: [`[Cloud] Retried from job ${existing.jobId}`],
+        subscribers: [],
         userId,
-        dbJobId,
-        estimatedCost,
-        description: `HPC Escrow Hold (Retry): Cloud [${existing.domain.toUpperCase()}] ${existing.name}`,
-        metadata: {
-          jobId: newJobId,
-          previousJobId: existing.jobId,
-          profile: existing.profile,
-          domain: existing.domain,
-        },
-      })
-    ) {
-      return;
-    }
+      };
 
-    activeJobs.set(newJobId, retried);
+      let dbJobId: number | null = null;
+      const billingActive = Boolean(database && userId && estimatedCost > 0);
+      if (database) {
+        try {
+          dbJobId = database.createJob(
+            `Cloud [${existing.domain.toUpperCase()}]: ${existing.name} (Retry)`,
+            "RUNNING",
+            "ADHOC",
+            existing.domain === "modelica" ? "omc" : existing.domain,
+            null,
+            { jobId: newJobId, previousJobId: existing.jobId, profile: existing.profile, domain: existing.domain },
+            userId,
+          );
+          retried.dbJobId = dbJobId;
+        } catch (err) {
+          console.error("[CloudRouter] Failed to create DB job record for retry:", err);
+          if (billingActive) {
+            res.status(503).json({
+              error: "Compute billing service temporarily unavailable. Please try again later.",
+            });
+            return;
+          }
+        }
+      }
 
-    if (existing.payload) {
+      if (database) {
+        try {
+          if (
+            !holdComputeEscrow({
+              database,
+              res,
+              userId,
+              dbJobId,
+              estimatedCost,
+              description: `HPC Escrow Hold (Retry): Cloud [${existing.domain.toUpperCase()}] ${existing.name}`,
+              metadata: {
+                jobId: newJobId,
+                previousJobId: existing.jobId,
+                profile: existing.profile,
+                domain: existing.domain,
+              },
+            })
+          ) {
+            return;
+          }
+        } catch (err) {
+          console.error("[CloudRouter] Failed to hold compute escrow for retry:", err);
+          if (billingActive) {
+            res.status(503).json({
+              error: "Compute billing service temporarily unavailable. Please try again later.",
+            });
+            return;
+          }
+        }
+      }
+
+      activeJobs.set(newJobId, retried);
       enqueueCloudExecution(retried, retryPayload);
-    }
 
-    res.status(202).json({
-      success: true,
-      jobId: newJobId,
-      previousJobId: existing.jobId,
-      status: "queued",
-      streamUrl: `/api/v1/cloud/jobs/${newJobId}/events`,
-    });
-  });
+      res.status(202).json({
+        success: true,
+        jobId: newJobId,
+        previousJobId: existing.jobId,
+        status: "queued",
+        streamUrl: `/api/v1/cloud/jobs/${newJobId}/events`,
+      });
+    },
+  );
 
   return router;
 }

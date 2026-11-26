@@ -50,6 +50,8 @@ export const simaLanguage = language({
 
   errorCodes: SimaErrorCode,
 
+  conflicts: ($) => [[$["GenericCard"]!, $["Identifier"]!]],
+
   rules: {
     Deck: ($) => repeat(choice($["CardStatement"]!, $["Comment"]!)),
 
@@ -71,8 +73,7 @@ export const simaLanguage = language({
       seq(
         choice("SYS", "SYSTEM"),
         field("depth", $["NumberLiteral"]!),
-        optional(field("density", $["NumberLiteral"]!)),
-        optional(field("gravity", $["NumberLiteral"]!)),
+        optional(seq(field("density", $["NumberLiteral"]!), optional(field("gravity", $["NumberLiteral"]!)))),
       ),
 
     BodyCard: ($) =>

@@ -1,6 +1,6 @@
 ---
 title: "PLCopen XML & IEC 61131-3 Industrial Automation (.xml, .st)"
-description: "@modelscript/plcopen (languages/plcopen) provides compiler, Virtual PLC cyclic execution, sampled-data DAE lowering, and formal verification for IEC 61131-3 industrial control software and PLCopen..."
+description: "@modelscript/plcopen provides native compilation, Virtual PLC cyclic execution, sampled-data DAE lowering, and formal verification for IEC 61131-3 models."
 ---
 
 # PLCopen XML & IEC 61131-3 Industrial Automation (`.xml`, `.st`)

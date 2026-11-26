@@ -129,6 +129,9 @@ spec:
             - name: ceii-vault
               mountPath: /app/apps/api/public/thumbnails
               subPath: thumbnails
+            - name: ceii-vault
+              mountPath: /app/apps/api/storage
+              subPath: storage
           livenessProbe:
             httpGet:
               path: /health
@@ -138,8 +141,10 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
+            # Use /health rather than license-gated /api/v1/compliance/airgap so
+            # operators can still access the UI/API to renew an expired license.
             httpGet:
-              path: /api/v1/compliance/airgap
+              path: /health
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -186,5 +191,21 @@ spec:
     - ports:
         - protocol: TCP
           port: 8080
-  egress: []
+  egress:
+    # Allow cluster-internal DNS resolution only (required for intra-cluster service discovery)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow intra-namespace on-prem Ollama/vLLM inference (blocks all external internet egress)
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 11434
 

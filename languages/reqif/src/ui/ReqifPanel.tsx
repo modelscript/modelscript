@@ -2,11 +2,13 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import React, { useMemo, useState } from "react";
@@ -24,7 +26,6 @@ export const ReqifPanel: React.FC<LanguagePanelProps> = ({
   host,
 }) => {
   const [activeTab, setActiveTab] = useState<ReqifTabId>("requirements");
-  const [search, setSearch] = useState("");
 
   const computed = useMemo(() => {
     if (!code.trim()) return { doc: null, error: undefined as string | undefined };
@@ -44,18 +45,31 @@ export const ReqifPanel: React.FC<LanguagePanelProps> = ({
   const specRelations = computed.doc?.specRelations ?? [];
   const specTypes = useMemo(() => Array.from(computed.doc?.specTypes?.values() ?? []), [computed.doc]);
 
-  const filteredObjects = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return specObjects.slice(0, 250);
-    return specObjects
-      .filter(
-        (obj) =>
-          obj.identifier.toLowerCase().includes(q) ||
-          (obj.longName ?? "").toLowerCase().includes(q) ||
-          (obj.text ?? "").toLowerCase().includes(q),
-      )
-      .slice(0, 250);
-  }, [specObjects, search]);
+  type SpecObjRow = (typeof specObjects)[number];
+  const reqColumns = useMemo<PanelDataGridColumn<SpecObjRow>[]>(
+    () => [
+      {
+        key: "identifier",
+        label: "Identifier",
+        mono: true,
+        sortValue: (o) => o.identifier,
+        render: (o) => <strong>{o.identifier}</strong>,
+      },
+      {
+        key: "longName",
+        label: "Name",
+        sortValue: (o) => o.longName ?? "",
+        render: (o) => o.longName ?? "—",
+      },
+      {
+        key: "text",
+        label: "Specification Text",
+        sortValue: (o) => o.text ?? "",
+        render: (o) => <span style={{ color: "var(--ms-text-2)" }}>{o.text || "—"}</span>,
+      },
+    ],
+    [],
+  );
 
   const kpis = useMemo<PanelKpiItem[]>(
     () => [
@@ -75,7 +89,7 @@ export const ReqifPanel: React.FC<LanguagePanelProps> = ({
         actions={
           mode === "artifact" && host.openInAnsatzEditor && code ? (
             <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "reqif", title)}>
-              Open in Ansatz Editor
+              Open in Editor
             </PanelButton>
           ) : undefined
         }
@@ -94,51 +108,13 @@ export const ReqifPanel: React.FC<LanguagePanelProps> = ({
       />
 
       {activeTab === "requirements" && (
-        <div
-          style={{
-            flex: 1,
-            overflow: "auto",
-            padding: "10px 12px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-          }}
-        >
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter ReqIF spec objects..."
-            style={{
-              padding: "5px 8px",
-              borderRadius: "5px",
-              border: "1px solid var(--ms-border)",
-              background: "var(--ms-bg-soft)",
-              color: "var(--ms-text-1)",
-              fontSize: "12px",
-            }}
-          />
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>Identifier</th>
-                <th style={{ padding: "5px 6px" }}>Name</th>
-                <th style={{ padding: "5px 6px" }}>Specification Text</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredObjects.map((obj, idx) => (
-                <tr key={`${obj.identifier}-${idx}`} style={{ borderBottom: "1px solid var(--ms-divider)" }}>
-                  <td style={{ padding: "5px 6px", fontFamily: "var(--ms-font-mono)", fontWeight: 600 }}>
-                    {obj.identifier}
-                  </td>
-                  <td style={{ padding: "5px 6px" }}>{obj.longName ?? "—"}</td>
-                  <td style={{ padding: "5px 6px", color: "var(--ms-text-2)" }}>{obj.text || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={specObjects}
+          columns={reqColumns}
+          rowKey={(o, idx) => `${o.identifier}-${idx}`}
+          searchPlaceholder="Filter ReqIF spec objects…"
+          emptyMessage={computed.error ?? "No ReqIF requirements parsed."}
+        />
       )}
 
       {activeTab === "relations" && (

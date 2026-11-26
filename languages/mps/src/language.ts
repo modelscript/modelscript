@@ -21,10 +21,13 @@ export const mpsLanguage = language({
   },
   errorCodes: MpsErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
+  conflicts: ($) => [[$["_OptSecondPair"]!, $["Identifier"]!]],
+
   rules: {
     MpsDeck: ($) =>
       seq(
-        repeat($["Comment"]!),
         optional($["NameCard"]!),
         repeat(
           choice(
@@ -35,7 +38,6 @@ export const mpsLanguage = language({
             $["RangesSection"]!,
             $["BoundsSection"]!,
             $["QuadObjSection"]!,
-            $["Comment"]!,
           ),
         ),
         optional($["EndataCard"]!),
@@ -45,44 +47,46 @@ export const mpsLanguage = language({
 
     ObjSenseSection: () => seq("OBJSENSE", field("sense", choice("MIN", "MAX", "MINIMIZE", "MAXIMIZE"))),
 
-    RowsSection: ($) => seq("ROWS", repeat(choice($["RowCard"]!, $["Comment"]!))),
+    RowsSection: ($) => seq("ROWS", repeat($["RowCard"]!)),
 
     RowCard: ($) => seq(field("rowType", choice("N", "L", "G", "E")), field("name", $["Identifier"]!)),
 
-    ColumnsSection: ($) => seq("COLUMNS", repeat(choice($["MarkerCard"]!, $["ColumnCard"]!, $["Comment"]!))),
+    ColumnsSection: ($) => seq("COLUMNS", repeat(choice($["MarkerCard"]!, $["ColumnCard"]!))),
 
     MarkerCard: ($) =>
       seq(field("markerName", $["Identifier"]!), "'MARKER'", field("markerType", choice("'INTORG'", "'INTEND'"))),
+
+    _OptSecondPair: ($) => optional(seq(field("row2", $["Identifier"]!), field("value2", $["NumberLiteral"]!))),
 
     ColumnCard: ($) =>
       seq(
         field("column", $["Identifier"]!),
         field("row1", $["Identifier"]!),
         field("value1", $["NumberLiteral"]!),
-        optional(seq(field("row2", $["Identifier"]!), field("value2", $["NumberLiteral"]!))),
+        $["_OptSecondPair"]!,
       ),
 
-    RhsSection: ($) => seq("RHS", repeat(choice($["RhsCard"]!, $["Comment"]!))),
+    RhsSection: ($) => seq("RHS", repeat($["RhsCard"]!)),
 
     RhsCard: ($) =>
       seq(
         field("rhsName", $["Identifier"]!),
         field("row1", $["Identifier"]!),
         field("value1", $["NumberLiteral"]!),
-        optional(seq(field("row2", $["Identifier"]!), field("value2", $["NumberLiteral"]!))),
+        $["_OptSecondPair"]!,
       ),
 
-    RangesSection: ($) => seq("RANGES", repeat(choice($["RangeCard"]!, $["Comment"]!))),
+    RangesSection: ($) => seq("RANGES", repeat($["RangeCard"]!)),
 
     RangeCard: ($) =>
       seq(
         field("rangeName", $["Identifier"]!),
         field("row1", $["Identifier"]!),
         field("value1", $["NumberLiteral"]!),
-        optional(seq(field("row2", $["Identifier"]!), field("value2", $["NumberLiteral"]!))),
+        $["_OptSecondPair"]!,
       ),
 
-    BoundsSection: ($) => seq("BOUNDS", repeat(choice($["BoundCard"]!, $["Comment"]!))),
+    BoundsSection: ($) => seq("BOUNDS", repeat($["BoundCard"]!)),
 
     BoundCard: ($) =>
       seq(
@@ -92,7 +96,7 @@ export const mpsLanguage = language({
         optional(field("value", $["NumberLiteral"]!)),
       ),
 
-    QuadObjSection: ($) => seq(choice("QUADOBJ", "QMATRIX"), repeat(choice($["QuadCard"]!, $["Comment"]!))),
+    QuadObjSection: ($) => seq(choice("QUADOBJ", "QMATRIX"), repeat($["QuadCard"]!)),
 
     QuadCard: ($) =>
       seq(field("col1", $["Identifier"]!), field("col2", $["Identifier"]!), field("value", $["NumberLiteral"]!)),

@@ -247,6 +247,8 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
 
   // 3. Monte Carlo UQ state
   const [mcSamples, setMcSamples] = useState(50);
+  const [mcDistribution, setMcDistribution] = useState<"normal" | "uniform">("normal");
+  const [mcRelStdPct, setMcRelStdPct] = useState(10);
   const [mcLoading, setMcLoading] = useState(false);
   const [mcError, setMcError] = useState<string | null>(null);
   const [mcResult, setMcResult] = useState<AnsatzMonteCarloResult | null>(null);
@@ -306,11 +308,55 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
     setMcLoading(true);
     setMcError(null);
     try {
-      const samples = Number.isFinite(mcSamples) && mcSamples > 0 ? Math.floor(mcSamples) : 50;
+      const numSamples = Number.isFinite(mcSamples) && mcSamples > 0 ? Math.floor(mcSamples) : 50;
+      // Discover model parameters so Monte Carlo genuinely perturbs uncertain parameters rather than running identical deterministic trials
+      const relFrac = Math.max(0.001, Math.min(1, (Number.isFinite(mcRelStdPct) ? mcRelStdPct : 10) / 100));
+      let uncertainParams: Array<{
+        name: string;
+        distribution: string;
+        mean: number;
+        stdDev: number;
+        min?: number;
+        max?: number;
+      }> = [];
+      if (documentUri) {
+        try {
+          const { getModelParameters } = await import("../util/lsp-bridge");
+          const modelInfo = await getModelParameters(documentUri);
+          const rawParams = Array.isArray(modelInfo?.parameters) ? modelInfo.parameters : [];
+          uncertainParams = rawParams
+            .filter((p) => typeof p.name === "string" && Number.isFinite(Number(p.value)))
+            .slice(0, 6)
+            .map((p) => {
+              const mean = Number(p.value);
+              const spread = Math.abs(mean) > 1e-9 ? Math.abs(mean) * relFrac : relFrac;
+              return mcDistribution === "uniform"
+                ? {
+                    name: p.name,
+                    distribution: "uniform",
+                    mean,
+                    stdDev: spread,
+                    min: mean - spread,
+                    max: mean + spread,
+                  }
+                : { name: p.name, distribution: "normal", mean, stdDev: spread };
+            });
+        } catch {
+          uncertainParams = [];
+        }
+      }
+      if (uncertainParams.length === 0) {
+        setMcResult(null);
+        setMcError(
+          "No numeric parameters found on the active model for Monte Carlo perturbation. Declare at least one `parameter Real` to run UQ.",
+        );
+        return;
+      }
       const res = await runMonteCarloInAnsatz({
         uri: documentUri,
         className: selectedClassName,
-        samples,
+        numSamples,
+        parameters: uncertainParams,
       });
       setMcResult(res);
       if (res?.error) {
@@ -323,17 +369,17 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
     } finally {
       setMcLoading(false);
     }
-  }, [documentUri, selectedClassName, mcSamples]);
+  }, [documentUri, selectedClassName, mcSamples, mcDistribution, mcRelStdPct]);
 
   const handleTrainSurrogate = useCallback(async () => {
     setSurrogateLoading(true);
     setSurrogateError(null);
     try {
-      const samples = Number.isFinite(surrogateSamples) && surrogateSamples > 0 ? Math.floor(surrogateSamples) : 40;
+      const numSamples = Number.isFinite(surrogateSamples) && surrogateSamples > 0 ? Math.floor(surrogateSamples) : 40;
       const res = await trainSurrogateInAnsatz({
         uri: documentUri,
         className: selectedClassName,
-        samples,
+        numSamples,
       });
       setSurrogateResult(res);
       if (res?.error) {
@@ -348,19 +394,24 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
     }
   }, [documentUri, selectedClassName, surrogateSamples]);
 
-  // Derived BLT summary values
+  // Derived BLT summary values (handles both direct payload and { supported, data } wrapper)
   const bltSummary = useMemo(() => {
     if (!bltResult) return null;
+    const rawRec = bltResult as Record<string, unknown>;
+    const payload =
+      rawRec.data && typeof rawRec.data === "object" && !Array.isArray(rawRec.data)
+        ? (rawRec.data as Record<string, unknown>)
+        : rawRec;
     const eqCount =
-      asNumber(bltResult.equationCount) ?? (Array.isArray(bltResult.equations) ? bltResult.equations.length : 0);
+      asNumber(payload.equationCount) ?? (Array.isArray(payload.equations) ? payload.equations.length : 0);
     const varCount =
-      asNumber(bltResult.unknownCount) ?? (Array.isArray(bltResult.variables) ? bltResult.variables.length : 0);
-    const algebraicLoops = Array.isArray(bltResult.algebraicLoops) ? bltResult.algebraicLoops : [];
-    const blocks = Array.isArray(bltResult.blocks) ? bltResult.blocks : algebraicLoops;
-    const blockCount = asNumber(bltResult.blockCount) ?? blocks.length;
-    const rawIndex = asNumber(bltResult.index) ?? asNumber(bltResult.daeIndex) ?? asNumber(bltResult.structuralIndex);
-    const indexLabel = rawIndex !== undefined ? String(rawIndex) : "—";
-    const classLabel = typeof bltResult.className === "string" ? bltResult.className : selectedClassName || "Model";
+      asNumber(payload.unknownCount) ?? (Array.isArray(payload.variables) ? payload.variables.length : 0);
+    const algebraicLoops = Array.isArray(payload.algebraicLoops) ? payload.algebraicLoops : [];
+    const blocks = Array.isArray(payload.blocks) ? payload.blocks : [];
+    const blockCount = asNumber(payload.blockCount) ?? (blocks.length > 0 ? blocks.length : eqCount);
+    const rawIndex = asNumber(payload.index) ?? asNumber(payload.daeIndex) ?? asNumber(payload.structuralIndex);
+    const indexLabel = rawIndex !== undefined ? String(rawIndex) : algebraicLoops.length > 0 ? "≥1" : "0";
+    const classLabel = typeof payload.className === "string" ? payload.className : selectedClassName || "Model";
     return { eqCount, varCount, blockCount, indexLabel, classLabel, algebraicLoops };
   }, [bltResult, selectedClassName]);
 
@@ -687,97 +738,120 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
 
             {optError && <ErrorBanner message={optError} tokens={tokens} />}
 
-            {optResult && (
-              <>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                    gap: 8,
-                  }}
-                >
-                  <MetricTile
-                    label="Status"
-                    value={optResult.status ?? (optResult.success ? "Converged" : "Finished")}
-                    tokens={tokens}
-                  />
-                  <MetricTile label="Objective Value" value={formatNumber(optResult.objectiveValue)} tokens={tokens} />
-                  <MetricTile
-                    label="Parameters"
-                    value={String(optResult.parameters ? Object.keys(optResult.parameters).length : 0)}
-                    tokens={tokens}
-                  />
-                </div>
+            {optResult &&
+              (() => {
+                const optRec = optResult as Record<string, unknown>;
+                const objectiveCost = asNumber(optRec.cost) ?? asNumber(optRec.objectiveValue);
+                const rawParams: Record<string, number> = {};
+                const paramSource =
+                  (optRec.parameters && typeof optRec.parameters === "object"
+                    ? (optRec.parameters as Record<string, unknown>)
+                    : null) ??
+                  (optRec.controls && typeof optRec.controls === "object"
+                    ? (optRec.controls as Record<string, unknown>)
+                    : null) ??
+                  (optRec.states && typeof optRec.states === "object"
+                    ? (optRec.states as Record<string, unknown>)
+                    : null);
+                if (paramSource) {
+                  for (const [k, v] of Object.entries(paramSource)) {
+                    const num = lastFinite(v);
+                    if (num !== undefined) rawParams[k] = num;
+                  }
+                }
+                const paramEntries = Object.entries(rawParams);
+                return (
+                  <>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                        gap: 8,
+                      }}
+                    >
+                      <MetricTile
+                        label="Status"
+                        value={optResult.status ?? (optResult.success ? "Converged" : "Finished")}
+                        tokens={tokens}
+                      />
+                      <MetricTile label="Objective Cost" value={formatNumber(objectiveCost)} tokens={tokens} />
+                      <MetricTile label="Variables / Controls" value={String(paramEntries.length)} tokens={tokens} />
+                    </div>
 
-                {optResult.messages && (
-                  <div
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 6,
-                      backgroundColor: tokens.bgSubtle,
-                      border: `1px solid ${tokens.border}`,
-                      fontSize: 11,
-                      color: tokens.fgMuted,
-                    }}
-                  >
-                    {optResult.messages}
-                  </div>
-                )}
+                    {optResult.messages && (
+                      <div
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          backgroundColor: tokens.bgSubtle,
+                          border: `1px solid ${tokens.border}`,
+                          fontSize: 11,
+                          color: tokens.fgMuted,
+                        }}
+                      >
+                        {optResult.messages}
+                      </div>
+                    )}
 
-                {optResult.parameters && Object.keys(optResult.parameters).length > 0 && (
-                  <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 6, overflow: "hidden" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                      <thead>
-                        <tr style={{ backgroundColor: tokens.bgSubtle, textAlign: "left" }}>
-                          <th
-                            style={{ padding: "6px 10px", borderBottom: `1px solid ${tokens.border}`, fontWeight: 600 }}
-                          >
-                            Parameter
-                          </th>
-                          <th
-                            style={{
-                              padding: "6px 10px",
-                              borderBottom: `1px solid ${tokens.border}`,
-                              fontWeight: 600,
-                              textAlign: "right",
-                            }}
-                          >
-                            Optimal Value
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(optResult.parameters).map(([paramName, paramVal]) => (
-                          <tr key={paramName}>
-                            <td
-                              style={{
-                                padding: "5px 10px",
-                                borderBottom: `1px solid ${tokens.border}`,
-                                fontFamily: "var(--font-mono, monospace)",
-                              }}
-                            >
-                              {paramName}
-                            </td>
-                            <td
-                              style={{
-                                padding: "5px 10px",
-                                borderBottom: `1px solid ${tokens.border}`,
-                                fontFamily: "var(--font-mono, monospace)",
-                                textAlign: "right",
-                              }}
-                            >
-                              {formatNumber(paramVal)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                    {paramEntries.length > 0 && (
+                      <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 6, overflow: "hidden" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                          <thead>
+                            <tr style={{ backgroundColor: tokens.bgSubtle, textAlign: "left" }}>
+                              <th
+                                style={{
+                                  padding: "6px 10px",
+                                  borderBottom: `1px solid ${tokens.border}`,
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Variable / Control
+                              </th>
+                              <th
+                                style={{
+                                  padding: "6px 10px",
+                                  borderBottom: `1px solid ${tokens.border}`,
+                                  fontWeight: 600,
+                                  textAlign: "right",
+                                }}
+                              >
+                                Optimal Final Value
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paramEntries.map(([paramName, paramVal]) => (
+                              <tr key={paramName}>
+                                <td
+                                  style={{
+                                    padding: "5px 10px",
+                                    borderBottom: `1px solid ${tokens.border}`,
+                                    fontFamily: "var(--font-mono, monospace)",
+                                  }}
+                                >
+                                  {paramName}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: "5px 10px",
+                                    borderBottom: `1px solid ${tokens.border}`,
+                                    fontFamily: "var(--font-mono, monospace)",
+                                    textAlign: "right",
+                                  }}
+                                >
+                                  {formatNumber(paramVal)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
 
-                <JsonDisclosure data={optResult} tokens={tokens} />
-              </>
-            )}
+                    <JsonDisclosure data={optResult} tokens={tokens} />
+                  </>
+                );
+              })()}
           </section>
         )}
 
@@ -809,7 +883,7 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
                   gap: 4,
                   fontSize: 11,
                   color: tokens.fgMuted,
-                  width: 140,
+                  width: 120,
                 }}
               >
                 Sample Count
@@ -819,6 +893,49 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
                   max={100000}
                   value={mcSamples}
                   onChange={(e) => setMcSamples(Math.max(1, Number.parseInt(e.target.value, 10) || 1))}
+                  style={inputStyle}
+                />
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  fontSize: 11,
+                  color: tokens.fgMuted,
+                  width: 120,
+                }}
+              >
+                Distribution
+                <select
+                  value={mcDistribution}
+                  onChange={(e) => setMcDistribution(e.target.value === "uniform" ? "uniform" : "normal")}
+                  style={inputStyle}
+                >
+                  <option value="normal">Normal (Gaussian)</option>
+                  <option value="uniform">Uniform (±%)</option>
+                </select>
+              </label>
+
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 4,
+                  fontSize: 11,
+                  color: tokens.fgMuted,
+                  width: 110,
+                }}
+              >
+                Rel. Spread (%)
+                <input
+                  type="number"
+                  min={0.5}
+                  max={100}
+                  step={0.5}
+                  value={mcRelStdPct}
+                  onChange={(e) => setMcRelStdPct(Math.max(0.5, Number.parseFloat(e.target.value) || 10))}
                   style={inputStyle}
                 />
               </label>

@@ -25,7 +25,7 @@ import React from "react";
 import { getKindBadgeStyle } from "../internal/kind-badge";
 import Spinner from "../internal/Spinner";
 import { getSemanticKindIcon } from "./ComponentList";
-import { clearPlacement, startPlacement } from "./placement";
+import { clearPlacement } from "./placement";
 import {
   getClassIcon,
   getLibraryTree,
@@ -217,7 +217,10 @@ function setDragPreview(e: React.DragEvent, iconSvg: string | null | undefined, 
     preview.style.width = "48px";
     preview.style.height = "48px";
     preview.style.padding = "4px";
-    preview.innerHTML = iconSvg;
+    const adaptedSvg = normalizeSvgForIcon(invertSvgColors(iconSvg, isDark));
+    preview.innerHTML = DOMPurify.sanitize(adaptedSvg, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+    });
     const svgEl = preview.querySelector("svg");
     if (svgEl) {
       svgEl.style.width = "40px";
@@ -438,12 +441,9 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
 
           setDragPreview(e, iconSvg, cleanCompositeName, isDark);
 
-          // Tell diagram editor that placement/drag mode started
-          startPlacement({
-            className: cleanCompositeName,
-            classKind: node.classKind ?? "class",
-            iconSvg: iconSvg ?? undefined,
-          });
+          // Clear any active click-to-place ghost; Ansatz Editor uses the native
+          // setDragPreview icon for tree drags instead of a duplicate canvas ghost.
+          clearPlacement();
         }}
         onDragEnd={() => {
           clearPlacement();

@@ -951,7 +951,7 @@ export function DraftingPodium({
       setHoveredHeaderBtn(null);
       setWireDragTargetPos(null);
       if (reticleGroupRef.current) {
-        reticleGroupRef.current.visible = false;
+        reticleGroupRef.current.scale.setScalar(0);
       }
       dragStartBoardRef.current = null;
       dragMovedRef.current = false;
@@ -1077,7 +1077,7 @@ export function DraftingPodium({
       const rz = hit.worldPoint[2] + podiumPlane.normal[2] * 0.006;
       if (reticleGroupRef.current) {
         reticleGroupRef.current.position.set(rx, ry, rz);
-        reticleGroupRef.current.visible = true;
+        reticleGroupRef.current.scale.setScalar(1);
       }
 
       const pendingWire = activeWireDragRef.current;
@@ -1506,7 +1506,7 @@ export function DraftingPodium({
       const rz = worldPt[2] + podiumPlane.normal[2] * 0.006;
       if (reticleGroupRef.current) {
         reticleGroupRef.current.position.set(rx, ry, rz);
-        reticleGroupRef.current.visible = true;
+        reticleGroupRef.current.scale.setScalar(1);
       }
       if (activeWireDragRef.current) {
         setWireDragTargetPos([rx, ry, rz]);
@@ -2220,7 +2220,7 @@ export function DraftingPodium({
           onPointerOut={() => {
             if (!dragPreviewRef.current && !activeWireDragRef.current && !panDragRef.current) {
               if (reticleGroupRef.current) {
-                reticleGroupRef.current.visible = false;
+                reticleGroupRef.current.scale.setScalar(0);
               }
               setHoveredMaximizeTileId(null);
               setHoveredHeaderBtn(null);
@@ -2411,16 +2411,16 @@ export function DraftingPodium({
         <Line points={liveWirePreviewPoints} color="#f59e0b" lineWidth={2.6} transparent opacity={0.95} />
       )}
 
-      {/* Live 3D / WebXR Ray Laser Reticle on the Angled Drafting Desk (kept mounted; updated via ref) */}
-      <group ref={reticleGroupRef} visible={false} rotation={[targetTiltRad, 0, 0]}>
-        <mesh>
+      {/* Live 3D / WebXR Ray Laser Reticle on the Angled Drafting Desk (kept mounted & shader pre-warmed at scale=0) */}
+      <group ref={reticleGroupRef} scale={[0, 0, 0]} rotation={[targetTiltRad, 0, 0]}>
+        <mesh frustumCulled={false}>
           <sphereGeometry args={[0.01, 14, 14]} />
           <meshBasicMaterial
             color={activeWireDrag ? "#f59e0b" : dragPreview ? "#38bdf8" : "#10b981"}
             toneMapped={false}
           />
         </mesh>
-        <mesh position={[0, 0, 0.001]}>
+        <mesh frustumCulled={false} position={[0, 0, 0.001]}>
           <ringGeometry args={[0.017, 0.023, 24]} />
           <meshBasicMaterial
             color={activeWireDrag ? "#fbbf24" : dragPreview ? "#7dd3fc" : "#34d399"}

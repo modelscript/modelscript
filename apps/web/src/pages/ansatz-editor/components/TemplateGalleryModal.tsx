@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { DOMAIN_FILTERS, type EngineeringDomainId } from "@modelscript/editor/workbench/componentGalleryCatalog";
+import { type EngineeringDomainId } from "@modelscript/editor/workbench/componentGalleryCatalog";
 import { getLanguageInfo } from "@modelscript/editor/workbench/constants";
 import { buildEquationFallbackPreviewSvg } from "@modelscript/editor/workbench/openModelCatalog";
 import {
@@ -31,7 +31,6 @@ import {
   type HeroExample,
 } from "../constants";
 import {
-  DIFFICULTY_LABELS,
   EXAMPLE_INDEX_BY_ID,
   EXAMPLE_INDEX_BY_LANG,
   getCachedLanguageExamples,
@@ -53,17 +52,6 @@ export interface TemplateGalleryModalProps {
 }
 
 const MODEL_PAGE_SIZE = 48;
-
-const DomainGlyph: React.FC<{ svgInner: string; size?: number }> = ({ svgInner, size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 16 16"
-    fill="none"
-    style={{ flexShrink: 0, display: "block" }}
-    dangerouslySetInnerHTML={{ __html: svgInner }}
-  />
-);
 
 function mapHeroDomain(ex: HeroExample): Exclude<EngineeringDomainId, "all"> {
   const raw = `${ex.domain || ""} ${ex.category}`.toLowerCase();
@@ -312,14 +300,16 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     };
   }, [isOpen, filteredRegistryModels, livePreviews, isDark]);
 
-  const [selectedDifficulty, setSelectedDifficulty] = useState<ExampleDifficulty | "all">("all");
+  const [selectedDifficulty, _setSelectedDifficulty] = useState<ExampleDifficulty | "all">("all");
   const [loadedChunkByLang, setLoadedChunkByLang] = useState<Record<string, LoadedLanguageExample[]>>({});
 
   const VR_SHOWCASE_LANG_ID = "__vr_showcase__";
+  const POLYGLOT_SHOWCASE_LANG_ID = "__polyglot_showcase__";
   const isVrShowcaseSelected = selectedLang === VR_SHOWCASE_LANG_ID;
+  const isPolyglotShowcaseSelected = selectedLang === POLYGLOT_SHOWCASE_LANG_ID;
 
   useEffect(() => {
-    if (!isOpen || isVrShowcaseSelected) return;
+    if (!isOpen || isVrShowcaseSelected || isPolyglotShowcaseSelected) return;
     const norm = selectedLang.toLowerCase();
     if (!EXAMPLE_INDEX_BY_LANG.has(norm)) return;
     const cached = getCachedLanguageExamples(norm);
@@ -336,7 +326,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, isVrShowcaseSelected, selectedLang]);
+  }, [isOpen, isVrShowcaseSelected, isPolyglotShowcaseSelected, selectedLang]);
 
   const selectedLangOption = useMemo(() => {
     if (isVrShowcaseSelected) {
@@ -346,6 +336,13 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         ext: "VR",
       };
     }
+    if (isPolyglotShowcaseSelected) {
+      return {
+        id: POLYGLOT_SHOWCASE_LANG_ID,
+        label: "Polyglot Digital Threads",
+        ext: "Multi",
+      };
+    }
     return (
       visibleAnsatzEditorLanguages.find((l) => l.id === selectedLang) || {
         id: selectedLang,
@@ -353,16 +350,31 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         ext: `.${selectedLang}`,
       }
     );
-  }, [isVrShowcaseSelected, visibleAnsatzEditorLanguages, selectedLang]);
+  }, [isVrShowcaseSelected, isPolyglotShowcaseSelected, visibleAnsatzEditorLanguages, selectedLang]);
   const selectedLangInfo = useMemo(
-    () => getLanguageInfo(isVrShowcaseSelected ? "scad" : selectedLang),
-    [isVrShowcaseSelected, selectedLang],
+    () => getLanguageInfo(isVrShowcaseSelected ? "scad" : isPolyglotShowcaseSelected ? "sysml2" : selectedLang),
+    [isVrShowcaseSelected, isPolyglotShowcaseSelected, selectedLang],
   );
 
   const vrShowcaseExamples = useMemo(
     () =>
       HERO_EXAMPLES.filter(
         (ex) => Boolean(ex.tags?.some((t) => t.toLowerCase() === "vr")) || ex.id === "scad-flanged-hub",
+      ),
+    [],
+  );
+
+  const polyglotShowcaseExamples = useMemo(
+    () =>
+      HERO_EXAMPLES.filter(
+        (ex) =>
+          Boolean(ex.files && Object.keys(ex.files).length > 1) ||
+          Boolean(
+            ex.tags?.some((t) => {
+              const lower = t.toLowerCase();
+              return lower === "polyglot" || lower === "digital thread";
+            }),
+          ),
       ),
     [],
   );
@@ -375,11 +387,14 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     }
     for (const [langId, entries] of EXAMPLE_INDEX_BY_LANG.entries()) {
       if (entries.length > 0) {
-        counts.set(langId, entries.length);
+        const extraPolyglot = polyglotShowcaseExamples.filter(
+          (ex) => ex.lang.toLowerCase() === langId && !entries.some((e) => e.id === ex.id),
+        ).length;
+        counts.set(langId, entries.length + extraPolyglot);
       }
     }
     return counts;
-  }, []);
+  }, [polyglotShowcaseExamples]);
 
   const normalizedLangQuery = langSearch.trim().toLowerCase();
   const filteredLanguages = useMemo(() => {
@@ -430,6 +445,8 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     let baseList: HeroExample[];
     if (isVrShowcaseSelected) {
       baseList = vrShowcaseExamples;
+    } else if (isPolyglotShowcaseSelected) {
+      baseList = polyglotShowcaseExamples;
     } else if (isModelicaSelected && registryFromApi !== false) {
       if (packageFilter || mountedOnlyFilter) {
         return [];
@@ -447,12 +464,16 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
       );
       baseList = [...ssotItems, ...vrModelica];
     } else if (ssotIndex && ssotIndex.length > 0) {
-      baseList = ssotLoaded
+      const ssotItems: HeroExample[] = ssotLoaded
         ? ssotLoaded.map((item) => ({ ...item }))
         : ssotIndex.map((m) => ({
             ...m,
             code: selectedLangInfo.defaultCode || "",
           }));
+      const extraPolyglot = polyglotShowcaseExamples.filter(
+        (ex) => ex.lang.toLowerCase() === normLang && !ssotItems.some((s) => s.id === ex.id),
+      );
+      baseList = [...ssotItems, ...extraPolyglot];
     } else {
       const langMatches = HERO_EXAMPLES.filter((ex) => ex.lang.toLowerCase() === normLang);
       baseList =
@@ -478,7 +499,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
         return false;
       }
       if (
-        (isModelicaSelected || isVrShowcaseSelected) &&
+        (isModelicaSelected || isVrShowcaseSelected || isPolyglotShowcaseSelected) &&
         selectedDomain !== "all" &&
         mapHeroDomain(ex) !== selectedDomain
       ) {
@@ -498,6 +519,8 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
   }, [
     isVrShowcaseSelected,
     vrShowcaseExamples,
+    isPolyglotShowcaseSelected,
+    polyglotShowcaseExamples,
     isModelicaSelected,
     registryFromApi,
     packageFilter,
@@ -660,7 +683,7 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
     : fallbackStarters.length;
 
   const handleCreateBlank = () => {
-    const blankLang = isVrShowcaseSelected ? "scad" : selectedLang;
+    const blankLang = isVrShowcaseSelected ? "scad" : isPolyglotShowcaseSelected ? "sysml2" : selectedLang;
     const blankCode = selectedLangInfo.defaultCode || (isModelicaSelected ? DEFAULT_EMPTY_MODELICA_CODE : "");
     onSelectTemplate({
       id: `blank-${blankLang}`,
@@ -971,6 +994,77 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                   </button>
                 </div>
               )}
+              {!lockedLanguage && !normalizedLangQuery && polyglotShowcaseExamples.length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    data-testid="template-gallery-polyglot-showcase"
+                    onClick={() => {
+                      setSelectedLang(POLYGLOT_SHOWCASE_LANG_ID);
+                      setSelectedDomain("all");
+                      setPackageFilter(null);
+                      setMountedOnlyFilter(false);
+                    }}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: isPolyglotShowcaseSelected
+                        ? "1px solid rgba(16, 185, 129, 0.72)"
+                        : `1px solid ${isDark ? "rgba(52, 211, 153, 0.28)" : "rgba(5, 150, 105, 0.25)"}`,
+                      background: isPolyglotShowcaseSelected
+                        ? isDark
+                          ? "linear-gradient(135deg, rgba(16, 185, 129, 0.28), rgba(14, 165, 233, 0.24))"
+                          : "linear-gradient(135deg, rgba(16, 185, 129, 0.16), rgba(14, 165, 233, 0.14))"
+                        : isDark
+                          ? "linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(14, 165, 233, 0.10))"
+                          : "linear-gradient(135deg, rgba(236, 253, 245, 0.95), rgba(240, 249, 255, 0.92))",
+                      color: isPolyglotShowcaseSelected ? (isDark ? "#d1fae5" : "#047857") : palette.fg,
+                      fontSize: 12.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "border-color 0.14s ease, background 0.14s ease",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span aria-hidden="true">🧬</span>
+                      <span>Polyglot Digital Threads</span>
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        backgroundColor: isPolyglotShowcaseSelected
+                          ? "rgba(5, 150, 105, 0.85)"
+                          : isDark
+                            ? "rgba(52, 211, 153, 0.22)"
+                            : "rgba(5, 150, 105, 0.14)",
+                        color: isPolyglotShowcaseSelected ? "#ffffff" : isDark ? "#6ee7b7" : "#047857",
+                        fontVariantNumeric: "tabular-nums",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {polyglotShowcaseExamples.length}
+                    </span>
+                  </button>
+                </div>
+              )}
               {filteredLanguages.length === 0 ? (
                 <div style={{ padding: "20px 12px", textAlign: "center", fontSize: 12, color: palette.muted }}>
                   No languages matching "{langSearch}"
@@ -1136,12 +1230,16 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                     <div style={{ fontSize: 13.5, fontWeight: 650, color: palette.fg }}>
                       {isVrShowcaseSelected
                         ? "Blank 3D CAD Model (OpenSCAD)"
-                        : `Blank ${selectedLangOption.label} Model`}
+                        : isPolyglotShowcaseSelected
+                          ? "Blank Polyglot Workspace (SysML v2)"
+                          : `Blank ${selectedLangOption.label} Model`}
                     </div>
                     <div style={{ fontSize: 11.5, color: palette.muted, marginTop: 2 }}>
                       {isVrShowcaseSelected
                         ? "Start a fresh parametric 3D CAD & WebXR VR model (.scad), or pick any curated showcase below"
-                        : `Start with an empty canvas & editor (${selectedLangOption.ext})`}
+                        : isPolyglotShowcaseSelected
+                          ? "Start a fresh SysML v2 digital thread (.sysml), or pick a multi-language polyglot workspace below"
+                          : `Start with an empty canvas & editor (${selectedLangOption.ext})`}
                     </div>
                   </div>
                 </div>
@@ -1280,67 +1378,6 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                   {mountedOnlyFilter ? "Mounted only ✓" : "All packages"}
                 </button>
               </div>
-
-              {/* Vector Domain Filter Pills */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                {DOMAIN_FILTERS.map((dom) => {
-                  const active = selectedDomain === dom.id;
-                  return (
-                    <button
-                      key={dom.id}
-                      type="button"
-                      onClick={() => setSelectedDomain(dom.id)}
-                      style={{
-                        border: `1px solid ${active ? dom.accent : palette.border}`,
-                        backgroundColor: active ? `${dom.accent}1f` : "transparent",
-                        color: active ? (isDark ? "var(--ms-text-heading, #f0f6fc)" : dom.accent) : palette.muted,
-                        borderRadius: 999,
-                        padding: "4px 10px",
-                        fontSize: 11.5,
-                        fontWeight: active ? 600 : 500,
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 5,
-                        cursor: "pointer",
-                        transition: "all 0.12s ease",
-                      }}
-                    >
-                      <DomainGlyph svgInner={dom.svgInner} size={13} />
-                      <span>{dom.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Difficulty Progression Filter Pills (L1 Easy → L5 Hard) */}
-              {!isVrShowcaseSelected && (EXAMPLE_INDEX_BY_LANG.get(selectedLang.toLowerCase())?.length ?? 0) > 0 && (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: palette.muted, marginRight: 2 }}>Level:</span>
-                  {(["all", 1, 2, 3, 4, 5] as const).map((lvl) => {
-                    const active = selectedDifficulty === lvl;
-                    const label = lvl === "all" ? "All Levels" : `L${lvl} ${DIFFICULTY_LABELS[lvl]}`;
-                    return (
-                      <button
-                        key={String(lvl)}
-                        type="button"
-                        onClick={() => setSelectedDifficulty(lvl)}
-                        style={{
-                          border: `1px solid ${active ? palette.accent : palette.border}`,
-                          backgroundColor: active ? palette.accentSoft : "transparent",
-                          color: active ? palette.accent : palette.muted,
-                          borderRadius: 999,
-                          padding: "3px 9px",
-                          fontSize: 11,
-                          fontWeight: active ? 650 : 500,
-                          cursor: "pointer",
-                          transition: "all 0.12s ease",
-                        }}
-                      >
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
             </div>
 
             {/* Inline Error Banner */}
@@ -1603,50 +1640,6 @@ export const TemplateGalleryModal: React.FC<TemplateGalleryModalProps> = ({
                               flexWrap: "wrap",
                             }}
                           >
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                              {ex.difficulty && (
-                                <span
-                                  style={{
-                                    fontSize: 10,
-                                    fontWeight: 650,
-                                    padding: "1px 6px",
-                                    borderRadius: 999,
-                                    backgroundColor:
-                                      ex.difficulty <= 2
-                                        ? "rgba(16, 185, 129, 0.14)"
-                                        : ex.difficulty === 3
-                                          ? "rgba(59, 130, 246, 0.14)"
-                                          : "rgba(245, 158, 11, 0.16)",
-                                    color:
-                                      ex.difficulty <= 2
-                                        ? isDark
-                                          ? "#34d399"
-                                          : "#047857"
-                                        : ex.difficulty === 3
-                                          ? isDark
-                                            ? "#60a5fa"
-                                            : "#1d4ed8"
-                                          : isDark
-                                            ? "#fbbf24"
-                                            : "#b45309",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  L{ex.difficulty} {DIFFICULTY_LABELS[ex.difficulty]}
-                                </span>
-                              )}
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  color: palette.muted,
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {ex.category}
-                              </span>
-                            </span>
                             {(ex.fileCount ?? (ex.files ? Object.keys(ex.files).length : 1)) > 1 && (
                               <span
                                 title={(ex.fileNames ?? Object.keys(ex.files ?? {})).join(", ")}

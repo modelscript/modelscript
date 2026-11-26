@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { indexLocalSymbolLines } from "@modelscript/modelica/structure-scanner";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import React from "react";
@@ -15,7 +16,6 @@ import { analyzeDaePhysics } from "../../../packages/editor/src/workbench/panels
 import { analyzeMultibodyKinematics } from "../../../packages/editor/src/workbench/panels/inspectors/MultibodyInspector.js";
 import { PowerGridInspector } from "../../../packages/editor/src/workbench/panels/inspectors/PowerGridInspector.js";
 import { RequirementsOntologyInspector } from "../../../packages/editor/src/workbench/panels/inspectors/RequirementsOntologyInspector.js";
-import { indexLocalSymbolLines } from "../../../packages/editor/src/workbench/panels/modelica-scanner.js";
 
 describe("PolyglotDomainPanel Render & Variable Scope Integrity", () => {
   it("renders without reference errors for general dialects", () => {

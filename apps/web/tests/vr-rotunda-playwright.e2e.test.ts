@@ -836,9 +836,16 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       // Section Cut toggle
       await dock.getByRole("button", { name: "Cut", exact: true }).click();
 
-      // Scale mode toggle: Tabletop -> 1:1 Scale (data-scale-mode="real-scale")
-      assert.equal(await surface.getAttribute("data-scale-mode"), "tabletop");
-      await dock.getByRole("button", { name: "Tabletop", exact: true }).click();
+      // Scale mode toggle: Hero -> Tabletop -> 1:1 Scale (data-scale-mode="real-scale")
+      assert.equal(await surface.getAttribute("data-scale-mode"), "hero");
+      await dock.locator('[data-testid="rotunda-toggle-scale-mode"]').click();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-scale-mode") === "tabletop",
+        undefined,
+        { timeout: 5_000 },
+      );
+      await dock.locator('[data-testid="rotunda-toggle-scale-mode"]').click();
       await page.waitForFunction(
         () =>
           document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-scale-mode") ===
@@ -849,8 +856,8 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       assert.equal(await surface.getAttribute("data-scale-mode"), "real-scale");
       await dock.getByRole("button", { name: "1:1 Scale", exact: true }).waitFor({ state: "visible", timeout: 5_000 });
 
-      // Toggle 45° Desk and 3D Menus
-      await dock.getByRole("button", { name: "45° Desk", exact: true }).click();
+      // Toggle Desk and 3D Menus
+      await dock.getByRole("button", { name: "Desk", exact: true }).click();
       await dock.getByRole("button", { name: "3D Menus", exact: true }).click();
 
       // Verify WebGL context remains healthy after all interactive scene mutations
@@ -940,12 +947,10 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
     const { page, pageErrors, fatalWebGlErrors } = session;
 
     try {
-      // 4A. Full Ansatz / Editor route with SCAD 3D template
+      // 4A. Full Ansatz / Editor route with SCAD 3D template — topbar VR button + 1:1 view sync
       await page.goto(`${baseUrl}/editor?template=scad-flanged-hub`, { waitUntil: "domcontentloaded" });
 
-      const editorVrTrigger = page
-        .locator('[data-testid="ansatz-vr-rotunda-toggle"], [data-testid="cad-viewer-open-vr-rotunda"]')
-        .first();
+      const editorVrTrigger = page.locator('[data-testid="ansatz-vr-rotunda-toggle"]').first();
       await editorVrTrigger.waitFor({ state: "visible", timeout: 25_000 });
       await editorVrTrigger.click();
 
@@ -959,10 +964,10 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       const fullBleedMetrics = await page.evaluate(() => {
         const pane = document.querySelector<HTMLElement>('[data-testid="ansatz-vr-rotunda-pane"]');
         const header = document.querySelector<HTMLElement>("header");
-        const carouselBar = document.querySelector<HTMLElement>('[data-testid="rotunda-carousel-bar"]');
+        const dock = document.querySelector<HTMLElement>('[data-testid="rotunda-control-dock"]');
         const paneRect = pane?.getBoundingClientRect();
         const headerRect = header?.getBoundingClientRect();
-        const carouselRect = carouselBar?.getBoundingClientRect();
+        const dockRect = dock?.getBoundingClientRect();
         return {
           innerWidth: window.innerWidth,
           innerHeight: window.innerHeight,
@@ -977,7 +982,7 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
           paneZ: pane ? Number(getComputedStyle(pane).zIndex || 0) : 0,
           headerZ: header ? Number(getComputedStyle(header).zIndex || 0) : 0,
           headerBottom: headerRect ? Math.round(headerRect.bottom) : 0,
-          carouselTop: carouselRect ? Math.round(carouselRect.top) : 0,
+          dockTop: dockRect ? Math.round(dockRect.top) : 0,
         };
       });
       assert.ok(fullBleedMetrics.paneRect, "Expected ansatz-vr-rotunda-pane bounding rect");
@@ -998,11 +1003,99 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
         `Floating Ansatz navbar z-index (${fullBleedMetrics.headerZ}) must sit above VR Rotunda pane (${fullBleedMetrics.paneZ})`,
       );
       assert.ok(
-        fullBleedMetrics.carouselTop >= fullBleedMetrics.headerBottom,
-        `VR Rotunda HUD (${fullBleedMetrics.carouselTop}px) must clear floating Ansatz navbar bottom (${fullBleedMetrics.headerBottom}px)`,
+        fullBleedMetrics.dockTop >= fullBleedMetrics.headerBottom,
+        `VR Rotunda control dock (${fullBleedMetrics.dockTop}px) must clear floating Ansatz navbar bottom (${fullBleedMetrics.headerBottom}px)`,
       );
 
-      await page.getByRole("button", { name: "Return to 2D Canvas" }).click();
+      const snapDir = process.env.CAPTURE_VISUAL_SCREENSHOTS_DIR;
+      const maybeSnap = async (name: string) => {
+        if (!snapDir) return;
+        await page.waitForTimeout(1100);
+        await page.screenshot({ path: path.join(snapDir, name) });
+      };
+
+      await maybeSnap("vr_stage_3d.png");
+
+      // Verify 1:1 view switching stays inside VR mode across every available view (Diagram / Simulation / Inspector / Code / 3D)
+      await page.getByRole("button", { name: "Diagram" }).first().click();
+      await page.waitForFunction(
+        () =>
+          document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-active-view") === "diagram",
+        { timeout: 10_000 },
+      );
+      await maybeSnap("vr_stage_diagram.png");
+
+      const simBtn = page.getByRole("button", { name: "Simulation" }).first();
+      if (await simBtn.isVisible().catch(() => false)) {
+        await simBtn.click();
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-active-view") ===
+            "simulation",
+          { timeout: 10_000 },
+        );
+        await maybeSnap("vr_stage_simulation.png");
+      }
+
+      const inspBtn = page.getByRole("button", { name: "Inspector" }).first();
+      if (await inspBtn.isVisible().catch(() => false)) {
+        await inspBtn.click();
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-active-view") ===
+            "inspector",
+          { timeout: 10_000 },
+        );
+        await maybeSnap("vr_stage_inspector.png");
+      }
+
+      await page.getByRole("button", { name: "Code" }).first().click();
+      await page.waitForFunction(
+        () => document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-active-view") === "code",
+        { timeout: 10_000 },
+      );
+      await maybeSnap("vr_stage_code.png");
+
+      // Verify Scroll Top / Bottom and desktop translucent Quick Edit overlay in VR Code view
+      const scrollBottomBtn = page.locator('[data-testid="rotunda-code-scroll-bottom"]');
+      await scrollBottomBtn.waitFor({ state: "visible", timeout: 5_000 });
+      await scrollBottomBtn.click();
+      await page.locator('[data-testid="rotunda-code-scroll-top"]').click();
+
+      const quickEditBtn = page.locator('[data-testid="rotunda-quick-edit-code"]');
+      await quickEditBtn.waitFor({ state: "visible", timeout: 5_000 });
+      await quickEditBtn.click();
+      const quickEditOverlay = page.locator('[data-testid="vr-quick-edit-overlay"]');
+      await quickEditOverlay.waitFor({ state: "visible", timeout: 5_000 });
+      await maybeSnap("vr_stage_code_quick_edit.png");
+
+      // First Escape closes Quick Edit while keeping VR Mode active
+      await page.keyboard.press("Escape");
+      await quickEditOverlay.waitFor({ state: "hidden", timeout: 5_000 });
+      assert.equal(await editorRotunda.isVisible(), true, "Escape from Quick Edit must keep VR Mode open");
+
+      // Switch back to 3D and verify orthogonal Split (||) companion code wing inside VR
+      await page.getByRole("button", { name: /^3D$/ }).first().click();
+      await page.waitForFunction(
+        () => document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-active-view") === "3d",
+        { timeout: 10_000 },
+      );
+      const splitBtn = page.locator('header button[aria-label^="Split view"]').first();
+      if (await splitBtn.isVisible().catch(() => false)) {
+        const alreadySplit = (await splitBtn.getAttribute("aria-pressed")) === "true";
+        if (!alreadySplit) {
+          await splitBtn.click();
+        }
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[data-testid="spatial-vr-surface"]')?.getAttribute("data-split-code") === "open",
+          { timeout: 10_000 },
+        );
+        await maybeSnap("vr_stage_3d_split_code.png");
+      }
+
+      // Second Escape (with Quick Edit closed) exits VR cleanly back to flat desktop view
+      await page.keyboard.press("Escape");
       await editorRotunda.waitFor({ state: "detached", timeout: 10_000 });
 
       // 4B. Ansatz embedded editor floating toolbar toggle (`ansatz-vr-rotunda-toggle`)
@@ -1061,6 +1154,15 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
             const origCompile = ctx.compileShader.bind(ctx);
             ctx.compileShader = function (shader) {
               window.__E2E_SHADER_COMPILES++;
+              if (Array.isArray(window.__E2E_SHADER_LOGS) && window.__E2E_SHADER_LOGS.length < 4) {
+                const src = String(ctx.getShaderSource(shader) || "");
+                const header = src
+                  .split(String.fromCharCode(10))
+                  .filter((l) => l.includes("#define") || l.includes("SHADER_NAME") || l.includes("uniform"))
+                  .slice(0, 10)
+                  .join(" | ");
+                window.__E2E_SHADER_LOGS.push(header || src.slice(0, 180));
+              }
               return origCompile(shader);
             };
           }
@@ -1081,7 +1183,7 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
         state: "visible",
         timeout: 20_000,
       });
-      await page.getByRole("button", { name: "CUT X" }).first().waitFor({ state: "visible", timeout: 20_000 });
+      await page.locator('[data-testid="cad-command-island"]').first().waitFor({ state: "visible", timeout: 20_000 });
       // Wait for async GLTFLoader decode & initial STEP bracket render to appear on screen
       const deadline = Date.now() + 10_000;
       while (Date.now() < deadline) {
@@ -1122,9 +1224,26 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       const surface = page.locator('[data-testid="spatial-vr-surface"][data-rotunda="engineering-rotunda"]');
       await surface.waitFor({ state: "visible", timeout: 25_000 });
       await waitForLiveWebGlCanvas(page, '[data-testid="spatial-vr-surface"]', 20_000);
-      await page.waitForTimeout(800);
+      // Wait for initial async WebGL/PMREM shader warm-up to settle before measuring mouse-move stability
+      {
+        let lastCompiles = -1;
+        let quietSince = Date.now();
+        const settleDeadline = Date.now() + 5_000;
+        while (Date.now() < settleDeadline) {
+          const currentCompiles = (await page.evaluate("window.__E2E_SHADER_COMPILES")) as number;
+          if (currentCompiles !== lastCompiles) {
+            lastCompiles = currentCompiles;
+            quietSince = Date.now();
+          } else if (Date.now() - quietSince >= 800) {
+            break;
+          }
+          await page.waitForTimeout(150);
+        }
+      }
 
-      await page.evaluate("window.__E2E_HIDE_COUNT = 0; window.__E2E_SHADER_COMPILES = 0;");
+      await page.evaluate(
+        "window.__E2E_HIDE_COUNT = 0; window.__E2E_SHADER_COMPILES = 0; window.__E2E_SHADER_LOGS = [];",
+      );
       const vrSizes: number[] = [];
       for (let i = 0; i < 8; i++) {
         await page.mouse.move(220 + (i % 4) * 220, 220 + Math.floor(i / 4) * 220);
@@ -1133,13 +1252,13 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
         vrSizes.push(png.byteLength);
       }
       const vrStats = (await page.evaluate(
-        "({ hides: window.__E2E_HIDE_COUNT, compiles: window.__E2E_SHADER_COMPILES })",
-      )) as { hides: number; compiles: number };
+        "({ hides: window.__E2E_HIDE_COUNT, compiles: window.__E2E_SHADER_COMPILES, logs: window.__E2E_SHADER_LOGS })",
+      )) as { hides: number; compiles: number; logs: string[] };
       assert.equal(vrStats.hides, 0, `Expected 0 Suspense hideInstance flickers in VR Rotunda, got ${vrStats.hides}`);
       assert.equal(
         vrStats.compiles,
         0,
-        `Expected 0 shader compiles during VR Rotunda mouse move, got ${vrStats.compiles}`,
+        `Expected 0 shader compiles during VR Rotunda mouse move, got ${vrStats.compiles} (${JSON.stringify(vrStats.logs)})`,
       );
       const minVr = Math.min(...vrSizes);
       const maxVr = Math.max(...vrSizes);
@@ -1313,6 +1432,166 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       assert.deepEqual(pageErrors, [], `Uncaught pageerror exceptions in Test 7: ${pageErrors.join("; ")}`);
       assert.deepEqual(fatalWebGlErrors, [], `Fatal WebGL console errors in Test 7: ${fatalWebGlErrors.join("; ")}`);
       assert.deepEqual(consoleErrors, [], `Console errors during Test 7: ${consoleErrors.join("; ")}`);
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  });
+
+  test("Test 8 — 3D CAD Safe-Zone HUD Non-Overlap, Split Code Clearance & Flanged Hub Selection Layout", async (t) => {
+    if (!executablePath || !context) {
+      t.skip("No Chromium binary available for Playwright WebGL E2E");
+      return;
+    }
+
+    const session = await openTrackedPage(context);
+    const { page, pageErrors, fatalWebGlErrors } = session;
+
+    try {
+      await page.goto(`${baseUrl}/editor?template=scad-flanged-hub`, { waitUntil: "domcontentloaded" });
+
+      // Ensure 3D view is active and Split Code Editor is open on the right
+      const tab3d = page.getByRole("button", { name: /^3D$/ }).first();
+      await tab3d.waitFor({ state: "visible", timeout: 25_000 });
+      await tab3d.click();
+
+      const splitBtn = page.locator('header button[aria-label^="Split view"]').first();
+      await splitBtn.waitFor({ state: "visible", timeout: 10_000 });
+      if ((await splitBtn.getAttribute("aria-pressed")) !== "true") {
+        await splitBtn.click();
+      }
+
+      const codePane = page.locator('[data-testid="ansatz-code-editor-pane"]').first();
+      await codePane.waitFor({ state: "visible", timeout: 15_000 });
+
+      const commandIsland = page.locator('[data-testid="cad-command-island"]').first();
+      await commandIsland.waitFor({ state: "visible", timeout: 25_000 });
+
+      await page.locator("canvas[data-engine]:not([data-shared-webgl-canvas])").first().waitFor({
+        state: "visible",
+        timeout: 20_000,
+      });
+      await page.waitForTimeout(1200);
+
+      // Open Parts drawer & select the flanged hub part so CadSelectionRibbon mounts above CadCommandIsland
+      const partsToggle = page.locator('[data-testid="cad-toggle-inspector-drawer"]').first();
+      await partsToggle.waitFor({ state: "visible", timeout: 10_000 });
+      await partsToggle.click();
+
+      const drawer = page.locator('[data-testid="cad-inspector-drawer"]').first();
+      await drawer.waitFor({ state: "visible", timeout: 10_000 });
+
+      const partBtn = drawer.locator('[data-testid="cad-part-select-btn"]').first();
+      await partBtn.waitFor({ state: "visible", timeout: 5_000 });
+      await partBtn.click();
+      await page.locator('[data-testid="cad-selection-ribbon"]').first().waitFor({ state: "visible", timeout: 5_000 });
+
+      // Verify left-sidebar COMPONENTS panel populates with procedural OpenSCAD CSG Operations Tree
+      const cadTree = page.locator('[data-testid="cad-component-tree"]').first();
+      await cadTree.waitFor({ state: "visible", timeout: 10_000 });
+      const featureRows = cadTree.locator('[data-testid^="cad-feature-row-"]');
+      assert.ok((await featureRows.count()) >= 5, "Expected >= 5 hierarchical CSG operation rows in left sidebar");
+
+      // Toggle Hide/Suppress on the last operation (bolt-hole cylinder) and verify Reset button appears
+      const suppressBtn = cadTree.locator('[data-testid="cad-feature-suppress-btn"]').last();
+      await suppressBtn.click();
+      const resetTreeBtn = cadTree.locator('[data-testid="cad-feature-reset-btn"]').first();
+      await resetTreeBtn.waitFor({ state: "visible", timeout: 5_000 });
+      await resetTreeBtn.click();
+      await resetTreeBtn.waitFor({ state: "hidden", timeout: 5_000 });
+
+      const snapDir = process.env.CAPTURE_VISUAL_SCREENSHOTS_DIR;
+      if (snapDir) {
+        await page.waitForTimeout(450);
+        await page.screenshot({ path: path.join(snapDir, "cad_3d_flanged_hub_split_selected.png") });
+      }
+
+      // Measure bounding boxes and assert strict zero overlap against Split Code Editor, Topbar, and between 3D HUD elements
+      const rects = await page.evaluate(() => {
+        const selectors = [
+          ["header", "header"],
+          ["codePane", '[data-testid="ansatz-code-editor-pane"]'],
+          ["safeArea", '[data-testid="cad-viewport-safe-area"]'],
+          ["island", '[data-testid="cad-command-island"]'],
+          ["ribbon", '[data-testid="cad-selection-ribbon"]'],
+          ["drawer", '[data-testid="cad-inspector-drawer"]'],
+        ] as const;
+        const out: Record<
+          string,
+          { left: number; top: number; right: number; bottom: number; width: number; height: number } | null
+        > = {};
+        for (const [key, sel] of selectors) {
+          const el = document.querySelector<HTMLElement>(sel);
+          if (!el) {
+            out[key] = null;
+            continue;
+          }
+          const r = el.getBoundingClientRect();
+          out[key] =
+            r.width > 0 && r.height > 0
+              ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }
+              : null;
+        }
+        return out;
+      });
+
+      assert.ok(rects.header, "Expected visible Ansatz navbar header");
+      assert.ok(rects.codePane, "Expected visible floating Split Code Editor");
+      assert.ok(rects.safeArea, "Expected visible cad-viewport-safe-area");
+      assert.ok(rects.island, "Expected visible cad-command-island");
+      assert.ok(rects.drawer, "Expected visible cad-inspector-drawer");
+
+      assert.ok(
+        rects.island.right <= rects.codePane.left + 2,
+        `CadCommandIsland right (${Math.round(rects.island.right)}px) must not clip under Split Code Editor left (${Math.round(rects.codePane.left)}px)`,
+      );
+      assert.ok(
+        rects.drawer.top >= rects.header.bottom - 2,
+        `CadInspectorDrawer top (${Math.round(rects.drawer.top)}px) must clear topbar bottom (${Math.round(rects.header.bottom)}px)`,
+      );
+      assert.ok(
+        rects.drawer.right <= rects.codePane.left + 2,
+        `CadInspectorDrawer right (${Math.round(rects.drawer.right)}px) must not overlap Split Code Editor left (${Math.round(rects.codePane.left)}px)`,
+      );
+
+      if (rects.ribbon) {
+        assert.ok(
+          rects.ribbon.right <= rects.codePane.left + 2,
+          `CadSelectionRibbon right (${Math.round(rects.ribbon.right)}px) must not clip under Split Code Editor left (${Math.round(rects.codePane.left)}px)`,
+        );
+        assert.ok(
+          rects.ribbon.bottom <= rects.island.top + 2,
+          `CadSelectionRibbon bottom (${Math.round(rects.ribbon.bottom)}px) must stack cleanly above CadCommandIsland top (${Math.round(rects.island.top)}px)`,
+        );
+        const overlapsDrawer =
+          rects.ribbon.left < rects.drawer.right - 2 &&
+          rects.ribbon.right > rects.drawer.left + 2 &&
+          rects.ribbon.top < rects.drawer.bottom - 2 &&
+          rects.ribbon.bottom > rects.drawer.top + 2;
+        assert.equal(overlapsDrawer, false, "CadSelectionRibbon must not collide with CadInspectorDrawer");
+      }
+
+      // Open Section and Display upward popovers and verify neither clips under Split Code Editor
+      await page.locator('[data-testid="cad-toggle-section-popover"]').first().click();
+      const sectionPop = page.locator('[data-testid="cad-section-popover"]').first();
+      await sectionPop.waitFor({ state: "visible", timeout: 5_000 });
+      const sectionBox = await sectionPop.boundingBox();
+      assert.ok(
+        sectionBox && sectionBox.x + sectionBox.width <= rects.codePane.left + 2,
+        "Section popover must clear Split Code Editor",
+      );
+
+      await page.locator('[data-testid="cad-toggle-display-popover"]').first().click();
+      const displayPop = page.locator('[data-testid="cad-display-popover"]').first();
+      await displayPop.waitFor({ state: "visible", timeout: 5_000 });
+      const displayBox = await displayPop.boundingBox();
+      assert.ok(
+        displayBox && displayBox.x + displayBox.width <= rects.codePane.left + 2,
+        "Display popover must clear Split Code Editor",
+      );
+
+      const appPageErrors = pageErrors.filter((e) => !e.includes("browserServerMain.js"));
+      assert.deepEqual(appPageErrors, [], `Uncaught pageerror exceptions in Test 8: ${appPageErrors.join("; ")}`);
+      assert.deepEqual(fatalWebGlErrors, [], `Fatal WebGL console errors in Test 8: ${fatalWebGlErrors.join("; ")}`);
     } finally {
       await page.close().catch(() => undefined);
     }

@@ -70,9 +70,17 @@ function getSafeCaeUploadPath(filePath: string | undefined): string | null {
   return resolvedPath;
 }
 
+let sharedCaeHpcEngine: HpcEngine | null = null;
+function getSharedCaeHpcEngine(): HpcEngine {
+  if (!sharedCaeHpcEngine) {
+    sharedCaeHpcEngine = new HpcEngine();
+  }
+  return sharedCaeHpcEngine;
+}
+
 export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router {
   const router = express.Router();
-  const runner = new CaeSolverRunner();
+  const runner = new CaeSolverRunner(getSharedCaeHpcEngine());
   const activeStreamers = new Map<string, CaeTelemetryStreamer>();
   const sweepOrchestrator = new CaeSweepOrchestrator(runner, CAE_CACHE_DIR);
 
@@ -346,7 +354,7 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
   // 3c. Get Cluster Health & Diagnostics
   router.get("/cae/cluster/status", async (_req, res) => {
     try {
-      const hpcEngine = new HpcEngine();
+      const hpcEngine = getSharedCaeHpcEngine();
       const driver = hpcEngine.getDriver();
       const stager = hpcEngine.getStager();
 

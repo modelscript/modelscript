@@ -17,6 +17,7 @@ import {
   type FortranSubscript,
   type FortranUnitAst,
 } from "../ast.js";
+import { lintFortranSource } from "../lints/index.js";
 import { preprocessFortranSegment, type PreprocessedFortran } from "../preprocessor.js";
 
 export interface RuntimeFortranArray {
@@ -1312,6 +1313,13 @@ export async function simulateFortranRoutine(
   scriptText: string,
   options: FortranSimulationOptions = {},
 ): Promise<FortranSimulationResult> {
+  const lintErrors = lintFortranSource(scriptText).filter((d) => d.severity === "error");
+  if (lintErrors.length > 0) {
+    const first = lintErrors[0]!;
+    const loc = first.line ? ` (line ${first.line})` : "";
+    throw new Error(`Fortran compilation failed${loc}: ${first.message}`);
+  }
+
   const startTime = options.startTime ?? 0;
   const stopTime = options.stopTime ?? 1.0;
   const dt = options.dt ?? Math.max((stopTime - startTime) / 100, 0.001);

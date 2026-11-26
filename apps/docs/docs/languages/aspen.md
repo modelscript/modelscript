@@ -1,6 +1,6 @@
 ---
 title: "Aspen-Compatible Chemical Process Modeling (.in, .inp, .bkp)"
-description: "@modelscript/aspen (languages/aspen) provides zero-regex parsing, vapor-liquid equilibrium (VLE) flash computation, distillation column MESH equations, DAE lowering, and Modelica 3.x projection for..."
+description: "@modelscript/aspen provides zero-regex parsing, VLE flash computation, distillation MESH equations, DAE lowering, and Modelica projection for Aspen decks."
 ---
 
 # Aspen-Compatible Chemical Process Modeling (`.in`, `.inp`, `.bkp`)

@@ -2,8 +2,129 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
-import { handleOpenInVrWebviewMessage } from "./vr-handoff.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
+import { attachExtensionWebviewBridge } from "./webview/shared/extension-lsp-bridge.js";
+
+interface CadComponentEntry {
+  name?: string | undefined;
+  proceduralMesh?: unknown;
+  cad?: string | Record<string, unknown> | undefined;
+  defaults?: Record<string, unknown> | undefined;
+  sourceMetadata?:
+    | {
+        startOffset?: number | undefined;
+        endOffset?: number | undefined;
+        primitiveStartOffset?: number | undefined;
+        primitiveEndOffset?: number | undefined;
+      }
+    | undefined;
+}
+
+interface LspPositionLike {
+  line: number;
+  character: number;
+}
+
+interface LspRangeLike {
+  start: LspPositionLike;
+  end: LspPositionLike;
+}
+
+interface LspDocumentSymbolLike {
+  name?: string | undefined;
+  range?: LspRangeLike | undefined;
+  selectionRange?: LspRangeLike | undefined;
+  location?: { range?: LspRangeLike | undefined } | undefined;
+  children?: LspDocumentSymbolLike[] | undefined;
+}
+
+const CAE_DECK_KEYWORDS = ["*NODE", "*ELEMENT", "*STEP", "*BOUNDARY", "*CLOAD", "*MATERIAL"];
+
+function hasCaeDeckKeyword(text: string): boolean {
+  const lines = text.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trimStart().toUpperCase();
+    if (!trimmed.startsWith("*")) continue;
+    for (const kw of CAE_DECK_KEYWORDS) {
+      if (trimmed.startsWith(kw)) {
+        const nextChar = trimmed.charAt(kw.length);
+        if (!nextChar || nextChar === "," || nextChar === " " || nextChar === "\t") {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Extracts a quoted `uri="..."` value from a serialized CAD annotation string without regex.
+ */
+function extractQuotedCadUri(cadText: string): string | undefined {
+  let idx = 0;
+  while (idx < cadText.length) {
+    const found = cadText.indexOf("uri", idx);
+    if (found === -1) return undefined;
+    const prev = found > 0 ? cadText.charCodeAt(found - 1) : 0;
+    const prevIsIdent =
+      (prev >= 65 && prev <= 90) || (prev >= 97 && prev <= 122) || (prev >= 48 && prev <= 57) || prev === 95;
+    let pos = found + 3;
+    if (!prevIsIdent) {
+      while (
+        pos < cadText.length &&
+        (cadText[pos] === " " || cadText[pos] === "\t" || cadText[pos] === "\r" || cadText[pos] === "\n")
+      ) {
+        pos++;
+      }
+      if (cadText[pos] === "=") {
+        pos++;
+        while (
+          pos < cadText.length &&
+          (cadText[pos] === " " || cadText[pos] === "\t" || cadText[pos] === "\r" || cadText[pos] === "\n")
+        ) {
+          pos++;
+        }
+        if (cadText[pos] === '"') {
+          const endQuote = cadText.indexOf('"', pos + 1);
+          if (endQuote > pos + 1) {
+            return cadText.slice(pos + 1, endQuote);
+          }
+        }
+      }
+    }
+    idx = found + 3;
+  }
+  return undefined;
+}
+
+function findDocumentSymbolRange(
+  symbols: readonly LspDocumentSymbolLike[],
+  componentName: string,
+  leaf: string,
+): LspRangeLike | undefined {
+  let leafFallback: LspRangeLike | undefined;
+
+  const visit = (list: readonly LspDocumentSymbolLike[], prefix: string): LspRangeLike | undefined => {
+    for (const sym of list) {
+      const symName = sym.name ?? "";
+      const qualified = prefix && symName ? `${prefix}.${symName}` : symName;
+      const symRange = sym.selectionRange ?? sym.range ?? sym.location?.range;
+      if (symRange && (symName === componentName || qualified === componentName)) {
+        return symRange;
+      }
+      if (symRange && !leafFallback && symName === leaf) {
+        leafFallback = symRange;
+      }
+      if (Array.isArray(sym.children) && sym.children.length > 0) {
+        const nested = visit(sym.children, qualified);
+        if (nested) return nested;
+      }
+    }
+    return undefined;
+  };
+
+  return visit(symbols, "") ?? leafFallback;
+}
 
 /**
  * Manages the interactive 3D CAD & Multi-Body Webview Panel in VS Code.
@@ -26,8 +147,9 @@ export class CadViewerPanel extends BaseWebviewPanel {
   /** Suppresses self-induced doc-change / projectTreeChanged echo updates right after panel writebacks. */
   private _suppressDocSyncUntil = 0;
   /** Optional pre-evaluated CAD components provided on panel creation. */
-  private _initialComponents:
-    { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[] | undefined;
+  private _initialComponents: CadComponentEntry[] | undefined;
+  /** Most recently resolved CAD components from LSP / local evaluation. */
+  private _lastComponents: CadComponentEntry[] = [];
 
   /**
    * Creates a new 3D CAD Viewer webview panel beside the active editor, or reveals
@@ -109,45 +231,54 @@ export class CadViewerPanel extends BaseWebviewPanel {
     this._targetDocumentUri = targetDocumentUri;
     this._initialComponents = initialComponents;
 
-    this._panel.webview.onDidReceiveMessage(
-      (message) => {
+    const bridgeSub = attachExtensionWebviewBridge(this._panel.webview, {
+      client: this._client,
+      getDocument: () => this._resolveTargetDocument(),
+      title: "3D CAD Viewer",
+      languageId: "cad",
+      onUnhandledMessage: async (message) => {
         switch (message.type) {
           case "ready":
             if (this._initialComponents && this._initialComponents.length > 0) {
               this._panel.webview.postMessage({ type: "cadComponents", data: this._initialComponents });
             }
-            void this.update();
+            await this.update();
             break;
           case "select":
-            void this.handleSelectComponent((message as { name?: string | null }).name);
+            await this.handleSelectComponent((message as { name?: string | null }).name);
             break;
           case "commitGizmoDelta":
-            void this.handleCommitGizmoDelta(message.payload);
+            await this.handleCommitGizmoDelta(
+              message["payload"] as Parameters<CadViewerPanel["handleCommitGizmoDelta"]>[0],
+            );
             break;
           case "commitDimensionDelta":
-            void this.handleCommitDimensionDelta(message.payload);
+            await this.handleCommitDimensionDelta(
+              message["payload"] as Parameters<CadViewerPanel["handleCommitDimensionDelta"]>[0],
+            );
             break;
           case "commitFaceTag":
-            void this.handleCommitFaceTag(message.payload);
+            await this.handleCommitFaceTag(message["payload"] as Parameters<CadViewerPanel["handleCommitFaceTag"]>[0]);
             break;
           case "commitAssemblyJoint":
-            void this.handleCommitAssemblyJoint(message.payload);
+            await this.handleCommitAssemblyJoint(
+              message["payload"] as Parameters<CadViewerPanel["handleCommitAssemblyJoint"]>[0],
+            );
             break;
           case "commitCadBinding":
-            void this.handleCommitCadBinding(message.payload);
+            await this.handleCommitCadBinding(
+              message["payload"] as Parameters<CadViewerPanel["handleCommitCadBinding"]>[0],
+            );
             break;
-          case "openInVr":
-            void handleOpenInVrWebviewMessage(message, {
-              artifactUri: this._targetDocumentUri,
-              title: "3D CAD Viewer",
-              kind: "cad",
-            });
+          case "insertCaeSnippet":
+            if (typeof message["snippet"] === "string") {
+              await this.handleInsertCaeSnippet(message["snippet"]);
+            }
             break;
         }
       },
-      null,
-      this._disposables,
-    );
+    });
+    this._disposables.push(bridgeSub);
 
     const cadBaseUri = this._panel.webview
       .asWebviewUri(vscode.Uri.joinPath(this._extensionUri, "images", "cad"))
@@ -245,7 +376,10 @@ export class CadViewerPanel extends BaseWebviewPanel {
     }
 
     for (const ed of vscode.window.visibleTextEditors) {
-      if (ed.document.uri.scheme !== "output" && /\.(scad|mo|sysml|sysml2)$/i.test(ed.document.uri.path)) {
+      if (
+        ed.document.uri.scheme !== "output" &&
+        /\.(scad|mo|sysml|sysml2|3mf|usd|usda|usdc|fea|inp|cfd)$/i.test(ed.document.uri.path)
+      ) {
         this._targetDocumentUri = ed.document.uri.toString();
         return ed.document;
       }
@@ -253,10 +387,11 @@ export class CadViewerPanel extends BaseWebviewPanel {
 
     const openCadDoc =
       vscode.workspace.textDocuments.find(
-        (d) => d.uri.scheme !== "output" && (d.languageId === "scad" || /\.scad$/i.test(d.uri.path)),
+        (d) =>
+          d.uri.scheme !== "output" && (d.languageId === "scad" || /\.(scad|3mf|usd|usda|usdc)$/i.test(d.uri.path)),
       ) ??
       vscode.workspace.textDocuments.find(
-        (d) => d.uri.scheme !== "output" && (d.languageId === "modelica" || /\.mo$/i.test(d.uri.path)),
+        (d) => d.uri.scheme !== "output" && (d.languageId === "modelica" || /\.(mo|fea|inp|cfd)$/i.test(d.uri.path)),
       );
     if (openCadDoc) {
       this._targetDocumentUri = openCadDoc.uri.toString();
@@ -282,15 +417,21 @@ export class CadViewerPanel extends BaseWebviewPanel {
     const uri = doc.uri.toString();
     const documentText = doc.getText();
     const isScad = doc.languageId === "scad" || /\.scad$/i.test(doc.uri.path);
+    const isCaeDoc =
+      doc.languageId === "fea" ||
+      doc.languageId === "cfd" ||
+      /\.(fea|inp|cfd|foam)$/i.test(doc.uri.path) ||
+      hasCaeDeckKeyword(documentText);
 
     try {
-      let cadComponents: { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[] = [];
+      let cadComponents: CadComponentEntry[] = [];
 
       if (this._client && typeof this._client.sendRequest === "function") {
         try {
-          const lspComps = await this._client.sendRequest<
-            { proceduralMesh?: unknown; cad?: string | Record<string, unknown> | undefined }[]
-          >("modelscript/getCadComponents", { uri, documentText });
+          const lspComps = await this._client.sendRequest<CadComponentEntry[]>("modelscript/getCadComponents", {
+            uri,
+            documentText,
+          });
           if (Array.isArray(lspComps)) {
             cadComponents = lspComps;
           }
@@ -313,10 +454,7 @@ export class CadViewerPanel extends BaseWebviewPanel {
           await getScadParser(wasmBytes);
           const localComps = await extractScadCadComponents(documentText, undefined, uri);
           if (Array.isArray(localComps) && localComps.length > 0) {
-            cadComponents = localComps as unknown as {
-              proceduralMesh?: unknown;
-              cad?: string | Record<string, unknown> | undefined;
-            }[];
+            cadComponents = localComps as unknown as CadComponentEntry[];
           }
         } catch (scadErr) {
           console.warn("[CAD Viewer] Direct SCAD component evaluation failed:", scadErr);
@@ -330,30 +468,49 @@ export class CadViewerPanel extends BaseWebviewPanel {
       const documentUri = vscode.Uri.parse(uri);
       for (const comp of cadComponents) {
         if (comp.proceduralMesh) continue;
-        if (typeof comp.cad === "string") {
-          const match = comp.cad.match(/uri\s*=\s*"([^"]+)"/);
-          if (match) {
-            const cadUri = match[1]!;
-            if (!cadUri.includes("://") && !cadUri.startsWith("data:") && !cadUri.startsWith("#")) {
-              const fileUri = vscode.Uri.joinPath(documentUri, "..", cadUri);
-              try {
-                const data = await vscode.workspace.fs.readFile(fileUri);
-                const bytes = new Uint8Array(data);
-                let binary = "";
-                for (let i = 0; i < bytes.byteLength; i++) {
-                  binary += String.fromCharCode(bytes[i]!);
-                }
-                const b64 = btoa(binary);
-                const dataUri = `data:model/gltf-binary;base64,${b64}`;
-                comp.cad = comp.cad.replace(cadUri, dataUri);
-              } catch (e) {
-                console.warn("[CAD Viewer] Could not read local CAD file:", fileUri.toString(), e);
-              }
+        const cadUri =
+          (comp.cad && typeof comp.cad === "object" && typeof comp.cad["uri"] === "string"
+            ? comp.cad["uri"]
+            : undefined) ??
+          (typeof comp.defaults?.["uri"] === "string" ? comp.defaults["uri"] : undefined) ??
+          (typeof comp.cad === "string" ? extractQuotedCadUri(comp.cad) : undefined);
+
+        if (cadUri && !cadUri.includes("://") && !cadUri.startsWith("data:") && !cadUri.startsWith("#")) {
+          const fileUri = vscode.Uri.joinPath(documentUri, "..", cadUri);
+          try {
+            const data = await vscode.workspace.fs.readFile(fileUri);
+            const bytes = new Uint8Array(data);
+            let binary = "";
+            for (let i = 0; i < bytes.byteLength; i++) {
+              binary += String.fromCharCode(bytes[i]!);
             }
+            const b64 = btoa(binary);
+            const dataUri = `data:model/gltf-binary;base64,${b64}`;
+            if (typeof comp.cad === "string") {
+              comp.cad = comp.cad.replace(cadUri, dataUri);
+            } else if (comp.cad && typeof comp.cad === "object") {
+              comp.cad["uri"] = dataUri;
+            }
+            if (comp.defaults && typeof comp.defaults["uri"] === "string") {
+              comp.defaults["uri"] = dataUri;
+            }
+          } catch (e) {
+            console.warn("[CAD Viewer] Could not read local CAD file:", fileUri.toString(), e);
           }
         }
       }
 
+      this._lastComponents = cadComponents;
+
+      this._panel.webview.postMessage({
+        type: "sourceContext",
+        data: {
+          sourceCode: documentText,
+          caeSourceCode: isCaeDoc ? documentText : undefined,
+          languageId: doc.languageId,
+          documentUri: uri,
+        },
+      });
       this._panel.webview.postMessage({ type: "cadComponents", data: cadComponents });
 
       if (this._client && typeof this._client.sendRequest === "function") {
@@ -444,6 +601,53 @@ export class CadViewerPanel extends BaseWebviewPanel {
     if (options.lhsName) {
       this.focusPart(options.lhsName);
     }
+  }
+
+  /**
+   * Push a raw VTK ASCII/binary buffer for unified VtkRenderer visualization in the 3D viewport.
+   */
+  public sendVtkBuffer(buffer: Uint8Array): void {
+    this._panel.webview.postMessage({
+      type: "VTK_BUFFER",
+      data: { buffer: Array.from(buffer) },
+    });
+  }
+
+  /**
+   * Push a SampledTelemetryFrame to overlay Ansatz's SimulatorTelemetryHud inside the 3D viewport.
+   */
+  public sendTelemetryFrame(frame: unknown): void {
+    this._panel.webview.postMessage({
+      type: "TELEMETRY_FRAME",
+      data: frame,
+    });
+  }
+
+  /**
+   * Push a POD-Galerkin reduced-order surrogate payload to open the 60 FPS SurrogateLiveExplorer.
+   */
+  public sendSurrogatePayload(payload: unknown, modelName?: string): void {
+    this._panel.webview.postMessage({
+      type: "SURROGATE_PAYLOAD",
+      data: { payload, modelName },
+    });
+  }
+
+  /**
+   * Appends a CAE deck keyword snippet emitted by CaeSimulationTree to the active document.
+   */
+  public async handleInsertCaeSnippet(snippet: string): Promise<void> {
+    if (!snippet) return;
+    const doc = this._resolveTargetDocument();
+    if (!doc) return;
+    const source = doc.getText();
+    const insertion = source.endsWith("\n") ? `${snippet}\n` : `\n${snippet}\n`;
+    const endPos = doc.positionAt(source.length);
+    this._suppressDocSyncUntil = Date.now() + 500;
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(doc.uri, endPos, insertion);
+    await vscode.workspace.applyEdit(edit);
+    await this.update();
   }
 
   /**
@@ -862,26 +1066,54 @@ export class CadViewerPanel extends BaseWebviewPanel {
   }
 
   /**
-   * Reveals and highlights a component selected in the 3D CAD viewport inside its source editor.
+   * Reveals and highlights a component selected in the 3D CAD viewport inside its source editor
+   * using LSP `textDocument/documentSymbol` ranges (or cached CAD component CST offsets).
    */
   private async handleSelectComponent(componentName?: string | null): Promise<void> {
     if (!componentName) return;
     const doc = this._resolveTargetDocument();
     if (!doc) return;
-    const source = doc.getText();
-    const leaf = componentName.split(".").pop() || componentName;
-    const escaped = leaf.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = new RegExp(`\\b${escaped}\\b`).exec(source);
-    if (!match) return;
 
-    const startPos = doc.positionAt(match.index);
-    const endPos = doc.positionAt(match.index + leaf.length);
-    const range = new vscode.Range(startPos, endPos);
+    const leaf = componentName.split(".").pop() || componentName;
+    let range: vscode.Range | undefined;
+
+    if (this._client && typeof this._client.sendRequest === "function") {
+      try {
+        const symbols = await this._client.sendRequest<LspDocumentSymbolLike[] | null>("textDocument/documentSymbol", {
+          textDocument: { uri: doc.uri.toString() },
+        });
+        if (Array.isArray(symbols) && symbols.length > 0) {
+          const matchedRange = findDocumentSymbolRange(symbols, componentName, leaf);
+          if (matchedRange) {
+            range = new vscode.Range(
+              new vscode.Position(matchedRange.start.line, matchedRange.start.character),
+              new vscode.Position(matchedRange.end.line, matchedRange.end.character),
+            );
+          }
+        }
+      } catch {
+        // Fall through to cached CST sourceMetadata offsets
+      }
+    }
+
+    if (!range) {
+      const matchedComp =
+        this._lastComponents.find((c) => c.name === componentName) ??
+        this._lastComponents.find((c) => c.name === leaf || c.name?.split(".").pop() === leaf);
+      const startOffset = matchedComp?.sourceMetadata?.primitiveStartOffset ?? matchedComp?.sourceMetadata?.startOffset;
+      const endOffset = matchedComp?.sourceMetadata?.primitiveEndOffset ?? matchedComp?.sourceMetadata?.endOffset;
+      if (typeof startOffset === "number" && typeof endOffset === "number" && endOffset >= startOffset) {
+        range = new vscode.Range(doc.positionAt(startOffset), doc.positionAt(endOffset));
+      }
+    }
+
+    if (!range) return;
+
     const editor =
       vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === doc.uri.toString()) ??
       (await vscode.window.showTextDocument(doc, { preserveFocus: true, preview: false }));
     if (editor) {
-      editor.selection = new vscode.Selection(startPos, endPos);
+      editor.selection = new vscode.Selection(range.start, range.end);
       editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
   }

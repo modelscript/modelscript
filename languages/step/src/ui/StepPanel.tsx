@@ -2,11 +2,13 @@
 
 import {
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import React, { useMemo, useState } from "react";
@@ -24,7 +26,6 @@ export const StepPanel: React.FC<LanguagePanelProps> = ({
   host,
 }) => {
   const [activeTab, setActiveTab] = useState<StepTabId>("assembly");
-  const [search, setSearch] = useState("");
 
   const computed = useMemo(() => {
     if (!code.trim()) return { assembly: null, error: undefined as string | undefined };
@@ -40,11 +41,27 @@ export const StepPanel: React.FC<LanguagePanelProps> = ({
   const parts = useMemo(() => Array.from(computed.assembly?.parts?.values() ?? []), [computed.assembly]);
   const relations = computed.assembly?.edges ?? [];
 
-  const filteredParts = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return parts.slice(0, 250);
-    return parts.filter((p) => p.name.toLowerCase().includes(q) || String(p.id).includes(q)).slice(0, 250);
-  }, [parts, search]);
+  type PartRow = (typeof parts)[number];
+  const partColumns = useMemo<PanelDataGridColumn<PartRow>[]>(
+    () => [
+      {
+        key: "id",
+        label: "Entity ID",
+        mono: true,
+        sortValue: (p) => String(p.id),
+        render: (p) => <span style={{ color: "var(--ms-brand)" }}>{p.id}</span>,
+      },
+      { key: "name", label: "Product Name", sortValue: (p) => p.name, render: (p) => <strong>{p.name}</strong> },
+      {
+        key: "shapeId",
+        label: "Shape Ref",
+        mono: true,
+        sortValue: (p) => p.shapeId ?? "",
+        render: (p) => <span style={{ color: "var(--ms-text-2)" }}>{p.shapeId || "—"}</span>,
+      },
+    ],
+    [],
+  );
 
   const kpis = useMemo<PanelKpiItem[]>(
     () => [
@@ -64,7 +81,7 @@ export const StepPanel: React.FC<LanguagePanelProps> = ({
         actions={
           mode === "artifact" && host.openInAnsatzEditor && code ? (
             <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "step", title)}>
-              Open in Ansatz Editor
+              Open in Editor
             </PanelButton>
           ) : undefined
         }
@@ -83,52 +100,13 @@ export const StepPanel: React.FC<LanguagePanelProps> = ({
       />
 
       {(activeTab === "assembly" || activeTab === "parts") && (
-        <div
-          style={{
-            flex: 1,
-            overflow: "auto",
-            padding: "10px 12px",
-            display: "flex",
-            flexDirection: "column",
-            gap: "8px",
-          }}
-        >
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter STEP products / parts..."
-            style={{
-              padding: "5px 8px",
-              borderRadius: "5px",
-              border: "1px solid var(--ms-border)",
-              background: "var(--ms-bg-soft)",
-              color: "var(--ms-text-1)",
-              fontSize: "12px",
-            }}
-          />
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px" }}>
-            <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid var(--ms-border)", color: "var(--ms-text-2)" }}>
-                <th style={{ padding: "5px 6px" }}>Entity ID</th>
-                <th style={{ padding: "5px 6px" }}>Product Name</th>
-                <th style={{ padding: "5px 6px" }}>Shape Ref</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredParts.map((p, idx) => (
-                <tr
-                  key={`${p.id}-${idx}`}
-                  style={{ borderBottom: "1px solid var(--ms-divider)", fontFamily: "var(--ms-font-mono)" }}
-                >
-                  <td style={{ padding: "4px 6px", color: "var(--ms-brand)" }}>{p.id}</td>
-                  <td style={{ padding: "4px 6px", fontWeight: 600, fontFamily: "var(--ms-font-sans)" }}>{p.name}</td>
-                  <td style={{ padding: "4px 6px", color: "var(--ms-text-2)" }}>{p.shapeId || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PanelDataGrid
+          rows={parts}
+          columns={partColumns}
+          rowKey={(p, idx) => `${p.id}-${idx}`}
+          searchPlaceholder="Filter STEP products / parts…"
+          emptyMessage={computed.error ?? "No STEP product parts parsed."}
+        />
       )}
 
       {activeTab === "relations" && (

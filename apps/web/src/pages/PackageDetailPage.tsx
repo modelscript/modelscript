@@ -8,6 +8,7 @@ import styledImport, { keyframes } from "styled-components";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import Box from "../components/Box";
+import { DatasetNutritionLabelCard } from "../components/DatasetNutritionLabelCard";
 import { TerminalLogViewer } from "../components/TerminalLogViewer";
 import { usePageTitle } from "../util/title";
 import { resolvePackageParams } from "../util/url";
@@ -457,7 +458,9 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
               packageSignature={pkg.packageSignature}
               packageStats={pkg.packageStats}
               packageOwner={
-                pkg.packument?.author?.name || pkg.collaborators.find((c) => c.permission === "owner")?.username
+                (pkg.packument as { author?: { name?: string } } | null)?.author?.name ||
+                pkg.collaborators.find((c) => (c.permission as string) === "owner")?.username ||
+                pkg.packageOwner
               }
               modelicaVersion={pkg.currentManifest?.modelscript?.modelicaVersion}
               oidcRepository={pkg.oidcRepository}
@@ -512,17 +515,30 @@ const PackageDetailContent: React.FC<PackageDetailContentProps> = ({ rawParams }
             {/* ── Body ── */}
             <ContentWrap>
               {activeTab === "readme" && (
-                <PackageReadmeTab
-                  name={name!}
-                  version={version!}
-                  rootClassName={pkg.rootClassName}
-                  rootClass={pkg.rootClass}
-                  packument={pkg.packument}
-                  classes={pkg.classes}
-                  availableDomains={pkg.availableDomains}
-                  onNavigateToDigitalThread={() => setTab("digital-thread")}
-                  jobStatus={pkg.jobStatus || undefined}
-                />
+                <>
+                  {name && version && (
+                    <DatasetNutritionLabelCard
+                      packageName={name}
+                      version={version}
+                      manifest={pkg.currentManifest}
+                      license={pkg.libraryDetail?.license || pkg.packument?.license}
+                      packageSignature={pkg.packageSignature}
+                      contentHash={pkg.contentHash}
+                      oidcRepository={pkg.oidcRepository}
+                    />
+                  )}
+                  <PackageReadmeTab
+                    name={name!}
+                    version={version!}
+                    rootClassName={pkg.rootClassName}
+                    rootClass={pkg.rootClass}
+                    packument={pkg.packument}
+                    classes={pkg.classes}
+                    availableDomains={pkg.availableDomains}
+                    onNavigateToDigitalThread={() => setTab("digital-thread")}
+                    jobStatus={pkg.jobStatus || undefined}
+                  />
+                </>
               )}
 
               {activeTab === "versions" && (

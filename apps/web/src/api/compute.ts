@@ -13,6 +13,7 @@ export interface ComputeProfileInfo {
   gpuType?: string | undefined;
   partition: string;
   costCreditsPerHour: number;
+  maxWalltimeSeconds?: number | undefined;
 }
 
 export const getComputeProfiles = async (): Promise<ComputeProfileInfo[]> => {
@@ -91,14 +92,10 @@ export interface ArtifactViewFromJobResult {
 }
 
 export const getUserHpcJobs = async (limit = 20): Promise<HpcJobSummary[]> => {
-  try {
-    const { data } = await api.get<{ jobs: HpcJobSummary[]; count: number }>("/cae/user-jobs", {
-      params: { limit },
-    });
-    return data.jobs || [];
-  } catch {
-    return [];
-  }
+  const { data } = await api.get<{ jobs: HpcJobSummary[]; count: number }>("/cae/user-jobs", {
+    params: { limit },
+  });
+  return data.jobs || [];
 };
 
 export const createArtifactViewFromHpcJob = async (
@@ -136,17 +133,18 @@ export interface CloudSimulationRequest {
 
 export interface CloudSimulationStatus {
   id: string;
-  status: "pending" | "processing" | "queued" | "running" | "completed" | "success" | "failed" | string;
+  status: "pending" | "processing" | "queued" | "running" | "completed" | "success" | "failed" | "cancelled" | string;
   profile?: string | undefined;
   usage?:
     | {
-        cpuSeconds: number;
-        gpuSeconds: number;
-        costCredits: number;
-        exitCode: number;
+        cpuSeconds?: number | undefined;
+        gpuSeconds?: number | undefined;
+        costCredits?: number | undefined;
+        exitCode?: number | undefined;
       }
     | undefined;
   error?: string | undefined;
+  logs?: string[] | undefined;
 }
 
 export const submitCloudSimulation = async (req: CloudSimulationRequest): Promise<{ jobId: string }> => {
@@ -455,13 +453,25 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
         if (seenDbIds.has(canonicalId)) continue;
         seenDbIds.add(canonicalId);
 
+        const caeStatus = String(j.status || "").toUpperCase();
+        const mappedStatus: UnifiedJob["status"] =
+          caeStatus === "SUCCESS" || caeStatus === "COMPLETED"
+            ? "completed"
+            : caeStatus === "FAILED" || caeStatus === "ERROR"
+              ? "failed"
+              : caeStatus === "CANCELLED" || caeStatus === "CANCELED"
+                ? "cancelled"
+                : caeStatus === "PENDING" || caeStatus === "QUEUED"
+                  ? "queued"
+                  : "running";
+
         jobs.push({
           id: j.id,
           dbJobId: typeof j.id === "number" ? j.id : Number(j.id) || null,
           name: j.name,
           domain: j.solver === "su2" ? "cfd" : j.solver === "calculix" ? "fea" : "simulation",
           profile: j.computeProfile || "standard",
-          status: j.status === "SUCCESS" ? "completed" : j.status === "FAILED" ? "failed" : "running",
+          status: mappedStatus,
           costCredits: j.costCredits,
           startedAt: j.startedAt,
           hasVtu: j.hasVtu,
@@ -711,10 +721,15 @@ export interface StudyRunResultsPayload {
     | undefined;
 }
 
+export type JobTemplateEntry = StudyDefinitionPayload & {
+  dbId?: number | undefined;
+  studyDefinition?: StudyDefinitionPayload | undefined;
+};
+
 export const getJobTemplates = async (
   filters?: StudyGalleryFilters,
 ): Promise<{
-  templates: StudyDefinitionPayload[];
+  templates: JobTemplateEntry[];
   studyDefinitions?: StudyDefinitionPayload[];
   facets?: {
     bySource: Record<string, number>;
@@ -726,7 +741,40 @@ export const getJobTemplates = async (
   };
 }> => {
   const { data } = await api.get("/jobs/templates", { params: filters });
-  return data;
+  const rawList: unknown[] = Array.isArray(data?.templates)
+    ? data.templates
+    : Array.isArray(data?.studyDefinitions)
+      ? data.studyDefinitions
+      : [];
+
+  const normalizedTemplates: JobTemplateEntry[] = [];
+  for (const item of rawList) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const wrapped =
+      rec["studyDefinition"] && typeof rec["studyDefinition"] === "object"
+        ? (rec["studyDefinition"] as StudyDefinitionPayload)
+        : undefined;
+    const base = wrapped ?? (rec as unknown as StudyDefinitionPayload);
+    if (!base?.slug && !base?.name) continue;
+    const rawId = rec["id"];
+    const numericId =
+      typeof rawId === "number" ? rawId : typeof rawId === "string" && /^\d+$/.test(rawId) ? Number(rawId) : undefined;
+    normalizedTemplates.push({
+      ...base,
+      id: base.id ?? (rawId != null ? String(rawId) : undefined),
+      dbId: numericId,
+      studyDefinition: wrapped ?? base,
+    });
+  }
+
+  return {
+    ...(data && typeof data === "object" ? data : {}),
+    templates: normalizedTemplates,
+    studyDefinitions: Array.isArray(data?.studyDefinitions)
+      ? data.studyDefinitions
+      : normalizedTemplates.map((t) => t.studyDefinition ?? t),
+  };
 };
 
 export const createStudyTemplate = async (payload: {
@@ -1033,6 +1081,14 @@ export interface CloudComputeProfile {
   id: string;
   name: string;
   description?: string | undefined;
+  cpus?: number | undefined;
+  memoryMb?: number | undefined;
+  gpus?: number | undefined;
+  gpuType?: string | null | undefined;
+  partition?: string | undefined;
+  costCreditsPerHour?: number | undefined;
+  maxWalltimeSeconds?: number | undefined;
+  // Optional backward-compatible legacy fields
   cpuCores?: number | undefined;
   memoryGb?: number | undefined;
   gpu?: string | null | undefined;
@@ -1094,6 +1150,33 @@ export const getCloudBalance = async (): Promise<{ balance: number }> => {
 
 export const dispatchCloudJob = async (payload: Record<string, unknown>): Promise<{ jobId: string }> => {
   const { data } = await api.post("/cloud/dispatch", payload);
+  return data;
+};
+
+export const getCloudJobStatus = async (jobId: string | number): Promise<CloudSimulationStatus> => {
+  const { data } = await api.get<{
+    id?: string | undefined;
+    jobId?: string | undefined;
+    status?: string | undefined;
+    profile?: string | undefined;
+    usage?: CloudSimulationStatus["usage"];
+    error?: string | undefined;
+    logs?: string[] | undefined;
+  }>(`/cloud/jobs/${jobId}`);
+  return {
+    id: String(data?.jobId ?? data?.id ?? jobId),
+    status: String(data?.status ?? "queued"),
+    profile: data?.profile,
+    usage: data?.usage,
+    error: data?.error,
+    logs: Array.isArray(data?.logs) ? data.logs : undefined,
+  };
+};
+
+export const cancelCloudJob = async (
+  jobId: string | number,
+): Promise<{ success?: boolean; status?: string; message?: string; [key: string]: unknown }> => {
+  const { data } = await api.post(`/cloud/jobs/${jobId}/cancel`);
   return data;
 };
 

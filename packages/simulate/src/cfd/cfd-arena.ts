@@ -33,6 +33,21 @@ export const D3Q19_WEIGHTS = new Float32Array([
   1.0 / 36.0, // 13..18
 ]);
 
+// D3Q7 Thermal Discrete Velocities & Weights
+export const D3Q7_CX = new Int32Array([0, 1, -1, 0, 0, 0, 0]);
+export const D3Q7_CY = new Int32Array([0, 0, 0, 1, -1, 0, 0]);
+export const D3Q7_CZ = new Int32Array([0, 0, 0, 0, 0, 1, -1]);
+export const D3Q7_OPP = new Int32Array([0, 2, 1, 4, 3, 6, 5]);
+export const D3Q7_WEIGHTS = new Float32Array([
+  1.0 / 4.0,
+  1.0 / 8.0,
+  1.0 / 8.0,
+  1.0 / 8.0,
+  1.0 / 8.0,
+  1.0 / 8.0,
+  1.0 / 8.0,
+]);
+
 export interface CfdArenaOptions {
   /** Underlying buffer (ArrayBuffer or SharedArrayBuffer for zero-copy thread sharing). */
   backingBuffer?: ArrayBuffer | SharedArrayBuffer | undefined;
@@ -78,6 +93,14 @@ export class CfdFieldArena {
   // Bouzidi curved boundary sub-grid distance fractions delta in (0, 1)
   public readonly deltaWall?: Float32Array | undefined;
 
+  // Optional D3Q7 thermal distribution & temperature views (when config.thermal?.enabled)
+  public readonly g0?: Float32Array | undefined;
+  public readonly g1?: Float32Array | undefined;
+  public readonly temperature?: Float32Array | undefined;
+
+  // Optional WMLES wall shear stress magnitude per cell (Pa)
+  public readonly wallShearStress?: Float32Array | undefined;
+
   constructor(config: LbmGridConfig, cellTypes?: Uint8Array | Uint32Array, options?: CfdArenaOptions) {
     this.config = config;
     this.totalCells = config.nx * config.ny * config.nz;
@@ -85,6 +108,8 @@ export class CfdFieldArena {
 
     const q = this.qDirections;
     const n = this.totalCells;
+    const hasThermal = config.thermal?.enabled === true;
+    const hasWmles = config.turbulenceModel === "wmles";
 
     const fBytes = n * q * 4;
     const f1Bytes = this.scheme === "two-buffer" ? fBytes : 0;
@@ -92,8 +117,22 @@ export class CfdFieldArena {
     const scalarFieldBytes = n * 4;
     const cellTypeBytes = n * 4;
     const deltaWallBytes = config.deltaWall ? n * q * 4 : 0;
+    const gBytes = hasThermal ? n * 7 * 4 : 0;
+    const g1Bytes = hasThermal && this.scheme === "two-buffer" ? gBytes : 0;
+    const tempBytes = hasThermal ? n * 4 : 0;
+    const shearBytes = hasWmles ? n * 4 : 0;
 
-    const totalBytes = fBytes + f1Bytes + macroBytes + scalarFieldBytes * 4 + cellTypeBytes + deltaWallBytes;
+    const totalBytes =
+      fBytes +
+      f1Bytes +
+      macroBytes +
+      scalarFieldBytes * 4 +
+      cellTypeBytes +
+      deltaWallBytes +
+      gBytes +
+      g1Bytes +
+      tempBytes +
+      shearBytes;
 
     this.buffer = options?.backingBuffer ?? new ArrayBuffer(totalBytes);
 
@@ -133,6 +172,23 @@ export class CfdFieldArena {
     if (config.deltaWall) {
       this.deltaWall = new Float32Array(this.buffer, offset, n * q);
       this.deltaWall.set(config.deltaWall);
+      offset += deltaWallBytes;
+    }
+
+    if (hasThermal) {
+      this.g0 = new Float32Array(this.buffer, offset, n * 7);
+      offset += gBytes;
+      if (this.scheme === "two-buffer") {
+        this.g1 = new Float32Array(this.buffer, offset, n * 7);
+        offset += g1Bytes;
+      }
+      this.temperature = new Float32Array(this.buffer, offset, n);
+      offset += tempBytes;
+    }
+
+    if (hasWmles) {
+      this.wallShearStress = new Float32Array(this.buffer, offset, n);
+      offset += shearBytes;
     }
 
     this.initializeEquilibrium();
@@ -205,6 +261,22 @@ export class CfdFieldArena {
             this.f0[soaIdx] = feq;
             if (this.f1) {
               this.f1[soaIdx] = feq;
+            }
+          }
+
+          if (this.g0 && this.temperature) {
+            const tAmbient = this.config.thermal?.ambientTempK ?? 288.15;
+            const tWall = this.config.thermal?.wallTempK ?? tAmbient;
+            const tCell = this.cellTypes[idx] === LbmCellType.ObstacleSolid ? tWall : tAmbient;
+            this.temperature[idx] = tCell;
+            for (let q = 0; q < 7; q++) {
+              const cu = D3Q7_CX[q]! * ux + D3Q7_CY[q]! * uy + D3Q7_CZ[q]! * uz;
+              const geq = D3Q7_WEIGHTS[q]! * tCell * (1.0 + 4.0 * cu);
+              const gSoaIdx = q * n + idx;
+              this.g0[gSoaIdx] = geq;
+              if (this.g1) {
+                this.g1[gSoaIdx] = geq;
+              }
             }
           }
         }

@@ -186,6 +186,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         localStorage.removeItem(USER_CACHE_KEY);
         localStorage.removeItem("user");
+        localStorage.removeItem("modelscript_notification_prefs");
       }
     } catch {
       // ignore storage errors
@@ -288,6 +289,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (document.visibilityState === "visible") {
         refreshUnreadCount();
         refreshAdminCount();
+        void refreshWallet();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -296,7 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [token, refreshUnreadCount, refreshAdminCount]);
+  }, [token, refreshUnreadCount, refreshAdminCount, refreshWallet]);
 
   useEffect(() => {
     const handleWalletUpdate = () => {
@@ -526,10 +528,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       void clearOfflineCache();
       try {
+        if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+          navigator.serviceWorker.controller?.postMessage({ type: "CLEAR_API_CACHE" });
+        }
+      } catch {
+        // ignore service worker messaging errors
+      }
+      try {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         localStorage.removeItem(USER_CACHE_KEY);
+        localStorage.removeItem("modelscript_notification_prefs");
       } catch {
         // ignore storage errors
       }

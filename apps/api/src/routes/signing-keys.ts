@@ -18,6 +18,44 @@ export function createSigningKeysRouter(database: LibraryDatabase): Router {
   const requireSigningScope = requireTokenScope("account:write", "signing:write");
 
   /**
+   * GET /api/v1/users/me/signing-keys
+   * Authenticated endpoint returning the current user's signing keys and strict signing policy.
+   */
+  router.get("/me/signing-keys", requireAuth, (req: Request, res: Response): void => {
+    const authUser = req.user!;
+    const user = database.getUserById(authUser.id);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const keys = database.getSigningKeysForUser(user.id, false);
+    const isVerified = Boolean(user.signing_verified && keys.length > 0);
+
+    res.json({
+      username: user.username,
+      signing_verified: isVerified,
+      signing_policy_strict: Boolean(user.signing_policy_strict),
+      keys: keys.map((k) => ({
+        id: k.id,
+        user_id: k.user_id,
+        fingerprint_sha256: k.fingerprint_sha256,
+        public_key_openssh: k.public_key_openssh,
+        public_key_multibase: k.public_key_multibase,
+        algo: k.algo,
+        label: k.label,
+        trust_level: k.trust_level,
+        created_at: k.created_at,
+        activated_at: k.activated_at,
+        revoked_at: k.revoked_at ?? null,
+        revocation_reason: k.revoked_reason ?? null,
+        prev_key_id: k.prev_key_id,
+        rotation_proof: k.rotation_proof,
+      })),
+    });
+  });
+
+  /**
    * GET /api/v1/users/:username/signing-keys
    * Public inspection endpoint for verified account keys & badge info.
    */

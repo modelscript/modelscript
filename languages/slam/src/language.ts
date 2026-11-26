@@ -19,6 +19,8 @@ export const slamLanguage = language({
   },
   errorCodes: SlamErrorCode,
 
+  conflicts: ($) => [[$["_OptArgValue"]!, $["Identifier"]!, $["StateRef"]!]],
+
   rules: {
     Model: ($) =>
       repeat(
@@ -42,9 +44,13 @@ export const slamLanguage = language({
         "GEN",
         ",",
         field("analyst", $["ArgToken"]!),
-        optional(seq(",", field("project", $["ArgToken"]!))),
-        optional(seq(",", $["ArgToken"]!)),
-        optional(seq(",", $["NumberLiteral"]!)),
+        optional(
+          seq(
+            ",",
+            field("project", $["ArgToken"]!),
+            optional(seq(",", $["ArgToken"]!, optional(seq(",", $["NumberLiteral"]!)))),
+          ),
+        ),
         optional(";"),
       ),
 
@@ -53,8 +59,9 @@ export const slamLanguage = language({
         "LIMITS",
         ",",
         field("mfil", $["NumberLiteral"]!),
-        optional(seq(",", field("matr", $["NumberLiteral"]!))),
-        optional(seq(",", field("mnentries", $["NumberLiteral"]!))),
+        optional(
+          seq(",", field("matr", $["NumberLiteral"]!), optional(seq(",", field("mnentries", $["NumberLiteral"]!)))),
+        ),
         optional(";"),
       ),
 
@@ -63,10 +70,11 @@ export const slamLanguage = language({
         "CONTINUOUS",
         ",",
         field("nneqd", $["NumberLiteral"]!),
-        optional(seq(",", field("nneqs", $["NumberLiteral"]!))),
-        repeat(seq(",", optional($["ArgValue"]!))),
+        optional(seq(",", field("nneqs", $["NumberLiteral"]!), repeat(seq(",", $["_OptArgValue"]!)))),
         optional(";"),
       ),
+
+    _OptArgValue: ($) => optional($["ArgValue"]!),
 
     IntlcStatement: ($) => seq("INTLC", ",", $["Assignment"]!, repeat(seq(",", $["Assignment"]!)), optional(";")),
 
@@ -106,37 +114,31 @@ export const slamLanguage = language({
         optional(";"),
       ),
 
-    CreateNode: ($) => seq("CREATE", repeat(seq(",", optional($["ArgValue"]!)))),
-    QueueNode: ($) =>
-      seq("QUEUE", optional(seq("(", $["NumberLiteral"]!, ")")), repeat(seq(",", optional($["ArgValue"]!)))),
+    CreateNode: ($) => seq("CREATE", repeat(seq(",", $["_OptArgValue"]!))),
+    QueueNode: ($) => seq("QUEUE", optional(seq("(", $["NumberLiteral"]!, ")")), repeat(seq(",", $["_OptArgValue"]!))),
     ActivityNode: ($) =>
-      seq(
-        choice("ACTIVITY", "ACT"),
-        optional(seq("/", $["NumberLiteral"]!)),
-        repeat(seq(",", optional($["ArgValue"]!))),
-      ),
+      seq(choice("ACTIVITY", "ACT"), optional(seq("/", $["NumberLiteral"]!)), repeat(seq(",", $["_OptArgValue"]!))),
     AssignNode: ($) => seq("ASSIGN", repeat(seq(",", choice($["Assignment"]!, $["NumberLiteral"]!)))),
-    AwaitNode: ($) =>
-      seq("AWAIT", optional(seq("(", $["NumberLiteral"]!, ")")), repeat(seq(",", optional($["ArgValue"]!)))),
-    FreeNode: ($) => seq("FREE", repeat(seq(",", optional($["ArgValue"]!)))),
+    AwaitNode: ($) => seq("AWAIT", optional(seq("(", $["NumberLiteral"]!, ")")), repeat(seq(",", $["_OptArgValue"]!))),
+    FreeNode: ($) => seq("FREE", repeat(seq(",", $["_OptArgValue"]!))),
     ResourceNode: ($) =>
       seq(
         "RESOURCE",
         optional(seq("/", $["Identifier"]!, optional(seq("(", $["NumberLiteral"]!, ")")))),
-        repeat(seq(",", optional($["ArgValue"]!))),
+        repeat(seq(",", $["_OptArgValue"]!)),
       ),
-    GateNode: ($) => seq("GATE", optional(seq("/", $["Identifier"]!)), repeat(seq(",", optional($["ArgValue"]!)))),
-    OpenNode: ($) => seq("OPEN", repeat(seq(",", optional($["ArgValue"]!)))),
-    CloseNode: ($) => seq("CLOSE", repeat(seq(",", optional($["ArgValue"]!)))),
-    ColctNode: ($) => seq("COLCT", repeat(seq(",", optional($["ArgValue"]!)))),
-    DetectNode: ($) => seq("DETECT", repeat(seq(",", optional($["ArgValue"]!)))),
+    GateNode: ($) => seq("GATE", optional(seq("/", $["Identifier"]!)), repeat(seq(",", $["_OptArgValue"]!))),
+    OpenNode: ($) => seq("OPEN", repeat(seq(",", $["_OptArgValue"]!))),
+    CloseNode: ($) => seq("CLOSE", repeat(seq(",", $["_OptArgValue"]!))),
+    ColctNode: ($) => seq("COLCT", repeat(seq(",", $["_OptArgValue"]!))),
+    DetectNode: ($) => seq("DETECT", repeat(seq(",", $["_OptArgValue"]!))),
     TerminateNode: ($) => seq(choice("TERMINATE", "TERM"), optional(seq(",", $["NumberLiteral"]!))),
 
     Assignment: ($) => seq(field("target", choice($["StateRef"]!, $["Identifier"]!)), "=", field("value", $["Expr"]!)),
 
     StateRef: ($) => seq(choice("DD", "SS", "XX", "ATRIB"), "(", $["NumberLiteral"]!, ")"),
 
-    ArgValue: ($) => choice($["Expr"]!, $["StringLiteral"]!, seq($["Identifier"]!, "/", $["NumberLiteral"]!)),
+    ArgValue: ($) => choice($["Expr"]!, $["StringLiteral"]!),
 
     ArgToken: ($) => choice($["StringLiteral"]!, $["Identifier"]!, $["NumberLiteral"]!),
 

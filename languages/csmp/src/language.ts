@@ -43,7 +43,7 @@ export const csmpLanguage = language({
         ),
       ),
 
-    TitleStmt: ($) => seq("TITLE", repeat(choice($["Identifier"]!, $["NumberLiteral"]!, "-", "/", ":", "."))),
+    TitleStmt: () => seq("TITLE", /[^\r\n]*/),
 
     SectionHeader: () => choice("INITIAL", "DYNAMIC", "TERMINAL"),
 

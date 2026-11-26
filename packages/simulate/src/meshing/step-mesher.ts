@@ -7,6 +7,17 @@ import { BoundaryLayerExtruder, type BoundaryLayerOptions, type ExtrusionResult 
 import { MeshQualityAnalyzer } from "./mesh-quality-analyzer.js";
 import { PatchClassifier, type ClassifiedPatches, type PatchClassificationRules } from "./patch-classifier.js";
 
+export interface NamedFacePatch {
+  /** Semantic patch name (e.g. from STEP ADVANCED_FACE or @modelscript/cad TaggedPatch). */
+  name: string;
+  /** Optional 0-based triangle indices into the input surface mesh's `indices` array. */
+  triangleIndices?: number[] | undefined;
+  /** Optional standalone surface patch vertices [x0, y0, z0, ...]. */
+  vertices?: Float32Array | number[] | undefined;
+  /** Optional standalone surface patch triangle indices [i0, i1, i2, ...]. */
+  indices?: Uint32Array | number[] | undefined;
+}
+
 export interface StepMesherOptions {
   /** Target resolution along the longest bounding box dimension. Default: 20. */
   resolution?: number | undefined;
@@ -21,6 +32,10 @@ export interface StepMesherOptions {
     | undefined;
   /** Patch classification rules for boundary conditions. */
   patchRules?: PatchClassificationRules | undefined;
+  /** Named face patches (from STEP ADVANCED_FACE or @modelscript/cad TaggedPatch) preserved on boundary faces. */
+  namedFacePatches?: NamedFacePatch[] | undefined;
+  /** Optional per-triangle face tag names (parallel to input surface triangles) preserved on boundary faces. */
+  faceTagNames?: (string | undefined)[] | undefined;
 }
 
 export interface MeshingPipelineResult {
@@ -39,6 +54,87 @@ export interface InpExportOptions {
   fixedPatch?: string | undefined; // default: 'FIXED_SUPPORT'
   loadPatch?: string | undefined; // default: 'LOAD_SURFACE'
   loadForceZ?: number | undefined; // default: -1000.0 N
+}
+
+/**
+ * Computes squared distance from point P to triangle (A, B, C) in 3D.
+ */
+function pointToTriangleDistSq(
+  px: number,
+  py: number,
+  pz: number,
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  cx: number,
+  cy: number,
+  cz: number,
+): number {
+  const abx = bx - ax,
+    aby = by - ay,
+    abz = bz - az;
+  const acx = cx - ax,
+    acy = cy - ay,
+    acz = cz - az;
+  const apx = px - ax,
+    apy = py - ay,
+    apz = pz - az;
+
+  const d1 = abx * apx + aby * apy + abz * apz;
+  const d2 = acx * apx + acy * apy + acz * apz;
+  if (d1 <= 0 && d2 <= 0) return apx * apx + apy * apy + apz * apz;
+
+  const bpx = px - bx,
+    bpy = py - by,
+    bpz = pz - bz;
+  const d3 = abx * bpx + aby * bpy + abz * bpz;
+  const d4 = acx * bpx + acy * bpy + acz * bpz;
+  if (d3 >= 0 && d4 <= d3) return bpx * bpx + bpy * bpy + bpz * bpz;
+
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+    const v = d1 / (d1 - d3);
+    const qx = ax + v * abx - px;
+    const qy = ay + v * aby - py;
+    const qz = az + v * abz - pz;
+    return qx * qx + qy * qy + qz * qz;
+  }
+
+  const cpx = px - cx,
+    cpy = py - cy,
+    cpz = pz - cz;
+  const d5 = abx * cpx + aby * cpy + abz * cpz;
+  const d6 = acx * cpx + acy * cpy + acz * cpz;
+  if (d6 >= 0 && d5 <= d6) return cpx * cpx + cpy * cpy + cpz * cpz;
+
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+    const w = d2 / (d2 - d6);
+    const qx = ax + w * acx - px;
+    const qy = ay + w * acy - py;
+    const qz = az + w * acz - pz;
+    return qx * qx + qy * qy + qz * qz;
+  }
+
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+    const w = (d4 - d3) / (d4 - d3 + (d5 - d6));
+    const qx = bx + w * (cx - bx) - px;
+    const qy = by + w * (cy - by) - py;
+    const qz = bz + w * (cz - bz) - pz;
+    return qx * qx + qy * qy + qz * qz;
+  }
+
+  const denom = 1.0 / (va + vb + vc);
+  const v = vb * denom;
+  const w = vc * denom;
+  const qx = ax + abx * v + acx * w - px;
+  const qy = ay + aby * v + acy * w - py;
+  const qz = az + abz * v + acz * w - pz;
+  return qx * qx + qy * qy + qz * qz;
 }
 
 /**
@@ -118,6 +214,146 @@ export class StepMesher {
 
     const patches = PatchClassifier.classify(mesh.nodeCoords, exteriorIndices, options.patchRules);
 
+    // 2b. Preserve explicit named face patches (STEP ADVANCED_FACE / @modelscript/cad TaggedPatch)
+    //     so they take precedence over AABB heuristics in PatchClassifier.
+    const refTris: Array<{
+      name: string;
+      ax: number;
+      ay: number;
+      az: number;
+      bx: number;
+      by: number;
+      bz: number;
+      cx: number;
+      cy: number;
+      cz: number;
+    }> = [];
+
+    const pushRefTri = (
+      name: string,
+      srcVerts: Float32Array | number[],
+      srcInds: Uint32Array | number[],
+      triIdx: number,
+    ) => {
+      const base = triIdx * 3;
+      if (base + 2 >= srcInds.length) return;
+      const i0 = srcInds[base]! * 3;
+      const i1 = srcInds[base + 1]! * 3;
+      const i2 = srcInds[base + 2]! * 3;
+      if (i0 + 2 >= srcVerts.length || i1 + 2 >= srcVerts.length || i2 + 2 >= srcVerts.length) return;
+      refTris.push({
+        name,
+        ax: srcVerts[i0]!,
+        ay: srcVerts[i0 + 1]!,
+        az: srcVerts[i0 + 2]!,
+        bx: srcVerts[i1]!,
+        by: srcVerts[i1 + 1]!,
+        bz: srcVerts[i1 + 2]!,
+        cx: srcVerts[i2]!,
+        cy: srcVerts[i2 + 1]!,
+        cz: srcVerts[i2 + 2]!,
+      });
+    };
+
+    if (options.namedFacePatches && options.namedFacePatches.length > 0) {
+      for (const patch of options.namedFacePatches) {
+        const cleanName = patch.name.trim();
+        if (!cleanName) continue;
+        if (patch.vertices && patch.indices) {
+          const numPatchTris = Math.floor(patch.indices.length / 3);
+          for (let t = 0; t < numPatchTris; t++) {
+            pushRefTri(cleanName, patch.vertices, patch.indices, t);
+          }
+        } else if (patch.triangleIndices && patch.triangleIndices.length > 0) {
+          for (const triIdx of patch.triangleIndices) {
+            pushRefTri(cleanName, vertices, indices, triIdx);
+          }
+        }
+      }
+    }
+
+    if (options.faceTagNames && options.faceTagNames.length > 0) {
+      for (let t = 0; t < options.faceTagNames.length; t++) {
+        const tagName = options.faceTagNames[t]?.trim();
+        if (tagName) {
+          pushRefTri(tagName, vertices, indices, t);
+        }
+      }
+    }
+
+    if (refTris.length > 0) {
+      const dims = patches.boundingBox.dimensions;
+      const maxDim = Math.max(dims[0], dims[1], dims[2], 1e-6);
+      const voxelSize = maxDim / Math.max(1, resolution);
+      const maxDistSq = voxelSize * 1.75 * (voxelSize * 1.75);
+
+      const rebuiltNodeSets = new Map<string, Set<number>>();
+      const rebuiltSurfaceTris = new Map<string, [number, number, number][]>();
+
+      const addRebuilt = (tag: string, n0: number, n1: number, n2: number) => {
+        let ns = rebuiltNodeSets.get(tag);
+        if (!ns) {
+          ns = new Set<number>();
+          rebuiltNodeSets.set(tag, ns);
+        }
+        ns.add(n0);
+        ns.add(n1);
+        ns.add(n2);
+        let tl = rebuiltSurfaceTris.get(tag);
+        if (!tl) {
+          tl = [];
+          rebuiltSurfaceTris.set(tag, tl);
+        }
+        tl.push([n0, n1, n2]);
+      };
+
+      for (const [fallbackTag, tris] of patches.surfaceTriangles.entries()) {
+        for (const [n0, n1, n2] of tris) {
+          const mx = (mesh.nodeCoords[n0 * 3]! + mesh.nodeCoords[n1 * 3]! + mesh.nodeCoords[n2 * 3]!) / 3;
+          const my = (mesh.nodeCoords[n0 * 3 + 1]! + mesh.nodeCoords[n1 * 3 + 1]! + mesh.nodeCoords[n2 * 3 + 1]!) / 3;
+          const mz = (mesh.nodeCoords[n0 * 3 + 2]! + mesh.nodeCoords[n1 * 3 + 2]! + mesh.nodeCoords[n2 * 3 + 2]!) / 3;
+
+          let bestDistSq = maxDistSq;
+          let matchedTag: string | undefined;
+          for (let r = 0; r < refTris.length; r++) {
+            const rt = refTris[r]!;
+            const dSq = pointToTriangleDistSq(
+              mx,
+              my,
+              mz,
+              rt.ax,
+              rt.ay,
+              rt.az,
+              rt.bx,
+              rt.by,
+              rt.bz,
+              rt.cx,
+              rt.cy,
+              rt.cz,
+            );
+            if (dSq <= bestDistSq) {
+              bestDistSq = dSq;
+              matchedTag = rt.name;
+            }
+          }
+
+          addRebuilt(matchedTag ?? fallbackTag, n0, n1, n2);
+        }
+      }
+
+      patches.nodeSets.clear();
+      for (const [name, set] of rebuiltNodeSets.entries()) {
+        patches.nodeSets.set(
+          name,
+          Array.from(set).sort((a, b) => a - b),
+        );
+      }
+      patches.surfaceTriangles.clear();
+      for (const [name, tris] of rebuiltSurfaceTris.entries()) {
+        patches.surfaceTriangles.set(name, tris);
+      }
+    }
+
     // Populate boundary nodes on the resulting Tet4Mesh
     for (const [name, nodeIdxs] of patches.nodeSets) {
       mesh.boundaryNodes.set(name, nodeIdxs);
@@ -176,17 +412,32 @@ export class StepMesher {
    * Meshes a STEP buffer or procedural CAD geometry into volumetric tetrahedra.
    */
   public static meshStepToTetrahedra(
-    stepInput: Uint8Array | string | { vertices: Float32Array | number[]; indices: Uint32Array | number[] },
+    stepInput:
+      | Uint8Array
+      | string
+      | {
+          vertices: Float32Array | number[];
+          indices: Uint32Array | number[];
+          namedFacePatches?: NamedFacePatch[] | undefined;
+        },
     options: StepMesherOptions = {},
   ): MeshingPipelineResult {
     // If surface arrays are passed directly
     if (typeof stepInput === "object" && "vertices" in stepInput && "indices" in stepInput) {
-      return StepMesher.meshSurfaceToTetrahedra(stepInput.vertices, stepInput.indices, options);
+      const mergedOptions: StepMesherOptions =
+        stepInput.namedFacePatches && !options.namedFacePatches
+          ? { ...options, namedFacePatches: stepInput.namedFacePatches }
+          : options;
+      return StepMesher.meshSurfaceToTetrahedra(stepInput.vertices, stepInput.indices, mergedOptions);
     }
 
     // Otherwise extract or synthesize surface triangulation from STEP data
     const surface = StepMesher.extractSurfaceFromStep(stepInput);
-    return StepMesher.meshSurfaceToTetrahedra(surface.vertices, surface.indices, options);
+    const mergedOptions: StepMesherOptions =
+      surface.namedFacePatches && !options.namedFacePatches
+        ? { ...options, namedFacePatches: surface.namedFacePatches }
+        : options;
+    return StepMesher.meshSurfaceToTetrahedra(surface.vertices, surface.indices, mergedOptions);
   }
 
   /**
@@ -195,6 +446,7 @@ export class StepMesher {
   public static extractSurfaceFromStep(stepInput: Uint8Array | string): {
     vertices: Float32Array;
     indices: Uint32Array;
+    namedFacePatches?: NamedFacePatch[] | undefined;
   } {
     const text = typeof stepInput === "string" ? stepInput : new TextDecoder().decode(stepInput);
 
@@ -713,11 +965,28 @@ export class StepMesher {
       }
     };
 
+    const namedFaceTriangles = new Map<string, number[]>();
+    const recordFaceName = (rawName: string, triStart: number) => {
+      const clean = rawName.trim();
+      if (!clean) return;
+      const triEnd = Math.floor(triIndices.length / 3);
+      if (triEnd <= triStart) return;
+      let list = namedFaceTriangles.get(clean);
+      if (!list) {
+        list = [];
+        namedFaceTriangles.set(clean, list);
+      }
+      for (let t = triStart; t < triEnd; t++) {
+        list.push(t);
+      }
+    };
+
     const afRegex =
-      /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'[^'\r\n]*'\s*,\s*\(([^()]*)\)\s*(?:,\s*#(\d+))?/gi;
+      /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\s*\(\s*'([^'\r\n]*)'\s*,\s*\(([^()]*)\)\s*(?:,\s*#(\d+))?/gi;
     while ((m = afRegex.exec(text)) !== null) {
-      const boundIds = Array.from(m[2]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
-      const surfId = m[3] ? parseInt(m[3], 10) : undefined;
+      const faceName = m[2] ?? "";
+      const boundIds = Array.from(m[3]!.matchAll(/#(\d+)/g), (r) => parseInt(r[1]!, 10));
+      const surfId = m[4] ? parseInt(m[4], 10) : undefined;
       const surfInfo = surfId !== undefined ? surfaceTypes.get(surfId) : undefined;
       const isCurvedRevolution = surfInfo?.kind === "CYLINDRICAL_SURFACE" || surfInfo?.kind === "CONICAL_SURFACE";
 
@@ -739,11 +1008,14 @@ export class StepMesher {
 
       if (sampledBounds.length === 0) continue;
 
+      const triStart = Math.floor(triIndices.length / 3);
+
       if (isCurvedRevolution) {
         // Case 1: 1 loop containing 2 circular arc rims connected by seam edges
         if (sampledBounds.length === 1 && sampledBounds[0]!.arcChains.length >= 2) {
           bridgeTwoArcChains(sampledBounds[0]!.arcChains[0]!, sampledBounds[0]!.arcChains[1]!);
           faces.push(sampledBounds[0]!.points);
+          recordFaceName(faceName, triStart);
           continue;
         }
         // Case 2: 2 separate circular bound loops (top rim & bottom rim without seam edge)
@@ -752,6 +1024,7 @@ export class StepMesher {
           const rimB = sampledBounds[1]!.arcChains[0] ?? [...sampledBounds[1]!.points, sampledBounds[1]!.points[0]!];
           bridgeTwoArcChains(rimA, rimB);
           faces.push(sampledBounds[0]!.points);
+          recordFaceName(faceName, triStart);
           continue;
         }
       }
@@ -762,12 +1035,21 @@ export class StepMesher {
       const holes = sampledBounds.filter((_, idx) => idx !== (outerIdx >= 0 ? outerIdx : 0)).map((b) => b.points);
       triangulatePlanarWithHoles(outer.points, holes);
       faces.push(outer.points);
+      recordFaceName(faceName, triStart);
     }
 
     if (faces.length >= 1 && triIndices.length >= 3 && ptIdToVertexIdx.size >= 3) {
+      const namedFacePatches: NamedFacePatch[] | undefined =
+        namedFaceTriangles.size > 0
+          ? Array.from(namedFaceTriangles.entries()).map(([name, triangleIndices]) => ({
+              name,
+              triangleIndices,
+            }))
+          : undefined;
       return {
         vertices: new Float32Array(vertCoords),
         indices: new Uint32Array(triIndices),
+        namedFacePatches,
       };
     }
 

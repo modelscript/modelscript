@@ -17,6 +17,7 @@ export const atopileLanguage = language({
     folding: ["BlockDef"],
     outline: ["BlockDef", "ImportStmt", "InstanceStmt"],
   },
+  conflicts: atopileGrammar.conflicts,
   rules: atopileGrammar.rules,
   ui: {
     stencils: [

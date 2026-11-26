@@ -15,6 +15,10 @@ export const atopileGrammar = language({
     folding: ["BlockDef"],
     outline: ["BlockDef", "ImportStmt", "InstanceStmt"],
   },
+  conflicts: ($) => [
+    [$.InstanceStmt, $.QualifiedRef],
+    [$._OptionalUnit, $.Identifier],
+  ],
   rules: {
     File: ($) => repeat(choice($.ImportStmt, $.BlockDef, $.Statement, $.Comment)),
 
@@ -68,14 +72,16 @@ export const atopileGrammar = language({
 
     QualifiedRef: ($) => seq($.Identifier, repeat(seq(".", choice($.Identifier, $.NumberLiteral)))),
 
+    _OptionalUnit: ($) => optional($.Identifier),
+
     PhysicalValue: ($) =>
       seq(
         $.NumberLiteral,
-        optional($.Identifier),
+        $._OptionalUnit,
         optional(
           choice(
             seq("+/-", $.NumberLiteral, optional("%")),
-            seq(semanticToken("keyword", "to"), $.NumberLiteral, optional($.Identifier)),
+            seq(semanticToken("keyword", "to"), $.NumberLiteral, $._OptionalUnit),
           ),
         ),
       ),

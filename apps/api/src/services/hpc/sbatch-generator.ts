@@ -22,11 +22,96 @@ export function isValidEnvKey(key: string): boolean {
 }
 
 /**
+ * Dangerous environment variables that can hijack dynamic linkers, shells, or runtimes.
+ */
+const BLOCKED_USER_ENV_KEYS = new Set([
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "LD_AUDIT",
+  "LD_DEBUG",
+  "LD_PROFILE",
+  "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "DYLD_FRAMEWORK_PATH",
+  "BASH_ENV",
+  "ENV",
+  "PROMPT_COMMAND",
+  "SHELLOPTS",
+  "BASHOPTS",
+  "PS4",
+  "PATH",
+  "HOME",
+  "SHELL",
+  "IFS",
+  "CDPATH",
+  "GLOBIGNORE",
+  "TMPDIR",
+  "PYTHONPATH",
+  "PYTHONSTARTUP",
+  "PYTHONHOME",
+  "NODE_OPTIONS",
+  "NODE_EXTRA_CA_CERTS",
+  "PERL5OPT",
+  "PERL5LIB",
+  "RUBYOPT",
+  "RUBYLIB",
+  "JAVA_TOOL_OPTIONS",
+  "_JAVA_OPTIONS",
+  "CLASSPATH",
+  "GOPATH",
+  "GIT_SSH_COMMAND",
+  "GIT_EXEC_PATH",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "JWT_SECRET",
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "AWS_SECRET_ACCESS_KEY",
+  "S3_SECRET_KEY",
+  "TURNSTILE_SECRET_KEY",
+  "GITLAB_TOKEN",
+  "GITHUB_TOKEN",
+  "OPENAI_API_KEY",
+  "GEMINI_API_KEY",
+  "SLURM_JWT_TOKEN",
+  "OIDC_CLIENT_SECRET",
+  "SMTP_PASSWORD",
+  "AUDIT_HMAC_SECRET",
+  "TOTP_ENCRYPTION_KEY",
+  "CLOUDFLARE_TUNNEL_TOKEN",
+]);
+
+const SENSITIVE_ENV_KEY_PATTERN = /_(SECRET|TOKEN|PASSWORD|PRIVATE_KEY|API_KEY|ENCRYPTION_KEY)$/i;
+
+/**
+ * Sanitizes user-supplied environment variables across all HPC drivers,
+ * blocking linker/shell/runtime hijack variables, BASH_FUNC_*, and invalid keys.
+ */
+export function sanitizeUserEnv(env?: Record<string, string> | undefined): Record<string, string> {
+  const safe: Record<string, string> = {};
+  if (!env || typeof env !== "object") return safe;
+
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value !== "string") continue;
+    if (!isValidEnvKey(key)) continue;
+    const upper = key.toUpperCase();
+    if (upper.startsWith("BASH_FUNC_")) continue;
+    if (BLOCKED_USER_ENV_KEYS.has(upper)) continue;
+    if (SENSITIVE_ENV_KEY_PATTERN.test(upper)) continue;
+    // Strip NUL bytes from values
+    safe[key] = value.replace(/\0/g, "");
+  }
+
+  return safe;
+}
+
+/**
  * Escapes a string for safe inclusion inside bash double quotes (`"..."`),
- * neutralizing `$`, `` ` ``, `"`, `\`, and newlines.
+ * neutralizing `$`, `` ` ``, `"`, `\`, NUL bytes, and newlines.
  */
 export function escapeBashDoubleQuoted(value: string): string {
   return value
+    .replace(/\0/g, "")
     .replace(/[\r\n]+/g, " ")
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')
@@ -35,15 +120,16 @@ export function escapeBashDoubleQuoted(value: string): string {
 }
 
 /**
- * Safely quotes a shell argument if it contains whitespace or shell metacharacters.
+ * Safely quotes a shell argument using POSIX single-quote escaping (`'` -> `'\''`),
+ * stripping NUL bytes and normalizing newlines.
  */
 export function quoteShellArg(arg: string): string {
-  const clean = arg.replace(/[\r\n]+/g, " ");
-  if (clean.length === 0) return '""';
-  if (/[\s"'$`\\;&|<>()*?#!~{}]/.test(clean)) {
-    return `"${escapeBashDoubleQuoted(clean)}"`;
+  const clean = arg.replace(/\0/g, "").replace(/[\r\n]+/g, " ");
+  if (clean.length === 0) return "''";
+  if (/^[a-zA-Z0-9._:/@=-]+$/.test(clean)) {
+    return clean;
   }
-  return clean;
+  return `'${clean.replace(/'/g, "'\\''")}'`;
 }
 
 /**
@@ -106,11 +192,9 @@ export function generateSbatchScript(spec: HpcJobSpec, stagingManifest?: JobStag
     lines.push('export MODELSCRIPT_EMT_RINGBUF_SHM="1"');
   }
 
-  if (spec.env) {
-    for (const [key, value] of Object.entries(spec.env)) {
-      if (!isValidEnvKey(key) || value === undefined) continue;
-      lines.push(`export ${key}="${escapeBashDoubleQuoted(String(value))}"`);
-    }
+  const safeEnv = sanitizeUserEnv(spec.env);
+  for (const [key, value] of Object.entries(safeEnv)) {
+    lines.push(`export ${key}="${escapeBashDoubleQuoted(value)}"`);
   }
 
   if (spec.modules && spec.modules.length > 0) {

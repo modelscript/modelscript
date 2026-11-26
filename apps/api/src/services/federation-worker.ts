@@ -5,7 +5,34 @@ import type { LibraryDatabase } from "../database.js";
 import { computeFollowersSyncDigest, sendSignedRequest } from "../util/activitypub-crypto.js";
 import { isOfacSanctioned } from "../util/compliance.js";
 import { isFederationDisabled } from "../util/tier-presets.js";
+import {
+  getDefaultDatasetSigningKeyPair,
+  signDatasetManifestEd25519,
+  type DatasetManifestPayload,
+  type SignDatasetManifestOptions,
+  type SignedDatasetManifest,
+} from "./federated-diskann.js";
 import { locationService } from "./location.js";
+
+export interface BroadcastDatasetManifestInput extends DatasetManifestPayload {
+  tenantScope?: string | undefined;
+  aiGovernance?: { tenantScope?: string | undefined } | undefined;
+}
+
+export interface BroadcastDatasetManifestOptions {
+  /** Optional additional peer base URLs or inbox URLs to target alongside discovered peers. */
+  peerUrls?: string[] | undefined;
+  /** Optional Ed25519 signing options (defaults to the node's default dataset signing keypair). */
+  signing?: SignDatasetManifestOptions | undefined;
+}
+
+export interface DatasetManifestBroadcastResult {
+  enqueued: number;
+  targetDomains: string[];
+  activityId?: string | undefined;
+  signedManifest?: SignedDatasetManifest | undefined;
+  skippedReason?: string | undefined;
+}
 
 const SANCTIONED_TLDS: Record<string, string> = {
   ".ru": "RU",
@@ -329,5 +356,172 @@ export class FederationWorker {
       });
     }
     return enqueued;
+  }
+
+  /**
+   * Signs a public dataset/recipe manifest (`dataset-pretrain`, `dataset-posttrain`, or `training-recipe`)
+   * with Ed25519 (`eddsa-jcs-2022`) and enqueues/delivers a federated ActivityPub `Create` / `DatasetAnnouncement`
+   * payload to known peer instances (best-effort, non-blocking).
+   *
+   * SECURITY INVARIANT:
+   *   Strictly refuses any non-public manifest (`tenantScope !== "public"`).
+   */
+  public broadcastSignedDatasetManifest(
+    manifest: BroadcastDatasetManifestInput,
+    options?: BroadcastDatasetManifestOptions,
+  ): DatasetManifestBroadcastResult {
+    const effectiveScope = manifest?.tenantScope ?? manifest?.aiGovernance?.tenantScope;
+    if (effectiveScope !== "public") {
+      throw new Error(
+        `Refusing to broadcast non-public dataset manifest (tenantScope='${String(effectiveScope ?? "unspecified")}'; must be 'public').`,
+      );
+    }
+
+    try {
+      if (isFederationDisabled(this.db.getInstanceSettings())) {
+        return { enqueued: 0, targetDomains: [], skippedReason: "federation-disabled" };
+      }
+    } catch {
+      if (isFederationDisabled()) {
+        return { enqueued: 0, targetDomains: [], skippedReason: "federation-disabled" };
+      }
+    }
+
+    const publicUrl = (process.env["PUBLIC_URL"] || "https://hub.modelscript.org").replace(/\/+$/, "");
+    let localHost = "";
+    try {
+      localHost = new URL(publicUrl).hostname.toLowerCase();
+    } catch {
+      localHost = "";
+    }
+
+    const defaultKeyPair = getDefaultDatasetSigningKeyPair();
+    const signingOpts: SignDatasetManifestOptions = {
+      privateKeyPem: options?.signing?.privateKeyPem ?? defaultKeyPair.privateKeyPem,
+      verificationMethod:
+        options?.signing?.verificationMethod ?? `${publicUrl}/actor#${defaultKeyPair.publicKeyMultibase}`,
+      ...(options?.signing?.created ? { created: options.signing.created } : {}),
+    };
+
+    const payloadToSign: DatasetManifestPayload = {
+      ...manifest,
+      tenantScope: "public",
+      originInstance: manifest.originInstance || publicUrl,
+    };
+    const signedManifest = signDatasetManifestEd25519(payloadToSign, signingOpts);
+
+    const published = signedManifest.proof.created;
+    const objectId = `${publicUrl}/datasets/${encodeURIComponent(signedManifest.manifest.recipeName)}/${encodeURIComponent(signedManifest.manifest.recipeVersion)}#${signedManifest.proof.payloadSha256.slice(0, 16)}`;
+    const activityId = `${objectId}/announce-${Date.now()}`;
+
+    const activity: Record<string, unknown> = {
+      "@context": ["https://www.w3.org/ns/activitystreams", "https://w3id.org/security/data-integrity/v2"],
+      id: activityId,
+      type: "Create",
+      actor: `${publicUrl}/actor`,
+      published,
+      to: ["https://www.w3.org/ns/activitystreams#Public"],
+      object: {
+        id: objectId,
+        type: "DatasetAnnouncement",
+        attributedTo: `${publicUrl}/actor`,
+        published,
+        datasetKind: signedManifest.manifest.datasetKind,
+        recipeName: signedManifest.manifest.recipeName,
+        recipeVersion: signedManifest.manifest.recipeVersion,
+        originInstance: signedManifest.manifest.originInstance ?? publicUrl,
+        tenantScope: "public",
+        manifest: signedManifest.manifest,
+        proof: signedManifest.proof,
+      },
+    };
+
+    // Deduplicate peer inboxes by normalized domain across explicit peers, federated DiskANN peers, relays, and known remote actors
+    const domainInboxes = new Map<string, string>();
+    const registerPeerTarget = (rawUrl: string, explicitDomain?: string | undefined) => {
+      const trimmed = rawUrl.trim();
+      if (!trimmed) return;
+      try {
+        const parsed = new URL(trimmed);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+        const domain = (explicitDomain || parsed.hostname).toLowerCase().trim();
+        if (!domain || (localHost && domain === localHost)) return;
+        if (domainInboxes.has(domain)) return;
+        const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+        const inboxUrl = normalizedPath.endsWith("/inbox")
+          ? `${parsed.origin}${normalizedPath}`
+          : `${parsed.origin}${normalizedPath}/inbox`;
+        domainInboxes.set(domain, inboxUrl);
+      } catch {
+        // Ignore malformed peer URL
+      }
+    };
+
+    if (Array.isArray(options?.peerUrls)) {
+      for (const peerUrl of options.peerUrls) {
+        if (typeof peerUrl === "string") {
+          registerPeerTarget(peerUrl);
+        }
+      }
+    }
+
+    try {
+      const peerRows = this.db.db
+        .prepare(`SELECT peer_url FROM federated_memory_peers WHERE enabled = 1 ORDER BY added_at ASC`)
+        .all() as { peer_url: string }[];
+      for (const row of peerRows) {
+        registerPeerTarget(row.peer_url);
+      }
+    } catch {
+      // federated_memory_peers table may not be initialized yet
+    }
+
+    try {
+      const relays = this.db.listFederationRelays().filter((r) => r.state === "accepted");
+      for (const relay of relays) {
+        registerPeerTarget(relay.inbox_url, relay.domain || undefined);
+      }
+    } catch {
+      // Relay table lookup is best-effort
+    }
+
+    try {
+      const remoteInstances = this.db.db
+        .prepare(
+          `SELECT DISTINCT COALESCE(shared_inbox_url, inbox_url) AS inbox_url, remote_domain
+           FROM users
+           WHERE remote_domain IS NOT NULL AND COALESCE(shared_inbox_url, inbox_url) IS NOT NULL`,
+        )
+        .all() as { inbox_url: string; remote_domain: string }[];
+      for (const inst of remoteInstances) {
+        registerPeerTarget(inst.inbox_url, inst.remote_domain);
+      }
+    } catch {
+      // Remote user instance lookup is best-effort
+    }
+
+    let enqueued = 0;
+    const targetDomains: string[] = [];
+    for (const [domain, inboxUrl] of domainInboxes.entries()) {
+      const res = this.db.enqueueFederationDelivery("Create", activityId, activity, inboxUrl, domain);
+      if (!res.skipped) {
+        enqueued++;
+        targetDomains.push(domain);
+      }
+    }
+
+    // Trigger queue processing asynchronously outside of tests (best-effort, non-blocking)
+    if (enqueued > 0 && process.env["NODE_ENV"] !== "test") {
+      void this.processQueue().catch((err) => {
+        console.error("[FederationWorker] Error processing signed dataset manifest broadcast queue:", err);
+      });
+    }
+
+    return {
+      enqueued,
+      targetDomains,
+      activityId,
+      signedManifest,
+    };
   }
 }

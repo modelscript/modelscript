@@ -36,6 +36,32 @@ export const scaleDeckGrammar = language({
       "OrigenCaseBlock",
     ],
   },
+  conflicts: ($) => [
+    [$._KeyIdent, $.ValueAtom],
+    [$._KeyIdent, $.OrigenStatement],
+    [$._OptBraceBlock, $.BraceBlock],
+    [
+      $.KenoUnitBlock,
+      $.CylinderKw,
+      $.SphereKw,
+      $.CuboidKw,
+      $.HexprismKw,
+      $.MediaKw,
+      $.HoleKw,
+      $.ArrayKw,
+      $.BoundaryKw,
+      $.ValueAtom,
+      $.NumberLiteral,
+      $.StringLiteral,
+      $.Identifier,
+      $.PowerKw,
+      $.FluxKw,
+      $.TimeKw,
+      $.LibKw,
+      $.MatKw,
+      $.SaveKw,
+    ],
+  ],
   rules: {
     Deck: ($) => repeat($.DeckItem),
 
@@ -149,27 +175,27 @@ export const scaleDeckGrammar = language({
         seq(semanticToken("keyword", $.TimeKw), $.BraceBlock),
         seq(semanticToken("keyword", $.PowerKw), "=", $.BracketList),
         seq(semanticToken("keyword", $.FluxKw), "=", $.BracketList),
-        seq(semanticToken("keyword", $.SaveKw), optional($.BraceBlock)),
+        seq(semanticToken("keyword", $.SaveKw), $._OptBraceBlock),
         $.KeyValuePair,
         $.BraceBlock,
         $.BracketList,
         $.ValueAtom,
       ),
 
+    _OptBraceBlock: ($) => optional($.BraceBlock),
+
     BraceBlock: ($) => seq("{", repeat(choice($.KeyValuePair, $.BraceBlock, $.BracketList, $.ValueAtom)), "}"),
 
-    BracketList: ($) => seq("[", repeat(choice($.KeyValuePair, $.ValueAtom, ",")), "]"),
+    BracketList: ($) => seq("[", repeat(choice($.KeyValuePair, $.ValueAtom)), "]"),
 
     EndStatement: ($) => semanticToken("keyword", $.EndKw),
 
     BlockAtom: ($) => choice($.KeyValuePair, $.BraceBlock, $.BracketList, $.ValueAtom),
 
+    _KeyIdent: ($) => choice($.Identifier, $.PowerKw, $.FluxKw, $.TimeKw, $.LibKw, $.MatKw, $.SaveKw),
+
     KeyValuePair: ($) =>
-      seq(
-        field("key", choice($.Identifier, $.PowerKw, $.FluxKw, $.TimeKw, $.LibKw, $.MatKw, $.SaveKw)),
-        "=",
-        field("value", choice($.BracketList, $.BraceBlock, $.ValueAtom)),
-      ),
+      seq(field("key", $._KeyIdent), "=", field("value", choice($.BracketList, $.BraceBlock, $.ValueAtom))),
 
     GenericLineToken: ($) => choice($.KeyValuePair, $.ValueAtom),
 

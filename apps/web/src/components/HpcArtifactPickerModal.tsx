@@ -109,6 +109,9 @@ interface HpcArtifactPickerModalProps {
 export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ isOpen, onClose, onSelect }) => {
   const [jobs, setJobs] = useState<HpcJobSummary[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [search, setSearch] = useState("");
   const [solverFilter, setSolverFilter] = useState("all");
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
@@ -116,24 +119,54 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
   const [attaching, setAttaching] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      setLoading(true);
-      getUserHpcJobs(30)
-        .then((data) => {
-          setJobs(data);
-          if (data.length > 0) {
-            setSelectedJobId((prev) => (prev === null ? data[0]!.id : prev));
-          }
-        })
-        .finally(() => setLoading(false));
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    let active = true;
+    setLoading(true);
+    setLoadError(null);
+    setAttachError(null);
+
+    getUserHpcJobs(30)
+      .then((data) => {
+        if (!active) return;
+        setJobs(data);
+        if (data.length > 0) {
+          setSelectedJobId((prev) => (prev === null ? data[0]!.id : prev));
+        }
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        const axiosErr = err as {
+          response?: { status?: number; data?: { error?: string; message?: string } };
+          message?: string;
+        };
+        const status = axiosErr.response?.status;
+        if (status === 401 || status === 403) {
+          setLoadError("Please sign in to view your completed HPC simulation jobs.");
+        } else {
+          setLoadError(
+            axiosErr.response?.data?.error ||
+              axiosErr.response?.data?.message ||
+              axiosErr.message ||
+              "Failed to load HPC simulation jobs.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, reloadNonce]);
 
   const filteredJobs = useMemo(() => {
+    const q = search.toLowerCase();
     return jobs.filter((j) => {
-      const matchSearch =
-        j.name.toLowerCase().includes(search.toLowerCase()) || j.solver.toLowerCase().includes(search.toLowerCase());
-      const matchSolver = solverFilter === "all" || j.solver.toLowerCase() === solverFilter.toLowerCase();
+      const name = (j.name || "").toLowerCase();
+      const solver = (j.solver || "").toLowerCase();
+      const matchSearch = name.includes(q) || solver.includes(q);
+      const matchSolver = solverFilter === "all" || solver === solverFilter.toLowerCase();
       return matchSearch && matchSolver;
     });
   }, [jobs, search, solverFilter]);
@@ -141,6 +174,7 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
   const handleAttach = async () => {
     if (!selectedJobId) return;
     setAttaching(true);
+    setAttachError(null);
     try {
       const selectedJob = jobs.find((j) => j.id === selectedJobId);
       const res = await createArtifactViewFromHpcJob(selectedJobId, {
@@ -149,8 +183,17 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
       });
       onSelect(res);
       onClose();
-    } catch (err) {
-      console.error("Failed to attach HPC artifact:", err);
+    } catch (err: unknown) {
+      const axiosErr = err as {
+        response?: { data?: { error?: string; message?: string } };
+        message?: string;
+      };
+      setAttachError(
+        axiosErr.response?.data?.error ||
+          axiosErr.response?.data?.message ||
+          axiosErr.message ||
+          "Failed to attach HPC artifact. Please try again.",
+      );
     } finally {
       setAttaching(false);
     }
@@ -185,7 +228,12 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
 
         <FilterPills>
           {["all", "calculix", "su2", "openfoam", "modelica"].map((filter) => (
-            <FilterPill key={filter} $active={solverFilter === filter} onClick={() => setSolverFilter(filter)}>
+            <FilterPill
+              key={filter}
+              type="button"
+              $active={solverFilter === filter}
+              onClick={() => setSolverFilter(filter)}
+            >
               {filter === "all"
                 ? "All Solvers"
                 : filter === "calculix"
@@ -199,10 +247,46 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
           ))}
         </FilterPills>
 
-        <JobListContainer>
+        {attachError && (
+          <Box
+            mx={4}
+            mb={2}
+            p={2}
+            borderRadius="8px"
+            bg="rgba(248, 81, 73, 0.1)"
+            border="1px solid var(--color-danger-fg, #f85149)"
+            color="var(--color-danger-fg, #f85149)"
+            fontSize="12.5px"
+            role="alert"
+          >
+            {attachError}
+          </Box>
+        )}
+
+        <JobListContainer role="listbox" aria-label="Completed HPC simulation jobs">
           {loading ? (
             <Box p={4} display="flex" justifyContent="center" color="var(--color-text-muted)">
               Loading your completed cluster jobs...
+            </Box>
+          ) : loadError ? (
+            <Box
+              p={4}
+              display="flex"
+              flexDirection="column"
+              alignItems="center"
+              gap={3}
+              borderRadius="10px"
+              bg="rgba(248, 81, 73, 0.08)"
+              border="1px solid var(--color-danger-fg, #f85149)"
+              style={{ textAlign: "center" }}
+              role="alert"
+            >
+              <span style={{ fontWeight: "600", fontSize: "14px", color: "var(--color-danger-fg, #f85149)" }}>
+                {loadError}
+              </span>
+              <Button variant="default" size="small" onClick={() => setReloadNonce((n) => n + 1)}>
+                Retry
+              </Button>
             </Box>
           ) : filteredJobs.length === 0 ? (
             <Box
@@ -223,8 +307,23 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
           ) : (
             filteredJobs.map((job) => {
               const isSelected = selectedJobId === job.id;
+              const costCredits = typeof job.costCredits === "number" ? job.costCredits : 0;
+              const cpuSeconds = typeof job.cpuSeconds === "number" ? job.cpuSeconds : 0;
               return (
-                <JobCard key={job.id} $selected={isSelected} onClick={() => setSelectedJobId(job.id)}>
+                <JobCard
+                  key={job.id}
+                  role="option"
+                  aria-selected={isSelected}
+                  tabIndex={0}
+                  $selected={isSelected}
+                  onClick={() => setSelectedJobId(job.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setSelectedJobId(job.id);
+                    }
+                  }}
+                >
                   <Box display="flex" justifyContent="space-between" alignItems="flex-start">
                     <Box display="flex" flexDirection="column" gap={1}>
                       <span style={{ fontWeight: "700", fontSize: "14px", color: "var(--color-text-primary)" }}>
@@ -238,7 +337,7 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
                       </span>
                     </Box>
                     <Box display="flex" gap={2} alignItems="center">
-                      <SolverBadge $solver={job.solver}>{job.solver}</SolverBadge>
+                      <SolverBadge $solver={job.solver || "modelica"}>{job.solver || "solver"}</SolverBadge>
                       {isSelected && <CheckCircleIcon size={18} fill="var(--ms-success)" />}
                     </Box>
                   </Box>
@@ -246,12 +345,12 @@ export const HpcArtifactPickerModal: React.FC<HpcArtifactPickerModalProps> = ({ 
                   {/* Badges & Metrics Row */}
                   <Box display="flex" flexWrap="wrap" gap={2} alignItems="center">
                     <ProfileChip>
-                      <CpuIcon size={12} /> {job.computeProfile}
+                      <CpuIcon size={12} /> {job.computeProfile || "standard"}
                     </ProfileChip>
                     <ProfileChip>
-                      <ZapIcon size={12} /> {job.costCredits.toFixed(2)} credits
+                      <ZapIcon size={12} /> {costCredits.toFixed(2)} credits
                     </ProfileChip>
-                    {job.cpuSeconds > 0 && <ProfileChip>⏱ {job.cpuSeconds.toFixed(1)}s wall clock</ProfileChip>}
+                    {cpuSeconds > 0 && <ProfileChip>⏱ {cpuSeconds.toFixed(1)}s wall clock</ProfileChip>}
                     {job.hasVtu && (
                       <ProfileChip style={{ color: "var(--ms-success)", borderColor: "rgba(63, 185, 80, 0.3)" }}>
                         <FlameIcon size={12} /> 3D VTU Ready

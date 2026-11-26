@@ -20,6 +20,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 # Apps & Enterprise Edition manifests
 COPY apps/api/package.json apps/api/
+COPY apps/blog/package.json apps/blog/
 COPY apps/cli/package.json apps/cli/
 COPY apps/docs/package.json apps/docs/
 COPY apps/ide/github-fs/package.json apps/ide/github-fs/
@@ -337,27 +338,30 @@ CMD ["node", "apps/api/dist/main.js"]
 FROM api-ee AS api
 
 # ==============================================================================
-# Web & Unified Documentation Portal (modelscript.org)
+# Web, Unified Documentation Portal (modelscript.org) & Blog (blog.modelscript.org)
 # ==============================================================================
 FROM deps AS build-web-false
 COPY scripts scripts
 COPY packages packages
 COPY languages languages
+COPY apps/blog apps/blog
 COPY apps/docs apps/docs
 COPY apps/web apps/web
-RUN npx nx run-many -t build --projects=@modelscript/web,@modelscript/docs
+RUN npx nx run-many -t build --projects=@modelscript/web,@modelscript/docs,@modelscript/blog
 
 
 FROM alpine:3.21 AS build-web-true
 WORKDIR /app
 COPY apps/web/dist apps/web/dist
 COPY apps/docs/docs/.vitepress/dist apps/docs/docs/.vitepress/dist
+COPY apps/blog/blog/.vitepress/dist apps/blog/blog/.vitepress/dist
 
 FROM build-web-${PREBUILT} AS build-web
 
 FROM nginx:alpine AS web
 COPY --from=build-web /app/apps/web/dist /usr/share/nginx/html
 COPY --from=build-web /app/apps/docs/docs/.vitepress/dist /usr/share/nginx/docs
+COPY --from=build-web /app/apps/blog/blog/.vitepress/dist /usr/share/nginx/blog
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \

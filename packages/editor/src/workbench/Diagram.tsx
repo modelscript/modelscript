@@ -23,7 +23,15 @@ import type { DiagramData } from "@modelscript/diagram/protocol";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Scissor3DViewport, SharedScissor3DHost, type Embedded3DPortalKind } from "./cad-viewer/SharedScissor3DHost";
+import { DiagramZonotopeOverlay } from "./panels/DiagramZonotopeOverlay";
 import { clearPlacement, movePlacementGhost } from "./placement";
+import type { AnsatzRelationalHypergraphRecord } from "./util/lsp-bridge";
+import type {
+  FaultGeneratorSpec,
+  LinearConstraintSpec,
+  ZonotopePendingOverride,
+  ZonotopeWorkbenchState,
+} from "./util/zonotope-workbench-state";
 
 export interface PinPlotSeriesInput {
   id: string;
@@ -175,6 +183,13 @@ interface DiagramEditorProps {
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
   onFetchArtifactBytes?: ((artifactUri: string) => Promise<Uint8Array | null>) | undefined;
   onTessellateStep?: ((artifactUri: string) => Promise<string | Uint8Array | null>) | undefined;
+  showZonotopeOverlay?: boolean | undefined;
+  zonotopeWorkbenchState?: ZonotopeWorkbenchState | undefined;
+  hypergraphRecord?: AnsatzRelationalHypergraphRecord | null | undefined;
+  onSelectZonotopeGroup?: ((groupId: number | null) => void) | undefined;
+  onAddZonotopeOverride?: ((override: ZonotopePendingOverride) => void) | undefined;
+  onAddZonotopeConstraint?: ((constraint: LinearConstraintSpec) => void) | undefined;
+  onToggleFaultGenerator?: ((spec: FaultGeneratorSpec) => void) | undefined;
 }
 
 type DiagramGraphInstance = {
@@ -374,6 +389,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     time: number | null;
     values: Record<string, number> | null;
   }>({ time: null, values: null });
+  const [zonotopeViewport, setZonotopeViewport] = useState<{ x: number; y: number; scale: number } | undefined>(
+    undefined,
+  );
 
   // Use a ref for props so callbacks in event listeners have access to latest props
   const propsRef = useRef(props);
@@ -381,7 +399,41 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     propsRef.current = props;
   }, [props]);
 
+  const syncZonotopeViewport = useCallback(() => {
+    if (!propsRef.current.showZonotopeOverlay) return;
+    const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
+    if (!g || typeof g.scale !== "function" || typeof g.translate !== "function") {
+      return;
+    }
+    const s = g.scale();
+    const t = g.translate();
+    if (
+      s &&
+      t &&
+      typeof s.sx === "number" &&
+      Number.isFinite(s.sx) &&
+      s.sx > 0 &&
+      typeof t.tx === "number" &&
+      Number.isFinite(t.tx) &&
+      typeof t.ty === "number" &&
+      Number.isFinite(t.ty)
+    ) {
+      setZonotopeViewport((prev) =>
+        prev && Math.abs(prev.x - t.tx) < 0.25 && Math.abs(prev.y - t.ty) < 0.25 && Math.abs(prev.scale - s.sx) < 0.001
+          ? prev
+          : { x: t.tx, y: t.ty, scale: s.sx },
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    if (props.showZonotopeOverlay) {
+      syncZonotopeViewport();
+    }
+  }, [props.showZonotopeOverlay, props.diagramData, syncZonotopeViewport]);
+
   const syncEmbeddedPortals = useCallback(() => {
+    syncZonotopeViewport();
     const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     if (!g || typeof g.computeEmbedded3DScissorRects !== "function") {
       setEmbeddedPortals((prev) => (prev.length === 0 ? prev : []));
@@ -412,7 +464,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         };
       });
     setEmbeddedPortals((prev) => (arePortalListsEqual(prev, next) ? prev : next));
-  }, []);
+  }, [syncZonotopeViewport]);
 
   const portalSyncRafRef = useRef<number | null>(null);
   const centerCellHaloTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1977,6 +2029,19 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             </div>
           );
         })}
+        {props.showZonotopeOverlay && props.zonotopeWorkbenchState && props.diagramData && (
+          <DiagramZonotopeOverlay
+            diagramData={props.diagramData}
+            hypergraphRecord={props.hypergraphRecord}
+            workbenchState={props.zonotopeWorkbenchState}
+            colorMode={props.theme === "vs-dark" ? "dark" : "light"}
+            viewportTransform={zonotopeViewport}
+            onSelectGroup={props.onSelectZonotopeGroup}
+            onAddOverride={props.onAddZonotopeOverride}
+            onAddConstraint={props.onAddZonotopeConstraint}
+            onToggleFaultGenerator={props.onToggleFaultGenerator}
+          />
+        )}
         {scrubbedPoint.time != null && (
           <div
             data-testid="diagram-time-scrub-hud"

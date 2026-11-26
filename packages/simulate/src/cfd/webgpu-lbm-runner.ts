@@ -7,10 +7,50 @@ import {
   D3Q19_CY as CY,
   D3Q19_CZ as CZ,
   D3Q19_OPP as OPP,
+  D3Q7_CX as TCX,
+  D3Q7_CY as TCY,
+  D3Q7_CZ as TCZ,
+  D3Q7_OPP as TOPP,
+  D3Q7_WEIGHTS as TW,
   D3Q19_WEIGHTS as W,
 } from "./cfd-arena.js";
 import { type LbmGridConfig, type LbmStepResult, LbmCellType } from "./lbm-types.js";
-import { LBM_D3Q19_WGSL } from "./shaders/lbm-d3q19.wgsl.js";
+import { LBM_D3Q19_WGSL, LBM_THERMAL_D3Q7_WGSL } from "./shaders/lbm-d3q19.wgsl.js";
+
+/**
+ * Solves Spalding's universal algebraic law-of-the-wall:
+ *   y+ = u+ + exp(-kappa * B) * (exp(kappa * u+) - 1 - ku - (ku)^2/2 - (ku)^3/6)
+ * for friction velocity u_tau via Newton-Raphson iterations.
+ */
+export function solveSpaldingUtau(uTan: number, yWall: number, nuPhys: number, kappa = 0.41, B = 5.2): number {
+  const uMag = Math.abs(uTan);
+  if (uMag < 1e-9 || yWall <= 0 || nuPhys <= 0) return 0;
+  // Initial guess from viscous sublayer / log-law blend
+  let uTau = Math.max(Math.sqrt((nuPhys * uMag) / yWall), uMag * 0.04);
+  const expNegKB = Math.exp(-kappa * B);
+
+  for (let iter = 0; iter < 5; iter++) {
+    const uPlus = uMag / Math.max(1e-9, uTau);
+    const yPlus = (uTau * yWall) / nuPhys;
+    const ku = Math.min(25.0, kappa * uPlus);
+    const expKu = Math.exp(ku);
+    const poly = 1.0 + ku + 0.5 * ku * ku + (ku * ku * ku) / 6.0;
+    const fVal = uPlus + expNegKB * (expKu - poly) - yPlus;
+
+    // df / duPlus = 1 + kappa * exp(-kB) * (exp(ku) - 1 - ku - (ku)^2/2)
+    const dfDuPlus = 1.0 + kappa * expNegKB * (expKu - (1.0 + ku + 0.5 * ku * ku));
+    // duPlus / duTau = -uPlus / uTau; dyPlus / duTau = yWall / nuPhys
+    const dfDuTau = dfDuPlus * (-uPlus / Math.max(1e-9, uTau)) - yWall / nuPhys;
+    if (Math.abs(dfDuTau) < 1e-12) break;
+    const next = uTau - fVal / dfDuTau;
+    if (next > 1e-9 && Number.isFinite(next)) {
+      uTau = next;
+    } else {
+      uTau *= 0.5;
+    }
+  }
+  return uTau;
+}
 
 /**
  * Lattice Boltzmann D3Q19 Fluid Simulator.
@@ -47,6 +87,13 @@ export class WebGPULbmRunner {
   private gpuDragOutputBuffer: GPUBuffer | null = null;
   private gpuBindGroup0: GPUBindGroup | null = null;
   private gpuBindGroup1: GPUBindGroup | null = null;
+  private gpuThermalPipeline: GPUComputePipeline | null = null;
+  private gpuThermalUniformBuffer: GPUBuffer | null = null;
+  private gpuGPingBuffer: GPUBuffer | null = null;
+  private gpuGPongBuffer: GPUBuffer | null = null;
+  private gpuTempBuffer: GPUBuffer | null = null;
+  private gpuThermalBindGroup0: GPUBindGroup | null = null;
+  private gpuThermalBindGroup1: GPUBindGroup | null = null;
   private gpuInitialized: boolean = false;
 
   public setMovingWallVelocity(vel: [number, number, number]): void {
@@ -104,8 +151,8 @@ export class WebGPULbmRunner {
       const q = 19;
       const fBytes = n * q * 4;
 
-      // 1. Uniform buffer
-      const uniformBufferSize = 80; // 20 * 4 bytes
+      // 1. Uniform buffer (24 * 4 = 96 bytes, 16-byte aligned)
+      const uniformBufferSize = 96;
       this.gpuUniformBuffer = device.createBuffer({
         label: "LBM Uniforms",
         size: uniformBufferSize,
@@ -155,10 +202,10 @@ export class WebGPULbmRunner {
         device.queue.writeBuffer(this.gpuDeltaWallBuffer, 0, this.arena.deltaWall as Float32Array<ArrayBuffer>);
       }
 
-      // 6. Drag output & macroscopic reduction storage buffer [Fx, Fy, Fz, maxVel, pDrop]
+      // 6. Drag output & macroscopic reduction storage buffer (fixed-point atomic<i32> [Fx, Fy, Fz] * 1e6)
       this.gpuDragOutputBuffer = device.createBuffer({
         label: "LBM Drag Output",
-        size: 32, // 8 * sizeof(f32)
+        size: 32, // 8 * sizeof(i32)
         usage: 0x0080 | 0x0004 | 0x0008, // STORAGE | COPY_SRC | COPY_DST
       });
 
@@ -190,6 +237,82 @@ export class WebGPULbmRunner {
         ],
       });
 
+      // 7. Optional Double-Distribution D3Q7 Thermal Compute Pipeline
+      if (this.config.thermal?.enabled) {
+        const thermalShaderModule = device.createShaderModule({
+          label: "LBM Thermal D3Q7 Compute Shader",
+          code: LBM_THERMAL_D3Q7_WGSL,
+        });
+
+        this.gpuThermalPipeline = device.createComputePipeline({
+          label: "LBM Thermal D3Q7 Compute Pipeline",
+          layout: "auto",
+          compute: { module: thermalShaderModule, entryPoint: "cs_lbm_thermal_step" },
+        });
+
+        // ThermalUniforms: 12 * 4 = 48 bytes (16-byte aligned)
+        this.gpuThermalUniformBuffer = device.createBuffer({
+          label: "LBM Thermal Uniforms",
+          size: 48,
+          usage: 0x0040 | 0x0008, // UNIFORM | COPY_DST
+        });
+
+        const gBytes = n * 7 * 4;
+        this.gpuGPingBuffer = device.createBuffer({
+          label: "LBM Thermal G Ping SoA",
+          size: gBytes,
+          usage: 0x0080 | 0x0008 | 0x0004, // STORAGE | COPY_DST | COPY_SRC
+        });
+        if (this.arena.g0) {
+          device.queue.writeBuffer(this.gpuGPingBuffer, 0, this.arena.g0 as Float32Array<ArrayBuffer>);
+        }
+
+        this.gpuGPongBuffer = device.createBuffer({
+          label: "LBM Thermal G Pong SoA",
+          size: gBytes,
+          usage: 0x0080 | 0x0008 | 0x0004, // STORAGE | COPY_DST | COPY_SRC
+        });
+        if (this.arena.g1) {
+          device.queue.writeBuffer(this.gpuGPongBuffer, 0, this.arena.g1 as Float32Array<ArrayBuffer>);
+        } else if (this.arena.g0) {
+          device.queue.writeBuffer(this.gpuGPongBuffer, 0, this.arena.g0 as Float32Array<ArrayBuffer>);
+        }
+
+        this.gpuTempBuffer = device.createBuffer({
+          label: "LBM Temperature Field",
+          size: n * 4,
+          usage: 0x0080 | 0x0004 | 0x0008, // STORAGE | COPY_SRC | COPY_DST
+        });
+        if (this.arena.temperature) {
+          device.queue.writeBuffer(this.gpuTempBuffer, 0, this.arena.temperature as Float32Array<ArrayBuffer>);
+        }
+
+        const thermalLayout = this.gpuThermalPipeline.getBindGroupLayout(0);
+        this.gpuThermalBindGroup0 = device.createBindGroup({
+          layout: thermalLayout,
+          entries: [
+            { binding: 0, resource: { buffer: this.gpuThermalUniformBuffer } },
+            { binding: 1, resource: { buffer: this.gpuCellTypesBuffer } },
+            { binding: 2, resource: { buffer: this.gpuMacroBuffer } },
+            { binding: 3, resource: { buffer: this.gpuGPingBuffer } },
+            { binding: 4, resource: { buffer: this.gpuGPongBuffer } },
+            { binding: 5, resource: { buffer: this.gpuTempBuffer } },
+          ],
+        });
+
+        this.gpuThermalBindGroup1 = device.createBindGroup({
+          layout: thermalLayout,
+          entries: [
+            { binding: 0, resource: { buffer: this.gpuThermalUniformBuffer } },
+            { binding: 1, resource: { buffer: this.gpuCellTypesBuffer } },
+            { binding: 2, resource: { buffer: this.gpuMacroBuffer } },
+            { binding: 3, resource: { buffer: this.gpuGPongBuffer } },
+            { binding: 4, resource: { buffer: this.gpuGPingBuffer } },
+            { binding: 5, resource: { buffer: this.gpuTempBuffer } },
+          ],
+        });
+      }
+
       this.gpuInitialized = true;
       return true;
     } catch {
@@ -212,10 +335,16 @@ export class WebGPULbmRunner {
     const { nx, ny, nz, dx, dt, tau, density } = this.config;
     const inletV = this.config.inletVelocity ?? [1.0, 0, 0];
     const cs = this.config.smagorinskyConstant ?? 0.14;
+    const turbModel = this.config.turbulenceModel ?? "laminar";
+    const useLES = turbModel === "smagorinsky_les" || turbModel === "dynamic_smagorinsky" || turbModel === "wmles";
+    const useWMLES = turbModel === "wmles";
+    const useRegularized = this.config.collisionOperator === "regularized";
+    const kappa = this.config.wallModel?.kappa ?? 0.41;
+    const lawOfWallB = this.config.wallModel?.lawOfWallB ?? 5.2;
     const device = this.gpuDevice!;
 
-    // Update uniform buffer
-    const uniformData = new ArrayBuffer(80);
+    // Update uniform buffer (24 * 4 = 96 bytes, 16-byte aligned)
+    const uniformData = new ArrayBuffer(96);
     const uViewU32 = new Uint32Array(uniformData);
     const uViewF32 = new Float32Array(uniformData);
 
@@ -231,16 +360,63 @@ export class WebGPULbmRunner {
     uViewF32[9] = inletV[1];
     uViewF32[10] = inletV[2];
     uViewF32[11] = cs * cs;
-    uViewU32[12] = this.config.turbulenceModel === "smagorinsky_les" ? 1 : 0;
+    uViewU32[12] = useLES ? 1 : 0;
     uViewU32[13] = this.config.curvedBoundary !== false && this.arena.deltaWall ? 1 : 0;
     uViewF32[14] = density;
     uViewF32[15] = this.movingWallVelocity[0];
     uViewF32[16] = this.movingWallVelocity[1];
     uViewF32[17] = this.movingWallVelocity[2];
     uViewU32[18] = this.currentPing ? 0 : 1;
-    uViewU32[19] = 0;
+    uViewU32[19] = useRegularized ? 1 : 0;
+    uViewU32[20] = useWMLES ? 1 : 0;
+    uViewF32[21] = kappa;
+    uViewF32[22] = lawOfWallB;
+    uViewU32[23] = 0;
 
     device.queue.writeBuffer(this.gpuUniformBuffer!, 0, uniformData);
+
+    const thermalCfg = this.config.thermal;
+    const useThermalGpu =
+      thermalCfg?.enabled === true &&
+      this.gpuThermalPipeline !== null &&
+      this.gpuThermalUniformBuffer !== null &&
+      this.gpuThermalBindGroup0 !== null &&
+      this.gpuThermalBindGroup1 !== null;
+
+    if (useThermalGpu && thermalCfg) {
+      const prandtl = Math.max(0.05, thermalCfg.prandtl ?? 0.71);
+      const tauT = Math.max(0.51, 0.5 + ((4.0 / 3.0) * Math.max(1e-4, tau - 0.5)) / prandtl);
+      const omegaT = 1.0 / tauT;
+      const tAmbient = thermalCfg.ambientTempK ?? 288.15;
+      const hasWallTemp = thermalCfg.wallTempK !== undefined;
+      const tWall = thermalCfg.wallTempK ?? tAmbient;
+      const nuPhys = (1.0 / 3.0) * Math.max(1e-4, tau - 0.5) * ((dx * dx) / dt);
+      const heatFluxDeltaT =
+        !hasWallTemp && thermalCfg.heatFluxW !== undefined
+          ? (thermalCfg.heatFluxW * dx) / Math.max(1e-3, density * 1005.0 * (nuPhys / prandtl))
+          : 0.0;
+
+      const thermalUniformData = new ArrayBuffer(48);
+      const tViewU32 = new Uint32Array(thermalUniformData);
+      const tViewF32 = new Float32Array(thermalUniformData);
+      tViewU32[0] = nx;
+      tViewU32[1] = ny;
+      tViewU32[2] = nz;
+      tViewU32[3] = this.totalCells;
+      tViewF32[4] = omegaT;
+      tViewF32[5] = dt;
+      tViewF32[6] = dx;
+      tViewF32[7] = tAmbient;
+      tViewF32[8] = tWall;
+      tViewF32[9] = heatFluxDeltaT;
+      tViewU32[10] = !hasWallTemp && thermalCfg.heatFluxW !== undefined ? 1 : 0;
+      tViewU32[11] = 0;
+
+      device.queue.writeBuffer(this.gpuThermalUniformBuffer!, 0, thermalUniformData);
+    }
+
+    // Zero fixed-point atomic drag buffer before dispatch
+    device.queue.writeBuffer(this.gpuDragOutputBuffer!, 0, new Int32Array(8));
 
     const workgroupsX = Math.ceil(nx / 8);
     const workgroupsY = Math.ceil(ny / 8);
@@ -253,20 +429,57 @@ export class WebGPULbmRunner {
       usage: 0x0001 | 0x0008, // MAP_READ | COPY_DST
     });
 
+    const dragBytes = 32;
+    const readbackDrag = device.createBuffer({
+      label: "LBM Drag Readback",
+      size: dragBytes,
+      usage: 0x0001 | 0x0008, // MAP_READ | COPY_DST
+    });
+
+    const tempBytes = this.totalCells * 4;
+    const readbackTemp =
+      useThermalGpu && this.gpuTempBuffer && this.arena.temperature
+        ? device.createBuffer({
+            label: "LBM Temperature Readback",
+            size: tempBytes,
+            usage: 0x0001 | 0x0008, // MAP_READ | COPY_DST
+          })
+        : null;
+
     const commandEncoder = device.createCommandEncoder();
+    const canClearPerStep = typeof commandEncoder.clearBuffer === "function";
     for (let s = 0; s < numSteps; s++) {
+      if (canClearPerStep) {
+        commandEncoder.clearBuffer(this.gpuDragOutputBuffer!, 0, dragBytes);
+      }
+
       const pass = commandEncoder.beginComputePass();
       pass.setPipeline(this.gpuPipeline!);
       pass.setBindGroup(0, this.currentPing ? this.gpuBindGroup0! : this.gpuBindGroup1!);
       pass.dispatchWorkgroups(workgroupsX, workgroupsY, workgroupsZ);
       pass.end();
+
+      if (useThermalGpu) {
+        const thermalPass = commandEncoder.beginComputePass();
+        thermalPass.setPipeline(this.gpuThermalPipeline!);
+        thermalPass.setBindGroup(0, this.currentPing ? this.gpuThermalBindGroup0! : this.gpuThermalBindGroup1!);
+        thermalPass.dispatchWorkgroups(workgroupsX, workgroupsY, workgroupsZ);
+        thermalPass.end();
+      }
+
       this.currentPing = !this.currentPing;
     }
 
     commandEncoder.copyBufferToBuffer(this.gpuMacroBuffer!, 0, readbackMacro, 0, macroBytes);
+    commandEncoder.copyBufferToBuffer(this.gpuDragOutputBuffer!, 0, readbackDrag, 0, dragBytes);
+    if (readbackTemp && this.gpuTempBuffer) {
+      commandEncoder.copyBufferToBuffer(this.gpuTempBuffer, 0, readbackTemp, 0, tempBytes);
+    }
     device.queue.submit([commandEncoder.finish()]);
 
-    // Read back macroFields [vx, vy, vz, rho] from GPU to CPU arrays
+    let gpuDragLat: [number, number, number] | null = null;
+
+    // Read back macroFields [vx, vy, vz, rho], fixed-point atomic drag, and optional temperature from GPU
     try {
       await readbackMacro.mapAsync(0x0001); // GPUMapMode.READ
       const macroData = new Float32Array(readbackMacro.getMappedRange());
@@ -278,11 +491,31 @@ export class WebGPULbmRunner {
         this.rho[i] = macroData[base + 3] ?? 1;
       }
       readbackMacro.unmap();
+
+      await readbackDrag.mapAsync(0x0001);
+      const dragI32 = new Int32Array(readbackDrag.getMappedRange());
+      const dragDiv = canClearPerStep ? 1e6 : 1e6 * Math.max(1, numSteps);
+      gpuDragLat = [(dragI32[0] ?? 0) / dragDiv, (dragI32[1] ?? 0) / dragDiv, (dragI32[2] ?? 0) / dragDiv];
+      readbackDrag.unmap();
+
+      if (readbackTemp && this.arena.temperature) {
+        await readbackTemp.mapAsync(0x0001);
+        const tempData = new Float32Array(readbackTemp.getMappedRange());
+        this.arena.temperature.set(tempData);
+        readbackTemp.unmap();
+      }
     } finally {
       readbackMacro.destroy();
+      readbackDrag.destroy();
+      readbackTemp?.destroy();
     }
 
-    return this.step(0); // compute summary metrics from updated macro fields
+    const result = this.step(0); // compute summary metrics from updated macro fields
+    if (numSteps > 0 && gpuDragLat) {
+      const forceScale = density * (Math.pow(dx, 4) / Math.pow(dt, 2));
+      result.aerodynamicForceN = [gpuDragLat[0] * forceScale, gpuDragLat[1] * forceScale, gpuDragLat[2] * forceScale];
+    }
+    return result;
   }
 
   private static wasmLbmBuffers?:
@@ -341,8 +574,7 @@ export class WebGPULbmRunner {
           __pin?: ((ptr: number) => void) | undefined;
           __unpin?: ((ptr: number) => void) | undefined;
           lbm_d3q19_step_f32?:
-            | NonNullable<typeof WebGPULbmRunner.wasmLbmBuffers>["wasm"]["lbm_d3q19_step_f32"]
-            | undefined;
+            NonNullable<typeof WebGPULbmRunner.wasmLbmBuffers>["wasm"]["lbm_d3q19_step_f32"] | undefined;
         }
       | null
       | undefined;
@@ -428,9 +660,19 @@ export class WebGPULbmRunner {
   public step(numSteps: number = 1): LbmStepResult {
     const { nx, ny, nz, dx, dt, tau, density } = this.config;
     const omega0 = 1.0 / tau;
-    const useLES = this.config.turbulenceModel === "smagorinsky_les";
+    const turbModel = this.config.turbulenceModel ?? "laminar";
+    const useLES = turbModel === "smagorinsky_les" || turbModel === "dynamic_smagorinsky" || turbModel === "wmles";
+    const useDynamicLes = turbModel === "dynamic_smagorinsky";
+    const useWmles = turbModel === "wmles";
+    const useRegularized = this.config.collisionOperator === "regularized";
+    const thermalCfg = this.config.thermal;
+    const useThermal =
+      thermalCfg?.enabled === true && this.arena.g0 !== undefined && this.arena.temperature !== undefined;
     const Cs = this.config.smagorinskyConstant ?? 0.14;
     const CsSq = Cs * Cs;
+    const kappa = this.config.wallModel?.kappa ?? 0.41;
+    const lawOfWallB = this.config.wallModel?.lawOfWallB ?? 5.2;
+    const nuPhys = (1.0 / 3.0) * Math.max(1e-4, tau - 0.5) * ((dx * dx) / dt);
     const deltaWall = this.arena.deltaWall;
     const useCurved = this.config.curvedBoundary !== false && deltaWall !== undefined;
 
@@ -447,8 +689,11 @@ export class WebGPULbmRunner {
     const f0 = this.arena.f0;
     const f1 = this.arena.f1 ?? this.arena.f0;
 
+    const hasAdvancedPhysics = useDynamicLes || useWmles || useRegularized || useThermal;
+
     const bufs = this.ensureWasmBuffers();
     if (
+      !hasAdvancedPhysics &&
       bufs &&
       typeof bufs.wasm.lbm_d3q19_step_f32 === "function" &&
       numSteps > 0 &&
@@ -618,7 +863,14 @@ export class WebGPULbmRunner {
               feqs[18] = rhoOver36 * (oneMinus15uSq + 4.5 * u_yz_p * u_yz_p - 3.0 * u_yz_p);
 
               let omegaLoc = omega0;
-              if (useLES) {
+              let piXX = 0.0,
+                piYY = 0.0,
+                piZZ = 0.0,
+                piXY = 0.0,
+                piZX = 0.0,
+                piYZ = 0.0;
+
+              if (useLES || useRegularized) {
                 const fneq1 = f1 - feqs[1]!;
                 const fneq2 = f2 - feqs[2]!;
                 const fneq3 = f3 - feqs[3]!;
@@ -638,42 +890,105 @@ export class WebGPULbmRunner {
                 const fneq17 = f17 - feqs[17]!;
                 const fneq18 = f18 - feqs[18]!;
 
-                const piXX = fneq1 + fneq2 + (fneq7 + fneq8 + fneq9 + fneq10) + (fneq11 + fneq12 + fneq13 + fneq14);
-                const piYY = fneq3 + fneq4 + (fneq7 + fneq8 + fneq9 + fneq10) + (fneq15 + fneq16 + fneq17 + fneq18);
-                const piZZ = fneq5 + fneq6 + (fneq11 + fneq12 + fneq13 + fneq14) + (fneq15 + fneq16 + fneq17 + fneq18);
-                const piXY = fneq7 - fneq8 - fneq9 + fneq10;
-                const piZX = fneq11 - fneq12 - fneq13 + fneq14;
-                const piYZ = fneq15 - fneq16 - fneq17 + fneq18;
+                piXX = fneq1 + fneq2 + (fneq7 + fneq8 + fneq9 + fneq10) + (fneq11 + fneq12 + fneq13 + fneq14);
+                piYY = fneq3 + fneq4 + (fneq7 + fneq8 + fneq9 + fneq10) + (fneq15 + fneq16 + fneq17 + fneq18);
+                piZZ = fneq5 + fneq6 + (fneq11 + fneq12 + fneq13 + fneq14) + (fneq15 + fneq16 + fneq17 + fneq18);
+                piXY = fneq7 - fneq8 - fneq9 + fneq10;
+                piZX = fneq11 - fneq12 - fneq13 + fneq14;
+                piYZ = fneq15 - fneq16 - fneq17 + fneq18;
 
-                const piMag = Math.sqrt(
-                  2 * (piXX * piXX + piYY * piYY + piZZ * piZZ + 2 * (piXY * piXY + piYZ * piYZ + piZX * piZX)),
-                );
-                const tau0 = tau;
-                const deltaTau =
-                  0.5 * (Math.sqrt(tau0 * tau0 + 18.0 * Math.SQRT2 * CsSq * (piMag / Math.max(1e-6, rho))) - tau0);
-                omegaLoc = 1.0 / (tau0 + deltaTau);
+                if (useLES) {
+                  const piMag = Math.sqrt(
+                    2 * (piXX * piXX + piYY * piYY + piZZ * piZZ + 2 * (piXY * piXY + piYZ * piYZ + piZX * piZX)),
+                  );
+                  let effCsSq = CsSq;
+
+                  // Check wall proximity for dynamic wall damping or WMLES Spalding shear model
+                  let isWallAdjacent = false;
+                  let minWallDelta = 0.5;
+                  if (useDynamicLes || useWmles) {
+                    for (let d = 1; d <= 6; d++) {
+                      const wx = x + CX[d]!;
+                      const wy = y + CY[d]!;
+                      const wz = z + CZ[d]!;
+                      if (wx >= 0 && wx < nx && wy >= 0 && wy < ny && wz >= 0 && wz < nz) {
+                        const wt = this.cellTypes[wx + wy * nx + wz * nx * ny];
+                        if (wt === LbmCellType.ObstacleSolid || wt === LbmCellType.ChannelWall) {
+                          isWallAdjacent = true;
+                          if (deltaWall) {
+                            const dw = deltaWall[d * totalCells + cellIdx]!;
+                            if (dw < minWallDelta) minWallDelta = dw;
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  let deltaTauWall = 0.0;
+                  if (useWmles && isWallAdjacent) {
+                    const uMagPhys = Math.hypot(this.vx[cellIdx]!, this.vy[cellIdx]!, this.vz[cellIdx]!);
+                    const yWallPhys = Math.max(0.1, minWallDelta) * dx;
+                    const uTau = solveSpaldingUtau(uMagPhys, yWallPhys, nuPhys, kappa, lawOfWallB);
+                    const tauW = density * uTau * uTau;
+                    if (this.arena.wallShearStress) {
+                      this.arena.wallShearStress[cellIdx] = tauW;
+                    }
+                    // Equivalent turbulent wall viscosity nu_t,w = max(0, u_tau^2 / (U / y_w) - nu)
+                    const nuWallEff = uMagPhys > 1e-6 ? (uTau * uTau * yWallPhys) / uMagPhys : nuPhys;
+                    const nuTurbWall = Math.max(0.0, nuWallEff - nuPhys);
+                    deltaTauWall = 3.0 * nuTurbWall * (dt / (dx * dx));
+                  } else if (useDynamicLes && isWallAdjacent) {
+                    // Van Driest near-wall damping reduces Cs near solid boundaries
+                    effCsSq = CsSq * 0.25;
+                  }
+
+                  const tau0 = tau;
+                  const deltaTauSgs =
+                    0.5 * (Math.sqrt(tau0 * tau0 + 18.0 * Math.SQRT2 * effCsSq * (piMag / Math.max(1e-6, rho))) - tau0);
+                  omegaLoc = 1.0 / (tau0 + Math.max(deltaTauSgs, deltaTauWall));
+                }
               }
 
               // Store post-collision distributions in src
-              src[0 * totalCells + cellIdx] = f0 - omegaLoc * (f0 - feqs[0]!);
-              src[1 * totalCells + cellIdx] = f1 - omegaLoc * (f1 - feqs[1]!);
-              src[2 * totalCells + cellIdx] = f2 - omegaLoc * (f2 - feqs[2]!);
-              src[3 * totalCells + cellIdx] = f3 - omegaLoc * (f3 - feqs[3]!);
-              src[4 * totalCells + cellIdx] = f4 - omegaLoc * (f4 - feqs[4]!);
-              src[5 * totalCells + cellIdx] = f5 - omegaLoc * (f5 - feqs[5]!);
-              src[6 * totalCells + cellIdx] = f6 - omegaLoc * (f6 - feqs[6]!);
-              src[7 * totalCells + cellIdx] = f7 - omegaLoc * (f7 - feqs[7]!);
-              src[8 * totalCells + cellIdx] = f8 - omegaLoc * (f8 - feqs[8]!);
-              src[9 * totalCells + cellIdx] = f9 - omegaLoc * (f9 - feqs[9]!);
-              src[10 * totalCells + cellIdx] = f10 - omegaLoc * (f10 - feqs[10]!);
-              src[11 * totalCells + cellIdx] = f11 - omegaLoc * (f11 - feqs[11]!);
-              src[12 * totalCells + cellIdx] = f12 - omegaLoc * (f12 - feqs[12]!);
-              src[13 * totalCells + cellIdx] = f13 - omegaLoc * (f13 - feqs[13]!);
-              src[14 * totalCells + cellIdx] = f14 - omegaLoc * (f14 - feqs[14]!);
-              src[15 * totalCells + cellIdx] = f15 - omegaLoc * (f15 - feqs[15]!);
-              src[16 * totalCells + cellIdx] = f16 - omegaLoc * (f16 - feqs[16]!);
-              src[17 * totalCells + cellIdx] = f17 - omegaLoc * (f17 - feqs[17]!);
-              src[18 * totalCells + cellIdx] = f18 - omegaLoc * (f18 - feqs[18]!);
+              if (useRegularized) {
+                // 2nd-order Hermite Regularized collision: f_post = f_eq + (1 - omega) * f_neq^(1)
+                // f_neq^(1)_i = (w_i / (2 c_s^4)) * Q_i:Pi^(1) = 4.5 * w_i * ((c_i c_i - (1/3)I) : Pi^(1))
+                const tracePi = piXX + piYY + piZZ;
+                const oneMinusOmega = 1.0 - omegaLoc;
+                for (let i = 0; i < 19; i++) {
+                  const cxi = CX[i]!;
+                  const cyi = CY[i]!;
+                  const czi = CZ[i]!;
+                  const qPi =
+                    (cxi * cxi - 1.0 / 3.0) * piXX +
+                    (cyi * cyi - 1.0 / 3.0) * piYY +
+                    (czi * czi - 1.0 / 3.0) * piZZ +
+                    2.0 * (cxi * cyi * piXY + cyi * czi * piYZ + czi * cxi * piZX) -
+                    0.0 * tracePi;
+                  const f1Reg = 4.5 * W[i]! * qPi;
+                  src[i * totalCells + cellIdx] = feqs[i]! + oneMinusOmega * f1Reg;
+                }
+              } else {
+                src[0 * totalCells + cellIdx] = f0 - omegaLoc * (f0 - feqs[0]!);
+                src[1 * totalCells + cellIdx] = f1 - omegaLoc * (f1 - feqs[1]!);
+                src[2 * totalCells + cellIdx] = f2 - omegaLoc * (f2 - feqs[2]!);
+                src[3 * totalCells + cellIdx] = f3 - omegaLoc * (f3 - feqs[3]!);
+                src[4 * totalCells + cellIdx] = f4 - omegaLoc * (f4 - feqs[4]!);
+                src[5 * totalCells + cellIdx] = f5 - omegaLoc * (f5 - feqs[5]!);
+                src[6 * totalCells + cellIdx] = f6 - omegaLoc * (f6 - feqs[6]!);
+                src[7 * totalCells + cellIdx] = f7 - omegaLoc * (f7 - feqs[7]!);
+                src[8 * totalCells + cellIdx] = f8 - omegaLoc * (f8 - feqs[8]!);
+                src[9 * totalCells + cellIdx] = f9 - omegaLoc * (f9 - feqs[9]!);
+                src[10 * totalCells + cellIdx] = f10 - omegaLoc * (f10 - feqs[10]!);
+                src[11 * totalCells + cellIdx] = f11 - omegaLoc * (f11 - feqs[11]!);
+                src[12 * totalCells + cellIdx] = f12 - omegaLoc * (f12 - feqs[12]!);
+                src[13 * totalCells + cellIdx] = f13 - omegaLoc * (f13 - feqs[13]!);
+                src[14 * totalCells + cellIdx] = f14 - omegaLoc * (f14 - feqs[14]!);
+                src[15 * totalCells + cellIdx] = f15 - omegaLoc * (f15 - feqs[15]!);
+                src[16 * totalCells + cellIdx] = f16 - omegaLoc * (f16 - feqs[16]!);
+                src[17 * totalCells + cellIdx] = f17 - omegaLoc * (f17 - feqs[17]!);
+                src[18 * totalCells + cellIdx] = f18 - omegaLoc * (f18 - feqs[18]!);
+              }
             }
           }
         }
@@ -711,6 +1026,11 @@ export class WebGPULbmRunner {
                     const cuOpp = CX[oppI]! * ux + CY[oppI]! * uy + CZ[oppI]! * uz;
                     dst[oppI * totalCells + cellIdx] =
                       W[oppI]! * rho * (1.0 + 3.0 * cuOpp + 4.5 * cuOpp * cuOpp - 1.5 * uSq);
+                  } else if (nxCoord < 0 && cType === LbmCellType.VelocityInlet) {
+                    const uInSq = uInletX * uInletX + uInletY * uInletY + uInletZ * uInletZ;
+                    const cuOpp = CX[oppI]! * uInletX + CY[oppI]! * uInletY + CZ[oppI]! * uInletZ;
+                    dst[oppI * totalCells + cellIdx] =
+                      W[oppI]! * 1.0 * (1.0 + 3.0 * cuOpp + 4.5 * cuOpp * cuOpp - 1.5 * uInSq);
                   } else {
                     dst[oppI * totalCells + cellIdx] = fPost[i]!;
                   }
@@ -777,6 +1097,83 @@ export class WebGPULbmRunner {
                 } else {
                   // Stream into neighbor fluid cell
                   dst[i * totalCells + targetIdx] = fPost[i]!;
+                }
+              }
+            }
+          }
+        }
+
+        // Pass 3: Double-distribution D3Q7 Thermal Advection-Diffusion (when thermal.enabled)
+        if (useThermal && thermalCfg && this.arena.g0 && this.arena.temperature) {
+          const g0 = this.arena.g0;
+          const g1 = this.arena.g1 ?? g0;
+          const gSrc = this.currentPing ? g0 : g1;
+          const gDst = this.currentPing ? g1 : g0;
+          const tempArr = this.arena.temperature;
+          const prandtl = Math.max(0.05, thermalCfg.prandtl ?? 0.71);
+          const tauT = Math.max(0.51, 0.5 + ((4.0 / 3.0) * Math.max(1e-4, tau - 0.5)) / prandtl);
+          const omegaT = 1.0 / tauT;
+          const tAmbient = thermalCfg.ambientTempK ?? 288.15;
+          const hasWallTemp = thermalCfg.wallTempK !== undefined;
+          const tWall = thermalCfg.wallTempK ?? tAmbient;
+          // Approximate thermal conductivity k = rho * cp * alpha; heatFluxDeltaT = q'' * dx / k
+          const heatFluxDeltaT =
+            !hasWallTemp && thermalCfg.heatFluxW !== undefined
+              ? (thermalCfg.heatFluxW * dx) / Math.max(1e-3, density * 1005.0 * (nuPhys / prandtl))
+              : 0.0;
+
+          for (let z = 0; z < nz; z++) {
+            for (let y = 0; y < ny; y++) {
+              for (let x = 0; x < nx; x++) {
+                const cellIdx = x + y * nx + z * nx * ny;
+                const cType = this.cellTypes[cellIdx];
+                if (cType === LbmCellType.ObstacleSolid || cType === LbmCellType.ChannelWall) {
+                  tempArr[cellIdx] = tWall;
+                  continue;
+                }
+
+                const ux = this.vx[cellIdx]! * (dt / dx);
+                const uy = this.vy[cellIdx]! * (dt / dx);
+                const uz = this.vz[cellIdx]! * (dt / dx);
+
+                let T = 0.0;
+                const gIn = [0, 0, 0, 0, 0, 0, 0];
+                for (let q = 0; q < 7; q++) {
+                  const sx = x - TCX[q]!;
+                  const sy = y - TCY[q]!;
+                  const sz = z - TCZ[q]!;
+                  let pulled = 0.0;
+                  if (sx < 0 || sx >= nx || sy < 0 || sy >= ny || sz < 0 || sz >= nz) {
+                    pulled = TW[q]! * tAmbient;
+                  } else {
+                    const upIdx = sx + sy * nx + sz * nx * ny;
+                    const upType = this.cellTypes[upIdx];
+                    if (upType === LbmCellType.ObstacleSolid) {
+                      const oppQ = TOPP[q]!;
+                      if (hasWallTemp) {
+                        pulled = 2.0 * TW[q]! * tWall - gSrc[oppQ * totalCells + cellIdx]!;
+                      } else {
+                        pulled = gSrc[oppQ * totalCells + cellIdx]! + TW[q]! * heatFluxDeltaT;
+                      }
+                    } else if (upType === LbmCellType.ChannelWall) {
+                      pulled = gSrc[TOPP[q]! * totalCells + cellIdx]!;
+                    } else {
+                      pulled = gSrc[q * totalCells + upIdx]!;
+                    }
+                  }
+                  gIn[q] = pulled;
+                  T += pulled;
+                }
+
+                if (cType === LbmCellType.VelocityInlet) {
+                  T = tAmbient;
+                }
+                tempArr[cellIdx] = T;
+
+                for (let q = 0; q < 7; q++) {
+                  const cu = TCX[q]! * ux + TCY[q]! * uy + TCZ[q]! * uz;
+                  const geq = TW[q]! * T * (1.0 + 4.0 * cu);
+                  gDst[q * totalCells + cellIdx] = gIn[q]! - omegaT * (gIn[q]! - geq);
                 }
               }
             }
@@ -885,10 +1282,52 @@ export class WebGPULbmRunner {
         ? fx / channelArea + 0.5 * density * inVxPhys * inMagPhys
         : (avgInletRho - avgOutletRho) * pressScale;
 
+    let meanWallTemperatureK: number | undefined;
+    if (useThermal && this.arena.temperature) {
+      let tSum = 0.0;
+      let tCount = 0;
+      for (let z = 1; z < nz - 1; z++) {
+        for (let y = 1; y < ny - 1; y++) {
+          for (let x = 1; x < nx - 1; x++) {
+            const idx = x + y * nx + z * nx * ny;
+            if (this.cellTypes[idx] !== LbmCellType.Fluid) continue;
+            if (
+              this.cellTypes[idx + 1] === LbmCellType.ObstacleSolid ||
+              this.cellTypes[idx - 1] === LbmCellType.ObstacleSolid ||
+              this.cellTypes[idx + nx] === LbmCellType.ObstacleSolid ||
+              this.cellTypes[idx - nx] === LbmCellType.ObstacleSolid ||
+              this.cellTypes[idx + nx * ny] === LbmCellType.ObstacleSolid ||
+              this.cellTypes[idx - nx * ny] === LbmCellType.ObstacleSolid
+            ) {
+              tSum += this.arena.temperature[idx]!;
+              tCount++;
+            }
+          }
+        }
+      }
+      if (tCount > 0) meanWallTemperatureK = tSum / tCount;
+    }
+
+    let meanWallShearPa: number | undefined;
+    if (useWmles && this.arena.wallShearStress) {
+      let sSum = 0.0;
+      let sCount = 0;
+      for (let i = 0; i < totalCells; i++) {
+        const sw = this.arena.wallShearStress[i]!;
+        if (sw > 0) {
+          sSum += sw;
+          sCount++;
+        }
+      }
+      if (sCount > 0) meanWallShearPa = sSum / sCount;
+    }
+
     return {
       aerodynamicForceN: [fx, fy, fz],
       maxVelocity: maxVel,
       pressureDropPa: pDrop,
+      ...(meanWallTemperatureK !== undefined ? { meanWallTemperatureK } : {}),
+      ...(meanWallShearPa !== undefined ? { meanWallShearPa } : {}),
     };
   }
 
@@ -903,6 +1342,10 @@ export class WebGPULbmRunner {
     this.gpuMacroBuffer?.destroy?.();
     this.gpuDeltaWallBuffer?.destroy?.();
     this.gpuDragOutputBuffer?.destroy?.();
+    this.gpuThermalUniformBuffer?.destroy?.();
+    this.gpuGPingBuffer?.destroy?.();
+    this.gpuGPongBuffer?.destroy?.();
+    this.gpuTempBuffer?.destroy?.();
     this.gpuDevice?.destroy?.();
     this.gpuUniformBuffer = null;
     this.gpuCellTypesBuffer = null;
@@ -914,6 +1357,13 @@ export class WebGPULbmRunner {
     this.gpuBindGroup0 = null;
     this.gpuBindGroup1 = null;
     this.gpuPipeline = null;
+    this.gpuThermalUniformBuffer = null;
+    this.gpuGPingBuffer = null;
+    this.gpuGPongBuffer = null;
+    this.gpuTempBuffer = null;
+    this.gpuThermalBindGroup0 = null;
+    this.gpuThermalBindGroup1 = null;
+    this.gpuThermalPipeline = null;
     this.gpuDevice = null;
     this.gpuInitialized = false;
   }

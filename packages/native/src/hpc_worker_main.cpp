@@ -13,9 +13,35 @@
 
 #include "ms_native_core.h"
 
+#ifdef MS_ENABLE_MPI
+#include <mpi.h>
+#endif
+
 #ifndef MS_VERSION
 #define MS_VERSION "0.1.0"
 #endif
+
+extern "C" void ms_mpi_probe(ms_mpi_capabilities_t* out_caps) {
+  if (!out_caps) return;
+  std::memset(out_caps, 0, sizeof(*out_caps));
+  out_caps->rank = 0;
+  out_caps->world_size = 1;
+#ifdef MS_ENABLE_NCCL
+  out_caps->nccl_compiled = true;
+#else
+  out_caps->nccl_compiled = false;
+#endif
+#ifdef MS_ENABLE_MPI
+  out_caps->mpi_compiled = true;
+  int initialized = 0;
+  if (MPI_Initialized(&initialized) == MPI_SUCCESS && initialized) {
+    MPI_Comm_rank(MPI_COMM_WORLD, &out_caps->rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &out_caps->world_size);
+  }
+#else
+  out_caps->mpi_compiled = false;
+#endif
+}
 
 namespace {
 
@@ -540,6 +566,176 @@ int run_job_file(const char* job_path, const char* out_path) {
   return 2;
 }
 
+int run_gpu_session_selftest(const char* out_path) {
+  const auto t0 = std::chrono::steady_clock::now();
+  const ms_gpu_capabilities_t caps = probe_gpu_capabilities();
+
+  char err_buf[256] = {0};
+  ms_gpu_session_t* session = ms_gpu_session_create(0, err_buf, sizeof(err_buf));
+  if (!session) {
+    std::fprintf(stderr, "msx-hpc-worker: ms_gpu_session_create failed: %s\n", err_buf);
+    return 1;
+  }
+
+  const std::vector<double> expected = {1.25, -2.5, 3.141592653589793, 42.0, 0.0, -1e-12, 1e18, 7.75};
+  const size_t byte_size = expected.size() * sizeof(double);
+  const uint64_t handle = ms_gpu_session_alloc(session, byte_size);
+  if (handle == 0) {
+    ms_gpu_session_destroy(session);
+    std::fprintf(stderr, "msx-hpc-worker: ms_gpu_session_alloc failed\n");
+    return 2;
+  }
+
+  int rc = ms_gpu_session_upload(session, handle, 0, expected.data(), byte_size);
+  if (rc == 0) {
+    rc = ms_gpu_session_sync(session);
+  }
+  std::vector<double> actual(expected.size(), 0.0);
+  if (rc == 0) {
+    rc = ms_gpu_session_download(session, handle, 0, actual.data(), byte_size);
+  }
+  ms_gpu_session_destroy(session);
+
+  bool match = (rc == 0);
+  if (match) {
+    for (size_t i = 0; i < expected.size(); ++i) {
+      if (actual[i] != expected[i]) {
+        match = false;
+        break;
+      }
+    }
+  }
+
+  const auto t1 = std::chrono::steady_clock::now();
+  const int64_t elapsed_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+  const std::string gpu_backend =
+      json_escape(caps.backend_name[0] ? caps.backend_name : "host-fallback");
+
+  std::ostringstream oss;
+  oss << "{\n"
+      << "  \"status\": \"" << (match ? "ok" : "error") << "\",\n"
+      << "  \"mode\": \"gpu-session-selftest\",\n"
+      << "  \"elementsVerified\": " << (match ? expected.size() : 0U) << ",\n"
+      << "  \"elapsedUs\": " << elapsed_us << ",\n"
+      << "  \"gpuBackend\": \"" << gpu_backend << "\",\n"
+      << "  \"hardwareFp64\": " << (caps.hardware_fp64 ? "true" : "false") << "\n"
+      << "}\n";
+  if (!write_output(oss.str(), out_path)) return 1;
+  return match ? 0 : 3;
+}
+
+int run_cfd_distributed(int argc, char** argv, const char* out_path) {
+  const auto t0 = std::chrono::steady_clock::now();
+#ifdef MS_ENABLE_MPI
+  int mpi_already_init = 0;
+  MPI_Initialized(&mpi_already_init);
+  bool did_mpi_init = false;
+  if (!mpi_already_init) {
+    MPI_Init(&argc, &argv);
+    did_mpi_init = true;
+  }
+#else
+  (void)argc;
+  (void)argv;
+#endif
+
+  ms_mpi_capabilities_t mpi_caps;
+  ms_mpi_probe(&mpi_caps);
+  const ms_gpu_capabilities_t gpu_caps = probe_gpu_capabilities();
+
+  const int world_size = mpi_caps.world_size > 0 ? mpi_caps.world_size : 1;
+  const int rank = mpi_caps.rank >= 0 ? mpi_caps.rank : 0;
+  const uint64_t global_cells = 65536ULL;
+  const uint64_t base_cells = global_cells / static_cast<uint64_t>(world_size);
+  const uint64_t remainder = global_cells % static_cast<uint64_t>(world_size);
+  const uint64_t local_cells = base_cells + (static_cast<uint64_t>(rank) < remainder ? 1ULL : 0ULL);
+
+  const auto t1 = std::chrono::steady_clock::now();
+  const int64_t elapsed_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
+  const std::string gpu_backend =
+      json_escape(gpu_caps.backend_name[0] ? gpu_caps.backend_name : "cpu-wasm2c");
+
+  std::ostringstream oss;
+  oss << "{\n"
+      << "  \"status\": \"ok\",\n"
+      << "  \"mode\": \"cfd-distributed\",\n"
+      << "  \"mpiCompiled\": " << (mpi_caps.mpi_compiled ? "true" : "false") << ",\n"
+      << "  \"ncclCompiled\": " << (mpi_caps.nccl_compiled ? "true" : "false") << ",\n"
+      << "  \"rank\": " << rank << ",\n"
+      << "  \"worldSize\": " << world_size << ",\n"
+      << "  \"localCells\": " << local_cells << ",\n"
+      << "  \"elapsedUs\": " << elapsed_us << ",\n"
+      << "  \"gpuBackend\": \"" << gpu_backend << "\",\n"
+      << "  \"hardwareFp64\": " << (gpu_caps.hardware_fp64 ? "true" : "false") << "\n"
+      << "}\n";
+
+  const bool wrote = write_output(oss.str(), out_path);
+
+#ifdef MS_ENABLE_MPI
+  if (did_mpi_init) {
+    MPI_Finalize();
+  }
+#endif
+  return wrote ? 0 : 1;
+}
+
+int run_kernel_catalog(const char* out_path) {
+  const ms_gpu_capabilities_t gpu_caps = probe_gpu_capabilities();
+  ms_mpi_capabilities_t mpi_caps;
+  ms_mpi_probe(&mpi_caps);
+
+  const std::string gpu_backend =
+      json_escape(gpu_caps.backend_name[0] ? gpu_caps.backend_name : "cpu-wasm2c");
+  const std::string gpu_adapter = json_escape(gpu_caps.adapter_name);
+
+  std::ostringstream oss;
+  oss << "{\n"
+      << "  \"status\": \"ok\",\n"
+      << "  \"mode\": \"kernel-catalog\",\n"
+      << "  \"kernels\": [\n"
+      << "    {\n"
+      << "      \"name\": \"cfd_compressible_fp64\",\n"
+      << "      \"file\": \"src/kernels/cfd_compressible_fp64.cu\",\n"
+      << "      \"precision\": \"fp64\",\n"
+      << "      \"domain\": \"cfd-compressible\"\n"
+      << "    },\n"
+      << "    {\n"
+      << "      \"name\": \"cfd_lbm_fp64\",\n"
+      << "      \"file\": \"src/kernels/cfd_lbm_fp64.cu\",\n"
+      << "      \"precision\": \"fp64\",\n"
+      << "      \"domain\": \"cfd-lbm\"\n"
+      << "    },\n"
+      << "    {\n"
+      << "      \"name\": \"fea_amg_fp64\",\n"
+      << "      \"file\": \"src/kernels/fea_amg_fp64.cu\",\n"
+      << "      \"precision\": \"fp64\",\n"
+      << "      \"domain\": \"fea-amg\"\n"
+      << "    }\n"
+      << "  ],\n"
+      << "  \"gpu\": {\n"
+      << "    \"backend\": \"" << gpu_backend << "\",\n"
+      << "    \"adapter\": \"" << gpu_adapter << "\",\n"
+      << "    \"dawnCompiled\": " << (gpu_caps.dawn_compiled ? "true" : "false") << ",\n"
+      << "    \"dawnAvailable\": " << (gpu_caps.dawn_available ? "true" : "false") << ",\n"
+      << "    \"cudaCompiled\": " << (gpu_caps.cuda_compiled ? "true" : "false") << ",\n"
+      << "    \"cudaAvailable\": " << (gpu_caps.cuda_available ? "true" : "false") << ",\n"
+      << "    \"hipCompiled\": " << (gpu_caps.hip_compiled ? "true" : "false") << ",\n"
+      << "    \"hipAvailable\": " << (gpu_caps.hip_available ? "true" : "false") << ",\n"
+      << "    \"hardwareFp64\": " << (gpu_caps.hardware_fp64 ? "true" : "false") << "\n"
+      << "  },\n"
+      << "  \"mpi\": {\n"
+      << "    \"mpiCompiled\": " << (mpi_caps.mpi_compiled ? "true" : "false") << ",\n"
+      << "    \"ncclCompiled\": " << (mpi_caps.nccl_compiled ? "true" : "false") << ",\n"
+      << "    \"rank\": " << mpi_caps.rank << ",\n"
+      << "    \"worldSize\": " << mpi_caps.world_size << "\n"
+      << "  }\n"
+      << "}\n";
+
+  return write_output(oss.str(), out_path) ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -548,6 +744,7 @@ int main(int argc, char** argv) {
   bool show_info = false;
   const char* run_job_path = nullptr;
   const char* out_path = nullptr;
+  const char* mode = nullptr;
 
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--version") == 0 || std::strcmp(argv[i], "-v") == 0) {
@@ -556,6 +753,14 @@ int main(int argc, char** argv) {
       run_selftest = true;
     } else if (std::strcmp(argv[i], "--info") == 0 || std::strcmp(argv[i], "--gpu-info") == 0) {
       show_info = true;
+    } else if (std::strncmp(argv[i], "--mode=", 7) == 0) {
+      mode = argv[i] + 7;
+    } else if (std::strcmp(argv[i], "--mode") == 0) {
+      if (i + 1 >= argc) {
+        std::fprintf(stderr, "msx-hpc-worker: --mode requires a mode name argument\n");
+        return 1;
+      }
+      mode = argv[++i];
     } else if (std::strcmp(argv[i], "--run") == 0) {
       if (i + 1 >= argc) {
         std::fprintf(stderr, "msx-hpc-worker: --run requires a <job.json> path argument\n");
@@ -574,8 +779,28 @@ int main(int argc, char** argv) {
   if (show_version) {
     std::printf("msx-hpc-worker %s (wasm2c-native)\n", MS_VERSION);
   }
-  if (show_info || (!show_version && !run_selftest && run_job_path == nullptr)) {
+  if (show_info || (!show_version && !run_selftest && run_job_path == nullptr && mode == nullptr)) {
     print_info_json();
+  }
+  if (mode != nullptr) {
+    if (std::strcmp(mode, "gpu-session-selftest") == 0) {
+      const int rc = run_gpu_session_selftest(out_path);
+      ms_native_shutdown();
+      return rc;
+    }
+    if (std::strcmp(mode, "cfd-distributed") == 0) {
+      const int rc = run_cfd_distributed(argc, argv, out_path);
+      ms_native_shutdown();
+      return rc;
+    }
+    if (std::strcmp(mode, "kernel-catalog") == 0) {
+      const int rc = run_kernel_catalog(out_path);
+      ms_native_shutdown();
+      return rc;
+    }
+    std::fprintf(stderr, "msx-hpc-worker: unsupported --mode '%s'\n", mode);
+    ms_native_shutdown();
+    return 2;
   }
   if (run_selftest) {
     const int rc = ms_native_selftest();

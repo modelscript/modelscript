@@ -11,6 +11,7 @@ import { FEATURE_FLAGS, getLanguageFeatureFlagKey } from "../feature-flags.js";
 import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import { ComposerAIService, type ComposerDraftTone, type ComposerPolishMode } from "../services/ai/composer-ai.js";
 import { pregenerateServerSvgThumbnail } from "../services/artifact-preprocessor.js";
+import { getOrCreateDiskAnnService } from "../services/diskann-memory.js";
 import type { FeatureFlagService } from "../services/feature-flag-service.js";
 import type { FederationWorker } from "../services/federation-worker.js";
 import { attachPostProofToNote, verifyRestPostProof } from "../services/git-sync/federation-signing.js";
@@ -22,6 +23,67 @@ import { generateThumbnail } from "../workers/thumbnailWorker.js";
 import { verifySignedEmbedToken } from "./oembed.js";
 
 const ARTIFACT_DIRECTIVE_RE = /::artifact(?:\[([^[\]\r\n]*)\])?\{([^{}\r\n]*)\}/g;
+
+/**
+ * Best-effort, non-blocking DiskANN auto-indexer for newly created PUBLIC social posts.
+ * Strictly skips non-public posts (`followers`, `direct`, `unlisted`, `private`, etc.).
+ */
+function indexPublicPostIntoDiskAnnBestEffort(
+  database: LibraryDatabase,
+  postId: number | string,
+  content: string | null | undefined,
+  effectiveVisibility: string,
+  metadata: Record<string, unknown>,
+  notebookDialect?: string | undefined,
+  notebookTopics?: string[] | undefined,
+): void {
+  try {
+    if (effectiveVisibility.trim().toLowerCase() !== "public") {
+      return;
+    }
+    if (typeof content !== "string" || !content.trim() || !database.isOpen()) {
+      return;
+    }
+
+    const rawDialect =
+      (typeof metadata["dialect"] === "string" && metadata["dialect"].trim()) ||
+      (typeof metadata["language"] === "string" && metadata["language"].trim()) ||
+      (typeof notebookDialect === "string" && notebookDialect.trim()) ||
+      "markdown";
+    const dialect = rawDialect.toLowerCase();
+
+    const metaTags = Array.isArray(metadata["symbolTags"])
+      ? (metadata["symbolTags"] as unknown[]).filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+      : [];
+    const symbolTags =
+      metaTags.length > 0
+        ? metaTags
+        : (notebookTopics ?? []).filter((t) => typeof t === "string" && t.trim().length > 0);
+
+    const chunkPayload = {
+      sourceKind: "social-post" as const,
+      sourceUri: `social://post/${postId}`,
+      dialect,
+      content: content.trim(),
+      ...(symbolTags.length > 0 ? { symbolTags } : {}),
+      formalVerified: false,
+      tenantScope: "public" as const,
+      orgId: null,
+    };
+
+    if (process.env["EMBEDDING_API_URL"]?.trim()) {
+      void getOrCreateDiskAnnService(database)
+        .upsertChunkAsync(chunkPayload)
+        .catch(() => {
+          // Best-effort: never fail social post flow
+        });
+    } else {
+      getOrCreateDiskAnnService(database).upsertChunk(chunkPayload);
+    }
+  } catch {
+    // Best-effort auto-indexing: never harm social post creation reliability
+  }
+}
 
 type NormalizedNotebookCell =
   | { id: string; type: "markdown"; content: string }
@@ -635,6 +697,20 @@ export function socialRouter(
       // Process tasks asynchronously so they don't block the request
       setTimeout(() => {
         try {
+          // Best-effort DiskANN auto-indexing for public posts only (non-public posts are strictly skipped)
+          const effectiveVisibility = String(
+            post?.visibility ?? (typeof visibility === "string" ? visibility : "public"),
+          );
+          indexPublicPostIntoDiskAnnBestEffort(
+            database,
+            id,
+            content,
+            effectiveVisibility,
+            metadata,
+            notebookMeta?.dialect,
+            notebookMeta?.topics,
+          );
+
           // Create notification for reply
           if (reply_to_id) {
             const parentPost = database.getPost(reply_to_id);

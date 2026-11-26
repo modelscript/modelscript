@@ -725,6 +725,7 @@ export class SoaSceneGraph {
     v: number,
     radius = 12,
     excludeNodeId?: string,
+    filter?: (nodeId: string, portId: string) => boolean,
   ): { nodeId: string; portId: string; x: number; y: number; dist: number } | null {
     const candidates = this.queryVisibleNodes({
       x: u - radius - 20,
@@ -739,6 +740,7 @@ export class SoaSceneGraph {
       const ports = this.nodePorts.get(node.id);
       if (!ports) continue;
       for (const p of ports) {
+        if (filter && !filter(node.id, p.id)) continue;
         const off = p.slot * PORT_STRIDE;
         const wx = this.portWorldCoords[off] ?? 0;
         const wy = this.portWorldCoords[off + 1] ?? 0;

@@ -11,13 +11,14 @@
  */
 
 import { createWasmParser } from "@modelscript/dsl";
-import { QueryEngine, UnifiedWorkspace } from "@modelscript/runtime";
+import { QueryEngine, UnifiedWorkspace, type MemoryShardContract } from "@modelscript/runtime";
 import { indexStepDocument, stepLanguage } from "@modelscript/step";
 import {
   createSysML2WorkspaceIndex,
   loadEmbeddedKerMLStdlib,
   queryHooks as sysml2QueryHooks,
 } from "@modelscript/sysml2/factory";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -25,6 +26,8 @@ import { initializeArtifactSystem } from "./artifacts/index.js";
 import { getArtifactRegistry } from "./artifacts/registry.js";
 import type { ClassMetadata } from "./database.js";
 import { LibraryDatabase } from "./database.js";
+import { collectPackageSourceFiles, compileDatasetShards } from "./services/dataset-compiler.js";
+import { DiskAnnMemoryService } from "./services/diskann-memory.js";
 import { LibraryStorage } from "./storage.js";
 import { convertStepBufferToJson } from "./util/cad-converter.js";
 import { extractModelicaComponentsFromSource } from "./util/class-source-inspector.js";
@@ -690,6 +693,181 @@ process.on(
         await indexDataPackageResources(database, versionId, libraryPath, manifestStr);
       } catch (dpErr) {
         console.warn(`[publish] Failed to index Data Package resources for ${name}@${version}:`, dpErr);
+      }
+
+      // Index published package docs/models/OWL2 axioms into DiskANN Vector Memory & compile ML dataset / memory shards
+      try {
+        const parsedManifest = manifestStr ? (JSON.parse(manifestStr) as Record<string, unknown>) : {};
+        const msMeta = (parsedManifest["modelscript"] as Record<string, unknown> | undefined) ?? parsedManifest;
+        const category =
+          typeof msMeta["category"] === "string"
+            ? msMeta["category"]
+            : typeof msMeta["kind"] === "string"
+              ? msMeta["kind"]
+              : "library";
+        const aiGov = msMeta["aiGovernance"] as
+          | {
+              allowRag?: boolean;
+              allowPretrain?: boolean;
+              allowPosttrain?: boolean;
+              tenantScope?: "public" | "org" | "project-private";
+            }
+          | undefined;
+        const effectiveStorageDir = storageDir ?? path.join(path.dirname(libraryPath), "..", "ml-storage");
+        const sourceFiles = collectPackageSourceFiles(libraryPath, name, version);
+
+        if (sourceFiles.length > 0 && aiGov?.allowRag !== false) {
+          const diskann = new DiskAnnMemoryService(database, effectiveStorageDir);
+          const diffRes = diskann.indexGitDiff({
+            packageName: name,
+            packageVersion: version,
+            tenantScope: aiGov?.tenantScope ?? "public",
+            formalVerified: true,
+            changes: sourceFiles.map((f) => ({
+              path: f.uri.replace(`pkg://${name}@${version}/`, ""),
+              status: "M" as const,
+              content: f.source,
+              dialect: f.dialect,
+            })),
+          });
+          console.log(`[publish] ${name}@${version}: DiskANN indexed ${diffRes.indexedChunks} chunks.`);
+        }
+
+        if (category === "memory-shard" && aiGov?.allowRag !== false) {
+          database.db.exec(`
+            CREATE TABLE IF NOT EXISTS memory_shard_manifests (
+              shard_id TEXT PRIMARY KEY,
+              recipe_name TEXT NOT NULL,
+              recipe_version TEXT NOT NULL DEFAULT '0.1.0',
+              dataset_kind TEXT NOT NULL DEFAULT 'memory-shard',
+              dialect TEXT NOT NULL DEFAULT 'polyglot',
+              origin_node TEXT NOT NULL DEFAULT 'local',
+              signer_pubkey TEXT NOT NULL DEFAULT '',
+              memory_contract_json TEXT NOT NULL,
+              ai_governance_json TEXT NOT NULL,
+              example_count INTEGER NOT NULL DEFAULT 0,
+              byte_size INTEGER NOT NULL DEFAULT 0,
+              tenant_scope TEXT NOT NULL DEFAULT 'public',
+              provenance_json TEXT NOT NULL DEFAULT '{}',
+              created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+          `);
+
+          const rawContract = msMeta["memoryContract"] as Partial<MemoryShardContract> | undefined;
+          const memoryContract: MemoryShardContract = {
+            embedderId:
+              typeof rawContract?.embedderId === "string" && rawContract.embedderId.trim()
+                ? rawContract.embedderId.trim()
+                : "ansatz-embed-v1",
+            embedderHash:
+              typeof rawContract?.embedderHash === "string" && rawContract.embedderHash.trim()
+                ? rawContract.embedderHash.trim()
+                : "sha256:deterministic-256",
+            dimension:
+              typeof rawContract?.dimension === "number" && rawContract.dimension > 0 ? rawContract.dimension : 256,
+            quantization:
+              rawContract?.quantization === "pq-diskann" || rawContract?.quantization === "fp16-diskann"
+                ? rawContract.quantization
+                : "int8-diskann",
+            sourcePackages: Array.isArray(rawContract?.sourcePackages) ? rawContract.sourcePackages : [],
+          };
+
+          const originNode =
+            (typeof msMeta["originNode"] === "string" && msMeta["originNode"].trim()) ||
+            process.env["ANSATZ_INSTANCE_DOMAIN"] ||
+            "local";
+          const signerPubkey = typeof msMeta["signerPubkey"] === "string" ? msMeta["signerPubkey"].trim() : "";
+          const uniqueDialects = Array.from(new Set(sourceFiles.map((f) => f.dialect).filter(Boolean)));
+          const dialect = uniqueDialects.length === 1 ? uniqueDialects[0]! : "polyglot";
+          const totalBytes = sourceFiles.reduce((acc, f) => acc + Buffer.byteLength(f.source ?? "", "utf8"), 0);
+          const shardId = crypto
+            .createHash("sha256")
+            .update(
+              JSON.stringify({
+                datasetKind: "memory-shard",
+                recipeName: name,
+                recipeVersion: version,
+                originNode,
+                memoryContract,
+                fileUris: sourceFiles.map((f) => f.uri).sort(),
+              }),
+              "utf8",
+            )
+            .digest("hex");
+
+          const effectiveGov = {
+            allowRag: aiGov?.allowRag ?? true,
+            allowPretrain: aiGov?.allowPretrain ?? false,
+            allowPosttrain: aiGov?.allowPosttrain ?? false,
+            tenantScope: aiGov?.tenantScope ?? "public",
+          };
+
+          database.db
+            .prepare(
+              `
+              INSERT INTO memory_shard_manifests (
+                shard_id, recipe_name, recipe_version, dataset_kind, dialect,
+                origin_node, signer_pubkey, memory_contract_json, ai_governance_json,
+                example_count, byte_size, tenant_scope, provenance_json
+              ) VALUES (?, ?, ?, 'memory-shard', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(shard_id) DO UPDATE SET
+                origin_node = excluded.origin_node,
+                signer_pubkey = excluded.signer_pubkey,
+                memory_contract_json = excluded.memory_contract_json,
+                ai_governance_json = excluded.ai_governance_json,
+                example_count = excluded.example_count,
+                byte_size = excluded.byte_size,
+                provenance_json = excluded.provenance_json
+            `,
+            )
+            .run(
+              shardId,
+              name,
+              version,
+              dialect,
+              originNode,
+              signerPubkey,
+              JSON.stringify(memoryContract),
+              JSON.stringify(effectiveGov),
+              sourceFiles.length,
+              totalBytes,
+              effectiveGov.tenantScope,
+              JSON.stringify({
+                compilerVersion: "modelscript-memory-shard-v1",
+                memoryBackend: "diskann",
+                releaseId: `${name}@${version}`,
+                originNode,
+                signerPubkey,
+                memoryContract,
+                aiGovernance: effectiveGov,
+                independentReproductions: 0,
+              }),
+            );
+          console.log(
+            `[publish] ${name}@${version}: registered memory-shard manifest ${shardId.slice(0, 12)} (embedder=${memoryContract.embedderId}).`,
+          );
+        } else if (
+          sourceFiles.length > 0 &&
+          (category === "dataset-pretrain" || category === "dataset-posttrain" || category === "training-recipe")
+        ) {
+          const compiled = compileDatasetShards(database, effectiveStorageDir, {
+            recipeName: name,
+            recipeVersion: version,
+            datasetKind: category,
+            files: sourceFiles,
+            aiGovernance: {
+              allowRag: aiGov?.allowRag ?? true,
+              allowPretrain: aiGov?.allowPretrain ?? category === "dataset-pretrain",
+              allowPosttrain: aiGov?.allowPosttrain ?? true,
+              tenantScope: aiGov?.tenantScope ?? "public",
+            },
+          });
+          console.log(
+            `[publish] ${name}@${version}: compiled ${compiled.shards.length} m_init-bucketed dataset shards (${compiled.verifiedExamples} verified, ${compiled.rejectedExamples} rejected).`,
+          );
+        }
+      } catch (mlErr) {
+        console.warn(`[publish] DiskANN / dataset shard indexing skipped for ${name}@${version}:`, mlErr);
       }
       // -----------------------------------
       // -----------------------------------

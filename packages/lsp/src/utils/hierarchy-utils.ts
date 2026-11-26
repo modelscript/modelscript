@@ -12,6 +12,7 @@ import {
   globalLibraryRegistry,
   type ClassHierarchyNode,
   type ComponentTreeNode,
+  type ModelscriptLibraryManifest,
   type TreeNodeInfo,
 } from "@modelscript/runtime";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
@@ -210,7 +211,7 @@ export interface MountedLibraryInfo {
   description?: string | undefined;
   language?: string | undefined;
   explicitlyInstalled?: boolean | undefined;
-  category?: "library" | "standard-pack" | undefined;
+  category?: ModelscriptLibraryManifest["category"] | undefined;
   standardCode?: string | undefined;
   standardEdition?: string | undefined;
   profile?: string | undefined;

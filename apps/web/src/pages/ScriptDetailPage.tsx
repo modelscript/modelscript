@@ -21,6 +21,7 @@ import { Button, Heading, Label, Text } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  api,
   cancelJob,
   getJob,
   getJobLogs,
@@ -33,7 +34,6 @@ import {
   type StudyRunResultsPayload,
   type StudyTimeSeries,
 } from "../api";
-import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import { CircleIconButton } from "../components/SharedStyles";
 import { parseAnsiLine, renderSpan } from "../components/terminal/AnsiRenderer";
@@ -310,7 +310,6 @@ const ScriptDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   usePageTitle(id ? `Study Run #${id}` : "Study Run Details");
   const navigate = useNavigate();
-  const { token } = useAuth();
   const [job, setJob] = useState<ComputeJob | null>(null);
   const [studyResults, setStudyResults] = useState<StudyRunResultsPayload | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -403,8 +402,8 @@ const ScriptDetailPage: React.FC = () => {
         ? `/api/v1/cae/jobs/${rawId}/events`
         : `/api/v1/jobs/${rawId}/stream`;
 
-    const streamUrl = token ? `${baseStreamPath}?token=${encodeURIComponent(token)}` : baseStreamPath;
-    const evtSource = new EventSource(streamUrl);
+    // Authenticate SSE via HttpOnly session cookies (withCredentials) rather than exposing raw JWT in URL query string
+    const evtSource = new EventSource(baseStreamPath, { withCredentials: true });
 
     evtSource.onmessage = (e) => {
       try {
@@ -470,7 +469,7 @@ const ScriptDetailPage: React.FC = () => {
       active = false;
       evtSource.close();
     };
-  }, [id, token]);
+  }, [id]);
 
   useEffect(() => {
     const container = logContainerRef.current;
@@ -492,7 +491,7 @@ const ScriptDetailPage: React.FC = () => {
     }
   };
 
-  const handleDownloadResult = () => {
+  const handleDownloadResult = async () => {
     if (!id) return;
     const strId = String(id);
     const isCloudJob = strId.startsWith("cloud-") || strId.startsWith("cloud_");
@@ -502,13 +501,25 @@ const ScriptDetailPage: React.FC = () => {
       : strId.startsWith("cae-")
         ? strId.slice("cae-".length)
         : strId;
-    const baseResultPath = isCloudJob
-      ? `/api/v1/cloud/jobs/${rawId}/result`
+    const apiResultPath = isCloudJob
+      ? `/cloud/jobs/${rawId}/result`
       : isCaeJob
-        ? `/api/v1/cae/jobs/${rawId}/results`
-        : `/api/v1/jobs/${rawId}/result`;
-    const url = `${baseResultPath}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-    window.open(url, "_blank");
+        ? `/cae/jobs/${rawId}/results`
+        : `/jobs/${rawId}/result`;
+    try {
+      const response = await api.get(apiResultPath, { responseType: "blob" });
+      const blob = response.data instanceof Blob ? response.data : new Blob([response.data]);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `job-${rawId}-result`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(`/api/v1${apiResultPath}`, "_blank", "noopener,noreferrer");
+    }
   };
 
   const handleDownloadStudyInstance = () => {

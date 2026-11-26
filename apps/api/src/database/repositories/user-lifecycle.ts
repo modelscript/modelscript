@@ -24,9 +24,81 @@ export function generateEd25519Keys(): { publicKey: string; privateKey: string }
 
 export class UserLifecycleRepository extends BaseRepository {
   #userTopicsDerivedAt = new Map<number, number>();
+  #uiPreferencesTableEnsured = false;
 
   clearUserTopicsCache(): void {
     this.#userTopicsDerivedAt.clear();
+  }
+
+  #ensureUserUiPreferencesTable(): void {
+    if (this.#uiPreferencesTableEnsured) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS user_ui_preferences (
+        user_id INTEGER PRIMARY KEY,
+        preferences_json TEXT NOT NULL DEFAULT '{}',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    this.#uiPreferencesTableEnsured = true;
+  }
+
+  getUserUiPreferences(userId: number): Record<string, unknown> {
+    this.#ensureUserUiPreferencesTable();
+    const row = this.db.prepare(`SELECT preferences_json FROM user_ui_preferences WHERE user_id = ?`).get(userId) as
+      { preferences_json?: string | null } | undefined;
+    if (!row?.preferences_json) return {};
+    try {
+      const parsed: unknown = JSON.parse(row.preferences_json);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Ignore malformed stored JSON
+    }
+    return {};
+  }
+
+  updateUserUiPreferences(userId: number, patch: Record<string, unknown>): Record<string, unknown> {
+    this.#ensureUserUiPreferencesTable();
+    const ALLOWED_NAMESPACES = new Set(["theme", "display", "modeling"]);
+    const existing = this.getUserUiPreferences(userId);
+    const merged: Record<string, unknown> = { ...existing };
+
+    for (const key of Object.keys(patch)) {
+      if (!ALLOWED_NAMESPACES.has(key)) continue;
+      const incomingVal = patch[key];
+      const existingVal = merged[key];
+      if (
+        incomingVal !== null &&
+        typeof incomingVal === "object" &&
+        !Array.isArray(incomingVal) &&
+        existingVal !== null &&
+        typeof existingVal === "object" &&
+        !Array.isArray(existingVal)
+      ) {
+        const nextObj: Record<string, unknown> = { ...(existingVal as Record<string, unknown>) };
+        for (const [subKey, subVal] of Object.entries(incomingVal as Record<string, unknown>)) {
+          if (subKey === "__proto__" || subKey === "constructor" || subKey === "prototype") continue;
+          nextObj[subKey] = subVal;
+        }
+        merged[key] = nextObj;
+      } else {
+        merged[key] = incomingVal;
+      }
+    }
+
+    const serialized = JSON.stringify(merged);
+    this.db
+      .prepare(
+        `INSERT INTO user_ui_preferences (user_id, preferences_json, updated_at)
+         VALUES (?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(user_id) DO UPDATE SET
+           preferences_json = excluded.preferences_json,
+           updated_at = CURRENT_TIMESTAMP`,
+      )
+      .run(userId, serialized);
+
+    return merged;
   }
 
   // ── User Topics ─────────────────────────────────────────────────
@@ -522,9 +594,14 @@ export class UserLifecycleRepository extends BaseRepository {
                bio = ?,
                avatar_url = NULL,
                banner_url = NULL,
-               password_hash = 'REDACTED',
+               location = NULL,
+               website = NULL,
+               notification_settings = '{}',
+               password_hash = NULL,
                status = 'deleted',
                registration_ip = NULL,
+               verification_token = NULL,
+               verification_sent_at = NULL,
                credit_balance = 0,
                token_version = COALESCE(token_version, 1) + 1,
                totp_secret = NULL,
@@ -533,7 +610,16 @@ export class UserLifecycleRepository extends BaseRepository {
                rsa_private_key = NULL,
                rsa_public_key = NULL,
                ed25519_private_key = NULL,
-               ed25519_public_key = NULL
+               ed25519_public_key = NULL,
+               profile_fields = '[]',
+               also_known_as = '[]',
+               moved_to_actor_url = NULL,
+               engineering_persona = NULL,
+               discoverable = 0,
+               indexable = 0,
+               signing_verified = 0,
+               signing_policy_strict = 0,
+               branch_tip_oid = NULL
            WHERE id = ?`,
         )
         .run(redactedEmail, redactedName, redactedBio, userId);
@@ -553,7 +639,18 @@ export class UserLifecycleRepository extends BaseRepository {
       safeDelete(`DELETE FROM api_tokens WHERE user_id = ?`, userId);
       safeDelete(`DELETE FROM pending_totp_secrets WHERE user_id = ?`, userId);
       safeDelete(`DELETE FROM oauth_accounts WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM connected_accounts WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM sessions WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM push_subscriptions WHERE user_id = ?`, userId);
       safeDelete(`DELETE FROM user_public_keys WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM account_signing_keys WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM user_signing_keys WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM account_key_log WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM user_account_locations WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM username_history WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM user_topics WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM user_ui_preferences WHERE user_id = ?`, userId);
+      safeDelete(`DELETE FROM user_rss_subscriptions WHERE user_id = ?`, userId);
       safeDelete(`DELETE FROM bookmarks WHERE user_id = ?`, userId);
       safeDelete(`DELETE FROM likes WHERE user_id = ?`, userId);
       safeDelete(`DELETE FROM follows WHERE follower_id = ? OR following_id = ?`, userId, userId);

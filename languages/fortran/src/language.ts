@@ -285,6 +285,15 @@ export const fortranLanguage = language({
     [$["FunctionDeclaration"]!, $["Target"]!],
     [$["ModuleDeclaration"]!, $["Target"]!],
     [$["ProgramDeclaration"]!, $["Target"]!],
+    [
+      $["BinaryExpression"]!,
+      $["UnaryExpression"]!,
+      $["LOGICAL_OR"]!,
+      $["LOGICAL_AND"]!,
+      $["EQUALITY_OP"]!,
+      $["RELATIONAL_OP"]!,
+      $["POWER_OP"]!,
+    ],
   ],
 
   extras: () => [/[ \t\r\n]+/, /![^\n]*/],

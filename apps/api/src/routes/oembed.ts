@@ -18,6 +18,106 @@ import type { LibraryDatabase } from "../database.js";
 import { JWT_SECRET, optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
 import { resolveRequestHost } from "../util/seo-injector.js";
 import { isCorporateOrAirgapTier } from "../util/tier-presets.js";
+import {
+  formatOgPercent,
+  formatOgRmse,
+  isTrainingRecipeViewType,
+  parseTrainingRecipePreview,
+  type TrainingRecipeOgInput,
+  type TrainingRecipeViewType,
+} from "./og.js";
+
+const OEMBED_KIND_LABELS: Record<TrainingRecipeViewType, string> = {
+  "training-recipe": "Training Recipe",
+  "memory-shard": "Memory Shard",
+  "dataset-pretrain": "Pretrain Dataset",
+  "dataset-posttrain": "Posttrain Dataset",
+};
+
+export interface TrainingRecipeOembedMetadata {
+  title: string;
+  description: string;
+  thumbnailUrl?: string | undefined;
+}
+
+/**
+ * Formats rich oEmbed title, description, and OG thumbnail URL for `training-recipe`,
+ * `memory-shard`, `dataset-pretrain`, and `dataset-posttrain` posts.
+ */
+export function formatTrainingRecipeOembedMetadata(
+  input: TrainingRecipeOgInput,
+  options?: {
+    host?: string | undefined;
+    postId?: number | string | undefined;
+    existingThumbnailUrl?: string | null | undefined;
+    defaultTitle?: string | undefined;
+  },
+): TrainingRecipeOembedMetadata {
+  const parsed = parseTrainingRecipePreview(input, options?.defaultTitle || "Ansatz ML Artifact");
+  const kindLabel = OEMBED_KIND_LABELS[parsed.kind];
+
+  const scaleMode = [parsed.parameterScale, parsed.mode].filter(Boolean).join(" · ");
+  const modelSummary = parsed.baseModel
+    ? scaleMode
+      ? `${parsed.baseModel} (${scaleMode})`
+      : parsed.baseModel
+    : scaleMode || undefined;
+
+  const titleSegments: string[] = [parsed.title];
+  if (modelSummary) titleSegments.push(modelSummary);
+  if (parsed.gate1To4PassRate !== undefined) {
+    titleSegments.push(`Gate 1–4: ${formatOgPercent(parsed.gate1To4PassRate)}`);
+  }
+  if (parsed.passAt1 !== undefined) {
+    titleSegments.push(`Pass@1: ${formatOgPercent(parsed.passAt1)}`);
+  }
+  if (parsed.embedderId && (parsed.kind === "memory-shard" || !modelSummary)) {
+    titleSegments.push(`Embedder: ${parsed.embedderId}`);
+  }
+
+  const descSegments: string[] = [kindLabel];
+  if (parsed.packageRef && parsed.packageRef !== parsed.title) {
+    descSegments.push(parsed.packageRef);
+  }
+  if (modelSummary) {
+    descSegments.push(`Base: ${modelSummary}`);
+  }
+  if (parsed.mStart !== undefined && parsed.mMax !== undefined) {
+    descSegments.push(`m: ${parsed.mStart}→${parsed.mMax}`);
+  }
+  if (parsed.embedderId) {
+    const embParts = [
+      parsed.embedderId,
+      parsed.dimension !== undefined ? `${parsed.dimension}d` : undefined,
+      parsed.quantization,
+    ].filter(Boolean);
+    descSegments.push(`Embedder: ${embParts.join(" · ")}`);
+  }
+  if (parsed.gate1To4PassRate !== undefined) {
+    descSegments.push(`Gate 1–4: ${formatOgPercent(parsed.gate1To4PassRate)}`);
+  }
+  if (parsed.passAt1 !== undefined) {
+    descSegments.push(`Pass@1: ${formatOgPercent(parsed.passAt1)}`);
+  }
+  if (parsed.simRmse !== undefined) {
+    descSegments.push(`Sim RMSE: ${formatOgRmse(parsed.simRmse)}`);
+  }
+  if (parsed.independentReproductions !== undefined) {
+    descSegments.push(`${parsed.independentReproductions}× Reproduced`);
+  }
+
+  const thumbnailUrl =
+    options?.existingThumbnailUrl ||
+    (options?.host && options?.postId !== undefined
+      ? `${options.host}/api/v1/og/post/${options.postId}.png`
+      : undefined);
+
+  return {
+    title: titleSegments.join(" · "),
+    description: descSegments.join(" · "),
+    ...(thumbnailUrl ? { thumbnailUrl } : {}),
+  };
+}
 
 function getEmbedSigningSecret(): string {
   return process.env["EMBED_TOKEN_SECRET"] || process.env["JWT_SECRET"] || JWT_SECRET;
@@ -435,6 +535,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
     const brandName = settings.instanceName || "Ansatz";
     const host = process.env["NODE_ENV"] === "production" ? canonicalHost : parsedUrl.origin;
     let title = `${brandName} Interactive Engineering Model`;
+    let description: string | undefined;
     let authorName = `${brandName} Community`;
     let authorUrl = host;
     let thumbnailUrl = `${host}/api/v1/artifacts/default-thumb.webp`;
@@ -524,8 +625,43 @@ export function oembedRouter(database: LibraryDatabase): Router {
           if (post.thumbnail_url) {
             thumbnailUrl = post.thumbnail_url;
           }
-          if (!embedSrc && (postExt.artifact_id || post.artifact_view_id)) {
-            const artId = postExt.artifact_id || post.artifact_view_id;
+          const artId = postExt.artifact_id || post.artifact_view_id;
+          if (artId) {
+            try {
+              const art = database.getArtifactView(artId);
+              if (art && isTrainingRecipeViewType(art.view_type)) {
+                const viewConfig =
+                  typeof art.view_config === "string" || (art.view_config && typeof art.view_config === "object")
+                    ? (art.view_config as string | Record<string, unknown>)
+                    : null;
+                const rich = formatTrainingRecipeOembedMetadata(
+                  {
+                    id: post.id,
+                    title: post.title || art.title,
+                    content: post.content,
+                    username: post.username,
+                    display_name: post.display_name,
+                    view_type: art.view_type,
+                    view_config: viewConfig,
+                  },
+                  {
+                    host,
+                    postId: post.id,
+                    existingThumbnailUrl: post.thumbnail_url,
+                    defaultTitle: title,
+                  },
+                );
+                title = rich.title;
+                description = rich.description;
+                if (rich.thumbnailUrl) {
+                  thumbnailUrl = rich.thumbnailUrl;
+                }
+              }
+            } catch {
+              // Fall back to standard post metadata
+            }
+          }
+          if (!embedSrc && artId) {
             embedSrc = `${host}/embed/editor#m=artifact-${artId}`;
           }
         }
@@ -568,6 +704,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
       type: "rich",
       version: "1.0",
       title,
+      ...(description ? { description } : {}),
       author_name: authorName,
       author_url: authorUrl,
       provider_name: brandName,

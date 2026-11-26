@@ -97,7 +97,7 @@ export function updateLockfilePackage(
  * Verifies that a downloaded or local buffer matches the expected integrity hash.
  */
 export function verifyIntegrity(buffer: Buffer, expectedIntegrity: string): boolean {
-  if (!expectedIntegrity) return true;
+  if (!expectedIntegrity || !expectedIntegrity.trim()) return false;
   const actual = computeBufferIntegrity(buffer);
   return actual.toLowerCase() === expectedIntegrity.toLowerCase();
 }

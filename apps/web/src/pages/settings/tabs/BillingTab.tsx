@@ -16,16 +16,21 @@ import {
   ZapIcon,
 } from "@primer/octicons-react";
 import { Text } from "@primer/react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import {
   createCheckoutSession,
-  createPaymentIntent,
-  getInvoiceDownloadUrl,
+  createSubscriptionCheckoutSession,
+  downloadBillingInvoice,
   getOrgWallet,
   getUserBillingSummary,
+  getUserTransactions,
   topUpCredits,
   topUpOrgCredits,
+  type BillingTier,
+  type ComputeProfileInfo,
+  type SubscriptionTier,
   type UserBillingSummary,
 } from "../../../api";
 import { getMyOrganizations, type Organization } from "../../../api/organizations";
@@ -138,8 +143,8 @@ const TierActionButton = styled.button<{ $primary?: boolean }>`
   }
 
   &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+    opacity: 0.65;
+    cursor: default;
   }
 `;
 
@@ -235,9 +240,36 @@ const SecondaryButton = styled.button`
   cursor: pointer;
   transition: all 0.15s ease-in-out;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: rgba(255, 255, 255, 0.1);
     border-color: var(--color-border-muted);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const InvoiceButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--color-accent-cyan, #06b6d4);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: wait;
   }
 `;
 
@@ -275,18 +307,22 @@ const TxBadge = styled.span<{ $type: string }>`
     props.$type === "initial_grant" ||
     props.$type === "escrow_refund" ||
     props.$type === "escrow_release" ||
+    props.$type === "org_escrow_refund" ||
+    props.$type === "org_escrow_release" ||
     props.$type === "refund"
       ? "rgba(35, 134, 54, 0.2)"
-      : props.$type === "topup" || props.$type === "top_up"
+      : props.$type === "topup" || props.$type === "top_up" || props.$type === "org_top_up"
         ? "rgba(6, 182, 212, 0.15)"
         : "rgba(218, 54, 51, 0.2)"};
   color: ${(props) =>
     props.$type === "initial_grant" ||
     props.$type === "escrow_refund" ||
     props.$type === "escrow_release" ||
+    props.$type === "org_escrow_refund" ||
+    props.$type === "org_escrow_release" ||
     props.$type === "refund"
       ? "var(--ms-success)"
-      : props.$type === "topup" || props.$type === "top_up"
+      : props.$type === "topup" || props.$type === "top_up" || props.$type === "org_top_up"
         ? "#22d3ee"
         : "var(--ms-danger)"};
 `;
@@ -295,7 +331,20 @@ export interface BillingTabProps {
   onBack: () => void;
 }
 
+type NormalizedTransaction = {
+  id: string | number;
+  created_at: string;
+  transaction_type: string;
+  description: string;
+  job_id?: string | null;
+  amount: number;
+  balance_after: number;
+};
+
 type BillingSummaryView = UserBillingSummary & {
+  activeTier: BillingTier;
+  subscriptionStatus: string;
+  profiles: ComputeProfileInfo[];
   wallet: {
     balance: number;
     total_spent: number;
@@ -303,16 +352,60 @@ type BillingSummaryView = UserBillingSummary & {
     total_cpu_core_hours: number;
     total_gpu_hours: number;
   };
-  recent_transactions: {
-    id: string | number;
-    created_at: string;
-    transaction_type: string;
-    description: string;
-    job_id?: string | null;
-    amount: number;
-    balance_after: number;
-  }[];
+  recent_transactions: NormalizedTransaction[];
 };
+
+const FALLBACK_COMPUTE_PROFILES: ComputeProfileInfo[] = [
+  {
+    id: "standard",
+    name: "Standard Compute",
+    cpus: 4,
+    memoryMb: 16384,
+    tasksPerNode: 1,
+    nodes: 1,
+    costCreditsPerHour: 10,
+  },
+  {
+    id: "high-memory",
+    name: "High Memory",
+    cpus: 16,
+    memoryMb: 262144,
+    tasksPerNode: 1,
+    nodes: 1,
+    costCreditsPerHour: 35,
+  },
+  {
+    id: "gpu-a100",
+    name: "GPU Accelerated (A100)",
+    cpus: 8,
+    memoryMb: 65536,
+    gpus: 1,
+    gpuType: "a100",
+    tasksPerNode: 1,
+    nodes: 1,
+    costCreditsPerHour: 80,
+  },
+  {
+    id: "hpc-mpi-64",
+    name: "Distributed Cluster (64 MPI Ranks)",
+    cpus: 1,
+    tasksPerNode: 32,
+    nodes: 2,
+    memoryMb: 131072,
+    costCreditsPerHour: 150,
+  },
+  {
+    id: "emt-distributed-cluster",
+    name: "Distributed EMT Multi-Island Cluster",
+    cpus: 1,
+    tasksPerNode: 16,
+    nodes: 4,
+    gpus: 1,
+    gpuType: "a100",
+    memoryMb: 131072,
+    costCreditsPerHour: 180,
+  },
+];
 
 const DEFAULT_COMMUNITY_VIEW: BillingSummaryView = {
   userId: 0,
@@ -323,6 +416,9 @@ const DEFAULT_COMMUNITY_VIEW: BillingSummaryView = {
   totalGpuSeconds: 0,
   profileUsage: {},
   recentTransactions: [],
+  activeTier: "free",
+  subscriptionStatus: "inactive",
+  profiles: [],
   wallet: {
     balance: 0,
     total_spent: 0,
@@ -333,13 +429,72 @@ const DEFAULT_COMMUNITY_VIEW: BillingSummaryView = {
   recent_transactions: [],
 };
 
+const TX_PAGE_SIZE = 20;
+
+function normalizeBillingTier(raw: unknown): BillingTier {
+  if (raw === "pro" || raw === "team" || raw === "enterprise") {
+    return raw;
+  }
+  return "free";
+}
+
+function isAbortError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { name?: string; code?: string };
+  return e.name === "AbortError" || e.name === "CanceledError" || e.code === "ERR_CANCELED";
+}
+
+function formatProfileCores(profile: ComputeProfileInfo): string {
+  const nodes = profile.nodes ?? 1;
+  const tasksPerNode = profile.tasksPerNode ?? 1;
+  const totalCores = Math.max(1, profile.cpus * tasksPerNode * nodes);
+  if (nodes > 1 || tasksPerNode > 1) {
+    return `${totalCores} Cores (${nodes}x${tasksPerNode} MPI)`;
+  }
+  return `${totalCores} Cores`;
+}
+
+function formatProfileMemory(memoryMb: number): string {
+  const gb = memoryMb / 1024;
+  return Number.isInteger(gb) ? `${gb} GB` : `${gb.toFixed(1)} GB`;
+}
+
+function formatProfileGpu(profile: ComputeProfileInfo): string {
+  if (profile.gpus && profile.gpus > 0) {
+    const label = profile.gpuType ? profile.gpuType.toUpperCase() : "GPU";
+    const perNode = (profile.nodes ?? 1) > 1 ? " / node" : "";
+    return `${profile.gpus}x NVIDIA ${label}${perNode}`;
+  }
+  if ((profile.nodes ?? 1) > 1 || profile.partition === "mpi") {
+    return "InfiniBand";
+  }
+  return "None";
+}
+
+function normalizeTransactions(rawTxs: unknown[], fallbackBalance = 0): NormalizedTransaction[] {
+  return rawTxs
+    .filter((tx): tx is Record<string, unknown> => Boolean(tx && typeof tx === "object"))
+    .map((tx, idx) => ({
+      id: (tx["id"] as number | string | undefined) ?? idx,
+      created_at: String(tx["created_at"] ?? tx["createdAt"] ?? new Date().toISOString()),
+      transaction_type: String(tx["transaction_type"] ?? tx["type"] ?? "job_charge"),
+      description: String(tx["description"] ?? ""),
+      job_id:
+        tx["job_id"] !== undefined ? String(tx["job_id"] ?? "") || null : tx["jobId"] ? String(tx["jobId"]) : null,
+      amount: Number(tx["amount"] ?? 0),
+      balance_after: Number(tx["balance_after"] ?? tx["balanceAfter"] ?? fallbackBalance),
+    }));
+}
+
 function normalizeBillingSummary(raw: unknown): BillingSummaryView {
   if (!raw || typeof raw !== "object") {
     return DEFAULT_COMMUNITY_VIEW;
   }
   const rawObj = raw as Record<string, unknown>;
   const wallet = rawObj["wallet"] as Record<string, unknown> | undefined;
-  const balance = Number(wallet?.["balance"] ?? rawObj["creditBalance"] ?? rawObj["credit_balance"] ?? 0);
+  const balance = Number(
+    wallet?.["balance"] ?? rawObj["balance"] ?? rawObj["creditBalance"] ?? rawObj["credit_balance"] ?? 0,
+  );
   const totalSpent = Number(wallet?.["total_spent"] ?? rawObj["totalSpent"] ?? rawObj["total_spent"] ?? 0);
   const totalJobs = Number(wallet?.["total_jobs_dispatched"] ?? rawObj["totalJobs"] ?? rawObj["total_jobs"] ?? 0);
   const totalCpuSeconds = Number(rawObj["totalCpuSeconds"] ?? rawObj["total_cpu_seconds"] ?? 0);
@@ -347,23 +502,16 @@ function normalizeBillingSummary(raw: unknown): BillingSummaryView {
   const totalCpuCoreHours = Number(wallet?.["total_cpu_core_hours"] ?? (totalCpuSeconds ? totalCpuSeconds / 3600 : 0));
   const totalGpuHours = Number(wallet?.["total_gpu_hours"] ?? (totalGpuSeconds ? totalGpuSeconds / 3600 : 0));
 
-  const rawTxs: Record<string, unknown>[] = Array.isArray(rawObj["recent_transactions"])
-    ? (rawObj["recent_transactions"] as Record<string, unknown>[])
+  const rawTxs: unknown[] = Array.isArray(rawObj["recent_transactions"])
+    ? (rawObj["recent_transactions"] as unknown[])
     : Array.isArray(rawObj["recentTransactions"])
-      ? (rawObj["recentTransactions"] as Record<string, unknown>[])
+      ? (rawObj["recentTransactions"] as unknown[])
       : Array.isArray(rawObj["transactions"])
-        ? (rawObj["transactions"] as Record<string, unknown>[])
+        ? (rawObj["transactions"] as unknown[])
         : [];
 
-  const normalizedTxs = rawTxs.map((tx: Record<string, unknown>, idx: number) => ({
-    id: (tx["id"] as number | string | undefined) ?? idx,
-    created_at: String(tx["created_at"] ?? tx["createdAt"] ?? new Date().toISOString()),
-    transaction_type: String(tx["transaction_type"] ?? tx["type"] ?? "job_charge"),
-    description: String(tx["description"] ?? ""),
-    job_id: tx["job_id"] !== undefined ? String(tx["job_id"] ?? "") || null : tx["jobId"] ? String(tx["jobId"]) : null,
-    amount: Number(tx["amount"] ?? 0),
-    balance_after: Number(tx["balance_after"] ?? tx["balanceAfter"] ?? balance),
-  }));
+  const normalizedTxs = normalizeTransactions(rawTxs, balance);
+  const profiles = Array.isArray(rawObj["profiles"]) ? (rawObj["profiles"] as ComputeProfileInfo[]) : [];
 
   return {
     userId: Number(rawObj["userId"] ?? rawObj["user_id"] ?? 0),
@@ -374,6 +522,9 @@ function normalizeBillingSummary(raw: unknown): BillingSummaryView {
     totalGpuSeconds,
     profileUsage: (rawObj["profileUsage"] as BillingSummaryView["profileUsage"]) ?? {},
     recentTransactions: (rawObj["recentTransactions"] as BillingSummaryView["recentTransactions"]) ?? [],
+    activeTier: normalizeBillingTier(rawObj["activeTier"] ?? rawObj["active_tier"]),
+    subscriptionStatus: String(rawObj["subscriptionStatus"] ?? rawObj["subscription_status"] ?? "inactive"),
+    profiles,
     wallet: {
       balance,
       total_spent: totalSpent,
@@ -386,9 +537,12 @@ function normalizeBillingSummary(raw: unknown): BillingSummaryView {
 }
 
 export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
-  const { user } = useAuth();
+  const { user, isAdmin, refreshWallet } = useAuth();
   const { isEnabled, setFlagOverride } = useFeatureFlags();
   const isStripeFeatureEnabled = isEnabled("billing_stripe_live");
+  const isDev = import.meta.env.DEV;
+  const canUseSandboxToggle = Boolean(isAdmin) || isDev;
+  const [searchParams, setSearchParams] = useSearchParams();
   const { instanceName, brandName: brandingBrandName } = useInstanceBranding() as {
     instanceName: string;
     brandName?: string;
@@ -411,29 +565,51 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
     return null;
   });
   const [billingSummary, setBillingSummary] = useState<BillingSummaryView | null>(null);
-  const [billingStatus, setBillingStatus] = useState<{
-    stripeConfigured: boolean;
-    activeTier: "free" | "pro" | "team";
-  }>({
-    stripeConfigured: Boolean(isStripeFeatureEnabled),
-    activeTier: "free",
-  });
-  const [sandboxToggle, setSandboxToggle] = useState<boolean>(() => !isStripeFeatureEnabled);
+  const [ledgerTransactions, setLedgerTransactions] = useState<NormalizedTransaction[]>([]);
+  const [txTotal, setTxTotal] = useState<number>(0);
+  const [isLoadingMoreTxs, setIsLoadingMoreTxs] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [sandboxToggle, setSandboxToggle] = useState<boolean>(() => (isDev ? !isStripeFeatureEnabled : false));
   const [billingInterval, setBillingInterval] = useState<"monthly" | "annual">("monthly");
   const [isTopUpLoading, setIsTopUpLoading] = useState(false);
+  const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false);
   const [topUpSuccess, setTopUpSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [invoiceLoadingId, setInvoiceLoadingId] = useState<string | number | null>(null);
+  const [checkoutNotice, setCheckoutNotice] = useState<{
+    variant: "confirming" | "success" | "cancelled";
+    message: string;
+  } | null>(null);
+
+  const fetchSeqRef = useRef(0);
+  const topUpInFlightRef = useRef(false);
+  const latestSummaryRef = useRef<BillingSummaryView | null>(null);
+  const latestTxCountRef = useRef<number>(0);
 
   useEffect(() => {
-    setBillingStatus((prev) => ({ ...prev, stripeConfigured: Boolean(isStripeFeatureEnabled) }));
-    if (!isStripeFeatureEnabled) {
+    latestSummaryRef.current = billingSummary;
+  }, [billingSummary]);
+
+  useEffect(() => {
+    latestTxCountRef.current = ledgerTransactions.length;
+  }, [ledgerTransactions]);
+
+  useEffect(() => {
+    if (isDev && !isStripeFeatureEnabled) {
       setSandboxToggle(true);
     }
-  }, [isStripeFeatureEnabled]);
+  }, [isDev, isStripeFeatureEnabled]);
 
   useEffect(() => {
     let cancelled = false;
-    const storedOrgId = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("ms_billing_org_id") : null;
+    let storedOrgId: string | null = null;
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        storedOrgId = sessionStorage.getItem("ms_billing_org_id");
+      } catch {
+        storedOrgId = null;
+      }
+    }
     if (storedOrgId) {
       const parsed = Number(storedOrgId);
       if (Number.isFinite(parsed) && parsed > 0) {
@@ -461,52 +637,227 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
   }, []);
 
   const selectedOrg = organizations.find((o) => o.id === selectedOrgId) ?? null;
-  const isStripeLiveMode = Boolean(billingStatus?.stripeConfigured) && !sandboxToggle;
-  const isLocalSimulationMode = !isStripeLiveMode;
-  const isLiveActive = isStripeLiveMode || isLocalSimulationMode;
+  const isStripeLiveMode = !canUseSandboxToggle
+    ? true
+    : isDev
+      ? Boolean(isStripeFeatureEnabled) && !sandboxToggle
+      : !sandboxToggle;
+  const isLocalSimulationMode = canUseSandboxToggle && !isStripeLiveMode;
+  const activeTier: BillingTier = billingSummary?.activeTier || "free";
+  const computeProfiles =
+    billingSummary?.profiles && billingSummary.profiles.length > 0
+      ? billingSummary.profiles
+      : FALLBACK_COMPUTE_PROFILES;
 
-  const fetchSummary = useCallback(async () => {
-    try {
-      const data = selectedOrgId !== null ? await getOrgWallet(selectedOrgId) : await getUserBillingSummary();
-      setBillingSummary(normalizeBillingSummary(data));
-      setError(null);
-    } catch {
-      setBillingSummary(DEFAULT_COMMUNITY_VIEW);
-    }
-  }, [selectedOrgId]);
+  const fetchSummary = useCallback(
+    async (
+      signal?: AbortSignal,
+    ): Promise<{
+      summary: BillingSummaryView;
+      txCount: number;
+    } | null> => {
+      const seq = ++fetchSeqRef.current;
+      try {
+        if (selectedOrgId !== null) {
+          const data = await getOrgWallet(selectedOrgId, signal);
+          if (signal?.aborted || seq !== fetchSeqRef.current) return null;
+          const normalized = normalizeBillingSummary(data);
+          setBillingSummary(normalized);
+          setLedgerTransactions(normalized.recent_transactions);
+          setTxTotal(normalized.recent_transactions.length);
+          setSummaryError(null);
+          return { summary: normalized, txCount: normalized.recent_transactions.length };
+        }
+
+        const [summaryData, txPage] = await Promise.all([
+          getUserBillingSummary(signal),
+          getUserTransactions(TX_PAGE_SIZE, 0, signal).catch(() => null),
+        ]);
+        if (signal?.aborted || seq !== fetchSeqRef.current) return null;
+        const normalized = normalizeBillingSummary(summaryData);
+        setBillingSummary(normalized);
+        if (txPage && Array.isArray(txPage.transactions)) {
+          const normalizedPage = normalizeTransactions(txPage.transactions, normalized.wallet.balance);
+          setLedgerTransactions(normalizedPage);
+          setTxTotal(typeof txPage.total === "number" ? txPage.total : normalizedPage.length);
+          setSummaryError(null);
+          return { summary: normalized, txCount: normalizedPage.length };
+        }
+        setLedgerTransactions(normalized.recent_transactions);
+        setTxTotal(normalized.recent_transactions.length);
+        setSummaryError(null);
+        return { summary: normalized, txCount: normalized.recent_transactions.length };
+      } catch (err: unknown) {
+        if (signal?.aborted || isAbortError(err) || seq !== fetchSeqRef.current) return null;
+        setSummaryError(getApiErrorMessage(err, "Failed to load billing summary. Please try again."));
+        return null;
+      }
+    },
+    [selectedOrgId],
+  );
 
   useEffect(() => {
-    void fetchSummary();
+    const controller = new AbortController();
+    void fetchSummary(controller.signal);
+    return () => {
+      controller.abort();
+    };
   }, [fetchSummary]);
 
+  // Keep BillingTab synchronized when top-ups happen from AppShell or elsewhere
+  useEffect(() => {
+    const handleWalletUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<{ source?: string } | undefined>)?.detail;
+      if (detail?.source === "billing-tab") return;
+      void fetchSummary();
+    };
+    window.addEventListener("modelscript:wallet-update", handleWalletUpdate);
+    return () => {
+      window.removeEventListener("modelscript:wallet-update", handleWalletUpdate);
+    };
+  }, [fetchSummary]);
+
+  // Handle ?checkout=success and ?checkout=cancelled return from Stripe Checkout
+  useEffect(() => {
+    const checkoutParam = searchParams.get("checkout");
+    if (checkoutParam !== "success" && checkoutParam !== "cancelled") {
+      return;
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("checkout");
+    nextParams.delete("kind");
+    setSearchParams(nextParams, { replace: true });
+
+    if (checkoutParam === "cancelled") {
+      setCheckoutNotice({
+        variant: "cancelled",
+        message: "Stripe Checkout was cancelled. No charges were made.",
+      });
+      return;
+    }
+
+    let cancelled = false;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    const baselineBalance = latestSummaryRef.current?.wallet.balance ?? null;
+    const baselineTier = latestSummaryRef.current?.activeTier ?? null;
+    const baselineTxCount = latestTxCountRef.current;
+
+    setCheckoutNotice({
+      variant: "confirming",
+      message: "Confirming payment with Stripe...",
+    });
+
+    const poll = async (attempt: number) => {
+      if (cancelled) return;
+      const result = await fetchSummary();
+      if (cancelled) return;
+
+      const balanceChanged =
+        result !== null && baselineBalance !== null && result.summary.wallet.balance !== baselineBalance;
+      const tierChanged = result !== null && baselineTier !== null && result.summary.activeTier !== baselineTier;
+      const txCountChanged = result !== null && result.txCount > baselineTxCount;
+
+      if (balanceChanged || tierChanged || txCountChanged || attempt >= 5) {
+        window.dispatchEvent(new CustomEvent("modelscript:wallet-update", { detail: { source: "billing-tab" } }));
+        void refreshWallet();
+        setCheckoutNotice({
+          variant: "success",
+          message: tierChanged
+            ? `Subscription confirmed! Your active plan is now ${result.summary.activeTier.toUpperCase()}.`
+            : balanceChanged || txCountChanged
+              ? "Payment confirmed! Your compute credit balance has been updated."
+              : "Payment received! If your account has not updated yet, please refresh in a few moments.",
+        });
+        return;
+      }
+
+      timerId = setTimeout(() => {
+        void poll(attempt + 1);
+      }, 2000);
+    };
+
+    timerId = setTimeout(() => {
+      void poll(1);
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      if (timerId !== null) {
+        clearTimeout(timerId);
+      }
+    };
+  }, [searchParams, setSearchParams, fetchSummary, refreshWallet]);
+
   const toggleSandboxBilling = () => {
-    if (billingStatus?.stripeConfigured) {
-      setSandboxToggle((prev) => !prev);
-    } else {
+    if (!canUseSandboxToggle) return;
+    if (isDev && !isStripeFeatureEnabled) {
       const nextStripe = !isStripeFeatureEnabled;
       setFlagOverride("billing_stripe_live", nextStripe);
-      setBillingStatus((prev) => ({ ...prev, stripeConfigured: nextStripe }));
       setSandboxToggle(!nextStripe);
+    } else {
+      setSandboxToggle((prev) => !prev);
     }
     setTopUpSuccess(null);
     setError(null);
   };
 
-  const handleTopUp = async (amount: number, overrideOrgId?: number) => {
+  const startStripeCheckout = async (amount: number, overrideOrgId?: number): Promise<boolean> => {
+    if (topUpInFlightRef.current) return false;
     const targetOrgId = overrideOrgId !== undefined ? overrideOrgId : (selectedOrgId ?? undefined);
+    topUpInFlightRef.current = true;
     setIsTopUpLoading(true);
     setError(null);
     setTopUpSuccess(null);
     try {
-      let paymentIntentId: string | undefined;
-      if (isStripeLiveMode) {
-        const pi = await createPaymentIntent(amount);
-        paymentIntentId = pi.id;
+      const session = await createCheckoutSession(amount, targetOrgId);
+      if (!session.checkoutUrl) {
+        throw new Error("Stripe Checkout URL was not returned by the server.");
       }
+      window.location.assign(session.checkoutUrl);
+      return true;
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Could not start Stripe Checkout session."));
+      return false;
+    } finally {
+      topUpInFlightRef.current = false;
+      setIsTopUpLoading(false);
+    }
+  };
+
+  const startSubscriptionCheckout = async (tier: SubscriptionTier): Promise<boolean> => {
+    if (isSubscriptionLoading) return false;
+    setIsSubscriptionLoading(true);
+    setError(null);
+    setTopUpSuccess(null);
+    try {
+      const session = await createSubscriptionCheckoutSession(tier, billingInterval, selectedOrgId ?? undefined);
+      if (!session.checkoutUrl) {
+        throw new Error("Stripe Subscription Checkout URL was not returned by the server.");
+      }
+      window.location.assign(session.checkoutUrl);
+      return true;
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Could not start Stripe Subscription Checkout session."));
+      return false;
+    } finally {
+      setIsSubscriptionLoading(false);
+    }
+  };
+
+  const handleSandboxTopUp = async (amount: number, overrideOrgId?: number): Promise<boolean> => {
+    if (!canUseSandboxToggle || !isLocalSimulationMode) return false;
+    if (topUpInFlightRef.current) return false;
+    const targetOrgId = overrideOrgId !== undefined ? overrideOrgId : (selectedOrgId ?? undefined);
+    topUpInFlightRef.current = true;
+    setIsTopUpLoading(true);
+    setError(null);
+    setTopUpSuccess(null);
+    try {
       const updatedWallet =
         targetOrgId !== undefined
-          ? await topUpOrgCredits(targetOrgId, amount, paymentIntentId)
-          : await topUpCredits(amount, isStripeLiveMode ? "credit_card" : "sandbox_card", paymentIntentId);
+          ? await topUpOrgCredits(targetOrgId, amount)
+          : await topUpCredits(amount, "sandbox_card");
       setBillingSummary((prev) => {
         if (!prev) return null;
         const uw = updatedWallet as { newBalance?: number; balance?: number } | null | undefined;
@@ -522,25 +873,27 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
         };
       });
       await fetchSummary();
-      window.dispatchEvent(new CustomEvent("modelscript:wallet-update"));
+      window.dispatchEvent(new CustomEvent("modelscript:wallet-update", { detail: { source: "billing-tab" } }));
+      void refreshWallet();
       const targetOrg =
         targetOrgId !== undefined ? (organizations.find((o) => o.id === targetOrgId) ?? selectedOrg) : null;
       const targetLabel = targetOrg ? `@${targetOrg.slug} organization wallet` : "your personal wallet";
       setTopUpSuccess(
-        `Successfully credited +${amount.toFixed(2)} compute credits to ${targetLabel} (${
-          isStripeLiveMode ? "Stripe Live Mode" : "Local Simulation Billing Mode"
-        }).`,
+        `Successfully credited +${amount.toFixed(2)} compute credits ($${amount.toFixed(2)} USD) to ${targetLabel} (Local Simulation Billing Mode).`,
       );
+      return true;
     } catch (err: unknown) {
       setError(
         getApiErrorMessage(err, "Top-up request failed. Please verify your permissions or billing configuration."),
       );
+      return false;
     } finally {
+      topUpInFlightRef.current = false;
       setIsTopUpLoading(false);
     }
   };
 
-  const createCreditCheckout = async (packId: string, orgId?: number) => {
+  const createCreditCheckout = async (packId: string, orgId?: number): Promise<boolean> => {
     const packAmounts: Record<string, number> = {
       pack_50: 50,
       pack_200: 200,
@@ -548,79 +901,75 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
     };
     const amount = packAmounts[packId] ?? (Number(packId) || 200);
     if (isStripeLiveMode) {
-      setIsTopUpLoading(true);
-      setError(null);
-      try {
-        const session = await createCheckoutSession(amount, orgId);
-        if (session.checkoutUrl) {
-          window.open(session.checkoutUrl, "_blank", "noopener,noreferrer");
-          return;
-        }
-      } catch {
-        // Fall back to direct credit top-up
-      } finally {
-        setIsTopUpLoading(false);
-      }
+      return startStripeCheckout(amount, orgId);
     }
-    await handleTopUp(amount, orgId);
+    return handleSandboxTopUp(amount, orgId);
   };
 
-  const createSubscriptionCheckout = async (
-    tierId: "free" | "pro" | "team",
-    interval: "monthly" | "annual",
-    orgId?: number,
-  ) => {
+  const handleOpenInvoice = async (txId: number | string) => {
+    setInvoiceLoadingId(txId);
     setError(null);
-    setTopUpSuccess(null);
-    const targetOrg = orgId !== undefined ? (organizations.find((o) => o.id === orgId) ?? selectedOrg) : null;
-    const scopeLabel = targetOrg ? `@${targetOrg.slug}` : `@${user?.username || "personal"}`;
-
-    if (tierId === "free") {
-      setBillingStatus((prev) => ({ ...prev, activeTier: "free" }));
-      setTopUpSuccess(`Activated Community Free tier for ${scopeLabel}.`);
-      return;
-    }
-
-    const monthlyCredits = tierId === "pro" ? 200 : 600;
-    const grantCredits = interval === "annual" ? monthlyCredits * 12 : monthlyCredits;
-
-    if (isStripeLiveMode) {
-      setIsTopUpLoading(true);
-      try {
-        const session = await createCheckoutSession(grantCredits, orgId);
-        if (session.checkoutUrl) {
-          window.open(session.checkoutUrl, "_blank", "noopener,noreferrer");
-          setBillingStatus((prev) => ({ ...prev, activeTier: tierId }));
-          return;
-        }
-      } catch {
-        // Fall through to local simulation activation
-      } finally {
-        setIsTopUpLoading(false);
+    try {
+      const blob = await downloadBillingInvoice(txId);
+      const blobUrl = URL.createObjectURL(blob);
+      const win = window.open(blobUrl, "_blank", "noopener,noreferrer");
+      if (!win) {
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = `invoice-${txId}.html`;
+        a.click();
       }
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, `Failed to load invoice #${txId}.`));
+    } finally {
+      setInvoiceLoadingId(null);
     }
-
-    setBillingStatus((prev) => ({ ...prev, activeTier: tierId }));
-    await handleTopUp(grantCredits, orgId);
-    setTopUpSuccess(
-      `Upgraded ${scopeLabel} to ${tierId === "pro" ? "Pro" : "Team"} (${interval}) and credited +${grantCredits.toFixed(
-        2,
-      )} compute credits (${isStripeLiveMode ? "Stripe Live Mode" : "Local Simulation Billing Mode"}).`,
-    );
   };
+
+  const handleLoadMoreTransactions = async () => {
+    if (selectedOrgId !== null || isLoadingMoreTxs) return;
+    setIsLoadingMoreTxs(true);
+    setError(null);
+    try {
+      const page = await getUserTransactions(TX_PAGE_SIZE, ledgerTransactions.length);
+      const fallbackBal = billingSummary?.wallet.balance ?? 0;
+      const nextRows = normalizeTransactions(page.transactions ?? [], fallbackBal);
+      setLedgerTransactions((prev) => {
+        const seen = new Set(prev.map((tx) => String(tx.id)));
+        const merged = [...prev];
+        for (const row of nextRows) {
+          if (!seen.has(String(row.id))) {
+            seen.add(String(row.id));
+            merged.push(row);
+          }
+        }
+        return merged;
+      });
+      if (typeof page.total === "number") {
+        setTxTotal(page.total);
+      }
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to load more transactions."));
+    } finally {
+      setIsLoadingMoreTxs(false);
+    }
+  };
+
+  const hasMoreTransactions = selectedOrgId === null && ledgerTransactions.length < txTotal;
 
   return (
     <>
       <Header>
-        <CircleIconButton onClick={onBack} style={{ marginRight: "8px" }}>
+        <CircleIconButton onClick={onBack} aria-label="Back" style={{ marginRight: "8px" }}>
           <ArrowLeftIcon size={20} />
         </CircleIconButton>
         Billing &amp; Compute Quotas
       </Header>
       <Box px={4} pb={4} style={{ overflowY: "auto" }}>
         <DetailSubtitle style={{ fontSize: "15px", lineHeight: "1.5", display: "block", marginBottom: "20px" }}>
-          Manage your subscription tier, high-performance computing quotas, and metered compute credit ledgers across
-          SLURM and local solver clusters.
+          Manage your high-performance computing quotas, pay-as-you-go compute credits ($1.00 USD = 1.00 Compute
+          Credit), and metered credit ledgers across SLURM and local solver clusters.
         </DetailSubtitle>
 
         {/* Billing Scope Selector */}
@@ -646,8 +995,8 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               </div>
               <div style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
                 {selectedOrg
-                  ? `Managing shared subscription and compute credit ledger for ${selectedOrg.display_name || selectedOrg.name} (@${selectedOrg.slug}).`
-                  : `Managing personal compute credit balance and subscription for Personal Account (@${user?.username || "me"}).`}
+                  ? `Managing shared compute credit ledger for ${selectedOrg.display_name || selectedOrg.name} (@${selectedOrg.slug}).`
+                  : `Managing personal compute credit balance for Personal Account (@${user?.username || "me"}).`}
               </div>
             </div>
           </Box>
@@ -671,6 +1020,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               }
               setTopUpSuccess(null);
               setError(null);
+              setSummaryError(null);
             }}
             style={{
               padding: "8px 12px",
@@ -692,8 +1042,81 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           </select>
         </Box>
 
+        {checkoutNotice && (
+          <Box
+            role={checkoutNotice.variant === "cancelled" ? "alert" : "status"}
+            mb={3}
+            p={3}
+            style={{
+              background:
+                checkoutNotice.variant === "success"
+                  ? "var(--color-success-subtle)"
+                  : checkoutNotice.variant === "cancelled"
+                    ? "rgba(210, 153, 34, 0.15)"
+                    : "rgba(6, 182, 212, 0.14)",
+              color:
+                checkoutNotice.variant === "success"
+                  ? "var(--color-success-fg)"
+                  : checkoutNotice.variant === "cancelled"
+                    ? "#d29922"
+                    : "var(--color-accent-cyan, #06b6d4)",
+              borderRadius: "6px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+            }}
+          >
+            <Box display="flex" alignItems="center" gap={2}>
+              {checkoutNotice.variant === "success" ? (
+                <CheckCircleIcon size={16} />
+              ) : checkoutNotice.variant === "cancelled" ? (
+                <AlertIcon size={16} />
+              ) : (
+                <SyncIcon size={16} />
+              )}
+              <Text fontSize="14px">{checkoutNotice.message}</Text>
+            </Box>
+            {checkoutNotice.variant !== "confirming" && (
+              <SecondaryButton
+                style={{ padding: "4px 10px", fontSize: "12px" }}
+                onClick={() => setCheckoutNotice(null)}
+              >
+                Dismiss
+              </SecondaryButton>
+            )}
+          </Box>
+        )}
+
+        {summaryError && (
+          <Box
+            role="alert"
+            mb={3}
+            p={3}
+            style={{
+              background: "var(--color-danger-subtle)",
+              color: "var(--color-danger-fg)",
+              borderRadius: "6px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+            }}
+          >
+            <Box display="flex" alignItems="center" gap={2}>
+              <AlertIcon size={16} />
+              <Text fontSize="14px">{summaryError}</Text>
+            </Box>
+            <SecondaryButton style={{ padding: "4px 10px", fontSize: "12px" }} onClick={() => void fetchSummary()}>
+              <SyncIcon size={12} />
+              Retry
+            </SecondaryButton>
+          </Box>
+        )}
+
         {error && (
           <Box
+            role="alert"
             mb={3}
             p={3}
             style={{
@@ -718,6 +1141,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
 
         {topUpSuccess && (
           <Box
+            role="status"
             mb={3}
             p={3}
             style={{
@@ -745,29 +1169,33 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           <Box display="flex" flexDirection="column" gap={1}>
             <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
               <Text style={{ fontSize: "16px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                {billingStatus.activeTier === "team"
-                  ? `${brandName} Team HPC`
-                  : billingStatus.activeTier === "pro"
-                    ? `${brandName} Pro Cloud`
-                    : `${brandName} Community Edition`}
+                {brandName} {activeTier === "free" ? "Pay-As-You-Go Compute" : `${activeTier.toUpperCase()} Plan`}
               </Text>
               <PlanBadge $variant={isStripeLiveMode ? "pro" : "community"}>
                 <ShieldCheckIcon size={12} />
                 {isStripeLiveMode ? "Stripe Live Mode" : "Local Simulation Billing Mode"}
               </PlanBadge>
+              {activeTier !== "free" && (
+                <PlanBadge $variant="pro">
+                  <RocketIcon size={12} />
+                  {activeTier.toUpperCase()} Tier ({billingSummary?.subscriptionStatus || "active"})
+                </PlanBadge>
+              )}
             </Box>
             <Text style={{ fontSize: "13px", color: "var(--color-text-muted)", lineHeight: 1.4 }}>
               {isStripeLiveMode
-                ? "Connected to Stripe Live billing for cloud Slurm cluster job dispatch, batched SUNDIALS sweeps, and GPU surrogate training."
-                : `Local Simulation Billing Mode active on ${brandName} — test subscription upgrades, organization credit top-ups, and ledger auditing without live card charges.`}
+                ? "Connected to Stripe Checkout ($1.00 USD = 1.00 Compute Credit) for cloud Slurm cluster job dispatch, batched SUNDIALS sweeps, and GPU surrogate training."
+                : `Local Simulation Billing Mode active on ${brandName} — test organization credit top-ups and ledger auditing without live card charges.`}
             </Text>
           </Box>
 
           <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-            <SecondaryButton type="button" onClick={toggleSandboxBilling}>
-              <SyncIcon size={13} />
-              {sandboxToggle ? "Sandbox Mode Active" : "Simulate Sandbox Mode"}
-            </SecondaryButton>
+            {canUseSandboxToggle && (
+              <SecondaryButton type="button" onClick={toggleSandboxBilling}>
+                <SyncIcon size={13} />
+                {isLocalSimulationMode ? "Sandbox Mode Active" : "Simulate Sandbox Mode"}
+              </SecondaryButton>
+            )}
             <SecondaryButton
               type="button"
               onClick={() => {
@@ -783,12 +1211,12 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
         <Box id="subscription-tiers" mb={4}>
           <Box display="flex" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={2} mb={3}>
             <div>
-              <DetailTitle style={{ fontWeight: 700, display: "block" }}>{brandName} Subscription Tiers</DetailTitle>
+              <DetailTitle style={{ fontWeight: 700, display: "block" }}>
+                {brandName} Plans &amp; Subscriptions
+              </DetailTitle>
               <Text style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                Select a plan for{" "}
-                {selectedOrg
-                  ? `${selectedOrg.display_name || selectedOrg.name} (@${selectedOrg.slug})`
-                  : `Personal Account (@${user?.username || "me"})`}
+                Pay-as-you-go compute credits are billed at $1.00 USD = 1.00 Compute Credit. Subscribe to Pro or Team
+                via Stripe Checkout for recurring priority compute access.
               </Text>
             </div>
             <Box
@@ -829,74 +1257,83 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           </Box>
 
           <TiersGrid>
-            <TierCard $highlighted={billingStatus.activeTier === "free"}>
+            <TierCard $highlighted={activeTier === "free"}>
               <div>
                 <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-                  Community Free
+                  Community Free + Pay-As-You-Go
                 </div>
                 <div style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-text-primary)", margin: "6px 0" }}>
                   $0{" "}
-                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>/ forever</span>
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>
+                    / forever + $1.00/cr
+                  </span>
                 </div>
                 <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-                  Unlimited in-browser WebAssembly ODE/DAE simulation, public repositories, and open-source package
-                  publishing.
+                  Unlimited in-browser WebAssembly ODE/DAE simulation, public repositories, open-source package
+                  publishing, and on-demand cloud HPC credits at $1.00 USD per credit.
                 </div>
               </div>
-              <TierActionButton
-                type="button"
-                disabled={isTopUpLoading}
-                onClick={() => void createSubscriptionCheckout("free", billingInterval, selectedOrgId || undefined)}
-              >
-                Activate Free
+              <TierActionButton type="button" disabled>
+                {activeTier === "free" ? "Active Plan" : "Included"}
               </TierActionButton>
             </TierCard>
 
-            <TierCard $highlighted={billingStatus.activeTier === "pro"}>
+            <TierCard $highlighted={activeTier === "pro"}>
               <div>
                 <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--color-text-primary)" }}>
                   {brandName} Pro
                 </div>
                 <div style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-text-primary)", margin: "6px 0" }}>
                   {billingInterval === "annual" ? "$24" : "$29"}{" "}
-                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>/ month</span>
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>
+                    / month {billingInterval === "annual" ? "($288/yr)" : ""}
+                  </span>
                 </div>
                 <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-                  Includes 200 monthly cloud HPC credits, priority Slurm queue dispatch, and GPU surrogate model
-                  training.
+                  Priority Slurm queue dispatch, GPU surrogate model training, private repositories, and dedicated
+                  engineering support.
                 </div>
               </div>
               <TierActionButton
                 type="button"
-                $primary
-                disabled={isTopUpLoading}
-                onClick={() => void createSubscriptionCheckout("pro", billingInterval, selectedOrgId || undefined)}
+                $primary={activeTier !== "pro"}
+                disabled={activeTier === "pro" || isSubscriptionLoading}
+                onClick={() => void startSubscriptionCheckout("pro")}
               >
-                Upgrade to Pro
+                {activeTier === "pro"
+                  ? "Active Plan"
+                  : isSubscriptionLoading
+                    ? "Redirecting to Stripe..."
+                    : `Subscribe to Pro (${billingInterval === "annual" ? "$288/yr" : "$29/mo"})`}
               </TierActionButton>
             </TierCard>
 
-            <TierCard $highlighted={billingStatus.activeTier === "team"}>
+            <TierCard $highlighted={activeTier === "team"}>
               <div>
                 <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--color-text-primary)" }}>
                   {brandName} Team
                 </div>
                 <div style={{ fontSize: "24px", fontWeight: 800, color: "var(--color-text-primary)", margin: "6px 0" }}>
                   {billingInterval === "annual" ? "$79" : "$99"}{" "}
-                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>/ month</span>
+                  <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-text-muted)" }}>
+                    / month {billingInterval === "annual" ? "($948/yr)" : ""}
+                  </span>
                 </div>
                 <div style={{ fontSize: "12px", color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-                  Includes 600 shared organization HPC credits, scoped private registries, RBAC governance, and MPI
-                  cluster access.
+                  Shared organization HPC pools, scoped private registries, RBAC governance, and MPI cluster access.
                 </div>
               </div>
               <TierActionButton
                 type="button"
-                $primary
-                disabled={isTopUpLoading}
-                onClick={() => void createSubscriptionCheckout("team", billingInterval, selectedOrgId || undefined)}
+                $primary={activeTier !== "team"}
+                disabled={activeTier === "team" || isSubscriptionLoading}
+                onClick={() => void startSubscriptionCheckout("team")}
               >
-                Upgrade to Team
+                {activeTier === "team"
+                  ? "Active Plan"
+                  : isSubscriptionLoading
+                    ? "Redirecting to Stripe..."
+                    : `Subscribe to Team (${billingInterval === "annual" ? "$948/yr" : "$99/mo"})`}
               </TierActionButton>
             </TierCard>
           </TiersGrid>
@@ -1026,7 +1463,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                   marginTop: "4px",
                 }}
               >
-                {isLiveActive ? `${billingSummary?.wallet.balance.toFixed(2) ?? "0.00"} cr` : "Unlimited Local"}
+                {`${billingSummary?.wallet.balance.toFixed(2) ?? "0.00"} cr`}
               </div>
               <span
                 style={{
@@ -1040,51 +1477,41 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               >
                 <CheckCircleIcon size={12} />
                 {isStripeLiveMode
-                  ? "Pre-Flight Authorized for Cloud Slurm Offload"
+                  ? "Pre-Flight Authorized for Cloud Slurm Offload ($1.00 / credit)"
                   : "Active in Local Simulation Billing Mode & In-Browser WebAssembly"}
               </span>
             </Box>
 
             <Box display="flex" flexDirection="column" alignItems="flex-end" gap={2}>
               <span style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-                {isStripeLiveMode ? "Quick Top-Up (Credits)" : "Local Simulation Credit Top-Up"}
+                {isStripeLiveMode
+                  ? "Quick Top-Up ($1.00 USD = 1.00 Compute Credit)"
+                  : "Local Simulation Credit Top-Up ($1.00 / cr)"}
               </span>
               <Box display="flex" gap={2} flexWrap="wrap">
                 <TopUpPillButton
                   disabled={isTopUpLoading}
                   onClick={() => void createCreditCheckout("pack_50", selectedOrgId || undefined)}
                 >
-                  <PlusIcon size={14} /> +50 cr
+                  <PlusIcon size={14} /> +50 cr — $50.00
                 </TopUpPillButton>
                 <TopUpPillButton
                   disabled={isTopUpLoading}
                   onClick={() => void createCreditCheckout("pack_200", selectedOrgId || undefined)}
                 >
-                  <PlusIcon size={14} /> +200 cr
+                  <PlusIcon size={14} /> +200 cr — $200.00
                 </TopUpPillButton>
                 <TopUpPillButton
                   disabled={isTopUpLoading}
                   onClick={() => void createCreditCheckout("pack_500", selectedOrgId || undefined)}
                 >
-                  <ZapIcon size={14} /> +500 cr
+                  <ZapIcon size={14} /> +500 cr — $500.00
                 </TopUpPillButton>
                 <TopUpPillButton
                   disabled={isTopUpLoading}
-                  onClick={async () => {
-                    try {
-                      setIsTopUpLoading(true);
-                      const session = await createCheckoutSession(200, selectedOrgId || undefined);
-                      if (session.checkoutUrl) {
-                        window.open(session.checkoutUrl, "_blank", "noopener,noreferrer");
-                      }
-                    } catch {
-                      setError("Could not start Stripe Checkout session.");
-                    } finally {
-                      setIsTopUpLoading(false);
-                    }
-                  }}
+                  onClick={() => void startStripeCheckout(200, selectedOrgId || undefined)}
                 >
-                  <CreditCardIcon size={14} /> Stripe Tax Checkout
+                  <CreditCardIcon size={14} /> Stripe Tax Checkout (200 cr — $200.00)
                 </TopUpPillButton>
               </Box>
             </Box>
@@ -1099,7 +1526,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               <span style={{ fontSize: "12px", fontWeight: "600" }}>Total Spent</span>
             </Box>
             <span style={{ fontSize: "20px", fontWeight: "700", color: "var(--color-text-primary)" }}>
-              {isLiveActive ? `${billingSummary?.wallet.total_spent.toFixed(2) ?? "0.00"} cr` : "0.00 cr (Local)"}
+              {`${billingSummary?.wallet.total_spent.toFixed(2) ?? "0.00"} cr`}
             </span>
           </StatItem>
 
@@ -1143,7 +1570,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
             style={{
               border: "1px solid var(--color-border-default)",
               borderRadius: "8px",
-              overflow: "hidden",
+              overflowX: "auto",
               backgroundColor: "var(--color-canvas-default)",
             }}
           >
@@ -1159,57 +1586,44 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td style={{ fontWeight: "600" }}>Standard</td>
-                  <td>4 Cores</td>
-                  <td>16 GB</td>
-                  <td>None</td>
-                  <td>10.00 cr / hr</td>
-                  <td>0.50 cr (3 min)</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: "600" }}>High Memory</td>
-                  <td>16 Cores</td>
-                  <td>256 GB</td>
-                  <td>None</td>
-                  <td>35.00 cr / hr</td>
-                  <td>1.75 cr (3 min)</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: "600" }}>GPU A100</td>
-                  <td>8 Cores</td>
-                  <td>64 GB</td>
-                  <td>1x NVIDIA A100</td>
-                  <td>80.00 cr / hr</td>
-                  <td>4.00 cr (3 min)</td>
-                </tr>
-                <tr>
-                  <td style={{ fontWeight: "600" }}>MPI Supercluster</td>
-                  <td>64 Cores</td>
-                  <td>128 GB</td>
-                  <td>InfiniBand</td>
-                  <td>150.00 cr / hr</td>
-                  <td>7.50 cr (3 min)</td>
-                </tr>
+                {computeProfiles.map((profile) => {
+                  const minReserve = profile.costCreditsPerHour * 0.05;
+                  return (
+                    <tr key={profile.id}>
+                      <td style={{ fontWeight: "600" }}>
+                        {profile.name}{" "}
+                        <span style={{ fontSize: "11px", fontWeight: 400, color: "var(--color-text-muted)" }}>
+                          ({profile.id})
+                        </span>
+                      </td>
+                      <td>{formatProfileCores(profile)}</td>
+                      <td>{formatProfileMemory(profile.memoryMb)}</td>
+                      <td>{formatProfileGpu(profile)}</td>
+                      <td>{profile.costCreditsPerHour.toFixed(2)} cr / hr</td>
+                      <td>{minReserve.toFixed(2)} cr (3 min)</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </LedgerTable>
           </Box>
           <div style={{ fontSize: "11px", color: "var(--color-text-muted)", marginTop: "8px", fontStyle: "italic" }}>
             * Note: Local in-browser WebAssembly simulations (ODE/DAE arena, SUNDIALS CVODE/IDA) run completely
-            client-side without consuming credits. Quotas apply only to distributed Slurm cluster jobs.
+            client-side without consuming credits. Quotas apply only to distributed Slurm cluster jobs ($1.00 USD = 1.00
+            Compute Credit).
           </div>
         </Box>
 
         {/* Immutable Transaction Ledger */}
         <Box mb={4}>
           <DetailTitle style={{ fontWeight: "700", display: "block", marginBottom: "12px" }}>
-            Immutable Audit Ledger ({billingSummary?.recent_transactions.length || 0} Transactions)
+            Immutable Audit Ledger ({txTotal || ledgerTransactions.length} Transactions)
           </DetailTitle>
           <Box
             style={{
               border: "1px solid var(--color-border-default)",
               borderRadius: "8px",
-              overflow: "hidden",
+              overflowX: "auto",
               backgroundColor: "var(--color-canvas-default)",
             }}
           >
@@ -1226,7 +1640,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                 </tr>
               </thead>
               <tbody>
-                {!billingSummary || billingSummary.recent_transactions.length === 0 ? (
+                {ledgerTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={7} style={{ textAlign: "center", color: "var(--color-text-muted)", padding: "24px" }}>
                       No cloud billing transactions recorded. Local simulations run entirely within your local/browser
@@ -1234,7 +1648,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                     </td>
                   </tr>
                 ) : (
-                  billingSummary.recent_transactions.map((tx) => (
+                  ledgerTransactions.map((tx) => (
                     <tr key={tx.id}>
                       <td style={{ color: "var(--color-text-muted)" }}>{new Date(tx.created_at).toLocaleString()}</td>
                       <td>
@@ -1252,14 +1666,13 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
                       </td>
                       <td style={{ fontWeight: "600" }}>{tx.balance_after.toFixed(2)} cr</td>
                       <td>
-                        <a
-                          href={getInvoiceDownloadUrl(tx.id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ fontSize: "12px", fontWeight: 600 }}
+                        <InvoiceButton
+                          type="button"
+                          disabled={invoiceLoadingId === tx.id}
+                          onClick={() => void handleOpenInvoice(tx.id)}
                         >
-                          Invoice <LinkExternalIcon size={11} />
-                        </a>
+                          {invoiceLoadingId === tx.id ? "Loading..." : "Invoice"} <LinkExternalIcon size={11} />
+                        </InvoiceButton>
                       </td>
                     </tr>
                   ))
@@ -1267,6 +1680,17 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
               </tbody>
             </LedgerTable>
           </Box>
+          {hasMoreTransactions && (
+            <Box display="flex" justifyContent="center" mt={3}>
+              <SecondaryButton
+                type="button"
+                disabled={isLoadingMoreTxs}
+                onClick={() => void handleLoadMoreTransactions()}
+              >
+                {isLoadingMoreTxs ? "Loading..." : `Load More (${ledgerTransactions.length} of ${txTotal})`}
+              </SecondaryButton>
+            </Box>
+          )}
         </Box>
       </Box>
     </>

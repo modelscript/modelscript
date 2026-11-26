@@ -9,6 +9,7 @@ import {
 } from "@modelscript/diagram";
 import type { DiagramData, DiagramEditAction } from "@modelscript/diagram/protocol";
 import { decodeDataUrl } from "@modelscript/dsl/utils";
+import { parseXmlSync } from "@modelscript/dsl/xml";
 import { detectPolyglotLanguage } from "@modelscript/lsp/utils/polyglot-detector.js";
 import type { editor } from "monaco-editor";
 import { type DataUrl } from "parse-data-url";
@@ -35,6 +36,7 @@ import {
   didOpen,
   drillDownDiagram,
   extractPrimaryModelicaClassName,
+  getCadFeatureTree,
   getComponentProperties,
   getDiagramData,
   parseCode,
@@ -42,6 +44,7 @@ import {
   setPreferredLspLanguageId,
   updateLspSettings,
   type AnsatzOnDemandLintMode,
+  type AnsatzRelationalHypergraphRecord,
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
 
@@ -52,6 +55,13 @@ import {
   useEditorToast as useToast,
 } from "../host";
 import { useAnsatzHost } from "./AnsatzEditorHostContext";
+import {
+  applyScadOperationOverrides,
+  EMPTY_SCAD_FEATURE_OVERRIDES,
+  type CadFeatureNode,
+  type CadPartOverride,
+  type ScadFeatureOverrides,
+} from "./cad-viewer";
 import { useAnsatzEngine } from "./hooks";
 import {
   AnsatzAiPanel,
@@ -64,11 +74,26 @@ import {
   AnsatzVisualizerPane,
   COLLAPSED_DIAGNOSTICS_HEIGHT,
   AnsatzView as View,
+  ZonotopeGeneratorRibbon,
+  type ComputeDialPreset,
   type MobileTab,
 } from "./panels";
 import { WorkspaceSymbolModal } from "./panels/WorkspaceSymbolModal";
 import ParameterSliderRibbon from "./ParameterSliderRibbon";
 import { formatMonacoMarkers, type AnsatzToolHost } from "./util/ansatz-tool-bridge";
+import type { AnsatzXRayTokenHeat } from "./util/hypergraph-overlay";
+import {
+  buildGeneratorSummaries,
+  createInitialZonotopeWorkbenchState,
+  toApiHypergraphOverrides,
+  type ApiHypergraphOverride,
+  type FaultGeneratorSpec,
+  type LinearConstraintSpec,
+  type ModalityPerturbationBudgets,
+  type ZonotopeBrushMode,
+  type ZonotopePendingOverride,
+  type ZonotopeWorkbenchState,
+} from "./util/zonotope-workbench-state";
 
 const CodeEditor = React.lazy(() => import("./Code"));
 
@@ -86,6 +111,10 @@ export interface AnsatzEditorProps {
   canSplit?: boolean | undefined;
   onViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => void) | undefined;
   onToggleSplit?: (() => void) | undefined;
+  isVrMode?: boolean | undefined;
+  onVrModeChange?: ((enabled: boolean) => void) | undefined;
+  /** Optional explicit color mode overriding EditorHostContext fallback so navbar, sidebar, 3D viewport, and Monaco stay 100% theme-synced. */
+  colorMode?: "dark" | "light" | undefined;
   initialVisualizerSubview?: "diagram" | "simulation" | "3d" | "inspector" | undefined;
   initialSimulationVariables?: string[] | undefined;
   initialStartTime?: number | undefined;
@@ -135,6 +164,11 @@ export interface AnsatzEditorProps {
   onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
   dirtyFiles?: string[] | Set<string> | undefined;
   simulationResetKey?: number | undefined;
+  /** Optional sync group identifier to synchronize 3D CAD OrbitControls cameras across side-by-side AnsatzEditor panes. */
+  cameraSyncGroup?: string | undefined;
+  defaultShowHypergraphOverlay?: boolean | undefined;
+  onZonotopeOverridesChange?:
+    ((overrides: ApiHypergraphOverride[], constraints: LinearConstraintSpec[]) => void) | undefined;
 }
 
 const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
@@ -309,6 +343,167 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [aiInitialPrompt, setAiInitialPrompt] = useState<string | undefined>(undefined);
+  const [showHypergraphOverlay, setShowHypergraphOverlay] = useState<boolean>(() =>
+    Boolean(props.defaultShowHypergraphOverlay),
+  );
+  const prevDefaultShowHypergraphOverlayRef = useRef<boolean>(Boolean(props.defaultShowHypergraphOverlay));
+  useEffect(() => {
+    const nextDefault = Boolean(props.defaultShowHypergraphOverlay);
+    if (nextDefault && !prevDefaultShowHypergraphOverlayRef.current) {
+      setShowHypergraphOverlay(true);
+    }
+    prevDefaultShowHypergraphOverlayRef.current = nextDefault;
+  }, [props.defaultShowHypergraphOverlay]);
+  const [computeDial, setComputeDial] = useState<ComputeDialPreset>("auto-escalate");
+  const [xrayTokenHeat, setXRayTokenHeat] = useState<AnsatzXRayTokenHeat[] | null>(null);
+  const [zonotopeState, setZonotopeState] = useState<ZonotopeWorkbenchState>(() =>
+    createInitialZonotopeWorkbenchState(),
+  );
+  const [hypergraphRecord, setHypergraphRecord] = useState<AnsatzRelationalHypergraphRecord | null>(null);
+  const [worstCaseXiByGroupId, setWorstCaseXiByGroupId] = useState<Record<number, number>>({});
+  const [zonotopeViolatingSymbols, setZonotopeViolatingSymbols] = useState<string[]>([]);
+  const [isStudioActive, setIsStudioActive] = useState(false);
+  const [zonotopeRibbonCollapsed, setZonotopeRibbonCollapsed] = useState(false);
+
+  const handleChangeXi = useCallback((groupId: number, xi: number) => {
+    setZonotopeState((prev) => ({
+      ...prev,
+      xiByGroupId: { ...prev.xiByGroupId, [groupId]: xi },
+    }));
+  }, []);
+
+  const handleChangeStressScale = useCallback((scale: number) => {
+    setZonotopeState((prev) => ({ ...prev, stressScale: scale }));
+  }, []);
+
+  const handleSelectZonotopeGroup = useCallback((groupId: number | null) => {
+    setZonotopeState((prev) => ({ ...prev, activeGroupId: groupId }));
+  }, []);
+
+  const handleChangeZonotopeBrush = useCallback((brush: ZonotopeBrushMode) => {
+    setZonotopeState((prev) => ({ ...prev, activeBrush: brush }));
+    if (brush !== "select") {
+      setShowHypergraphOverlay(true);
+    }
+  }, []);
+
+  const handleToggleScramblePreview = useCallback(() => {
+    setZonotopeState((prev) => ({ ...prev, scramblePreview: !prev.scramblePreview }));
+  }, []);
+
+  const handleResetNominal = useCallback(() => {
+    setZonotopeState((prev) => ({ ...prev, xiByGroupId: {}, stressScale: 1.0 }));
+  }, []);
+
+  const handleSnapWorstCase = useCallback(() => {
+    setZonotopeState((prev) => {
+      if (Object.keys(worstCaseXiByGroupId).length > 0) {
+        return {
+          ...prev,
+          xiByGroupId: { ...worstCaseXiByGroupId },
+          stressScale: Math.max(1.0, prev.stressScale),
+        };
+      }
+      const summaries = buildGeneratorSummaries(hypergraphRecord);
+      const nextXi: Record<number, number> = {};
+      for (let i = 0; i < summaries.length; i++) {
+        const summary = summaries[i]!;
+        nextXi[summary.groupId] = i % 2 === 0 ? 1 : -1;
+      }
+      return {
+        ...prev,
+        xiByGroupId: nextXi,
+        stressScale: Math.max(1.0, prev.stressScale),
+      };
+    });
+  }, [worstCaseXiByGroupId, hypergraphRecord]);
+
+  const handleAddZonotopeConstraint = useCallback((constraint: LinearConstraintSpec) => {
+    setZonotopeState((prev) => {
+      const exists = prev.constraints.some((c) => c.id === constraint.id);
+      const nextConstraints = exists
+        ? prev.constraints.map((c) => (c.id === constraint.id ? constraint : c))
+        : [...prev.constraints, constraint];
+      return { ...prev, constraints: nextConstraints };
+    });
+  }, []);
+
+  const handleRemoveZonotopeConstraint = useCallback((constraintId: string) => {
+    setZonotopeState((prev) => ({
+      ...prev,
+      constraints: prev.constraints.filter((c) => c.id !== constraintId),
+    }));
+  }, []);
+
+  const handleAddZonotopeOverride = useCallback((override: ZonotopePendingOverride) => {
+    setZonotopeState((prev) => {
+      const filtered = prev.pendingOverrides.filter((existing) => {
+        if (existing.id === override.id) return false;
+        if (
+          existing.modality === override.modality &&
+          override.tokenIndex !== undefined &&
+          existing.tokenIndex === override.tokenIndex
+        ) {
+          return false;
+        }
+        if (
+          existing.modality === override.modality &&
+          override.tokenIndex === undefined &&
+          existing.tokenIndex === undefined &&
+          override.symbolName &&
+          existing.symbolName === override.symbolName
+        ) {
+          return false;
+        }
+        return true;
+      });
+      return { ...prev, pendingOverrides: [...filtered, override] };
+    });
+  }, []);
+
+  const handleToggleFaultGenerator = useCallback((spec: FaultGeneratorSpec) => {
+    setZonotopeState((prev) => {
+      const exists = prev.faultGenerators.some((fg) => fg.id === spec.id);
+      const nextFaults = exists
+        ? prev.faultGenerators.map((fg) => (fg.id === spec.id ? spec : fg))
+        : [...prev.faultGenerators, spec];
+      return { ...prev, faultGenerators: nextFaults };
+    });
+  }, []);
+
+  const handleUpdateZonotopeBudgets = useCallback((patch: Partial<ModalityPerturbationBudgets>) => {
+    setZonotopeState((prev) => ({
+      ...prev,
+      budgets: { ...prev.budgets, ...patch },
+    }));
+  }, []);
+
+  const handleChangeCadToleranceFraction = useCallback(
+    (nextFraction: number) => {
+      handleUpdateZonotopeBudgets({ cadToleranceFraction: nextFraction });
+    },
+    [handleUpdateZonotopeBudgets],
+  );
+
+  const handleClearPendingOverrides = useCallback(() => {
+    setZonotopeState((prev) => ({ ...prev, pendingOverrides: [] }));
+  }, []);
+
+  const onZonotopeOverridesChangeRef = useRef(props.onZonotopeOverridesChange);
+  onZonotopeOverridesChangeRef.current = props.onZonotopeOverridesChange;
+  const hasMountedZonotopeOverridesRef = useRef(false);
+  useEffect(() => {
+    if (!hasMountedZonotopeOverridesRef.current) {
+      hasMountedZonotopeOverridesRef.current = true;
+      if (zonotopeState.pendingOverrides.length === 0 && zonotopeState.constraints.length === 0) {
+        return;
+      }
+    }
+    onZonotopeOverridesChangeRef.current?.(
+      toApiHypergraphOverrides(zonotopeState.pendingOverrides),
+      zonotopeState.constraints,
+    );
+  }, [zonotopeState.pendingOverrides, zonotopeState.constraints]);
   const hasAnsatzAi = useFeatureFlag("ansatz_ai");
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
@@ -367,9 +562,25 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
         : View.DIAGRAM;
 
   const [view, setView] = useState<View>(initialViewMode);
+  const [vrQuickEditOpen, setVrQuickEditOpen] = useState(false);
   const [showResultsView, setShowResultsView] = useState(initialIsPlot);
   const [showCadView, setShowCadView] = useState(initialIsCad);
   const [showAnalysisView, setShowAnalysisView] = useState(initialIsInspector);
+  useEffect(() => {
+    if (!props.isVrMode || (view !== View.CODE && !isSplit(view))) {
+      setVrQuickEditOpen(false);
+    }
+  }, [props.isVrMode, view]);
+  useEffect(() => {
+    if (props.isVrMode && vrQuickEditOpen) {
+      const raf = requestAnimationFrame(() => {
+        editorRef.current?.layout?.();
+        editorRef.current?.focus?.();
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    return undefined;
+  }, [props.isVrMode, vrQuickEditOpen]);
   const [mobileTab, setMobileTab] = useState<MobileTab>(
     initialIsCad ? "cad" : initialIsPlot ? "results" : initialViewMode === View.CODE ? "code" : "diagram",
   );
@@ -800,6 +1011,55 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     [diagramData, documentUri, selectedTreeClassName, props.onAnchorClick],
   );
 
+  const [cadPartOverrides, setCadPartOverrides] = useState<Record<string, CadPartOverride>>({});
+  const [scadFeatureOverrides, setScadFeatureOverrides] = useState<ScadFeatureOverrides>(EMPTY_SCAD_FEATURE_OVERRIDES);
+  const [selectedCadFeatureId, setSelectedCadFeatureId] = useState<string | null>(null);
+  const [scadSourceSnapshot, setScadSourceSnapshot] = useState<string>(content);
+
+  const [scadFeatureTree, setScadFeatureTree] = useState<CadFeatureNode[]>([]);
+
+  useEffect(() => {
+    setCadPartOverrides({});
+    setScadFeatureOverrides(EMPTY_SCAD_FEATURE_OVERRIDES);
+    setSelectedCadFeatureId(null);
+    if (dialect !== "scad") {
+      setScadFeatureTree([]);
+    }
+  }, [documentUri, dialect]);
+
+  useEffect(() => {
+    if (dialect !== "scad") {
+      setScadFeatureTree([]);
+      return;
+    }
+    const src = scadSourceSnapshot || content;
+    if (!src.trim()) {
+      setScadFeatureTree([]);
+      return;
+    }
+    let cancelled = false;
+    void getCadFeatureTree(documentUri, src)
+      .then((nodes) => {
+        if (!cancelled && Array.isArray(nodes)) {
+          setScadFeatureTree(nodes as CadFeatureNode[]);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setScadFeatureTree([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dialect, documentUri, scadSourceSnapshot, content]);
+
+  const scadOverrideCode = useMemo(
+    () =>
+      dialect === "scad"
+        ? applyScadOperationOverrides(scadSourceSnapshot || content, scadFeatureTree, scadFeatureOverrides)
+        : undefined,
+    [dialect, scadSourceSnapshot, content, scadFeatureTree, scadFeatureOverrides],
+  );
+
   const {
     simulationVariables,
     setSimulationVariables,
@@ -864,7 +1124,12 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     projectFiles: props.projectFiles,
     activeFileName: props.activeFileName,
     onUpdateProjectFile: props.onUpdateProjectFile,
+    scadOverrideCode,
   });
+
+  useEffect(() => {
+    setScadSourceSnapshot(editorValue);
+  }, [editorValue]);
 
   const lastSimulatedTriggerRef = useRef(0);
   useEffect(() => {
@@ -914,7 +1179,7 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
   const [propertiesWidth, setPropertiesWidth] = useState(props.embed ? 240 : 300);
   const ansatzHost = useAnsatzHost();
   const siteTheme = useSiteTheme();
-  const theme = ansatzHost.lspTransport ? ansatzHost.theme : siteTheme.theme;
+  const theme = props.colorMode ?? (ansatzHost.lspTransport ? ansatzHost.theme : siteTheme.theme);
   const toggleTheme = ansatzHost.toggleTheme ?? siteTheme.toggleTheme;
   const isDark = theme === "dark";
   const colorMode = isDark ? "dark" : "light";
@@ -1127,11 +1392,25 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
         const model = ed.getModel();
         if (model) {
           const lines = model.getLinesContent();
-          const escaped = shortName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          const wordRe = new RegExp(`\\b${escaped}\\b`);
+          const isWordCh = (c: number): boolean =>
+            (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95;
+          const hasWord = (line: string, word: string): boolean => {
+            if (!word) return false;
+            let pos = 0;
+            while (pos <= line.length - word.length) {
+              const idx = line.indexOf(word, pos);
+              if (idx === -1) return false;
+              const leftOk = idx === 0 || !isWordCh(line.charCodeAt(idx - 1));
+              const rightIdx = idx + word.length;
+              const rightOk = rightIdx >= line.length || !isWordCh(line.charCodeAt(rightIdx));
+              if (leftOk && rightOk) return true;
+              pos = idx + 1;
+            }
+            return false;
+          };
           let foundLine = -1;
           for (let i = 0; i < lines.length; i++) {
-            if (wordRe.test(lines[i]!)) {
+            if (hasWord(lines[i]!, shortName)) {
               foundLine = i + 1;
               break;
             }
@@ -1232,16 +1511,72 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
       const ed = editorRef.current;
       if (!ed) return;
       const currentText = ed.getValue();
+      const findLastUncommentedChar = (src: string, target: string): number => {
+        let lastIdx = -1;
+        let inStr: string | null = null;
+        let inLineComment = false;
+        let inBlockComment = false;
+        for (let i = 0; i < src.length; i++) {
+          const ch = src[i]!;
+          const next = src[i + 1];
+          if (inLineComment) {
+            if (ch === "\n") inLineComment = false;
+            continue;
+          }
+          if (inBlockComment) {
+            if (ch === "*" && next === "/") {
+              inBlockComment = false;
+              i++;
+            }
+            continue;
+          }
+          if (inStr) {
+            if (ch === "\\" && next !== undefined) {
+              i++;
+            } else if (ch === inStr) {
+              inStr = null;
+            }
+            continue;
+          }
+          if (ch === "/" && next === "/") {
+            inLineComment = true;
+            i++;
+            continue;
+          }
+          if (ch === "/" && next === "*") {
+            inBlockComment = true;
+            i++;
+            continue;
+          }
+          if (ch === '"' || ch === "'") {
+            inStr = ch;
+            continue;
+          }
+          if (ch === target) lastIdx = i;
+        }
+        return lastIdx;
+      };
       let nextText: string;
-      if (dialect === "sysml2" && currentText.lastIndexOf("}") !== -1) {
-        const idx = currentText.lastIndexOf("}");
-        nextText = `${currentText.slice(0, idx)}${snippet}${currentText.slice(idx)}`;
-      } else if (dialect === "owl2" && currentText.lastIndexOf(")") !== -1) {
-        const idx = currentText.lastIndexOf(")");
-        nextText = `${currentText.slice(0, idx)}  ${snippet}${currentText.slice(idx)}`;
-      } else if (dialect === "urdf" && currentText.includes("</robot>")) {
-        const idx = currentText.lastIndexOf("</robot>");
-        nextText = `${currentText.slice(0, idx)}${snippet}${currentText.slice(idx)}`;
+      if (dialect === "sysml2") {
+        const idx = findLastUncommentedChar(currentText, "}");
+        nextText =
+          idx !== -1
+            ? `${currentText.slice(0, idx)}${snippet}${currentText.slice(idx)}`
+            : `${currentText.trimEnd()}\n${snippet}`;
+      } else if (dialect === "owl2") {
+        const idx = findLastUncommentedChar(currentText, ")");
+        nextText =
+          idx !== -1
+            ? `${currentText.slice(0, idx)}  ${snippet}${currentText.slice(idx)}`
+            : `${currentText.trimEnd()}\n${snippet}`;
+      } else if (dialect === "urdf") {
+        const xmlDoc = parseXmlSync(currentText);
+        const robotEl = xmlDoc.root?.name.toLowerCase() === "robot" ? xmlDoc.root : undefined;
+        const closeIdx = robotEl && robotEl.end > robotEl.start ? currentText.lastIndexOf("</", robotEl.end) : -1;
+        nextText =
+          closeIdx !== -1
+            ? `${currentText.slice(0, closeIdx)}${snippet}${currentText.slice(closeIdx)}`
+            : `${currentText.trimEnd()}\n${snippet}`;
       } else {
         nextText = `${currentText.trimEnd()}\n${snippet}`;
       }
@@ -1947,6 +2282,57 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     [dialect, props.onClassLoaded, props.onCodeChange],
   );
 
+  const handleLoadExampleSource = useCallback(
+    (exampleSource: string, exampleDialect: string, exampleUri?: string) => {
+      if (!exampleSource) return;
+      const nextInfo = getLanguageInfo(exampleDialect || dialect);
+      const dialectChanged = nextInfo.id !== dialect;
+      if (dialectChanged) {
+        const prevUri = `${instanceDocPrefix}.${getLanguageExtension(dialect)}`;
+        didClose(prevUri);
+        setDialectState(nextInfo.id);
+        setSidecarContent(undefined);
+        setDiagramType(nextInfo.diagramTypes?.[0]?.id ?? "diagram");
+        props.onDialectChange?.(nextInfo.id);
+      }
+
+      setXRayTokenHeat(null);
+      setLoadedCodeOverride(exampleSource);
+      if (editorRef.current) {
+        editorRef.current.setValue(exampleSource);
+      }
+      setLastLoadedContent(exampleSource);
+      lastLoadedContentRef.current = exampleSource;
+      lastSyncedCodeRef.current = exampleSource;
+      setDrillDownPath([]);
+      setSelectedComponent(null);
+      setSelectedComponentProperties(null);
+      setShowResultsView(false);
+
+      const targetUri = dialectChanged
+        ? `${instanceDocPrefix}.${getLanguageExtension(nextInfo.id)}`
+        : documentUriRef.current;
+      didOpen(targetUri, exampleSource, nextInfo.id);
+      codeEditorRef.current?.sync();
+
+      const fileLabel = exampleUri
+        ?.split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "");
+      const primary =
+        nextInfo.id === "modelica" || !nextInfo.id
+          ? extractPrimaryModelicaClassName(exampleSource)
+          : (fileLabel ?? null);
+      if (primary) {
+        setSelectedTreeClassName(primary);
+      }
+      setContextVersion((v) => v + 1);
+      props.onClassLoaded?.(exampleSource, fileLabel || primary || "ScrubberExample", nextInfo.id);
+      props.onCodeChange?.(exampleSource);
+    },
+    [dialect, instanceDocPrefix, setDiagramType, props.onDialectChange, props.onClassLoaded, props.onCodeChange],
+  );
+
   const handleTreeSelect = useCallback((className: string, kind?: string) => {
     if (!className || className.startsWith("__") || kind === "package" || kind === "loading-package") {
       return;
@@ -2297,6 +2683,67 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     URL.revokeObjectURL(url);
   }, [editor, props, dialect]);
 
+  const handleExecuteCodeLensCommand = useCallback(
+    (commandId: string): boolean => {
+      const splitMode =
+        props.splitOrientation === "rows" ||
+        (props.splitOrientation !== "columns" && windowWidth < 960 && windowHeight >= 560)
+          ? View.SPLIT_ROWS
+          : View.SPLIT_COLUMNS;
+
+      const openInspectorSubtab = (subtab: "domain" | "thread" | "rtm") => {
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(true);
+        if (isNarrow) {
+          setMobileTab("inspector");
+        } else {
+          setView((prev) => (prev === View.CODE ? splitMode : prev));
+        }
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("ansatz:select-inspector-subtab", { detail: { subtab } }));
+        }
+      };
+
+      if (commandId === "modelscript.openRawWorkbench" || /^modelscript\.open[A-Z]\w*Workbench$/.test(commandId)) {
+        openInspectorSubtab("domain");
+        return true;
+      }
+      if (commandId === "modelscript.openDiagram") {
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(false);
+        if (isNarrow) {
+          setMobileTab("diagram");
+        } else {
+          setView((prev) => (prev === View.CODE ? splitMode : prev));
+        }
+        return true;
+      }
+      if (commandId === "modelscript.openSimulationView") {
+        setShowCadView(false);
+        setShowResultsView(true);
+        setShowAnalysisView(false);
+        if (isNarrow) {
+          setMobileTab("results");
+        } else {
+          setView((prev) => (prev === View.CODE ? splitMode : prev));
+        }
+        return true;
+      }
+      if (commandId === "modelscript.openContractExplorer") {
+        openInspectorSubtab("rtm");
+        return true;
+      }
+      if (commandId === "modelscript.openThreadExplorer") {
+        openInspectorSubtab("thread");
+        return true;
+      }
+      return false;
+    },
+    [isNarrow, props.splitOrientation, windowWidth, windowHeight],
+  );
+
   const isParameterRibbonVisible = Boolean(
     (props.embed || props.showParameterRibbon) && ribbonParams.length > 0 && view !== View.CODE && !showAnalysisView,
   );
@@ -2358,6 +2805,30 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
           hasParameterRibbon={isParameterRibbonVisible}
         />
 
+        {!props.isVrMode && (showHypergraphOverlay || isStudioActive) && (
+          <div style={{ flexShrink: 0, zIndex: 25 }}>
+            <ZonotopeGeneratorRibbon
+              colorMode={colorMode}
+              sourceCode={editorValue || content}
+              hypergraphRecord={hypergraphRecord}
+              state={zonotopeState}
+              worstCaseXiByGroupId={worstCaseXiByGroupId}
+              collapsed={zonotopeRibbonCollapsed}
+              onToggleCollapsed={() => setZonotopeRibbonCollapsed((v) => !v)}
+              onChangeXi={handleChangeXi}
+              onChangeStressScale={handleChangeStressScale}
+              onSelectGroup={handleSelectZonotopeGroup}
+              onChangeBrush={handleChangeZonotopeBrush}
+              onToggleScramblePreview={handleToggleScramblePreview}
+              onResetNominal={handleResetNominal}
+              onSnapWorstCase={handleSnapWorstCase}
+              onAddConstraint={handleAddZonotopeConstraint}
+              onRemoveConstraint={handleRemoveZonotopeConstraint}
+              onViolatingSymbolsChange={setZonotopeViolatingSymbols}
+            />
+          </div>
+        )}
+
         <div
           className="d-flex flex-1"
           style={{
@@ -2376,80 +2847,168 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
             boxSizing: "border-box",
           }}
         >
-          <AnsatzLeftSidebar
-            treeVisible={treeVisible}
-            setTreeVisible={(next) => {
-              setTreeVisible((prev) => {
-                const resolved = typeof next === "function" ? next(prev) : next;
-                props.onSidebarLayoutChange?.({ visible: resolved, width: treeWidth });
-                return resolved;
-              });
-            }}
-            isNarrow={isNarrow}
-            treeWidth={treeWidth}
-            setTreeWidth={(nextWidth) => {
-              setTreeWidth(nextWidth);
-              props.onSidebarLayoutChange?.({ visible: treeVisible, width: nextWidth });
-            }}
-            colorMode={colorMode}
-            showResultsView={showResultsView}
-            translations={translations}
-            libraryFilter={libraryFilter}
-            setLibraryFilter={setLibraryFilter}
-            isSearchExpanded={isSearchExpanded}
-            setIsSearchExpanded={setIsSearchExpanded}
-            isSearching={isSearching}
-            inputRef={inputRef}
-            addLibraryButtonRef={addLibraryButtonRef}
-            onOpenAddLibrary={() => {
-              setAddLibraryViewMode("libraries");
-              setIsAddLibraryOpen(true);
-            }}
-            onOpenAddComponent={() => {
-              setAddLibraryViewMode("components");
-              setIsAddLibraryOpen(true);
-            }}
-            documentUri={documentUri}
-            debouncedFilter={debouncedFilter}
-            onTreeSelect={handleTreeSelect}
-            onTreeHighlight={handleTreeHighlight}
-            contextVersion={contextVersion}
-            language={dialect}
-            diagramData={diagramData}
-            selectedComponent={selectedComponent}
-            onSelectComponent={handleSelectComponent}
-            simulationVariables={simulationVariables}
-            selectedSimulationVariables={selectedSimulationVariables}
-            onToggleSimulationVariable={handleToggleSimulationVariable}
-            simulationParameters={simulationParameters}
-            parameterOverrides={parameterOverrides}
-            onParameterChange={handleParameterChange}
-            onParameterReset={handleParameterReset}
-            sweepState={sweepState}
-            onSweepChange={setSweepState}
-            experimentOverrides={experimentOverrides}
-            onExperimentOverrideChange={handleExperimentOverrideChange}
-            onExperimentOverrideReset={handleExperimentOverrideReset}
-            cachedSimulator={cachedSimulator}
-            onSimulate={handleSimulate}
-            onOpenCloud={() => setIsCloudModalOpen(true)}
-            isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
-            floating={isFloatingWorkspace}
-            floatingTopOffset={props.sidebarFullHeight ? 12 : floatingTopOffset}
-            projectFiles={
-              props.projectFiles ?? { [`model.${getLanguageInfo(dialect || "modelica").ext || "mo"}`]: content }
-            }
-            activeFileName={props.activeFileName ?? `model.${getLanguageInfo(dialect || "modelica").ext || "mo"}`}
-            onSelectProjectFile={props.onSelectProjectFile}
-            onAddProjectFile={props.onAddProjectFile}
-            onOpenNewModelModal={props.onOpenNewModelModal ?? (() => setIsOpenFileDialogOpen(true))}
-            isLoadingModel={props.isLoadingModel}
-            onRemoveProjectFile={props.onRemoveProjectFile}
-            onRenameProjectFile={props.onRenameProjectFile}
-            onMoveProjectFile={props.onMoveProjectFile}
-            fileDiagnosticCounts={fileDiagnosticCounts}
-            dirtyFiles={props.dirtyFiles}
-          />
+          {!props.isVrMode && (
+            <AnsatzLeftSidebar
+              treeVisible={treeVisible}
+              setTreeVisible={(next) => {
+                setTreeVisible((prev) => {
+                  const resolved = typeof next === "function" ? next(prev) : next;
+                  props.onSidebarLayoutChange?.({ visible: resolved, width: treeWidth });
+                  return resolved;
+                });
+              }}
+              isNarrow={isNarrow}
+              treeWidth={treeWidth}
+              setTreeWidth={(nextWidth) => {
+                setTreeWidth(nextWidth);
+                props.onSidebarLayoutChange?.({ visible: treeVisible, width: nextWidth });
+              }}
+              colorMode={colorMode}
+              showResultsView={showResultsView}
+              translations={translations}
+              libraryFilter={libraryFilter}
+              setLibraryFilter={setLibraryFilter}
+              isSearchExpanded={isSearchExpanded}
+              setIsSearchExpanded={setIsSearchExpanded}
+              isSearching={isSearching}
+              inputRef={inputRef}
+              addLibraryButtonRef={addLibraryButtonRef}
+              onOpenAddLibrary={() => {
+                setAddLibraryViewMode("libraries");
+                setIsAddLibraryOpen(true);
+              }}
+              onOpenAddComponent={() => {
+                setAddLibraryViewMode("components");
+                setIsAddLibraryOpen(true);
+              }}
+              documentUri={documentUri}
+              debouncedFilter={debouncedFilter}
+              onTreeSelect={handleTreeSelect}
+              onTreeHighlight={handleTreeHighlight}
+              contextVersion={contextVersion}
+              language={dialect}
+              diagramData={diagramData}
+              selectedComponent={selectedComponent}
+              onSelectComponent={handleSelectComponent}
+              simulationVariables={simulationVariables}
+              selectedSimulationVariables={selectedSimulationVariables}
+              onToggleSimulationVariable={handleToggleSimulationVariable}
+              simulationParameters={simulationParameters}
+              parameterOverrides={parameterOverrides}
+              onParameterChange={handleParameterChange}
+              onParameterReset={handleParameterReset}
+              sweepState={sweepState}
+              onSweepChange={setSweepState}
+              experimentOverrides={experimentOverrides}
+              onExperimentOverrideChange={handleExperimentOverrideChange}
+              onExperimentOverrideReset={handleExperimentOverrideReset}
+              cachedSimulator={cachedSimulator}
+              onSimulate={handleSimulate}
+              onOpenCloud={() => setIsCloudModalOpen(true)}
+              isSimulating={simulationStatus?.status === "pending" || simulationStatus?.status === "processing"}
+              floating={isFloatingWorkspace}
+              floatingTopOffset={props.sidebarFullHeight ? 12 : floatingTopOffset}
+              projectFiles={
+                props.projectFiles ?? { [`model.${getLanguageInfo(dialect || "modelica").ext || "mo"}`]: content }
+              }
+              activeFileName={props.activeFileName ?? `model.${getLanguageInfo(dialect || "modelica").ext || "mo"}`}
+              onSelectProjectFile={props.onSelectProjectFile}
+              onAddProjectFile={props.onAddProjectFile}
+              onOpenNewModelModal={props.onOpenNewModelModal ?? (() => setIsOpenFileDialogOpen(true))}
+              isLoadingModel={props.isLoadingModel}
+              onRemoveProjectFile={props.onRemoveProjectFile}
+              onRenameProjectFile={props.onRenameProjectFile}
+              onMoveProjectFile={props.onMoveProjectFile}
+              fileDiagnosticCounts={fileDiagnosticCounts}
+              dirtyFiles={props.dirtyFiles}
+              preferCadTree={
+                showCadView ||
+                dialect === "scad" ||
+                dialect === "step" ||
+                dialect === "urdf" ||
+                dialect === "stl" ||
+                dialect === "obj"
+              }
+              cadTree={{
+                featureNodes: scadFeatureTree,
+                featureOverrides: scadFeatureOverrides,
+                selectedFeatureId: selectedCadFeatureId,
+                onSelectFeature: (node) => {
+                  setSelectedCadFeatureId(node.id);
+                  const monacoEditor = editorRef.current ?? editor;
+                  if (monacoEditor) {
+                    monacoEditor.revealLineInCenter?.(node.line);
+                    monacoEditor.setPosition?.({ lineNumber: node.line, column: 1 });
+                  }
+                },
+                onToggleFeatureSuppress: (id) => {
+                  setScadFeatureOverrides((prev) => {
+                    const nextSuppressed = new Set(prev.suppressedIds);
+                    if (nextSuppressed.has(id)) nextSuppressed.delete(id);
+                    else nextSuppressed.add(id);
+                    const nextGhost = new Set(prev.ghostIds);
+                    nextGhost.delete(id);
+                    return {
+                      suppressedIds: nextSuppressed,
+                      isolatedId: prev.isolatedId === id ? null : prev.isolatedId,
+                      ghostIds: nextGhost,
+                    };
+                  });
+                },
+                onToggleFeatureIsolate: (id) => {
+                  setScadFeatureOverrides((prev) => {
+                    const nextIsolated = prev.isolatedId === id ? null : id;
+                    const nextSuppressed = new Set(prev.suppressedIds);
+                    if (nextIsolated) nextSuppressed.delete(id);
+                    return {
+                      suppressedIds: nextSuppressed,
+                      isolatedId: nextIsolated,
+                      ghostIds: prev.ghostIds,
+                    };
+                  });
+                },
+                onToggleFeatureGhost: (id) => {
+                  setScadFeatureOverrides((prev) => {
+                    const nextGhost = new Set(prev.ghostIds);
+                    if (nextGhost.has(id)) nextGhost.delete(id);
+                    else nextGhost.add(id);
+                    const nextSuppressed = new Set(prev.suppressedIds);
+                    nextSuppressed.delete(id);
+                    return {
+                      suppressedIds: nextSuppressed,
+                      isolatedId: prev.isolatedId,
+                      ghostIds: nextGhost,
+                    };
+                  });
+                },
+                onResetFeatureOverrides: () => setScadFeatureOverrides(EMPTY_SCAD_FEATURE_OVERRIDES),
+                cadComponents,
+                partOverrides: cadPartOverrides,
+                selectedPartName: selectedComponent,
+                onSelectPart: (name) => setSelectedComponent(name),
+                onUpdatePartOverride: (name, patch) => {
+                  setCadPartOverrides((prev) => ({
+                    ...prev,
+                    [name]: { ...(prev[name] ?? {}), ...patch },
+                  }));
+                },
+                onIsolatePart: (name) => {
+                  setCadPartOverrides((prev) => {
+                    const allOthersHidden = cadComponents
+                      .filter((c) => c.name !== name)
+                      .every((c) => prev[c.name]?.visible === false);
+                    if (allOthersHidden) return {};
+                    const next: Record<string, CadPartOverride> = {};
+                    for (const c of cadComponents) {
+                      next[c.name] = { ...(prev[c.name] ?? {}), visible: c.name === name };
+                    }
+                    return next;
+                  });
+                },
+                onResetPartOverrides: () => setCadPartOverrides({}),
+              }}
+            />
+          )}
 
           <div
             style={
@@ -2617,6 +3176,18 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                 isSplitActive={isSplit(view)}
                 canSplit={props.canSplit ?? true}
                 splitOrientation={props.splitOrientation}
+                isVrMode={props.isVrMode}
+                onVrModeChange={props.onVrModeChange}
+                vrQuickEditOpen={vrQuickEditOpen}
+                onToggleVrQuickEdit={() => setVrQuickEditOpen((prev) => !prev)}
+                cadPartOverrides={cadPartOverrides}
+                onCadPartOverridesChange={setCadPartOverrides}
+                diagnostics={mergedEditorDiagnostics.map((m) => ({
+                  severity:
+                    m.severity >= 8 ? ("error" as const) : m.severity >= 4 ? ("warning" as const) : ("info" as const),
+                  line: m.startLineNumber,
+                  message: m.message,
+                }))}
                 treeWidth={treeWidth}
                 onSelectView={(target) => {
                   if (props.onViewChange) {
@@ -2625,6 +3196,25 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                     applyViewMode(target);
                   }
                 }}
+                showHypergraphOverlay={showHypergraphOverlay}
+                onToggleHypergraphOverlay={setShowHypergraphOverlay}
+                computeDial={computeDial}
+                onChangeComputeDial={setComputeDial}
+                onXRayTokenHeatChange={setXRayTokenHeat}
+                onLoadExampleSource={handleLoadExampleSource}
+                zonotopeWorkbenchState={zonotopeState}
+                hypergraphRecord={hypergraphRecord}
+                onSelectZonotopeGroup={handleSelectZonotopeGroup}
+                onAddZonotopeOverride={handleAddZonotopeOverride}
+                onAddZonotopeConstraint={handleAddZonotopeConstraint}
+                onToggleFaultGenerator={handleToggleFaultGenerator}
+                onUpdateZonotopeBudgets={handleUpdateZonotopeBudgets}
+                onClearPendingOverrides={handleClearPendingOverrides}
+                onWorstCaseXiChange={setWorstCaseXiByGroupId}
+                onStudioActiveChange={setIsStudioActive}
+                zonotopeViolatingComponents={zonotopeViolatingSymbols}
+                onChangeCadToleranceFraction={handleChangeCadToleranceFraction}
+                cameraSyncGroup={props.cameraSyncGroup}
                 onToggleSplit={
                   props.onToggleSplit ??
                   (() => {
@@ -2643,7 +3233,7 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
               />
 
               {/* Split Resizer */}
-              {isSplit(view) && !isNarrow && (
+              {!props.isVrMode && isSplit(view) && !isNarrow && (
                 <AnsatzResizeHandle
                   orientation={view === View.SPLIT_COLUMNS ? "vertical" : "horizontal"}
                   ariaLabel="Resize split panes"
@@ -2750,8 +3340,9 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                 />
               )}
 
-              {/* Code Editor (on the right in split view) */}
+              {/* Code Editor (on the right in split view, or translucent Quick-Edit overlay in VR mode) */}
               <div
+                data-testid={props.isVrMode && vrQuickEditOpen ? "vr-quick-edit-overlay" : "ansatz-code-editor-pane"}
                 onDragOver={(e) => {
                   if (e.dataTransfer?.types?.includes("Files")) {
                     e.preventDefault();
@@ -2760,70 +3351,135 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                 }}
                 onDragLeave={() => setIsEditorDragOver(false)}
                 onDrop={handleEditorDrop}
-                style={{
-                  display:
-                    (view === View.CODE || isSplit(view)) && (!isNarrow || mobileTab === "code") ? "flex" : "none",
-                  flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
-                  position:
-                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas ? "absolute" : undefined,
-                  zIndex: isFullScreenSplitCanvas ? 20 : undefined,
-                  top:
-                    (isFloatingWorkspace && view === View.CODE) ||
-                    (isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS)
-                      ? floatingTopOffset
-                      : isFullScreenSplitCanvas && view === View.SPLIT_ROWS
-                        ? `max(${floatingTopOffset}px, calc(${splitRatio * 100}% + 6px))`
-                        : undefined,
-                  left:
-                    (isFloatingWorkspace && view === View.CODE) || (isFullScreenSplitCanvas && view === View.SPLIT_ROWS)
-                      ? treeVisible
-                        ? treeWidth + 24
-                        : 12
-                      : isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS
-                        ? `max(${treeVisible ? treeWidth + 24 : 12}px, calc(${splitRatio * 100}% + 6px))`
-                        : undefined,
-                  right:
-                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
-                      ? floatingRightOffset
-                      : undefined,
-                  bottom:
-                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
-                      ? diagnosticsBottomOffset
-                      : undefined,
-                  width:
-                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
-                      ? "auto"
-                      : isNarrow
-                        ? "100%"
-                        : isSplit(view) && view === View.SPLIT_COLUMNS
-                          ? `${(1 - splitRatio) * 100}%`
-                          : isSplit(view)
-                            ? undefined
-                            : "100%",
-                  height:
-                    (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
-                      ? "auto"
-                      : isNarrow
-                        ? "100%"
-                        : isSplit(view) && view === View.SPLIT_ROWS
-                          ? `${(1 - splitRatio) * 100}%`
-                          : "100%",
-                  flexDirection: "column",
-                  minWidth: 0,
-                  minHeight: 0,
-                  outline: isEditorDragOver ? "2px dashed var(--ms-brand, #0891b2)" : "none",
-                  outlineOffset: -2,
-                  borderRadius: isNarrow ? 0 : 8,
-                  border: isNarrow
-                    ? "none"
-                    : isFloatingWorkspace
-                      ? "1px solid var(--ms-border, rgba(15, 23, 42, 0.12))"
-                      : "1px solid var(--borderColor-muted, var(--ms-divider))",
-                  boxShadow: isFloatingWorkspace ? floatingCardShadow : undefined,
-                  overflow: "hidden",
-                  backgroundColor: "var(--ms-bg, var(--color-canvas-default, #ffffff))",
-                }}
+                style={
+                  props.isVrMode && vrQuickEditOpen
+                    ? {
+                        display: "flex",
+                        position: "fixed",
+                        zIndex: 39,
+                        top: 76,
+                        bottom: 76,
+                        right: view === View.CODE ? "50%" : 16,
+                        transform: view === View.CODE ? "translateX(50%)" : undefined,
+                        width: view === View.CODE ? "min(780px, calc(100vw - 48px))" : "min(520px, 44vw)",
+                        flexDirection: "column",
+                        minWidth: 0,
+                        minHeight: 0,
+                        borderRadius: 12,
+                        border: "1px solid rgba(99, 102, 241, 0.45)",
+                        boxShadow: "0 20px 56px rgba(0, 0, 0, 0.55)",
+                        backdropFilter: "blur(14px)",
+                        WebkitBackdropFilter: "blur(14px)",
+                        overflow: "hidden",
+                        backgroundColor: colorMode === "dark" ? "rgba(15, 23, 42, 0.92)" : "rgba(255, 255, 255, 0.94)",
+                      }
+                    : {
+                        display:
+                          !props.isVrMode &&
+                          (view === View.CODE || isSplit(view)) &&
+                          (!isNarrow || mobileTab === "code")
+                            ? "flex"
+                            : "none",
+                        flex: isNarrow ? 1 : isSplit(view) ? "none" : 1,
+                        position:
+                          (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                            ? "absolute"
+                            : undefined,
+                        zIndex: isFullScreenSplitCanvas ? 20 : undefined,
+                        top:
+                          (isFloatingWorkspace && view === View.CODE) ||
+                          (isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS)
+                            ? floatingTopOffset
+                            : isFullScreenSplitCanvas && view === View.SPLIT_ROWS
+                              ? `max(${floatingTopOffset}px, calc(${splitRatio * 100}% + 6px))`
+                              : undefined,
+                        left:
+                          (isFloatingWorkspace && view === View.CODE) ||
+                          (isFullScreenSplitCanvas && view === View.SPLIT_ROWS)
+                            ? treeVisible
+                              ? treeWidth + 24
+                              : 12
+                            : isFullScreenSplitCanvas && view === View.SPLIT_COLUMNS
+                              ? `max(${treeVisible ? treeWidth + 24 : 12}px, calc(${splitRatio * 100}% + 6px))`
+                              : undefined,
+                        right:
+                          (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                            ? floatingRightOffset
+                            : undefined,
+                        bottom:
+                          (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                            ? diagnosticsBottomOffset
+                            : undefined,
+                        width:
+                          (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                            ? "auto"
+                            : isNarrow
+                              ? "100%"
+                              : isSplit(view) && view === View.SPLIT_COLUMNS
+                                ? `${(1 - splitRatio) * 100}%`
+                                : isSplit(view)
+                                  ? undefined
+                                  : "100%",
+                        height:
+                          (isFloatingWorkspace && view === View.CODE) || isFullScreenSplitCanvas
+                            ? "auto"
+                            : isNarrow
+                              ? "100%"
+                              : isSplit(view) && view === View.SPLIT_ROWS
+                                ? `${(1 - splitRatio) * 100}%`
+                                : "100%",
+                        flexDirection: "column",
+                        minWidth: 0,
+                        minHeight: 0,
+                        outline: isEditorDragOver ? "2px dashed var(--ms-brand, #0891b2)" : "none",
+                        outlineOffset: -2,
+                        borderRadius: isNarrow ? 0 : 8,
+                        border: isNarrow
+                          ? "none"
+                          : isFloatingWorkspace
+                            ? "1px solid var(--ms-border, rgba(15, 23, 42, 0.12))"
+                            : "1px solid var(--borderColor-muted, var(--ms-divider))",
+                        boxShadow: isFloatingWorkspace ? floatingCardShadow : undefined,
+                        overflow: "hidden",
+                        backgroundColor: "var(--ms-bg, var(--color-canvas-default, #ffffff))",
+                      }
+                }
               >
+                {props.isVrMode && vrQuickEditOpen && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      padding: "6px 12px",
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      background: "rgba(99, 102, 241, 0.14)",
+                      borderBottom: "1px solid rgba(99, 102, 241, 0.28)",
+                      color: colorMode === "dark" ? "#e2e8f0" : "#1e293b",
+                    }}
+                  >
+                    <span>Quick Edit · Live Sync to VR</span>
+                    <button
+                      type="button"
+                      data-testid="vr-quick-edit-done"
+                      onClick={() => setVrQuickEditOpen(false)}
+                      style={{
+                        padding: "3px 9px",
+                        borderRadius: 6,
+                        border: "1px solid rgba(99, 102, 241, 0.45)",
+                        background: "rgba(99, 102, 241, 0.22)",
+                        color: "inherit",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Done (Esc)
+                    </button>
+                  </div>
+                )}
                 {detectedDialectHint && (
                   <div
                     role="status"
@@ -2904,16 +3560,28 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                     onPaste={handleEditorPaste}
                     onDiagnostics={handleDiagnosticsChange}
                     onSimulate={handleSimulate}
+                    onExecuteCommand={handleExecuteCodeLensCommand}
                     theme={colorMode === "dark" ? "vs-dark" : "light"}
                     externalErrors={
                       simulationStatus?.status === "failed" && simulationStatus.error ? [simulationStatus.error] : []
                     }
                     externalMarkers={activeOnDemandMarkers}
+                    showHypergraphOverlay={showHypergraphOverlay}
+                    xrayTokenHeat={xrayTokenHeat ?? undefined}
+                    zonotopeActiveGroupId={zonotopeState.activeGroupId}
+                    zonotopeBrush={zonotopeState.activeBrush}
+                    zonotopeScramblePreview={zonotopeState.scramblePreview}
+                    onToggleZonotopeScramble={(enabled) =>
+                      setZonotopeState((prev) => ({ ...prev, scramblePreview: enabled }))
+                    }
+                    onAddZonotopeOverride={handleAddZonotopeOverride}
+                    onAddZonotopeConstraint={handleAddZonotopeConstraint}
+                    onHypergraphRecordChange={setHypergraphRecord}
                   />
                 </Suspense>
               </div>
             </div>
-            {!isNarrow && !props.embed && (
+            {!props.isVrMode && !isNarrow && !props.embed && (
               <AnsatzDiagnosticsPanel
                 diagnostics={mergedEditorDiagnostics}
                 projectDiagnostics={projectDiagnostics}
@@ -2968,6 +3636,8 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
               diagnostics={formatMonacoMarkers(mergedEditorDiagnostics)}
               initialPrompt={aiInitialPrompt}
               onConsumeInitialPrompt={() => setAiInitialPrompt(undefined)}
+              computeDial={computeDial}
+              onChangeComputeDial={setComputeDial}
               toolHost={
                 {
                   getFileName: () => props.activeFileName || `model.${getLanguageExtension(dialect)}`,

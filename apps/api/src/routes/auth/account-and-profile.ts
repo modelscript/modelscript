@@ -6,6 +6,7 @@ import { Router as createRouter, type Request, type Response, type Router } from
 import type { LibraryDatabase } from "../../database.js";
 import { requireAuth } from "../../middleware/auth-middleware.js";
 import { defaultLoginLimiter } from "../../middleware/login-limiter.js";
+import { authRateLimiter } from "../../middleware/rate-limiter.js";
 import { defaultMailer } from "../../services/mailer.js";
 import { getClientIp } from "../../util/client-ip.js";
 import { isDisposableEmail } from "../../util/email-filter.js";
@@ -13,6 +14,28 @@ import { signEmailVerificationToken } from "../../util/email-verification.js";
 import { isEmailDomainAllowed, resolveBrandInstanceName } from "../../util/registration-policy.js";
 import { verifyTotpCode } from "../../util/totp.js";
 import { isHubModelscriptUrl, isScopedApiToken, stripTrailingSlashes } from "./auth-helpers.js";
+
+const MAX_NOTIFICATION_SETTINGS_BYTES = 16 * 1024;
+const MAX_UI_PREFERENCES_BYTES = 16 * 1024;
+const ALLOWED_UI_PREFERENCE_KEYS = new Set(["theme", "display", "modeling"]);
+const ALLOWED_NOTIFICATION_PREF_KEYS = new Set([
+  "channels",
+  "deliveryChannels",
+  "events",
+  "emailDigestFrequency",
+  "digestFrequency",
+  "quietHours",
+  "inAppSounds",
+  "qualityFilter",
+  "mutedKeywords",
+  "mutedUsers",
+  "likes",
+  "follows",
+  "mentions",
+  "replies",
+  "reposts",
+  "comments",
+]);
 
 function isSafeProfileUrl(u: unknown): boolean {
   if (u === undefined || u === null || u === "") return true;
@@ -98,7 +121,7 @@ export function createAccountAndProfileRouter(database: LibraryDatabase): Router
    * If the user has a local password set, current password confirmation is required.
    * If the user authenticated via OAuth/SSO with no password hash, profile updates proceed directly.
    */
-  router.put("/account", requireAuth, async (req: Request, res: Response): Promise<void> => {
+  router.put("/account", authRateLimiter, requireAuth, async (req: Request, res: Response): Promise<void> => {
     if (isScopedApiToken(req)) {
       res.status(403).json({ error: "Personal access tokens cannot modify account settings" });
       return;
@@ -127,7 +150,16 @@ export function createAccountAndProfileRouter(database: LibraryDatabase): Router
 
       const state2FA = database.getUser2FAState(userId);
       if (state2FA?.totp_enabled && state2FA.totp_secret) {
-        const isChangingIdentity = Boolean(username || email);
+        const currentUserFor2FA = database.getUserById(userId);
+        const currentUsernameFor2FA = currentUserFor2FA?.username ?? req.user!.username;
+        const currentEmailFor2FA = currentUserFor2FA?.email ?? req.user!.email;
+        const isChangingUsername = Boolean(
+          typeof username === "string" && username.trim() && username.trim() !== currentUsernameFor2FA,
+        );
+        const isChangingEmail = Boolean(
+          typeof email === "string" && email.trim() && email.trim().toLowerCase() !== currentEmailFor2FA.toLowerCase(),
+        );
+        const isChangingIdentity = isChangingUsername || isChangingEmail;
         if (isChangingIdentity || (typeof totpCode === "string" && totpCode.trim())) {
           if (typeof totpCode !== "string" || !totpCode.trim()) {
             res.status(401).json({ error: "Two-factor authentication code is required" });
@@ -269,11 +301,78 @@ export function createAccountAndProfileRouter(database: LibraryDatabase): Router
    */
   router.put("/notifications", requireAuth, (req: Request, res: Response): void => {
     try {
-      const settingsStr = JSON.stringify(req.body);
+      const body: unknown = req.body;
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        res.status(400).json({ error: "Notification settings payload must be a JSON object" });
+        return;
+      }
+
+      const record = body as Record<string, unknown>;
+      const sanitized: Record<string, unknown> = {};
+      for (const key of Object.keys(record)) {
+        if (!ALLOWED_NOTIFICATION_PREF_KEYS.has(key)) {
+          res.status(400).json({ error: `Unknown notification preference key: ${key}` });
+          return;
+        }
+        sanitized[key] = record[key];
+      }
+
+      const settingsStr = JSON.stringify(sanitized);
+      if (Buffer.byteLength(settingsStr, "utf8") > MAX_NOTIFICATION_SETTINGS_BYTES) {
+        res.status(400).json({ error: "Notification settings payload exceeds maximum allowed size (16 KB)" });
+        return;
+      }
+
       database.updateNotificationSettings(req.user!.id, settingsStr);
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: "Failed to update notification settings" });
+    }
+  });
+
+  /**
+   * GET /api/v1/auth/preferences
+   */
+  router.get("/preferences", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const preferences = database.userLifecycle.getUserUiPreferences(req.user!.id);
+      res.json({ preferences });
+    } catch {
+      res.status(500).json({ error: "Failed to fetch user preferences" });
+    }
+  });
+
+  /**
+   * PUT /api/v1/auth/preferences
+   */
+  router.put("/preferences", requireAuth, (req: Request, res: Response): void => {
+    try {
+      const body: unknown = req.body;
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        res.status(400).json({ error: "Preferences payload must be a JSON object" });
+        return;
+      }
+
+      const record = body as Record<string, unknown>;
+      const sanitized: Record<string, unknown> = {};
+      for (const key of Object.keys(record)) {
+        if (!ALLOWED_UI_PREFERENCE_KEYS.has(key)) {
+          res.status(400).json({ error: `Unknown preference key: ${key}` });
+          return;
+        }
+        sanitized[key] = record[key];
+      }
+
+      const payloadStr = JSON.stringify(sanitized);
+      if (Buffer.byteLength(payloadStr, "utf8") > MAX_UI_PREFERENCES_BYTES) {
+        res.status(400).json({ error: "Preferences payload exceeds maximum allowed size (16 KB)" });
+        return;
+      }
+
+      const preferences = database.userLifecycle.updateUserUiPreferences(req.user!.id, sanitized);
+      res.json({ success: true, preferences });
+    } catch {
+      res.status(500).json({ error: "Failed to update user preferences" });
     }
   });
 

@@ -824,45 +824,84 @@ export class LibraryStorage {
   }
 
   /**
+   * Async S3-backed read-through: reads from local cache if present, otherwise fetches
+   * from S3 object storage and populates the local cache.
+   */
+  async readAsync(name: string, version: string): Promise<{ buffer: Buffer; size: number } | null> {
+    const local = this.read(name, version);
+    if (local) return local;
+
+    if (this.#driver.driverName === "s3") {
+      const safeName = this.#safe(name);
+      const safeVer = this.#safe(version);
+      const remoteBuf = await this.#driver.read(`${safeName}/${safeVer}.zip`);
+      if (remoteBuf) {
+        const filePath = this.#filePath(name, version);
+        fs.mkdirSync(path.dirname(filePath), { recursive: true });
+        fs.writeFileSync(filePath, remoteBuf);
+        return { buffer: remoteBuf, size: remoteBuf.length };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Async existence check that falls back to S3 object storage when local cache misses.
+   */
+  async existsAsync(name: string, version: string): Promise<boolean> {
+    if (this.exists(name, version)) return true;
+    if (this.#driver.driverName === "s3") {
+      const safeName = this.#safe(name);
+      const safeVer = this.#safe(version);
+      return this.#driver.exists(`${safeName}/${safeVer}.zip`);
+    }
+    return false;
+  }
+
+  /**
    * Delete a specific library version.
    * Removes the zip file and all version data (SVGs, extracted files).
    * If no other versions remain, removes the library directory entirely.
    */
   delete(name: string, version: string): boolean {
     const zipPath = this.#filePath(name, version);
-    if (!fs.existsSync(zipPath)) {
-      return false;
-    }
+    const localExisted = fs.existsSync(zipPath);
 
-    // Remove the zip file and its sha256 sidecar
-    fs.rmSync(zipPath, { force: true });
-    const shaPath = path.resolve(this.#dataDir, this.#safe(name), `${this.#safe(version)}.sha256`);
-    fs.rmSync(shaPath, { force: true });
+    if (localExisted) {
+      // Remove the zip file and its sha256 sidecar
+      fs.rmSync(zipPath, { force: true });
+      const shaPath = path.resolve(this.#dataDir, this.#safe(name), `${this.#safe(version)}.sha256`);
+      fs.rmSync(shaPath, { force: true });
 
-    // Remove the version data directory (svgs, extracted, etc.)
-    const versionDir = path.resolve(this.#dataDir, this.#safe(name), this.#safe(version));
-    if (fs.existsSync(versionDir)) {
-      fs.rmSync(versionDir, { recursive: true, force: true });
-    }
+      // Remove the version data directory (svgs, extracted, etc.)
+      const versionDir = path.resolve(this.#dataDir, this.#safe(name), this.#safe(version));
+      if (fs.existsSync(versionDir)) {
+        fs.rmSync(versionDir, { recursive: true, force: true });
+      }
 
-    // Clean up the library directory if no more versions exist
-    const libraryDir = path.resolve(this.#dataDir, this.#safe(name));
-    if (fs.existsSync(libraryDir)) {
-      if (this.versions(name).length === 0) {
-        fs.rmSync(libraryDir, { recursive: true, force: true });
+      // Clean up the library directory if no more versions exist
+      const libraryDir = path.resolve(this.#dataDir, this.#safe(name));
+      if (fs.existsSync(libraryDir)) {
+        if (this.versions(name).length === 0) {
+          fs.rmSync(libraryDir, { recursive: true, force: true });
+        }
       }
     }
 
     if (this.#driver.driverName === "s3") {
       const safeName = this.#safe(name);
       const safeVer = this.#safe(version);
-      this.#driver.delete(`${safeName}/${safeVer}.zip`).catch(() => {});
-      this.#driver.deletePrefix(`${safeName}/${safeVer}/`).catch(() => {});
+      this.#driver.delete(`${safeName}/${safeVer}.zip`).catch((err) => {
+        console.error(`[LibraryStorage] Failed to delete S3 archive ${safeName}/${safeVer}.zip:`, err);
+      });
+      this.#driver.deletePrefix(`${safeName}/${safeVer}/`).catch((err) => {
+        console.error(`[LibraryStorage] Failed to delete S3 prefix ${safeName}/${safeVer}/:`, err);
+      });
     }
 
     this.#checkedCompanions.clear();
 
-    return true;
+    return localExisted || this.#driver.driverName === "s3";
   }
 
   #safe(val: string): string {

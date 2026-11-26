@@ -1,47 +1,48 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { AssemblyJointSpec, Verification3DOverlayPayload } from "@modelscript/cad";
-import { useEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
-import { AnimationController } from "./cad-viewer/animation-controller";
+import type {
+  DynamicBindingConfig,
+  GdtOverlayPayload,
+  SampledTelemetryFrame,
+  Verification3DOverlayPayload,
+} from "@modelscript/cad";
 import CadViewer, {
   type CadComponent,
+  type CommitAssemblyJointPayload,
+  type CommitDimensionPayload,
   type CommitFaceTagPayload,
   type GizmoCommitPayload,
-  type QifOverlayPayload,
-} from "./cad-viewer/cad-viewer";
-import type { CfdMeshPayload } from "./cad-viewer/cfd-mesh-renderer";
-import type { CommitDimensionPayload } from "./cad-viewer/dimension-handles";
-import type { FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
-import { extractCadComponents } from "./cad-viewer/parse-cad-annotations";
+} from "@modelscript/editor/workbench/cad-viewer/CadViewer.js";
+import type { PodSurrogateDataPayload } from "@modelscript/editor/workbench/cad-viewer/SurrogateLiveExplorer.js";
+import { AnimationController } from "@modelscript/editor/workbench/cad-viewer/animation-controller.js";
+import { extractCadComponents } from "@modelscript/editor/workbench/cad-viewer/parse-cad-annotations.js";
+import { useEffect, useRef, useState } from "react";
+import { createRoot } from "react-dom/client";
 import { registerSharedVsCodeApi } from "./cad-viewer/vr-mode";
+import { getVsCodeWebviewApi, useVsCodeHostActions, VsCodeEditorHostProvider } from "./shared/vscode-editor-host.js";
 
-const vscode = (
-  window as unknown as {
-    acquireVsCodeApi?: () => {
-      postMessage(message: unknown): void;
-      getState<T = unknown>(): T | undefined;
-      setState<T = unknown>(state: T): T;
-    };
-  }
-).acquireVsCodeApi?.();
-
-registerSharedVsCodeApi(vscode);
+const vscodeApi = getVsCodeWebviewApi();
+registerSharedVsCodeApi(vscodeApi);
 
 function App() {
+  const actions = useVsCodeHostActions();
   const [components, setComponents] = useState<CadComponent[]>([]);
   const [selectedName, setSelectedName] = useState<string | undefined>(undefined);
   const [isDark, setIsDark] = useState<boolean>(true);
   const animationControllerRef = useRef<AnimationController | null>(null);
-  const [cfdPayload, setCfdPayload] = useState<CfdMeshPayload | null>(null);
-  const [feaPayload, setFeaPayload] = useState<FeaMeshPayload | null>(null);
-  const [qifOverlay, setQifOverlay] = useState<QifOverlayPayload | null>(null);
+  const [vtkBuffer, setVtkBuffer] = useState<Uint8Array | null>(null);
+  const [gdtOverlay, setGdtOverlay] = useState<GdtOverlayPayload | null>(null);
   const [verificationOverlay, setVerificationOverlay] = useState<Verification3DOverlayPayload | null>(null);
+  const [surrogateData, setSurrogateData] = useState<PodSurrogateDataPayload | null>(null);
+  const [surrogateModelName, setSurrogateModelName] = useState<string | undefined>(undefined);
+  const [telemetryFrame, setTelemetryFrame] = useState<SampledTelemetryFrame | null>(null);
+  const [sourceCode, setSourceCode] = useState<string | undefined>(undefined);
+  const [caeSourceCode, setCaeSourceCode] = useState<string | undefined>(undefined);
   const [lockNotice, setLockNotice] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
-    // Check initial theme from VSCode
+    // Check initial theme from VS Code
     const updateTheme = () => {
       const isDarkTheme =
         document.body.classList.contains("vscode-dark") || document.body.classList.contains("vscode-high-contrast");
@@ -49,13 +50,14 @@ function App() {
     };
     updateTheme();
 
-    // Create an observer to watch for theme class changes on body
     const observer = new MutationObserver(updateTheme);
     observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
 
     // Listen for messages from the extension host
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
+      if (!message || typeof message !== "object") return;
+
       if (message.type === "cadComponents") {
         setLockNotice(null);
         const rawComponents = message.data || [];
@@ -93,6 +95,11 @@ function App() {
             })),
           );
         }
+      } else if (message.type === "sourceContext" && message.data) {
+        if (typeof message.data.sourceCode === "string") {
+          setSourceCode(message.data.sourceCode);
+        }
+        setCaeSourceCode(typeof message.data.caeSourceCode === "string" ? message.data.caeSourceCode : undefined);
       } else if (message.type === "writebackLocked") {
         setLockNotice(
           typeof message.reason === "string" && message.reason.length > 0
@@ -102,7 +109,6 @@ function App() {
       } else if (message.type === "selectComponent" || message.type === "focusPart") {
         setSelectedName(message.name ?? message.partName);
       } else if (message.type === "simulationData") {
-        // Load simulation results into the animation controller
         const { t, y, states } = message.data;
         let ctrl = animationControllerRef.current;
         if (!ctrl) {
@@ -111,9 +117,8 @@ function App() {
         }
         ctrl.loadTimeseries(t, y, states);
         ctrl.play();
-        forceUpdate((n) => n + 1); // trigger re-render to show timeline
+        forceUpdate((n) => n + 1);
       } else if (message.type === "liveValues") {
-        // Push live cosimulation values
         const ctrl = animationControllerRef.current;
         if (ctrl) {
           const values = new Map<string, number>(Object.entries(message.data.values));
@@ -123,39 +128,36 @@ function App() {
             forceUpdate((n) => n + 1);
           }
         }
-      } else if (message.type === "VTK_PAYLOAD") {
-        // Decode the CFD mesh buffer from the co-simulation stream
+      } else if (message.type === "VTK_BUFFER" || message.type === "VTK_PAYLOAD") {
         try {
-          const rawBuffer = message.data?.buffer;
-          if (rawBuffer) {
-            // The buffer arrives as a plain number[] from postMessage serialization
-            const bytes = rawBuffer instanceof Uint8Array ? rawBuffer : new Uint8Array(rawBuffer);
-            const jsonStr = new TextDecoder().decode(bytes);
-            const payload = JSON.parse(jsonStr) as CfdMeshPayload;
-            if (payload.type === "cfd-mesh") {
-              setCfdPayload(payload);
-            }
+          const rawBuffer = message.data?.buffer ?? message.data;
+          if (rawBuffer instanceof Uint8Array) {
+            setVtkBuffer(rawBuffer);
+          } else if (Array.isArray(rawBuffer)) {
+            setVtkBuffer(new Uint8Array(rawBuffer));
           }
         } catch (e) {
-          console.warn("[CadWebview] Failed to parse VTK_PAYLOAD:", e);
+          console.warn("[CadWebview] Failed to parse VTK buffer:", e);
         }
       } else if (message.type === "FEA_PAYLOAD") {
         try {
-          const payload = (message.data?.payload || message.data) as FeaMeshPayload;
-          if (payload && (payload.type === "fea-mesh" || payload.fields)) {
-            setFeaPayload(payload);
+          const payload = message.data?.payload || message.data;
+          if (payload?.vtkBuffer instanceof Uint8Array) {
+            setVtkBuffer(payload.vtkBuffer);
+          } else if (Array.isArray(payload?.vtkBuffer)) {
+            setVtkBuffer(new Uint8Array(payload.vtkBuffer));
           }
         } catch (e) {
           console.warn("[CadWebview] Failed to handle FEA_PAYLOAD:", e);
         }
-      } else if (message.type === "QIF_INSPECTION_OVERLAY") {
+      } else if (message.type === "GDT_OVERLAY" || message.type === "QIF_INSPECTION_OVERLAY") {
         try {
-          const payload = (message.data?.payload || message.data) as QifOverlayPayload;
-          if (payload && Array.isArray(payload.features)) {
-            setQifOverlay(payload);
+          const payload = (message.data?.payload || message.data) as GdtOverlayPayload;
+          if (payload && (Array.isArray(payload.callouts) || Array.isArray(payload.datums))) {
+            setGdtOverlay(payload);
           }
         } catch (e) {
-          console.warn("[CadWebview] Failed to handle QIF_INSPECTION_OVERLAY:", e);
+          console.warn("[CadWebview] Failed to handle GD&T/QIF overlay:", e);
         }
       } else if (message.type === "VERIFICATION_OVERLAY") {
         try {
@@ -165,6 +167,25 @@ function App() {
           }
         } catch (e) {
           console.warn("[CadWebview] Failed to handle VERIFICATION_OVERLAY:", e);
+        }
+      } else if (message.type === "SURROGATE_PAYLOAD") {
+        try {
+          const payload = (message.data?.payload || message.data) as PodSurrogateDataPayload;
+          if (payload && Array.isArray(payload.parameterNames)) {
+            setSurrogateData(payload);
+            setSurrogateModelName(typeof message.data?.modelName === "string" ? message.data.modelName : undefined);
+          }
+        } catch (e) {
+          console.warn("[CadWebview] Failed to handle SURROGATE_PAYLOAD:", e);
+        }
+      } else if (message.type === "TELEMETRY_FRAME") {
+        try {
+          const frame = (message.data?.frame || message.data) as SampledTelemetryFrame;
+          if (frame && typeof frame === "object") {
+            setTelemetryFrame(frame);
+          }
+        } catch (e) {
+          console.warn("[CadWebview] Failed to handle TELEMETRY_FRAME:", e);
         }
       } else if (message.type === "FOCUS_VIOLATION_3D" || message.type === "focusViolationIn3D") {
         const { time, lhsName } = message;
@@ -180,7 +201,7 @@ function App() {
     window.addEventListener("message", handleMessage);
 
     // Let the extension know the webview is ready to receive data
-    vscode?.postMessage({ type: "ready" });
+    vscodeApi.postMessage({ type: "ready" });
 
     return () => {
       window.removeEventListener("message", handleMessage);
@@ -190,44 +211,51 @@ function App() {
 
   const handleSelect = (name: string | null) => {
     setSelectedName(name || undefined);
-    // optionally notify VSCode to select the text/diagram
-    vscode?.postMessage({ type: "select", name });
+    vscodeApi.postMessage({ type: "select", name });
   };
 
   const handleCommitGizmoDelta = (payload: GizmoCommitPayload) => {
-    vscode?.postMessage({
+    vscodeApi.postMessage({
       type: "commitGizmoDelta",
       payload,
     });
   };
 
   const handleCommitDimensionDelta = (payload: CommitDimensionPayload) => {
-    vscode?.postMessage({
+    vscodeApi.postMessage({
       type: "commitDimensionDelta",
       payload,
     });
   };
 
   const handleCommitFaceTag = (payload: CommitFaceTagPayload) => {
-    vscode?.postMessage({
+    vscodeApi.postMessage({
       type: "commitFaceTag",
       payload,
     });
   };
 
-  const handleCommitAssemblyJoint = (spec: AssemblyJointSpec) => {
-    vscode?.postMessage({
+  const handleCommitAssemblyJoint = (spec: CommitAssemblyJointPayload) => {
+    vscodeApi.postMessage({
       type: "commitAssemblyJoint",
       payload: spec,
     });
   };
 
-  const handleCommitCadBinding = (payload: { componentName: string; bindings: unknown[]; uri?: string }) => {
-    vscode?.postMessage({
+  const handleSaveBindings = (componentName: string, bindings: DynamicBindingConfig[]) => {
+    const comp = components.find((c) => c.name === componentName);
+    vscodeApi.postMessage({
       type: "commitCadBinding",
-      payload,
+      payload: {
+        componentName,
+        bindings,
+        uri: comp?.cad.uri,
+      },
     });
   };
+
+  const assetBaseUrl =
+    (window as unknown as { __CAD_ASSET_BASE_URL__?: string }).__CAD_ASSET_BASE_URL__ ?? "/api/v1/libraries";
 
   return (
     <div
@@ -281,20 +309,25 @@ function App() {
         onCommitDimensionDelta={handleCommitDimensionDelta}
         onCommitFaceTag={handleCommitFaceTag}
         onCommitAssemblyJoint={handleCommitAssemblyJoint}
-        onCommitCadBinding={handleCommitCadBinding}
+        onSaveBindings={handleSaveBindings}
         dark={isDark}
-        assetBaseUrl={(window as unknown as { __CAD_ASSET_BASE_URL__: string }).__CAD_ASSET_BASE_URL__}
+        assetBaseUrl={assetBaseUrl}
         animationController={animationControllerRef.current}
-        cfdPayload={cfdPayload}
-        feaPayload={feaPayload}
-        qifOverlay={qifOverlay}
+        vtkBuffer={vtkBuffer}
+        gdtOverlay={gdtOverlay}
         verificationOverlay={verificationOverlay}
-        enableVr={true}
-        onOpenExternalVr={() => {
-          vscode?.postMessage({
-            type: "openInVr",
+        surrogateData={surrogateData}
+        surrogateModelName={surrogateModelName}
+        onCloseSurrogateExplorer={() => setSurrogateData(null)}
+        telemetryHud={telemetryFrame ? { frame: telemetryFrame, dark: isDark } : null}
+        sourceCode={sourceCode}
+        caeSourceCode={caeSourceCode}
+        onRevealLine={(line, identifier) => actions.revealLine(line, identifier)}
+        onInsertCaeSnippet={(snippet) => vscodeApi.postMessage({ type: "insertCaeSnippet", snippet })}
+        onOpenVrRotunda={() => {
+          actions.openInVr({
             environment: "dark-lab",
-            kind: feaPayload ? "fea" : cfdPayload ? "cfd" : "cad",
+            kind: vtkBuffer ? "cfd" : "cad",
             title: "3D CAD Viewer",
           });
         }}
@@ -306,5 +339,9 @@ function App() {
 const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
-  root.render(<App />);
+  root.render(
+    <VsCodeEditorHostProvider vscodeApi={vscodeApi}>
+      <App />
+    </VsCodeEditorHostProvider>,
+  );
 }

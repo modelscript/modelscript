@@ -10,7 +10,7 @@ import type {
   HpcSubmissionResult,
   HpcUsageMetrics,
 } from "../hpc-types.js";
-import { generateSbatchScript } from "../sbatch-generator.js";
+import { generateSbatchScript, sanitizeUserEnv } from "../sbatch-generator.js";
 
 export interface SlurmRestOptions {
   baseUrl: string; // e.g. "http://localhost:6820" or "https://slurm.cluster.internal"
@@ -91,12 +91,32 @@ export class SlurmRestDriver implements HpcDriver {
   private readonly fetchFn: typeof fetch;
 
   constructor(options: SlurmRestOptions) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(options.baseUrl);
+    } catch {
+      throw new Error(`Invalid SlurmRestDriver baseUrl: ${options.baseUrl}`);
+    }
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      throw new Error(`SlurmRestDriver baseUrl must use http:// or https:// protocol (got ${parsedUrl.protocol})`);
+    }
+    this.jwtToken = options.jwtToken || process.env["SLURM_JWT_TOKEN"];
+    if (process.env["NODE_ENV"] === "production" && this.jwtToken && parsedUrl.protocol !== "https:") {
+      throw new Error("SlurmRestDriver requires https:// baseUrl in production when sending JWT tokens.");
+    }
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.apiVersion = options.apiVersion || "v0.0.39";
-    this.jwtToken = options.jwtToken || process.env["SLURM_JWT_TOKEN"];
     this.username = options.username || process.env["SLURM_USER"] || "slurm";
     this.timeoutMs = options.timeoutMs ?? 10000;
     this.fetchFn = options.fetchFn || globalThis.fetch;
+  }
+
+  private assertSafeNativeJobId(nativeJobId: string): string {
+    const trimmed = String(nativeJobId).trim();
+    if (!/^[a-zA-Z0-9_.-]{1,64}$/.test(trimmed) || trimmed.startsWith("-") || trimmed.includes("..")) {
+      throw new Error(`Invalid Slurm REST nativeJobId: ${nativeJobId}`);
+    }
+    return trimmed;
   }
 
   private getHeaders(): Record<string, string> {
@@ -150,21 +170,24 @@ export class SlurmRestDriver implements HpcDriver {
 
   public async submit(spec: HpcJobSpec): Promise<HpcSubmissionResult> {
     const sbatchScript = generateSbatchScript(spec);
+    const nodes = Math.max(1, Math.floor(spec.resources.nodes ?? 1));
+    const tasksPerNode = Math.max(1, Math.floor(spec.resources.tasksPerNode ?? 1));
+    const safeEnv = sanitizeUserEnv(spec.env);
 
     const payload = {
       script: sbatchScript,
       job: {
         name: spec.name,
         current_working_directory: spec.workingDir,
-        standard_output: `slurm-${spec.jobId}.out`,
-        standard_error: `slurm-${spec.jobId}.err`,
+        standard_output: "slurm-%j.out",
+        standard_error: "slurm-%j.err",
         partition: spec.resources.partition,
-        tasks: spec.resources.tasksPerNode ?? 1,
+        tasks: nodes * tasksPerNode,
         cpus_per_task: spec.resources.cpusPerTask ?? 1,
-        nodes: spec.resources.nodes ? [spec.resources.nodes, spec.resources.nodes] : undefined,
+        nodes: spec.resources.nodes ? [nodes, nodes] : undefined,
         memory_per_node: spec.resources.memoryMb,
         time_limit: spec.resources.timeLimitMinutes,
-        environment: spec.env || {},
+        environment: safeEnv,
       },
     };
 
@@ -192,10 +215,11 @@ export class SlurmRestDriver implements HpcDriver {
       throw new Error(`Failed to parse job_id from Slurm REST response: ${JSON.stringify(res.data)}`);
     }
 
+    const safeNativeJobId = this.assertSafeNativeJobId(nativeJobId);
     const profile = getComputeProfile(spec.profileId);
 
     return {
-      nativeJobId,
+      nativeJobId: safeNativeJobId,
       driverType: "slurm-rest",
       allocatedResources: spec.resources,
       estimatedCreditsPerHour: profile.costCreditsPerHour,
@@ -203,61 +227,61 @@ export class SlurmRestDriver implements HpcDriver {
   }
 
   public async pollStatus(nativeJobId: string): Promise<{ state: HpcJobState; exitCode?: number | undefined }> {
-    try {
-      const res = await this.request<SlurmJobPollResponse>(`/job/${nativeJobId}`, "GET");
-      const job: SlurmJobEntry | undefined = Array.isArray(res.data.jobs) ? res.data.jobs[0] : res.data.job || res.data;
+    const safeId = this.assertSafeNativeJobId(nativeJobId);
+    const res = await this.request<SlurmJobPollResponse>(`/job/${encodeURIComponent(safeId)}`, "GET");
+    const job: SlurmJobEntry | undefined = Array.isArray(res.data.jobs) ? res.data.jobs[0] : res.data.job || res.data;
 
-      if (!job) {
-        return { state: "FAILED", exitCode: -1 };
-      }
-
-      // Slurm REST represents state either as string or array of strings, e.g. ["RUNNING"] or "RUNNING"
-      let rawState = "";
-      if (Array.isArray(job.job_state)) {
-        rawState = (job.job_state[0] || "").toUpperCase();
-      } else if (typeof job.job_state === "string") {
-        rawState = job.job_state.toUpperCase();
-      }
-
-      let state: HpcJobState = "FAILED";
-      if (rawState.includes("COMPLETED")) {
-        state = "COMPLETED";
-      } else if (rawState.includes("RUNNING") || rawState.includes("COMPLETING")) {
-        state = "RUNNING";
-      } else if (rawState.includes("PENDING") || rawState.includes("CONFIGURING")) {
-        state = "PENDING";
-      } else if (rawState.includes("CANCELLED")) {
-        state = "CANCELLED";
-      } else {
-        state = "FAILED";
-      }
-
-      // Exit code extraction
-      let exitCode: number | undefined;
-      if (typeof job.exit_code === "number") {
-        exitCode = job.exit_code;
-      } else if (typeof job.exit_code?.return_code === "number") {
-        exitCode = job.exit_code.return_code;
-      }
-
-      return { state, exitCode };
-    } catch {
+    if (!job) {
       return { state: "FAILED", exitCode: -1 };
     }
+
+    // Slurm REST represents state either as string or array of strings, e.g. ["RUNNING"] or "RUNNING"
+    let rawState = "";
+    if (Array.isArray(job.job_state)) {
+      rawState = (job.job_state[0] || "").toUpperCase();
+    } else if (typeof job.job_state === "string") {
+      rawState = job.job_state.toUpperCase();
+    }
+
+    let state: HpcJobState = "FAILED";
+    if (rawState.includes("COMPLETED")) {
+      state = "COMPLETED";
+    } else if (rawState.includes("RUNNING") || rawState.includes("COMPLETING")) {
+      state = "RUNNING";
+    } else if (rawState.includes("PENDING") || rawState.includes("CONFIGURING")) {
+      state = "PENDING";
+    } else if (rawState.includes("CANCELLED")) {
+      state = "CANCELLED";
+    } else {
+      state = "FAILED";
+    }
+
+    // Exit code extraction
+    let exitCode: number | undefined;
+    if (typeof job.exit_code === "number") {
+      exitCode = job.exit_code;
+    } else if (typeof job.exit_code?.return_code === "number") {
+      exitCode = job.exit_code.return_code;
+    }
+
+    return { state, exitCode };
   }
 
   public async cancel(nativeJobId: string): Promise<boolean> {
     try {
-      await this.request(`/job/${nativeJobId}`, "DELETE");
+      const safeId = this.assertSafeNativeJobId(nativeJobId);
+      await this.request(`/job/${encodeURIComponent(safeId)}`, "DELETE");
       return true;
-    } catch {
+    } catch (err) {
+      console.warn(`[SlurmRestDriver] Failed to cancel job ${nativeJobId}:`, err);
       return false;
     }
   }
 
   public async getMetrics(nativeJobId: string, _workingDir: string, profile: ComputeProfile): Promise<HpcUsageMetrics> {
     try {
-      const res = await this.request<SlurmJobPollResponse>(`/job/${nativeJobId}`, "GET");
+      const safeId = this.assertSafeNativeJobId(nativeJobId);
+      const res = await this.request<SlurmJobPollResponse>(`/job/${encodeURIComponent(safeId)}`, "GET");
       const job: SlurmJobEntry | undefined = Array.isArray(res.data.jobs) ? res.data.jobs[0] : res.data.job || res.data;
 
       if (!job) {
@@ -266,7 +290,7 @@ export class SlurmRestDriver implements HpcDriver {
           cpuCoreSeconds: 0,
           peakMemoryMb: 0,
           costCredits: 0,
-          nativeJobId,
+          nativeJobId: safeId,
           exitCode: -1,
         };
       }
@@ -281,10 +305,15 @@ export class SlurmRestDriver implements HpcDriver {
       const allocCpus = job.job_resources?.allocated_cpus || job.cpus || profile.cpus || 1;
       const cpuCoreSeconds = job.time?.total_cpu || elapsedSeconds * allocCpus;
 
-      // Peak memory
-      const peakMemoryMb = Math.round(
-        (job.memory?.max_rss || job.job_resources?.allocated_memory || profile.memoryMb) / (1024 * 1024),
-      );
+      // Peak memory: max_rss is in bytes; allocated_memory and profile.memoryMb are already in MB
+      let peakMemoryMb: number;
+      if (job.memory?.max_rss && job.memory.max_rss > 0) {
+        peakMemoryMb = Math.round(job.memory.max_rss / (1024 * 1024));
+      } else if (job.job_resources?.allocated_memory && job.job_resources.allocated_memory > 0) {
+        peakMemoryMb = Math.round(job.job_resources.allocated_memory);
+      } else {
+        peakMemoryMb = profile.memoryMb;
+      }
 
       const costCredits = calculateCostCredits(elapsedSeconds, profile);
 
@@ -294,10 +323,11 @@ export class SlurmRestDriver implements HpcDriver {
         peakMemoryMb: peakMemoryMb > 0 ? peakMemoryMb : profile.memoryMb,
         gpuSeconds: profile.gpus ? elapsedSeconds * profile.gpus : 0,
         costCredits,
-        nativeJobId,
+        nativeJobId: safeId,
         exitCode: (typeof job.exit_code === "object" ? job.exit_code?.return_code : job.exit_code) ?? 0,
       };
-    } catch {
+    } catch (err) {
+      console.warn(`[SlurmRestDriver] Failed to fetch metrics for job ${nativeJobId}:`, err);
       return {
         wallClockSeconds: 0,
         cpuCoreSeconds: 0,
@@ -310,7 +340,22 @@ export class SlurmRestDriver implements HpcDriver {
   }
 
   public getLogPath(nativeJobId: string, workingDir: string): string {
-    return path.join(workingDir, `slurm-${nativeJobId}.out`);
+    const safeId = path.basename(this.assertSafeNativeJobId(nativeJobId));
+    const resolvedDir = path.resolve(workingDir);
+    const resolvedLog = path.resolve(resolvedDir, `slurm-${safeId}.out`);
+    const rootWithSep = resolvedDir.endsWith(path.sep) ? resolvedDir : resolvedDir + path.sep;
+    if (!resolvedLog.startsWith(rootWithSep)) {
+      throw new Error(`Unsafe log path detected for Slurm job ${nativeJobId}`);
+    }
+    return resolvedLog;
+  }
+
+  public async healthCheck(): Promise<{ ok: boolean; details?: string | undefined }> {
+    const res = await this.ping();
+    return {
+      ok: res.ok,
+      details: res.ok ? `slurmrestd ${res.version ?? this.apiVersion} (${res.latencyMs}ms)` : "slurmrestd unreachable",
+    };
   }
 
   // ── Cluster Introspection & Diagnostics ──────────────────────────────

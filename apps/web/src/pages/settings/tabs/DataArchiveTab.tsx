@@ -34,27 +34,47 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const [archiveJob, setArchiveJob] = useState<ArchiveJobInfo | null>(null);
-  const [isSubmittingArchiveJob, setIsSubmittingArchiveJob] = useState(false);
+  const [submittingFormat, setSubmittingFormat] = useState<"zip" | "json" | null>(null);
+  const isSubmittingArchiveJob = submittingFormat !== null;
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDownloadingFinishedArchive, setIsDownloadingFinishedArchive] = useState(false);
   const [isDownloadingArchive, setIsDownloadingArchive] = useState(false);
   const [archiveSuccess, setArchiveSuccess] = useState<string | null>(null);
   const [archiveError, setArchiveError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     getUserDataArchiveStatus()
       .then((job) => {
-        if (job) setArchiveJob(job);
+        if (!cancelled && job) setArchiveJob(job);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setArchiveError(getApiErrorMessage(err, "Unable to load your current archive job status."));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Polling effect while archive job is queued or processing
   useEffect(() => {
-    if (!archiveJob || (archiveJob.status !== "queued" && archiveJob.status !== "processing")) return;
+    const jobId = archiveJob?.id;
+    const status = archiveJob?.status;
+    if (!jobId || (status !== "queued" && status !== "processing")) return;
+
+    let cancelled = false;
+    let inFlight = false;
+    let consecutiveFailures = 0;
 
     const timer = setInterval(async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
       try {
-        const updated = await getUserDataArchiveStatus(archiveJob.id);
+        const updated = await getUserDataArchiveStatus(jobId);
+        if (cancelled) return;
+        consecutiveFailures = 0;
         if (updated) {
           setArchiveJob(updated);
           if (updated.status === "completed") {
@@ -65,14 +85,31 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
             setArchiveError(updated.error || "Archive compilation failed in worker pool.");
           }
         }
-      } catch {}
+      } catch (err: unknown) {
+        if (cancelled) return;
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= 3) {
+          setArchiveError(
+            getApiErrorMessage(
+              err,
+              "Lost connection while polling archive job status. Please click Refresh Job Status.",
+            ),
+          );
+          clearInterval(timer);
+        }
+      } finally {
+        inFlight = false;
+      }
     }, 2000);
 
-    return () => clearInterval(timer);
-  }, [archiveJob]);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [archiveJob?.id, archiveJob?.status]);
 
   const handleRequestArchiveJob = async (format: "zip" | "json" = "zip") => {
-    setIsSubmittingArchiveJob(true);
+    setSubmittingFormat(format);
     setArchiveError(null);
     setArchiveSuccess(null);
     try {
@@ -86,7 +123,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
     } catch (err: unknown) {
       setArchiveError(getApiErrorMessage(err, "Failed to enqueue archive job. Please try again."));
     } finally {
-      setIsSubmittingArchiveJob(false);
+      setSubmittingFormat(null);
     }
   };
 
@@ -103,7 +140,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (err: unknown) {
       setArchiveError(getApiErrorMessage(err, "Failed to download completed archive."));
     } finally {
@@ -127,7 +164,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     } catch (err: unknown) {
       setArchiveError(getApiErrorMessage(err, "Failed to download data archive."));
     } finally {
@@ -146,13 +183,24 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
   const isPollingJob = Boolean(archiveJob && (archiveJob.status === "queued" || archiveJob.status === "processing"));
 
   const handleRefreshJobStatus = async () => {
+    setIsRefreshing(true);
+    setArchiveError(null);
     try {
       const updated = await getUserDataArchiveStatus(archiveJob?.id);
       if (updated) {
         setArchiveJob(updated);
+        if (updated.status === "completed") {
+          setArchiveSuccess(
+            `Your archive (${updated.format.toUpperCase()}) has been compiled and is ready for download!`,
+          );
+        } else if (updated.status === "failed") {
+          setArchiveError(updated.error || "Archive compilation failed in worker pool.");
+        }
       }
-    } catch {
-      // Ignore refresh error
+    } catch (err: unknown) {
+      setArchiveError(getApiErrorMessage(err, "Failed to refresh archive job status."));
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -405,6 +453,60 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
           </Box>
         )}
 
+        {/* Failed Archive Job Card */}
+        {archiveJob && archiveJob.status === "failed" && (
+          <Box
+            mb={4}
+            p={4}
+            style={{
+              background: "var(--color-danger-subtle)",
+              border: "1px solid var(--color-danger-fg, #cf222e)",
+              borderRadius: "12px",
+            }}
+          >
+            <Box display="flex" alignItems="center" gap={2} mb={2} style={{ color: "var(--color-danger-fg)" }}>
+              <AlertIcon size={22} />
+              <Text fontWeight="bold" fontSize="17px">
+                Archive Job Failed
+              </Text>
+            </Box>
+            <DetailSubtitle style={{ fontSize: "14px", lineHeight: "1.5", display: "block", marginBottom: "12px" }}>
+              {archiveJob.error || "Archive compilation failed in the background worker pool."}
+            </DetailSubtitle>
+            <Box
+              display="flex"
+              gap={3}
+              flexWrap="wrap"
+              fontSize="12px"
+              mb={3}
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              <span>
+                Format: <strong>{archiveJob.format.toUpperCase()}</strong>
+              </span>
+              <span>
+                Job ID: <code style={{ fontSize: "11px" }}>{archiveJob.id}</code>
+              </span>
+              <span>Enqueued: {formatDate(archiveJob.createdAt)}</span>
+            </Box>
+            <Box display="flex" gap={3} flexWrap="wrap">
+              <PrimaryButton
+                type="button"
+                onClick={() => void handleRequestArchiveJob(archiveJob.format)}
+                disabled={isSubmittingArchiveJob}
+              >
+                <SyncIcon size={16} />
+                {submittingFormat === archiveJob.format
+                  ? "Retrying..."
+                  : `Retry Archive (.${archiveJob.format.toUpperCase()})`}
+              </PrimaryButton>
+              <SecondaryButton type="button" onClick={() => setArchiveJob(null)} disabled={isSubmittingArchiveJob}>
+                Dismiss
+              </SecondaryButton>
+            </Box>
+          </Box>
+        )}
+
         {/* Actions / Enqueue Options */}
         <Box
           p={4}
@@ -432,7 +534,7 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
               disabled={isSubmittingArchiveJob || isPollingJob}
             >
               <DownloadIcon size={16} />
-              {isSubmittingArchiveJob ? "Queueing..." : "Queue Complete Archive (.ZIP with HTML Viewer)"}
+              {submittingFormat === "zip" ? "Queueing..." : "Queue Complete Archive (.ZIP with HTML Viewer)"}
             </PrimaryButton>
 
             <SecondaryButton
@@ -441,25 +543,27 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
               disabled={isSubmittingArchiveJob || isPollingJob}
             >
               <FileCodeIcon size={16} />
-              Queue Raw Data (.JSON)
+              {submittingFormat === "json" ? "Queueing..." : "Queue Raw Data (.JSON)"}
             </SecondaryButton>
 
-            {!isPollingJob && (
-              <SecondaryButton type="button" onClick={() => void handleRefreshJobStatus()}>
+            {(!isPollingJob || Boolean(archiveError)) && (
+              <SecondaryButton type="button" disabled={isRefreshing} onClick={() => void handleRefreshJobStatus()}>
                 <SyncIcon size={14} />
-                Refresh Job Status
+                {isRefreshing ? "Refreshing..." : "Refresh Job Status"}
               </SecondaryButton>
             )}
 
-            <SecondaryButton
-              type="button"
-              onClick={() => handleDownloadArchive("zip")}
-              disabled={isDownloadingArchive}
-              style={{ fontSize: "12px", opacity: 0.8 }}
-              title="Direct synchronous export for testing"
-            >
-              Direct Download (.ZIP)
-            </SecondaryButton>
+            {import.meta.env.DEV && (
+              <SecondaryButton
+                type="button"
+                onClick={() => handleDownloadArchive("zip")}
+                disabled={isDownloadingArchive}
+                style={{ fontSize: "12px", opacity: 0.8 }}
+                title="Direct synchronous export for testing"
+              >
+                Direct Download (.ZIP)
+              </SecondaryButton>
+            )}
           </Box>
         </Box>
       </Box>

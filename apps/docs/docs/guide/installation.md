@@ -1,6 +1,6 @@
 ---
 title: Installation & System Requirements
-description: Install the ModelScript CLI (msx), VS Code extension, MCP server, Tauri desktop app, or Docker containers across Linux, macOS, and Windows.
+description: Install the ModelScript CLI (msx), VS Code extension, MCP server, or Docker containers (Federated CE & Enterprise Appliance) across Linux, macOS, and Windows.
 ---
 
 # Installation
@@ -51,11 +51,11 @@ The official extension turns VS Code or Cursor into a complete multi-domain mode
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
-The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 105 documented engineering formats (106 total monorepo packages), interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 169 documented engineering formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
-Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **121 static deterministic engineering tools** over the Model Context Protocol:
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **124 static deterministic engineering tools** over the Model Context Protocol:
 
 ```bash
 # Register @modelscript/mcp in Claude Code with a single command
@@ -77,34 +77,27 @@ For **Cursor** (`.cursor/mcp.json`), **Claude Desktop**, or **VS Code**, add the
 
 See the [AI Agents & MCP Workflows Guide](./ai-agents.md) for closed-loop synthesis recipes and remote SSE gateway configuration.
 
-### 5. Native Desktop Studio (Tauri v2)
+### 5. Offline & Air-Gapped Desktop Workflows
 
-For air-gapped networks, classified labs, or hardware-in-the-loop (HIL) benches, download the standalone native desktop application (`@modelscript/desktop`) from [GitHub Releases](https://github.com/modelscript/modelscript/releases):
+For air-gapped networks, classified labs, or hardware-in-the-loop (HIL) benches, use the **VS Code Extension** (`.vsix` offline bundle), the **Ansatz Web Editor PWA** (installable from Chromium/Edge with offline WASM caching), or the **Air-Gapped Intranet Appliance** container below. Standalone native desktop installers (`.AppImage`, `.dmg`, `.msi`) are planned for a future release.
 
-- **Linux**: Standalone `.AppImage` or Debian/Ubuntu `.deb` packages.
-- **macOS**: Universal Apple Silicon / Intel `.dmg` disk image.
-- **Windows**: 64-bit `.msi` installer or portable `.exe`.
+### 6. Containerized Ansatz Network & Simulation Server (Community & Enterprise Editions)
 
-The desktop studio embeds offline WebAssembly GLR parsers, local SQLite artifact caching, and native serial/UDP bridges for real-time HIL testing.
-
-### 6. Containerized Hub & Simulation Server (Community & Enterprise Editions)
-
-Deploy the self-hosted ModelScript Hub, package registry, REST/GraphQL/SPARQL APIs, and multi-tenant MCP gateway via Docker in either **Community Edition** (`MSX_EDITION=ce`, pure `AGPL-3.0-or-later` open-core) or **Enterprise Edition** (`MSX_EDITION=ee`, with SSO/SAML, RBAC, Slurm HPC, and NERC CIP / FERC CEII compliance):
+Deploy a self-hosted federated Ansatz node or an air-gapped Enterprise Appliance via Docker in either **Community Edition** (`api-ce`, pure `AGPL-3.0-or-later` open-core) or **Enterprise Edition** (`api-ee` / `appliance`, with SSO/SAML, RBAC, Slurm HPC, and NERC CIP / FERC CEII compliance):
 
 ```bash
-# Option A: Community Edition (pure AGPL-3.0-or-later open-core, zero ee/ code)
-docker pull ghcr.io/modelscript/api-ce:latest
-docker pull ghcr.io/modelscript/web:latest
+# Option A: Self-Hosted Federated Node (Community Edition — recommended)
+export PUBLIC_DOMAIN=hub.example.org
+export JWT_SECRET=$(openssl rand -hex 32)
+docker compose -f docker-compose.federated.yml up -d
 
-# Option B: Enterprise Edition & Air-Gapped Intranet Appliance (requires MSX_LICENSE_KEY in production)
-docker pull ghcr.io/modelscript/api-ee:latest
-docker pull ghcr.io/modelscript/appliance:latest
-
-# Launch backend simulation cluster and Studio
-docker compose up -d
+# Option B: Hardened Enterprise Intranet Appliance (air-gapped, requires MSX_LICENSE_KEY)
+export MSX_LICENSE_KEY=msx_lic_...
+export JWT_SECRET=$(openssl rand -hex 32)
+docker compose -f ee/deploy/docker-compose.yml up -d
 ```
 
-See the [Platform Administration Guide](./administration.md) for Kubernetes Helm charts, offline `MSX_LICENSE_KEY` provisioning, Slurm HPC worker setup, and PostgreSQL audit-ledger configuration.
+See the [Self-Hosting Guide](../ansatz/self-hosting.md) for federated node upgrades and Cloudflare Tunnels, and the [Platform Administration Guide](./administration.md) for Kubernetes manifests (`ee/deploy/kubernetes-appliance.yaml`), offline `MSX_LICENSE_KEY` provisioning, and Slurm HPC worker setup.
 
 ---
 
@@ -141,4 +134,4 @@ pnpm run dev           # Start API backend, LSP workers, and Studio
 ## Next Steps
 
 - Follow the **[Getting Started Tutorial](./getting-started.md)** to build, verify, simulate, and export your first connected multi-domain model.
-- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 146 registered `msx` commands.
+- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 178 registered `msx` commands.

@@ -46,7 +46,32 @@ function parseTopLevelCadKvArgs(inner: string): Record<string, string | number |
     }
     skipWs();
     if (inner[i] !== "=") {
-      while (i < n && inner[i] !== ",") i++;
+      if (key === "each" || key === "final") {
+        continue;
+      }
+      let pDepth = 0;
+      let bDepth = 0;
+      let inStr = false;
+      while (i < n) {
+        const ch = inner[i]!;
+        if (inStr) {
+          if (ch === "\\" && i + 1 < n) i++;
+          else if (ch === '"') inStr = false;
+        } else if (ch === '"') {
+          inStr = true;
+        } else if (ch === "(") {
+          pDepth++;
+        } else if (ch === ")") {
+          if (pDepth > 0) pDepth--;
+        } else if (ch === "{") {
+          bDepth++;
+        } else if (ch === "}") {
+          if (bDepth > 0) bDepth--;
+        } else if (ch === "," && pDepth === 0 && bDepth === 0) {
+          break;
+        }
+        i++;
+      }
       continue;
     }
     i++;
@@ -88,9 +113,10 @@ function parseTopLevelCadKvArgs(inner: string): Record<string, string | number |
       }
       const rawBraceInner = inner.slice(valStart, i);
       if (inner[i] === "}") i++;
-      if (!/[a-zA-Z(]/.test(rawBraceInner) && key !== "dynamicBindings") {
-        const nums = rawBraceInner.split(",").map((s) => parseFloat(s.trim()));
-        if (nums.every(Number.isFinite)) {
+      if (key !== "dynamicBindings") {
+        const parts = rawBraceInner.split(",").map((s) => s.trim());
+        const nums = parts.map((s) => (s.length > 0 ? Number(s) : Number.NaN));
+        if (nums.length > 0 && nums.every(Number.isFinite)) {
           result[key] = nums;
         }
       }
@@ -168,27 +194,33 @@ export interface RawCadVariableEntry {
   sourceMetadata?: CadSourceMetadata | undefined;
 }
 
-function parseModifierNum(modStr: string, name: string, fallback: number): number {
-  const m = new RegExp(`\\b${name}\\s*=\\s*([+-]?\\d*\\.?\\d+(?:[eE][+-]?\\d+)?)`).exec(modStr);
-  if (!m?.[1]) return fallback;
-  const v = parseFloat(m[1]);
-  return Number.isFinite(v) ? v : fallback;
+type CadKvMap = Record<string, string | number | boolean | number[]>;
+
+function parseModifierNum(mods: CadKvMap | string, name: string, fallback: number): number {
+  const map = typeof mods === "string" ? parseTopLevelCadKvArgs(mods) : mods;
+  const v = map[name];
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 
-function parseModifierVec3(modStr: string, name: string, fallback: [number, number, number]): [number, number, number] {
-  const m = new RegExp(`\\b${name}\\s*=\\s*\\{\\s*([^}]+)\\}`).exec(modStr);
-  if (!m?.[1]) return fallback;
-  const parts = m[1].split(",").map((s) => parseFloat(s.trim()));
+function parseModifierVec3(
+  mods: CadKvMap | string,
+  name: string,
+  fallback: [number, number, number],
+): [number, number, number] {
+  const map = typeof mods === "string" ? parseTopLevelCadKvArgs(mods) : mods;
+  const v = map[name];
+  if (!Array.isArray(v)) return fallback;
   return [
-    Number.isFinite(parts[0]) ? parts[0]! : fallback[0],
-    Number.isFinite(parts[1]) ? parts[1]! : fallback[1],
-    Number.isFinite(parts[2]) ? parts[2]! : fallback[2],
+    typeof v[0] === "number" && Number.isFinite(v[0]) ? v[0] : fallback[0],
+    typeof v[1] === "number" && Number.isFinite(v[1]) ? v[1] : fallback[1],
+    typeof v[2] === "number" && Number.isFinite(v[2]) ? v[2] : fallback[2],
   ];
 }
 
-function parseModifierStr(modStr: string, name: string, fallback: string): string {
-  const m = new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`).exec(modStr);
-  return m?.[1] !== undefined ? m[1] : fallback;
+function parseModifierStr(mods: CadKvMap | string, name: string, fallback: string): string {
+  const map = typeof mods === "string" ? parseTopLevelCadKvArgs(mods) : mods;
+  const v = map[name];
+  return typeof v === "string" ? v : fallback;
 }
 
 function normalizeRgba(rgb: [number, number, number]): [number, number, number, number] {
@@ -320,19 +352,19 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
   while ((match = mslRegex.exec(source)) !== null) {
     const typeSpec = match[1]!;
     const varName = match[2]!;
-    const modStr = match[3] || "";
+    const mods = parseTopLevelCadKvArgs(match[3] || "");
     if (seen.has(varName)) continue;
     seen.add(varName);
 
     const shortType = typeSpec.split(".").pop()!;
-    const r0 = parseModifierVec3(modStr, "r", [0, 0, 0]);
-    const rShape = parseModifierVec3(modStr, "r_shape", [0, 0, 0]);
-    const colorRgb = parseModifierVec3(modStr, "color", [0, 128, 255]);
+    const r0 = parseModifierVec3(mods, "r", [0, 0, 0]);
+    const rShape = parseModifierVec3(mods, "r_shape", [0, 0, 0]);
+    const colorRgb = parseModifierVec3(mods, "color", [0, 128, 255]);
     const rgba = normalizeRgba(colorRgb);
 
     if (shortType === "Torus" || shortType === "VoluminousWheel") {
-      const ri = parseModifierNum(modStr, "ri", 0.5);
-      const ro = parseModifierNum(modStr, "ro", 0.1);
+      const ri = parseModifierNum(mods, "ri", 0.5);
+      const ro = parseModifierNum(mods, "ro", 0.1);
       const mesh = createMslTorusMesh(ri, ro, 0, -Math.PI, Math.PI, 36, 18, rgba);
       results.push({
         name: varName,
@@ -351,8 +383,8 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
         ],
       });
     } else if (shortType === "Rectangle") {
-      const length = parseModifierNum(modStr, "length", 1.0);
-      const width = parseModifierNum(modStr, "width", 0.5);
+      const length = parseModifierNum(mods, "length", 1.0);
+      const width = parseModifierNum(mods, "width", 0.5);
       const mesh = createMslRectangleSurfaceMesh(length, width, 4, 4, rgba);
       results.push({
         name: varName,
@@ -371,8 +403,8 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
         ],
       });
     } else if (shortType === "PipeWithScalarField") {
-      const length = parseModifierNum(modStr, "length", 1.0);
-      const rOuter = parseModifierNum(modStr, "r_outer", 0.1);
+      const length = parseModifierNum(mods, "length", 1.0);
+      const rOuter = parseModifierNum(mods, "r_outer", 0.1);
       const mesh = createMslPipeSurfaceMesh(rOuter, length, 16, 24, rgba);
       results.push({
         name: varName,
@@ -400,11 +432,11 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
       shortType === "DoubleArrow" ||
       shortType === "Vector"
     ) {
-      const diameter = parseModifierNum(modStr, "diameter", 0.025);
-      const quantity = parseModifierStr(modStr, "quantity", "").toLowerCase();
+      const diameter = parseModifierNum(mods, "diameter", 0.025);
+      const quantity = parseModifierStr(mods, "quantity", "").toLowerCase();
       const shapeKind = shortType === "DoubleArrow" || quantity.includes("torque") ? "doublearrow" : "arrow";
-      const length = parseModifierNum(modStr, "length", 0.5);
-      const lengthDir = parseModifierVec3(modStr, "n", [1, 0, 0]);
+      const length = parseModifierNum(mods, "length", 0.5);
+      const lengthDir = parseModifierVec3(mods, "n", [1, 0, 0]);
       const mesh = createMslShapeMesh(shapeKind, 0, rgba);
       results.push({
         name: varName,
@@ -439,7 +471,7 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
       });
     } else {
       let shapeType = parseModifierStr(
-        modStr,
+        mods,
         "shapeType",
         shortType === "Spring"
           ? "spring"
@@ -449,28 +481,28 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
               ? "sphere"
               : "cylinder",
       );
-      const rVec = parseModifierVec3(modStr, "r", [0.5, 0, 0]);
+      const rVec = parseModifierVec3(mods, "r", [0.5, 0, 0]);
       const rNorm = Math.hypot(rVec[0], rVec[1], rVec[2]);
       const defaultLen = rNorm > 1e-6 ? rNorm : 0.5;
-      const length = parseModifierNum(modStr, "length", defaultLen);
-      const diameter = parseModifierNum(modStr, "diameter", 0.1);
-      const width = parseModifierNum(modStr, "width", diameter);
-      const height = parseModifierNum(modStr, "height", width);
+      const length = parseModifierNum(mods, "length", defaultLen);
+      const diameter = parseModifierNum(mods, "diameter", 0.1);
+      const width = parseModifierNum(mods, "width", diameter);
+      const height = parseModifierNum(mods, "height", width);
       const extra = parseModifierNum(
-        modStr,
+        mods,
         "extra",
-        shortType === "Spring" ? parseModifierNum(modStr, "numberOfWindings", 6) : 0,
+        shortType === "Spring" ? parseModifierNum(mods, "numberOfWindings", 6) : 0,
       );
       const lengthDir = parseModifierVec3(
-        modStr,
+        mods,
         "lengthDirection",
         shortType === "Revolute" || shortType === "Prismatic"
-          ? parseModifierVec3(modStr, "n", [0, 0, 1])
+          ? parseModifierVec3(mods, "n", [0, 0, 1])
           : rNorm > 1e-6
             ? [rVec[0] / rNorm, rVec[1] / rNorm, rVec[2] / rNorm]
             : [1, 0, 0],
       );
-      const widthDir = parseModifierVec3(modStr, "widthDirection", [0, 1, 0]);
+      const widthDir = parseModifierVec3(mods, "widthDirection", [0, 1, 0]);
       if (shapeType.startsWith("modelica://")) {
         results.push({
           name: varName,

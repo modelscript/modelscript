@@ -29,6 +29,7 @@ import { getLanguageIconSvg } from "../util/language-icons.js";
 import { comparePackageVulnerabilities, scanPackageVulnerabilities } from "../util/osv-scanner.js";
 import { parsePackageMo } from "../util/package-mo.js";
 import { scanPackageArchive } from "../util/package-scanner.js";
+import { verifyPackageReleaseSignature } from "../util/package-signature.js";
 import { renderPolyglotClassDiagramSvg } from "../util/polyglot-doc-indexer.js";
 import { extractManifestFromZip, extractPackageMoFromZip } from "../util/zip.js";
 import { isValidPackageName, packagesAdminRouter } from "./packages-admin.js";
@@ -1346,6 +1347,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       "/:name/:version/archive.zip",
       "/:scope/:name/:version/archive.zip",
     ],
+    optionalAuth,
     async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       if (isScopeInvalid(req)) return next();
       const { name, version } = extractPkgAndVersion(req);
@@ -1361,7 +1363,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
       }
 
       const safeFileBase = `${name}-${version}`.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const file = storage.read(name, version);
+      const file = await storage.readAsync(name, version);
       if (!file) {
         if (process.env["AIRGAP_ENFORCED"] === "true") {
           res.status(404).json({ error: `Library ${name}@${version} not found locally (air-gapped mode enforced)` });
@@ -1375,7 +1377,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
               reg,
               `/api/v1/libraries/${encodeURIComponent(name)}/${encodeURIComponent(version)}/download`,
             );
-            const upstreamRes = await fetch(upstreamUrl.toString());
+            const upstreamRes = await fetch(upstreamUrl.toString(), { signal: AbortSignal.timeout(15_000) });
             if (upstreamRes.ok) {
               const contentLength = Number(upstreamRes.headers.get("content-length"));
               if (contentLength > 50 * 1024 * 1024) {
@@ -1420,11 +1422,9 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                 return;
               }
 
-              // Cache locally in CAS store only when package is tracked in local catalog, caller is authenticated, or in test mode
+              // Cache locally in CAS store only when package is tracked in local catalog, caller is verified, or in test mode
               const canPersistPullThrough =
-                Boolean(database.getPackage(name)) ||
-                Boolean(req.headers.authorization) ||
-                process.env["NODE_ENV"] === "test";
+                Boolean(database.getPackage(name)) || Boolean(req.user) || process.env["NODE_ENV"] === "test";
               if (canPersistPullThrough) {
                 try {
                   await storage.store(name, version, nodeBuffer);
@@ -1551,6 +1551,26 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         res.setHeader("X-Content-SHA256", contentHash);
         if (release?.signature) {
           res.setHeader("X-Package-Signature", release.signature);
+          const releasePublicKey = (release as { public_key?: string | null }).public_key;
+          if (releasePublicKey) {
+            res.setHeader("X-Package-Public-Key", releasePublicKey.replace(/\r?\n/g, "\\n"));
+          } else if (release.published_by) {
+            try {
+              const verified = verifyPackageReleaseSignature({
+                contentHash,
+                signature: release.signature,
+                userId: release.published_by,
+                database,
+                packageName: name,
+                packageVersion: version,
+              });
+              if (verified.valid && verified.signerPublicKey) {
+                res.setHeader("X-Package-Public-Key", verified.signerPublicKey.replace(/\r?\n/g, "\\n"));
+              }
+            } catch {
+              // Non-fatal: omit X-Package-Public-Key if key lookup fails
+            }
+          }
         }
       }
 

@@ -19,13 +19,17 @@ export const acslLanguage = language({
   },
   errorCodes: AcslErrorCode,
 
+  conflicts: ($) => [[$["_OptionalBlockName"]!, $["Identifier"]!]],
+
   rules: {
     Program: ($) =>
       seq(
-        optional(seq("PROGRAM", optional(field("name", $["Identifier"]!)))),
+        optional(seq("PROGRAM", field("name", $["_OptionalBlockName"]!))),
         repeat($["TopLevelItem"]!),
         optional("END"),
       ),
+
+    _OptionalBlockName: ($) => optional($["Identifier"]!),
 
     TopLevelItem: ($) =>
       choice(
@@ -51,13 +55,13 @@ export const acslLanguage = language({
     DerivativeSection: ($) =>
       seq(
         "DERIVATIVE",
-        optional(field("name", $["Identifier"]!)),
+        field("name", $["_OptionalBlockName"]!),
         repeat(choice($["ProceduralBlock"]!, $["Statement"]!, $["Comment"]!)),
         "END",
       ),
 
     DiscreteSection: ($) =>
-      seq("DISCRETE", optional(field("name", $["Identifier"]!)), repeat(choice($["Statement"]!, $["Comment"]!)), "END"),
+      seq("DISCRETE", field("name", $["_OptionalBlockName"]!), repeat(choice($["Statement"]!, $["Comment"]!)), "END"),
 
     TerminalSection: ($) => seq("TERMINAL", repeat(choice($["Statement"]!, $["Comment"]!)), "END"),
 

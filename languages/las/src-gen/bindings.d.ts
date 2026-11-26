@@ -1441,12 +1441,12 @@ export declare enum SyntaxKind {
   LASVirtualComponent = 7,
   START = 8,
   _START = 8,
-  SectionHeader = 13,
-  DataLine = 14,
-  Comment = 15,
-  _comment = 15,
-  Newline = 16,
-  _newline = 16,
+  SectionHeader = 12,
+  DataLine = 13,
+  Comment = 14,
+  _comment = 14,
+  Newline = 15,
+  _newline = 15,
   EOF = 1023,
 }
 

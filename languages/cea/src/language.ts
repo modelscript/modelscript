@@ -20,6 +20,8 @@ export const ceaLanguage = language({
   },
   errorCodes: CeaErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
   rules: {
     Deck: ($) =>
       repeat(
@@ -31,12 +33,10 @@ export const ceaLanguage = language({
           $["InsertSection"]!,
           $["OutputSection"]!,
           $["EndStatement"]!,
-          $["Comment"]!,
         ),
       ),
 
-    ProblemSection: ($) =>
-      seq(choice("problem", "prob", "PROBLEM", "PROB"), repeat(choice($["ProblemItem"]!, $["Comment"]!))),
+    ProblemSection: ($) => seq(choice("problem", "prob", "PROBLEM", "PROB"), repeat($["ProblemItem"]!)),
 
     ProblemItem: ($) => choice($["ProblemType"]!, $["ProblemMode"]!, $["ProblemAssignment"]!),
 
@@ -98,8 +98,7 @@ export const ceaLanguage = language({
         "nfz",
       ),
 
-    ReactantsSection: ($) =>
-      seq(choice("reactants", "reac", "REACTANTS", "REAC"), repeat(choice($["ReactantEntry"]!, $["Comment"]!))),
+    ReactantsSection: ($) => seq(choice("reactants", "reac", "REACTANTS", "REAC"), repeat($["ReactantEntry"]!)),
 
     ReactantEntry: ($) =>
       seq(
@@ -119,14 +118,13 @@ export const ceaLanguage = language({
         seq(field("element", $["ElementSymbol"]!), field("count", $["NumberLiteral"]!)),
       ),
 
-    OnlySection: ($) => seq(choice("only", "ONLY"), repeat(choice($["SpeciesToken"]!, ",", $["Comment"]!))),
+    OnlySection: ($) => seq(choice("only", "ONLY"), repeat(choice($["SpeciesToken"]!, ","))),
 
-    OmitSection: ($) => seq(choice("omit", "OMIT"), repeat(choice($["SpeciesToken"]!, ",", $["Comment"]!))),
+    OmitSection: ($) => seq(choice("omit", "OMIT"), repeat(choice($["SpeciesToken"]!, ","))),
 
-    InsertSection: ($) => seq(choice("insert", "INSERT"), repeat(choice($["SpeciesToken"]!, ",", $["Comment"]!))),
+    InsertSection: ($) => seq(choice("insert", "INSERT"), repeat(choice($["SpeciesToken"]!, ","))),
 
-    OutputSection: ($) =>
-      seq(choice("output", "outp", "OUTPUT", "OUTP"), repeat(choice($["OutputOption"]!, $["Comment"]!))),
+    OutputSection: ($) => seq(choice("output", "outp", "OUTPUT", "OUTP"), repeat($["OutputOption"]!)),
 
     OutputOption: ($) =>
       choice(

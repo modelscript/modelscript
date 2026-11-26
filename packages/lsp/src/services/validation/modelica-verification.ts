@@ -152,6 +152,39 @@ function getDescendantFromTree(tree: unknown, startOffset: number, endOffset: nu
   return root ?? null;
 }
 
+const MODELICA_DECL_KEYWORDS = new Set(["model", "block", "function", "class", "record", "connector", "package"]);
+
+function isModelicaWordChar(ch: string): boolean {
+  const c = ch.charCodeAt(0);
+  return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95;
+}
+
+function isModelicaWsChar(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\r" || ch === "\n";
+}
+
+function lineHasModelicaDecl(line: string, name: string): boolean {
+  if (!name) return false;
+  let searchFrom = 0;
+  while (searchFrom < line.length) {
+    const idx = line.indexOf(name, searchFrom);
+    if (idx === -1) return false;
+    const afterIdx = idx + name.length;
+    const afterOk = afterIdx >= line.length || !isModelicaWordChar(line[afterIdx]!);
+    if (afterOk && idx > 0 && isModelicaWsChar(line[idx - 1]!)) {
+      let kwEnd = idx - 1;
+      while (kwEnd > 0 && isModelicaWsChar(line[kwEnd - 1]!)) kwEnd--;
+      let kwStart = kwEnd;
+      while (kwStart > 0 && isModelicaWordChar(line[kwStart - 1]!)) kwStart--;
+      if (kwStart < kwEnd && MODELICA_DECL_KEYWORDS.has(line.slice(kwStart, kwEnd))) {
+        return true;
+      }
+    }
+    searchFrom = idx + 1;
+  }
+  return false;
+}
+
 /**
  * Publishes a lightweight `modelscript/verificationStatus` notification summarizing formal proof
  * counts and per-declaration gutter markers for `uri`.
@@ -243,13 +276,10 @@ export function emitVerificationStatusImpl(
       }
     }
 
-    // 2. Fallback: regex scan on source lines
+    // 2. Fallback: zero-regex token scan on source lines
     if (lines.length === 0) return 0;
-    const re = new RegExp(
-      `\\b(model|block|function|class|record|connector|package)\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-    );
     for (let i = 0; i < lines.length; i++) {
-      if (re.test(lines[i]!)) return i;
+      if (lineHasModelicaDecl(lines[i]!, name)) return i;
     }
     return 0;
   };

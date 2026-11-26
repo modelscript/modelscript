@@ -21,6 +21,8 @@ export const vhdlLanguage = language({
   },
   errorCodes: VhdlErrorCode,
 
+  conflicts: ($) => [[$["_UnarySign"]!, $["Identifier"]!]],
+
   rules: {
     DesignFile: ($) =>
       repeat(
@@ -327,11 +329,9 @@ export const vhdlLanguage = language({
       ),
 
     SimpleExpr: ($) =>
-      seq(
-        optional(choice("not", "-", "+")),
-        $["PrimaryExpr"]!,
-        repeat(seq(choice("+", "-", "&", "*", "/"), $["PrimaryExpr"]!)),
-      ),
+      seq($["_UnarySign"]!, $["PrimaryExpr"]!, repeat(seq(choice("+", "-", "&", "*", "/"), $["PrimaryExpr"]!))),
+
+    _UnarySign: () => optional(choice("not", "-", "+")),
 
     PrimaryExpr: ($) =>
       choice(

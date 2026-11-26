@@ -2,8 +2,8 @@
 
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
-import { handleOpenInVrWebviewMessage } from "./vr-handoff.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
+import { attachExtensionWebviewBridge, getActiveVsCodeColorMode } from "./webview/shared/extension-lsp-bridge.js";
 
 export interface DslUiManifestPanel {
   languageId: string;
@@ -18,28 +18,6 @@ export interface DslUiManifestPanel {
 
 export interface DslUiManifest {
   panels: DslUiManifestPanel[];
-}
-
-interface IncomingWebviewMessage {
-  type?: string;
-  code?: string;
-  line?: number;
-  identifier?: string;
-  relativePath?: string;
-  content?: string;
-  requestId?: string;
-  method?: string;
-  params?: unknown;
-  filename?: string;
-  mimeType?: string;
-  level?: "info" | "warning" | "error";
-  message?: string;
-  url?: string;
-}
-
-function getCurrentColorMode(): "dark" | "light" {
-  const kind = vscode.window.activeColorTheme?.kind;
-  return kind === vscode.ColorThemeKind.Light || kind === vscode.ColorThemeKind.HighContrastLight ? "light" : "dark";
 }
 
 /**
@@ -89,7 +67,7 @@ export class DslCustomEditorProvider extends BaseCustomEditorProvider {
         type: "syncDocument",
         code: document.getText(),
         dialect: this.panelMeta.languageId,
-        colorMode: getCurrentColorMode(),
+        colorMode: getActiveVsCodeColorMode(),
         documentUri: document.uri.toString(),
       });
     };
@@ -100,104 +78,23 @@ export class DslCustomEditorProvider extends BaseCustomEditorProvider {
         ? vscode.window.onDidChangeActiveColorTheme(() => pushDocumentState())
         : { dispose: () => {} };
 
-    const msgSub = webviewPanel.webview.onDidReceiveMessage(async (msg: IncomingWebviewMessage) => {
-      if (!msg || typeof msg !== "object") return;
-      switch (msg.type) {
-        case "ready": {
+    const bridgeSub = attachExtensionWebviewBridge(webviewPanel.webview, {
+      client: this.client,
+      getDocument: () => document,
+      title: this.panelMeta.title,
+      languageId: this.panelMeta.languageId,
+      onUnhandledMessage: (msg) => {
+        if (msg.type === "ready") {
           pushDocumentState();
-          break;
         }
-        case "applyEdit": {
-          if (typeof msg.code !== "string") return;
-          const fullRange = new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length));
-          const edit = new vscode.WorkspaceEdit();
-          edit.replace(document.uri, fullRange, msg.code);
-          await vscode.workspace.applyEdit(edit);
-          break;
-        }
-        case "revealLine": {
-          if (typeof msg.line !== "number" || msg.line < 1) return;
-          const lineIdx = Math.min(Math.max(0, Math.floor(msg.line) - 1), Math.max(0, document.lineCount - 1));
-          const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
-          const lineRange = document.lineAt(lineIdx).range;
-          editor.selection = new vscode.Selection(lineRange.start, lineRange.end);
-          editor.revealRange(lineRange, vscode.TextEditorRevealType.InCenter);
-          break;
-        }
-        case "updateProjectFile": {
-          if (typeof msg.relativePath !== "string" || typeof msg.content !== "string") return;
-          const parentUri = vscode.Uri.joinPath(document.uri, "..");
-          const targetUri = vscode.Uri.joinPath(parentUri, msg.relativePath);
-          await vscode.workspace.fs.writeFile(targetUri, new TextEncoder().encode(msg.content));
-          break;
-        }
-        case "requestLsp": {
-          if (typeof msg.requestId !== "string" || typeof msg.method !== "string") return;
-          if (!this.client) {
-            void webviewPanel.webview.postMessage({
-              type: "lspResponse",
-              requestId: msg.requestId,
-              error: "Language client is not initialized.",
-            });
-            return;
-          }
-          try {
-            const result = await this.client.sendRequest(msg.method, msg.params);
-            void webviewPanel.webview.postMessage({
-              type: "lspResponse",
-              requestId: msg.requestId,
-              result,
-            });
-          } catch (err) {
-            void webviewPanel.webview.postMessage({
-              type: "lspResponse",
-              requestId: msg.requestId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          }
-          break;
-        }
-        case "exportFile": {
-          if (typeof msg.filename !== "string" || typeof msg.content !== "string") return;
-          const defaultUri = vscode.Uri.joinPath(document.uri, "..", msg.filename);
-          const saveUri = await vscode.window.showSaveDialog({ defaultUri });
-          if (saveUri) {
-            await vscode.workspace.fs.writeFile(saveUri, new TextEncoder().encode(msg.content));
-            vscode.window.showInformationMessage(`Exported ${msg.filename}`);
-          }
-          break;
-        }
-        case "notify": {
-          if (typeof msg.message !== "string") return;
-          if (msg.level === "error") vscode.window.showErrorMessage(msg.message);
-          else if (msg.level === "warning") vscode.window.showWarningMessage(msg.message);
-          else vscode.window.showInformationMessage(msg.message);
-          break;
-        }
-        case "openExternal": {
-          if (typeof msg.url === "string") {
-            await vscode.env.openExternal(vscode.Uri.parse(msg.url));
-          }
-          break;
-        }
-        case "openInVr": {
-          await handleOpenInVrWebviewMessage(msg, {
-            artifactUri: document.uri.toString(),
-            title: this.panelMeta.title || document.uri.path.split("/").pop(),
-            kind: this.panelMeta.languageId,
-            fileContent: () => (typeof document.getText === "function" ? document.getText() : undefined),
-            languageId: document.languageId || this.panelMeta.languageId,
-          });
-          break;
-        }
-      }
+      },
     });
 
     webviewPanel.onDidDispose(() => {
       disposed = true;
       docSub.dispose();
       themeSub.dispose();
-      msgSub.dispose();
+      bridgeSub.dispose();
     });
   }
 }

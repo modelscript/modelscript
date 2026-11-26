@@ -26,14 +26,19 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
-import { useFeatureFlag } from "../FeatureFlagContext";
+import { useFeatureFlag, useFeatureFlags } from "../FeatureFlagContext";
 import { usePageTitle } from "../util/title";
 
 // Extracted Tab Subcomponents
 import { AccountTab } from "./settings/tabs/AccountTab";
 import { BillingTab } from "./settings/tabs/BillingTab";
 import { BotsTab } from "./settings/tabs/BotsTab";
-import { ConnectedAccountsTab } from "./settings/tabs/ConnectedAccountsTab";
+import {
+  ConnectedAccountsTab,
+  GENERIC_SETTINGS_ERROR_MESSAGE,
+  resolveSettingsBannerMessage,
+  SETTINGS_STATUS_MESSAGES,
+} from "./settings/tabs/ConnectedAccountsTab";
 import { DataArchiveTab } from "./settings/tabs/DataArchiveTab";
 import { DisplayAndPreferencesTab } from "./settings/tabs/DisplayAndPreferencesTab";
 import { InvitesTab } from "./settings/tabs/InvitesTab";
@@ -43,6 +48,86 @@ import { OrganizationTab } from "./settings/tabs/OrganizationTab";
 import { PrivacyTab } from "./settings/tabs/PrivacyTab";
 import { SecurityTab } from "./settings/tabs/SecurityTab";
 import { TokensTab } from "./settings/tabs/TokensTab";
+
+export { GENERIC_SETTINGS_ERROR_MESSAGE, resolveSettingsBannerMessage, SETTINGS_STATUS_MESSAGES };
+
+interface SettingsTabErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface SettingsTabErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+export class SettingsTabErrorBoundary extends React.Component<
+  SettingsTabErrorBoundaryProps,
+  SettingsTabErrorBoundaryState
+> {
+  constructor(props: SettingsTabErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): SettingsTabErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  override componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    console.error("[SettingsPage] Tab render error:", error, info);
+  }
+
+  handleReset = (): void => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  override render(): React.ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div
+          role="alert"
+          style={{
+            margin: "24px 16px",
+            padding: "20px",
+            borderRadius: "10px",
+            border: "1px solid var(--color-danger-muted, rgba(248, 81, 73, 0.4))",
+            backgroundColor: "var(--color-danger-subtle, rgba(248, 81, 73, 0.1))",
+            color: "var(--color-text-primary)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            gap: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, fontSize: "15px" }}>
+            <AlertIcon size={18} />
+            <span>Something went wrong loading this settings section.</span>
+          </div>
+          {this.state.error?.message && (
+            <div style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>{this.state.error.message}</div>
+          )}
+          <button
+            type="button"
+            onClick={this.handleReset}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "9999px",
+              border: "1px solid var(--color-border-default)",
+              backgroundColor: "var(--color-bg-primary)",
+              color: "var(--color-text-primary)",
+              fontSize: "13px",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const SettingsContainer = styled.div`
   display: flex;
@@ -566,12 +651,14 @@ export const DEEP_SETTINGS_INDEX: DeepSettingEntry[] = [
     keywords: "real-time lint on type diagnostics compiler errors warnings",
   },
   {
-    id: "modeling-auto-simulate",
-    title: "Auto-Simulate on Model Load",
-    description: "Automatically execute simulation runs when opening a model in Ansatz.",
+    id: "modeling-experimental-diagram-layout",
+    title: "Compiler Diagnostics & Live Preview",
+    description:
+      "Configure experimental compiler features, bracket pair colorization, diagram auto-layout, and live Monaco preview.",
     tab: "modeling",
     tabLabel: "Modeling & Simulation",
-    keywords: "auto-simulate ansatz editor ansatz run automatically model load",
+    keywords:
+      "compiler diagnostics live preview experimental features e-graph webgpu diagram auto-layout bracket pair colorization",
   },
 
   // 5. Display & Accessibility
@@ -584,12 +671,12 @@ export const DEEP_SETTINGS_INDEX: DeepSettingEntry[] = [
     keywords: "theme mode dark light appearance color scheme night day",
   },
   {
-    id: "display-colorblind-palette",
-    title: "Colorblind Safe Palette",
-    description: "Enable accessible Okabe-Ito and Viridis color palettes for plots and schematics.",
+    id: "display-high-contrast-density",
+    title: "High Contrast & Compact Density",
+    description: "Toggle high-contrast borders and compact density spacing across feeds, tables, and cards.",
     tab: "displayAndLanguages",
     tabLabel: "Display & Accessibility",
-    keywords: "colorblind safe palette accessibility plots charts okabe-ito viridis",
+    keywords: "high contrast borders compact density spacing accessibility layout",
   },
   {
     id: "display-font-scale-motion",
@@ -608,22 +695,13 @@ export const DEEP_SETTINGS_INDEX: DeepSettingEntry[] = [
     keywords: "language locale english internationalization i18n",
   },
   {
-    id: "display-engineering-persona",
-    title: "Primary Engineering Discipline & Persona",
-    description: "Tailor Quickstart Studio templates for Physical Systems, SysML v2, CAD, or HPC.",
+    id: "display-feed-topics-content-preferences",
+    title: "Feed Topics & Content Preferences",
+    description: "Manage discovered feed topics and replay the interactive product tour.",
     tab: "displayAndLanguages",
     tabLabel: "Display & Accessibility",
     subView: "contentPreferences",
-    keywords: "engineering persona discipline modelica sysml cad hpc onboarding",
-  },
-  {
-    id: "display-muted-keywords-topics",
-    title: "Muted Keywords & Topics",
-    description: "Customize feed topic recommendations and filter unwanted keywords or concepts.",
-    tab: "displayAndLanguages",
-    tabLabel: "Display & Accessibility",
-    subView: "contentPreferences",
-    keywords: "muted keywords topics content preferences feed recommendations filter",
+    keywords: "feed topics content preferences recommendations interactive product tour",
   },
   {
     id: "display-shortcuts-docs",
@@ -861,6 +939,7 @@ const SettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryTab = searchParams.get("tab");
   const querySubView = searchParams.get("subView");
+  const queryCheckout = searchParams.get("checkout");
   const querySuccess = searchParams.get("success");
   const queryError = searchParams.get("error");
 
@@ -871,6 +950,7 @@ const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
   usePageTitle("Settings");
 
+  const { isLoading: isFlagsLoading } = useFeatureFlags();
   const hasBots = useFeatureFlag(["bot_accounts", "ai_bots", "bots"]);
   const hasBilling = useFeatureFlag(["billing", "billing_stripe_live"]);
   const hasOrganizations = useFeatureFlag(["organizations", "orgs"]);
@@ -887,7 +967,7 @@ const SettingsPage: React.FC = () => {
     [hasBots, hasBilling, hasOrganizations, hasInvites],
   );
 
-  const effectiveRawTab = pathTab || queryTab;
+  const effectiveRawTab = pathTab || queryTab || (queryCheckout ? "billing" : null);
   const initialResolved = resolveTabAndSubView(effectiveRawTab, querySubView);
   const initialSafeTab = isTabAvailable(initialResolved.tab) ? initialResolved.tab : "account";
   const initialSafeSubView = isTabAvailable(initialResolved.tab) ? initialResolved.subView : "main";
@@ -901,18 +981,29 @@ const SettingsPage: React.FC = () => {
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const detailColumnRef = useRef<HTMLDivElement | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current !== null) {
+        clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const syncUrl = useCallback(
-    (nextTab: TabType, nextSubView: SubViewType = "main") => {
+    (nextTab: TabType, nextSubView: SubViewType = "main", options?: { replace?: boolean }) => {
+      const replace = options?.replace ?? false;
       if (pathTab) {
         const suffix = nextSubView !== "main" ? `?subView=${encodeURIComponent(nextSubView)}` : "";
-        navigate(`/settings/${encodeURIComponent(nextTab)}${suffix}`);
+        navigate(`/settings/${encodeURIComponent(nextTab)}${suffix}`, { replace });
       } else {
         const nextParams: Record<string, string> = { tab: nextTab };
         if (nextSubView !== "main") {
           nextParams.subView = nextSubView;
         }
-        setSearchParams(nextParams);
+        setSearchParams(nextParams, { replace });
       }
     },
     [navigate, pathTab, setSearchParams],
@@ -923,41 +1014,43 @@ const SettingsPage: React.FC = () => {
     if (effectiveRawTab || querySubView) {
       const resolved = resolveTabAndSubView(effectiveRawTab, querySubView);
       if (!isTabAvailable(resolved.tab)) {
+        if (isFlagsLoading) return;
         setActiveTab("account");
         setSubView("main");
         setMobileShowMenu(false);
-        syncUrl("account", "main");
+        syncUrl("account", "main", { replace: true });
         return;
       }
       setActiveTab(resolved.tab);
       setSubView(resolved.subView);
       setMobileShowMenu(false);
     }
-  }, [effectiveRawTab, querySubView, isTabAvailable, syncUrl]);
+  }, [effectiveRawTab, querySubView, isFlagsLoading, isTabAvailable, syncUrl]);
 
   // If currently active tab becomes unavailable due to feature flag updates, fallback to account
   useEffect(() => {
     if (!isTabAvailable(activeTab)) {
+      if (isFlagsLoading) return;
       setActiveTab("account");
       setSubView("main");
-      syncUrl("account", "main");
+      syncUrl("account", "main", { replace: true });
     }
-  }, [activeTab, isTabAvailable, syncUrl]);
+  }, [activeTab, isFlagsLoading, isTabAvailable, syncUrl]);
 
   // Handle direct navigation to /settings/admin
   useEffect(() => {
     if (effectiveRawTab === "admin") {
       if (isUserAdmin) {
-        navigate("/admin");
+        navigate("/admin", { replace: true });
       } else {
         setActiveTab("account");
         setSubView("main");
-        syncUrl("account", "main");
+        syncUrl("account", "main", { replace: true });
       }
     }
   }, [effectiveRawTab, isUserAdmin, navigate, syncUrl]);
 
-  // Global keyboard shortcut (`/` or `Cmd/Ctrl+K`) to focus settings search when on SettingsPage
+  // Global keyboard shortcut (`/`) to focus settings search when on SettingsPage
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
@@ -970,9 +1063,6 @@ const SettingsPage: React.FC = () => {
         e.preventDefault();
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
-      } else if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
-        // Focus settings search input if user presses Cmd/Ctrl+K inside settings
-        searchInputRef.current?.focus();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -1065,6 +1155,8 @@ const SettingsPage: React.FC = () => {
     [activeTab, isTabAvailable, originTab, subView, syncUrl],
   );
 
+  const hasDeepRouteParams = Boolean(pathTab || queryTab || querySubView);
+
   const handleMobileOrAccountBack = useCallback(() => {
     const isMobileViewport = typeof window !== "undefined" && window.innerWidth <= 900;
 
@@ -1087,17 +1179,24 @@ const SettingsPage: React.FC = () => {
       setOriginTab(null);
       setSubView("main");
       setActiveTab(returnTab);
-      syncUrl(returnTab, "main");
       if (isMobileViewport && !originTab) {
         setMobileShowMenu(true);
+        if (hasDeepRouteParams) {
+          navigate("/settings", { replace: true });
+        }
+      } else {
+        syncUrl(returnTab, "main");
       }
       return;
     }
 
     if (isMobileViewport) {
       setMobileShowMenu(true);
+      if (hasDeepRouteParams) {
+        navigate("/settings", { replace: true });
+      }
     }
-  }, [activeTab, originTab, subView, syncUrl]);
+  }, [activeTab, hasDeepRouteParams, navigate, originTab, subView, syncUrl]);
 
   const handleSelectDeepSetting = useCallback(
     (entry: DeepSettingEntry) => {
@@ -1109,7 +1208,11 @@ const SettingsPage: React.FC = () => {
       setMobileShowMenu(false);
       syncUrl(entry.tab, nextSubView);
 
-      setTimeout(() => {
+      if (scrollTimeoutRef.current !== null) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+      scrollTimeoutRef.current = setTimeout(() => {
+        scrollTimeoutRef.current = null;
         detailColumnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 40);
     },
@@ -1350,7 +1453,15 @@ const SettingsPage: React.FC = () => {
     activeTab === "modeling" ||
     activeTab === "modelingPreferences";
 
-  const activeBannerKey = querySuccess ? `success:${querySuccess}` : queryError ? `error:${queryError}` : null;
+  const resolvedSuccessMessage = resolveSettingsBannerMessage("success", querySuccess);
+  const resolvedErrorMessage = resolvedSuccessMessage ? null : resolveSettingsBannerMessage("error", queryError);
+  const bannerVariant: "success" | "error" | null = resolvedSuccessMessage
+    ? "success"
+    : resolvedErrorMessage
+      ? "error"
+      : null;
+  const bannerMessage = resolvedSuccessMessage || resolvedErrorMessage;
+  const activeBannerKey = bannerVariant && bannerMessage ? `${bannerVariant}:${bannerMessage}` : null;
   const showUrlBanner = Boolean(activeBannerKey && dismissedBannerKey !== activeBannerKey);
 
   const handleDismissUrlBanner = () => {
@@ -1458,30 +1569,33 @@ const SettingsPage: React.FC = () => {
               No settings found matching &ldquo;{searchQuery}&rdquo;
             </Box>
           ) : (
-            filteredCategories.map((group) => (
-              <CategorySection key={group.category}>
-                <CategoryHeader>{group.category}</CategoryHeader>
-                {group.items.map((item) => {
-                  const IconComponent = item.icon;
-                  return (
-                    <MenuItem
-                      key={item.id}
-                      type="button"
-                      $active={item.isActive}
-                      onClick={() => (item.onClick ? item.onClick() : handleSidebarTabSelect(item.tab))}
-                    >
-                      <div className="menu-item-left">
-                        <span className="menu-item-icon">
-                          <IconComponent size={16} />
-                        </span>
-                        <span className="menu-item-label">{item.label}</span>
-                      </div>
-                      <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
-                    </MenuItem>
-                  );
-                })}
-              </CategorySection>
-            ))
+            <nav aria-label="Settings">
+              {filteredCategories.map((group) => (
+                <CategorySection key={group.category}>
+                  <CategoryHeader>{group.category}</CategoryHeader>
+                  {group.items.map((item) => {
+                    const IconComponent = item.icon;
+                    return (
+                      <MenuItem
+                        key={item.id}
+                        type="button"
+                        $active={item.isActive}
+                        aria-current={item.isActive ? "page" : undefined}
+                        onClick={() => (item.onClick ? item.onClick() : handleSidebarTabSelect(item.tab))}
+                      >
+                        <div className="menu-item-left">
+                          <span className="menu-item-icon">
+                            <IconComponent size={16} />
+                          </span>
+                          <span className="menu-item-label">{item.label}</span>
+                        </div>
+                        <ChevronRightIcon size={16} fill="var(--color-text-muted)" />
+                      </MenuItem>
+                    );
+                  })}
+                </CategorySection>
+              ))}
+            </nav>
           )}
         </SidebarScrollArea>
       </MenuColumn>
@@ -1491,11 +1605,11 @@ const SettingsPage: React.FC = () => {
         $hideOnMobile={mobileShowMenu}
         data-top-level={isTopLevelView ? "true" : "false"}
       >
-        {showUrlBanner && (querySuccess || queryError) && (
-          <StatusToastBanner $variant={querySuccess ? "success" : "error"} role="status">
+        {showUrlBanner && bannerVariant && bannerMessage && (
+          <StatusToastBanner $variant={bannerVariant} role={bannerVariant === "error" ? "alert" : "status"}>
             <Box display="flex" alignItems="center" gap={2}>
-              {querySuccess ? <CheckCircleIcon size={18} /> : <AlertIcon size={18} />}
-              <span>{querySuccess || queryError}</span>
+              {bannerVariant === "success" ? <CheckCircleIcon size={18} /> : <AlertIcon size={18} />}
+              <span>{bannerMessage}</span>
             </Box>
             <button
               type="button"
@@ -1523,57 +1637,59 @@ const SettingsPage: React.FC = () => {
           </MobileBackBar>
         )}
 
-        {(activeTab === "account" || activeTab === "accountInfo" || activeTab === "changePassword") && (
-          <AccountTab subView={accountSubView} onNavigate={handleTabNavigate} onBack={handleMobileOrAccountBack} />
-        )}
+        <SettingsTabErrorBoundary key={`${activeTab}:${subView}`}>
+          {(activeTab === "account" || activeTab === "accountInfo" || activeTab === "changePassword") && (
+            <AccountTab subView={accountSubView} onNavigate={handleTabNavigate} onBack={handleMobileOrAccountBack} />
+          )}
 
-        {activeTab === "connectedAccounts" && <ConnectedAccountsTab onBack={handleMobileOrAccountBack} />}
+          {activeTab === "connectedAccounts" && <ConnectedAccountsTab onBack={handleMobileOrAccountBack} />}
 
-        {activeTab === "security" && <SecurityTab onBack={handleMobileOrAccountBack} />}
+          {activeTab === "security" && <SecurityTab onBack={handleMobileOrAccountBack} />}
 
-        {(activeTab === "notifications" || activeTab === "notificationFilters") && (
-          <NotificationFiltersTab
-            subView={notificationSubView}
-            onNavigate={handleTabNavigate}
-            {...({ onBack: handleMobileOrAccountBack } as Record<string, unknown>)}
-          />
-        )}
+          {(activeTab === "notifications" || activeTab === "notificationFilters") && (
+            <NotificationFiltersTab
+              subView={notificationSubView}
+              onNavigate={handleTabNavigate}
+              {...({ onBack: handleMobileOrAccountBack } as Record<string, unknown>)}
+            />
+          )}
 
-        {(activeTab === "display" ||
-          activeTab === "displayAndLanguages" ||
-          activeTab === "contentPreferences" ||
-          activeTab === "other") && (
-          <DisplayAndPreferencesTab
-            subView={displaySubView}
-            onNavigate={(tab) => handleTabNavigate(tab as TabType)}
-            {...({ onBack: handleMobileOrAccountBack } as Record<string, unknown>)}
-          />
-        )}
+          {(activeTab === "display" ||
+            activeTab === "displayAndLanguages" ||
+            activeTab === "contentPreferences" ||
+            activeTab === "other") && (
+            <DisplayAndPreferencesTab
+              subView={displaySubView}
+              onNavigate={(tab) => handleTabNavigate(tab as TabType)}
+              {...({ onBack: handleMobileOrAccountBack } as Record<string, unknown>)}
+            />
+          )}
 
-        {(activeTab === "privacy" || activeTab === "deleteAccount") && (
-          <PrivacyTab subView={privacySubView} onNavigate={handleTabNavigate} onBack={handleMobileOrAccountBack} />
-        )}
+          {(activeTab === "privacy" || activeTab === "deleteAccount") && (
+            <PrivacyTab subView={privacySubView} onNavigate={handleTabNavigate} onBack={handleMobileOrAccountBack} />
+          )}
 
-        {activeTab === "dataArchive" && <DataArchiveTab onBack={handleMobileOrAccountBack} />}
+          {activeTab === "dataArchive" && <DataArchiveTab onBack={handleMobileOrAccountBack} />}
 
-        {hasBilling && activeTab === "billing" && <BillingTab onBack={handleMobileOrAccountBack} />}
+          {hasBilling && activeTab === "billing" && <BillingTab onBack={handleMobileOrAccountBack} />}
 
-        {hasOrganizations && activeTab === "organizations" && (
-          <OrganizationTab
-            onBack={handleMobileOrAccountBack}
-            onNavigateTab={(tab) => handleTabNavigate(tab as TabType)}
-          />
-        )}
+          {hasOrganizations && activeTab === "organizations" && (
+            <OrganizationTab
+              onBack={handleMobileOrAccountBack}
+              onNavigateTab={(tab) => handleTabNavigate(tab as TabType)}
+            />
+          )}
 
-        {hasInvites && activeTab === "invites" && <InvitesTab onBack={handleMobileOrAccountBack} />}
+          {hasInvites && activeTab === "invites" && <InvitesTab onBack={handleMobileOrAccountBack} />}
 
-        {hasBots && activeTab === "bots" && <BotsTab onBack={handleMobileOrAccountBack} />}
+          {hasBots && activeTab === "bots" && <BotsTab onBack={handleMobileOrAccountBack} />}
 
-        {activeTab === "tokens" && <TokensTab onBack={handleMobileOrAccountBack} />}
+          {activeTab === "tokens" && <TokensTab onBack={handleMobileOrAccountBack} />}
 
-        {(activeTab === "modeling" || activeTab === "modelingPreferences") && (
-          <ModelingPreferencesTab {...({ onBack: handleMobileOrAccountBack } as Record<string, unknown>)} />
-        )}
+          {(activeTab === "modeling" || activeTab === "modelingPreferences") && (
+            <ModelingPreferencesTab {...({ onBack: handleMobileOrAccountBack } as Record<string, unknown>)} />
+          )}
+        </SettingsTabErrorBoundary>
       </DetailColumn>
     </SettingsContainer>
   );

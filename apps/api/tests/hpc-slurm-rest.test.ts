@@ -353,4 +353,118 @@ test("Slurm REST Driver & S3/MinIO Object Staging Pipeline", async (t) => {
     assert.ok(Array.isArray(res.body.partitions));
     assert.strictEqual(typeof res.body.nodesCount, "number");
   });
+
+  // ── 7. SlurmRestDriver Security, Memory Units & Error Propagation ────
+  await t.test(
+    "SlurmRestDriver rejects path-traversal nativeJobId, preserves MB memory units, and propagates HTTP errors",
+    async () => {
+      let fetchMode: "ok-mb" | "http-503" = "ok-mb";
+      const driver = new SlurmRestDriver({
+        baseUrl: "https://slurm.cluster.internal",
+        jwtToken: "test-jwt",
+        fetchFn: async () => {
+          if (fetchMode === "http-503") {
+            return new Response(JSON.stringify({ error: "Service Unavailable" }), { status: 503 });
+          }
+          return new Response(
+            JSON.stringify({
+              jobs: [
+                {
+                  job_id: 84921,
+                  job_state: ["COMPLETED"],
+                  exit_code: { return_code: 0 },
+                  time: { elapsed: 60, total_cpu: 240 },
+                  job_resources: { allocated_cpus: 4, allocated_memory: 8192 },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        },
+      });
+
+      // 1. Path-traversal nativeJobId rejection
+      await assert.rejects(
+        () => driver.pollStatus("../jobs"),
+        /Invalid Slurm REST nativeJobId/,
+        "pollStatus must reject path-traversal nativeJobId",
+      );
+      assert.throws(
+        () => driver.getLogPath("../jobs", tmpDir),
+        /Invalid Slurm REST nativeJobId/,
+        "getLogPath must reject path-traversal nativeJobId",
+      );
+
+      // 2. Memory unit conversion: allocated_memory is already in MB (must not be divided by 1024*1024)
+      const profile = getComputeProfile("standard");
+      const metrics = await driver.getMetrics("84921", tmpDir, profile);
+      assert.strictEqual(metrics.peakMemoryMb, 8192, "allocated_memory in MB must not be divided by 1024*1024");
+
+      // 3. Transient HTTP errors propagate in pollStatus instead of returning FAILED silently
+      fetchMode = "http-503";
+      await assert.rejects(
+        () => driver.pollStatus("84921"),
+        /Service Unavailable|503/i,
+        "pollStatus must propagate transient HTTP errors",
+      );
+    },
+  );
+
+  // ── 8. Stager Path Traversal Protection ──────────────────────────────
+  await t.test(
+    "S3ObjectStager and LocalFsObjectStager reject path traversal in keys, jobId, and filenames",
+    async () => {
+      const s3Stager = new S3ObjectStager({
+        endpoint: "http://localhost:9000",
+        bucket: "modelscript-hpc-artifacts",
+        accessKeyId: "AKIAIOSFODNN7EXAMPLE",
+        secretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        fetchFn: async () => new Response(null, { status: 200 }),
+      });
+
+      await assert.rejects(
+        () => s3Stager.getDownloadUrl("jobs/../secrets/key.pem"),
+        /path traversal/i,
+        "S3ObjectStager must reject '..' in remoteKey",
+      );
+      await assert.rejects(
+        () => s3Stager.createJobStagingManifest("../escape", {}, []),
+        /Invalid HPC staging jobId/i,
+        "S3ObjectStager must reject traversal in jobId",
+      );
+      await assert.rejects(
+        () => s3Stager.createJobStagingManifest("job-safe", { "../../etc/passwd": "/tmp/x" }, []),
+        /Invalid HPC staging input filename/i,
+        "S3ObjectStager must reject traversal in input filename",
+      );
+      await assert.rejects(
+        () => s3Stager.createJobStagingManifest("job-safe", {}, ["../evil.out"]),
+        /Invalid HPC staging output filename/i,
+        "S3ObjectStager must reject traversal in output filename",
+      );
+
+      const localStager = new LocalFsObjectStager(path.join(tmpDir, "local-traversal-test"));
+
+      await assert.rejects(
+        () => localStager.uploadFile("jobs/../../escape.txt", Buffer.from("pwn")),
+        /Path traversal detected/i,
+        "LocalFsObjectStager must reject '../' in remoteKey",
+      );
+      await assert.rejects(
+        () => localStager.createJobStagingManifest("../escape", {}, []),
+        /Invalid local staging jobId/i,
+        "LocalFsObjectStager must reject '../' in jobId",
+      );
+      await assert.rejects(
+        () => localStager.createJobStagingManifest("job-safe", { "../secret.txt": "/tmp/x" }, []),
+        /Invalid local staging input filename/i,
+        "LocalFsObjectStager must reject '../' in input filename",
+      );
+      await assert.rejects(
+        () => localStager.createJobStagingManifest("job-safe", {}, ["../evil.out"]),
+        /Invalid local staging output filename/i,
+        "LocalFsObjectStager must reject '../' in output filename",
+      );
+    },
+  );
 });

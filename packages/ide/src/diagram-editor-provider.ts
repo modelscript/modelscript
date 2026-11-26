@@ -106,6 +106,23 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       document.languageId && document.languageId !== "" ? document.languageId : uriString.split(".").pop() || "generic";
     let currentDiagramType = "All";
     let currentClassName: string | undefined = undefined;
+    const rootLabel =
+      document.uri.path
+        .split("/")
+        .pop()
+        ?.replace(/\.[^.]+$/, "") || "Root";
+    interface BreadcrumbEntry {
+      id: string;
+      label: string;
+      diagramType?: string | undefined;
+    }
+    let breadcrumbStack: BreadcrumbEntry[] = [{ id: "", label: rootLabel, diagramType: currentDiagramType }];
+    const postBreadcrumbs = () => {
+      webviewPanel.webview.postMessage({
+        type: "breadcrumbsUpdate",
+        breadcrumbs: breadcrumbStack,
+      });
+    };
     const diagramEditRunner = new SerializedDiagramEditRunner();
     let isApplyingDiagramEdit = false;
     let isSpatialEditPending = false;
@@ -257,6 +274,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                     width: message.width,
                     height: message.height,
                     rotation: message.rotation,
+                    ...(typeof message.flipX === "boolean" ? { flipX: message.flipX } : {}),
+                    ...(typeof message.flipY === "boolean" ? { flipY: message.flipY } : {}),
                     edges: message.edges,
                   },
                 },
@@ -329,6 +348,31 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             case "rotate":
               actions = [{ type: "rotate", item: { name: message.name, rotation: message.rotation } }];
               break;
+            case "flip":
+              if (Array.isArray(message.items)) {
+                actions = [{ type: "move", items: message.items }];
+              } else if (message.item && typeof message.item === "object") {
+                actions = [{ type: "move", items: [message.item] }];
+              } else if (message.name) {
+                actions = [
+                  {
+                    type: "move",
+                    items: [
+                      {
+                        name: message.name,
+                        ...(typeof message.x === "number" ? { x: message.x } : {}),
+                        ...(typeof message.y === "number" ? { y: message.y } : {}),
+                        ...(typeof message.width === "number" ? { width: message.width } : {}),
+                        ...(typeof message.height === "number" ? { height: message.height } : {}),
+                        ...(typeof message.rotation === "number" ? { rotation: message.rotation } : {}),
+                        ...(typeof message.flipX === "boolean" ? { flipX: message.flipX } : {}),
+                        ...(typeof message.flipY === "boolean" ? { flipY: message.flipY } : {}),
+                      },
+                    ],
+                  },
+                ];
+              }
+              break;
             case "toggleDisable":
               actions = [{ type: "toggleDisable", name: message.name, disabled: message.disabled }];
               break;
@@ -394,6 +438,9 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
             case "runSimulation":
               vscode.commands.executeCommand("modelscript.diagram.simulate", document.uri);
               break;
+            case "openSpatialDiagram3D":
+              void vscode.commands.executeCommand("modelscript.openSpatialDiagram3D");
+              break;
             case "diagramEdit": {
               // Direct batch from the webview (already in actions format)
               actions = message.actions;
@@ -402,6 +449,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   a.type === "move" ||
                   a.type === "resize" ||
                   a.type === "rotate" ||
+                  a.type === "flip" ||
                   a.type === "toggleDisable" ||
                   a.type === "moveEdge" ||
                   a.type === "updateParameter" ||
@@ -530,21 +578,71 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 });
               break;
             }
-            case "drillDown": {
+            case "validateConnection": {
               this.client
-                .sendRequest<{ targetUri?: string; className?: string; diagramType?: string } | null>(
-                  DiagramMethods.drillDown,
-                  {
-                    uri: uriString,
-                    componentId: message.componentId,
-                    componentName: message.componentName,
-                    className: message.className ?? currentClassName,
-                    nodeId: message.nodeId,
-                  },
-                )
+                .sendRequest(DiagramMethods.validateConnection, {
+                  uri: uriString,
+                  className: currentClassName,
+                  diagramType: currentDiagramType,
+                  sourceNode: message.sourceNode,
+                  sourcePort: message.sourcePort,
+                  targetNode: message.targetNode,
+                  targetPort: message.targetPort,
+                })
+                .then((result) => {
+                  webviewPanel.webview.postMessage({
+                    type: "validateConnectionResult",
+                    requestId: message.requestId,
+                    result,
+                  });
+                })
+                .catch(() => {
+                  webviewPanel.webview.postMessage({
+                    type: "validateConnectionResult",
+                    requestId: message.requestId,
+                    result: { compatible: true },
+                  });
+                });
+              break;
+            }
+            case "drillDown": {
+              const requestedLabel = String(
+                message.label || message.componentName || message.nodeId || message.className || "Subdiagram",
+              );
+              this.client
+                .sendRequest<{
+                  targetUri?: string;
+                  className?: string;
+                  diagramType?: string;
+                  label?: string;
+                } | null>(DiagramMethods.drillDown, {
+                  uri: uriString,
+                  componentId: message.componentId,
+                  componentName: message.componentName,
+                  className: message.className ?? currentClassName,
+                  nodeId: message.nodeId,
+                })
                 .then((res) => {
-                  if (res?.className !== undefined) {
-                    currentClassName = res.className;
+                  const targetClass =
+                    res?.className ??
+                    (typeof message.fallbackClassName === "string" ? message.fallbackClassName : undefined);
+                  if (targetClass !== undefined && targetClass !== currentClassName) {
+                    currentClassName = targetClass;
+                    const nextDiagramType = res?.diagramType ?? currentDiagramType;
+                    const crumbLabel =
+                      res?.label ||
+                      (requestedLabel.includes(".")
+                        ? requestedLabel.split(".").pop() || requestedLabel
+                        : requestedLabel);
+                    const existingIdx = breadcrumbStack.findIndex((b) => b.id === targetClass);
+                    if (existingIdx >= 0) {
+                      breadcrumbStack = breadcrumbStack.slice(0, existingIdx + 1);
+                    } else {
+                      breadcrumbStack = [
+                        ...breadcrumbStack,
+                        { id: targetClass, label: crumbLabel, diagramType: nextDiagramType },
+                      ];
+                    }
                   }
                   if (res?.diagramType) {
                     currentDiagramType = res.diagramType;
@@ -553,6 +651,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                       diagramType: res.diagramType,
                     });
                   }
+                  postBreadcrumbs();
                   immediateUpdate();
                 })
                 .catch((e) => {
@@ -560,12 +659,53 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                 });
               break;
             }
+            case "drillUp": {
+              const targetDepth =
+                typeof message.depth === "number" && message.depth >= 0
+                  ? Math.min(message.depth, breadcrumbStack.length - 1)
+                  : Math.max(0, breadcrumbStack.length - 2);
+              breadcrumbStack = breadcrumbStack.slice(0, targetDepth + 1);
+              const targetCrumb = breadcrumbStack[breadcrumbStack.length - 1];
+              currentClassName = targetCrumb?.id ? targetCrumb.id : undefined;
+              if (targetCrumb?.diagramType) {
+                currentDiagramType = targetCrumb.diagramType;
+                webviewPanel.webview.postMessage({
+                  type: "setDiagramType",
+                  diagramType: targetCrumb.diagramType,
+                });
+              }
+              postBreadcrumbs();
+              immediateUpdate();
+              break;
+            }
             case "navigateTo": {
               // Cross-diagram navigation: switch diagram type and optionally focus a class / sub-module.
               // E.g., double-click a StateDefinition in BDD → open StateMachine diagram,
               // or click 'More on Passive Elements' in PSCAD library → drill down into Passive sub-module.
               if (message.className !== undefined) {
-                currentClassName = message.className;
+                const nextClass = String(message.className);
+                currentClassName = nextClass || undefined;
+                if (!nextClass) {
+                  breadcrumbStack = breadcrumbStack.slice(0, 1);
+                } else {
+                  const existingIdx = breadcrumbStack.findIndex((b) => b.id === nextClass);
+                  if (existingIdx >= 0) {
+                    breadcrumbStack = breadcrumbStack.slice(0, existingIdx + 1);
+                  } else {
+                    const label =
+                      typeof message.label === "string" && message.label
+                        ? message.label
+                        : nextClass.split(".").pop() || nextClass;
+                    breadcrumbStack = [
+                      ...breadcrumbStack,
+                      {
+                        id: nextClass,
+                        label,
+                        diagramType: message.diagramType ?? currentDiagramType,
+                      },
+                    ];
+                  }
+                }
               }
               if (message.diagramType) {
                 currentDiagramType = message.diagramType;
@@ -575,6 +715,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
                   diagramType: message.diagramType,
                 });
               }
+              postBreadcrumbs();
               immediateUpdate();
               break;
             }
@@ -1594,6 +1735,157 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       color: #94a3b8;
       margin-bottom: 6px;
     }
+    .scope-header-controls {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .scope-mode-select {
+      background: rgba(15, 23, 42, 0.9);
+      color: #e2e8f0;
+      border: 1px solid rgba(100, 116, 139, 0.5);
+      border-radius: 4px;
+      padding: 1px 4px;
+      font-size: 10px;
+      font-family: var(--vscode-font-family, sans-serif);
+      cursor: pointer;
+      outline: none;
+    }
+    .scope-mode-select:hover,
+    .scope-mode-select:focus {
+      border-color: #38bdf8;
+    }
+    .pinned-sticky-card {
+      pointer-events: auto;
+      width: 220px;
+      background: rgba(15, 23, 42, 0.94);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 6px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(6px);
+      padding: 7px 10px;
+      font-family: var(--vscode-font-family, sans-serif);
+      color: #f8fafc;
+    }
+    .sticky-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .sticky-title {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #cbd5e1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .sticky-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #10b981;
+    }
+    .sticky-dot.status-warning { background: #f59e0b; }
+    .sticky-dot.status-error { background: #ef4444; }
+    .sticky-dot.status-stale { background: #64748b; }
+    .sticky-value-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .sticky-value {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 15px;
+      font-weight: 700;
+      color: #38bdf8;
+      letter-spacing: -0.01em;
+    }
+    .sticky-unit {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+    .sticky-action-btn {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1;
+      padding: 0 3px;
+    }
+    .sticky-action-btn:hover {
+      color: #38bdf8;
+    }
+
+    /* Always-visible floating Diagram Action Toolbar (Minimap, Flip, Rotate, Pin, 3D/VR Stage) */
+    #diagram-action-bar {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      background: var(--vscode-editorWidget-background, rgba(30, 30, 34, 0.92));
+      border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.14));
+      border-radius: 10px;
+      padding: 4px 7px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+      font-family: var(--vscode-font-family, sans-serif);
+      font-size: 11px;
+      user-select: none;
+    }
+    .action-bar-btn {
+      background: transparent;
+      color: var(--vscode-foreground, #cbd5e1);
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 4px 7px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+    .action-bar-btn:hover:not(:disabled) {
+      background: var(--vscode-toolbar-hoverBackground, rgba(255, 255, 255, 0.1));
+      color: var(--vscode-foreground, #ffffff);
+    }
+    .action-bar-btn.active {
+      background: var(--vscode-button-background, #0284c7);
+      color: var(--vscode-button-foreground, #ffffff);
+    }
+    .action-bar-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .action-bar-btn-stage {
+      background: rgba(56, 189, 248, 0.14);
+      border-color: rgba(56, 189, 248, 0.35);
+      color: #38bdf8;
+    }
+    .action-bar-btn-stage:hover:not(:disabled) {
+      background: rgba(56, 189, 248, 0.28);
+      color: #7dd3fc;
+    }
+    .action-bar-divider {
+      width: 1px;
+      height: 16px;
+      background: var(--vscode-widget-border, rgba(148, 163, 184, 0.28));
+      margin: 0 2px;
+    }
   </style>
 </head>
 <body>
@@ -1616,6 +1908,18 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   </div>
   <div id="wire-probe-tooltip"></div>
   <div id="pinned-scopes-container"></div>
+  <div id="diagram-action-bar" role="toolbar" aria-label="Diagram tools">
+    <button id="action-minimap" class="action-bar-btn" type="button" title="Toggle Minimap (M)">🗺 Minimap</button>
+    <div class="action-bar-divider"></div>
+    <button id="action-flip-h" class="action-bar-btn" type="button" title="Flip Selected Horizontal (H)" disabled>⇄ Flip H</button>
+    <button id="action-flip-v" class="action-bar-btn" type="button" title="Flip Selected Vertical (V)" disabled>⇅ Flip V</button>
+    <button id="action-rotate" class="action-bar-btn" type="button" title="Rotate Selected 90° (R)" disabled>↻ Rotate</button>
+    <div class="action-bar-divider"></div>
+    <button id="action-pin-plot" class="action-bar-btn" type="button" title="Pin Multi-Type Plot Widget for Selected" disabled>📈 Plot</button>
+    <button id="action-pin-sticky" class="action-bar-btn" type="button" title="Pin Live Sticky Value for Selected" disabled>📌 Value</button>
+    <div class="action-bar-divider"></div>
+    <button id="action-spatial-3d" class="action-bar-btn action-bar-btn-stage" type="button" title="Open 3D / VR Spatial Diagram Stage">🧊 3D / VR Stage</button>
+  </div>
   <div id="toolbar" style="display: none;">
     <span>Diagram View:</span>
     <select id="diagramTypeSelect">

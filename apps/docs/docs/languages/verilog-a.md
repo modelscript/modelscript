@@ -1,6 +1,6 @@
 ---
 title: "Verilog-A & Verilog-AMS Compact Modeling (.va, .vams)"
-description: "@modelscript/verilog-a (languages/verilog-a) provides compiler, analog behavioral simulation, continuous DAE lowering, and SPICE netlist export for the Accellera Verilog-A and Verilog-AMS analog co..."
+description: "@modelscript/verilog-a provides native compilation, analog behavioral simulation, continuous DAE lowering, and SPICE netlist export for Accellera Verilog-A."
 ---
 
 # Verilog-A & Verilog-AMS Compact Modeling (`.va`, `.vams`)

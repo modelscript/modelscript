@@ -78,6 +78,15 @@ const AdminPage = lazyWithRetry(() => import("./pages/AdminPage"));
 const BookmarksPage = lazyWithRetry(() => import("./pages/BookmarksPage"));
 const EditProfilePage = lazyWithRetry(() => import("./pages/EditProfilePage"));
 const EmbedAnsatzEditorPage = lazyWithRetry(() => import("./pages/EmbedAnsatzEditorPage"));
+const RlhfAnnotatorPage = lazyWithRetry(() => import("./pages/RlhfAnnotatorPage"));
+const RlhfQueuePage = lazyWithRetry(() => import("./pages/RlhfQueuePage"));
+const RlhfArenaHubPage = lazyWithRetry(() => import("./pages/RlhfArenaHubPage"));
+const DatasetsHubPage = lazyWithRetry(() => import("./pages/DatasetsHubPage"));
+const DatasetBrowserPage = lazyWithRetry(() => import("./pages/DatasetBrowserPage"));
+const ModelsHubPage = lazyWithRetry(() => import("./pages/ModelsHubPage"));
+const TrainingRunsPage = lazyWithRetry(() => import("./pages/TrainingRunsPage"));
+const LeaderboardsPage = lazyWithRetry(() => import("./pages/LeaderboardsPage"));
+const VectorMemoryPage = lazyWithRetry(() => import("./pages/VectorMemoryPage"));
 const ExplorePage = lazyWithRetry(() => import("./pages/ExplorePage"));
 const FeedsPage = lazyWithRetry(() => import("./pages/FeedsPage"));
 const FollowersPage = lazyWithRetry(() => import("./pages/FollowersPage"));
@@ -633,6 +642,9 @@ function App() {
                     <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
                     <Route path="/embed/editor" element={<EmbedAnsatzEditorPage />} />
                     <Route path="/embed/ansatz" element={<PreserveParamsNavigate to="/embed/editor" />} />
+                    <Route path="/annotate/queue" element={<RlhfQueuePage />} />
+                    <Route path="/annotate/:challengeId" element={<RlhfAnnotatorPage />} />
+                    <Route path="/embed/annotate/:challengeId" element={<RlhfAnnotatorPage />} />
                     <Route path="/editor" element={<AnsatzEditorPage />} />
                     <Route path="/ansatz" element={<PreserveParamsNavigate to="/editor" />} />
                     <Route path="/canvas" element={<SpatialCanvasPage />} />
@@ -641,8 +653,6 @@ function App() {
 
                     {/* Social shell routes */}
                     <Route element={<AppShell />}>
-                      <Route path="/editor" element={<AnsatzEditorPage />} />
-                      <Route path="/ansatz" element={<PreserveParamsNavigate to="/editor" />} />
                       <Route
                         path="/home"
                         element={
@@ -651,6 +661,16 @@ function App() {
                       />
                       <Route path="/feed" element={<Navigate to="/home" replace />} />
                       <Route path="/explore" element={<ExplorePage />} />
+                      <Route path="/arena" element={<RlhfArenaHubPage />} />
+                      <Route path="/datasets" element={<DatasetsHubPage />} />
+                      <Route path="/recipes" element={<DatasetsHubPage />} />
+                      <Route path="/datasets/:shardId/browse" element={<DatasetBrowserPage />} />
+                      <Route path="/models" element={<ModelsHubPage />} />
+                      <Route path="/models/:name/:version" element={<ModelsHubPage />} />
+                      <Route path="/runs" element={<TrainingRunsPage />} />
+                      <Route path="/runs/:runUid" element={<TrainingRunsPage />} />
+                      <Route path="/leaderboards" element={<LeaderboardsPage />} />
+                      <Route path="/memory" element={<VectorMemoryPage />} />
                       <Route
                         path="/spaces"
                         element={hasSpaces ? <SpacesExplorePage /> : <Navigate to="/explore" replace />}

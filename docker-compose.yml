@@ -8,6 +8,7 @@ services:
     environment:
       - PUBLIC_DOMAIN=${PUBLIC_DOMAIN:-localhost}
       - DOCS_DOMAIN=${DOCS_DOMAIN:-http://docs.localhost}
+      - BLOG_DOMAIN=${BLOG_DOMAIN:-http://blog.localhost}
     volumes:
       - ./config/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
@@ -55,11 +56,15 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/modelscript/api-ee:latest
+    image: ghcr.io/modelscript/api-ee:${IMAGE_TAG:-latest}
     profiles: ["standalone", "internal", "federated", "flagship", "federated-lite", "corporate", "quick-tunnel"]
     build:
       context: .
       target: api-ee
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -154,7 +159,7 @@ services:
     restart: unless-stopped
 
   web:
-    image: ghcr.io/modelscript/web:latest
+    image: ghcr.io/modelscript/web:${IMAGE_TAG:-latest}
     profiles: ["standalone", "internal", "federated", "flagship", "federated-lite", "corporate", "quick-tunnel"]
     build:
       context: .
@@ -173,11 +178,15 @@ services:
     restart: unless-stopped
 
   api-ce:
-    image: ghcr.io/modelscript/api-ce:latest
+    image: ghcr.io/modelscript/api-ce:${IMAGE_TAG:-latest}
     profiles: ["ce"]
     build:
       context: .
       target: api-ce
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
@@ -251,11 +260,15 @@ services:
       - MSX_EDITION=ce
 
   appliance:
-    image: ghcr.io/modelscript/appliance:latest
+    image: ghcr.io/modelscript/appliance:${IMAGE_TAG:-latest}
     profiles: ["appliance"]
     build:
       context: .
       target: appliance
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     ports:
       - "8080:8080"
     volumes:
@@ -263,12 +276,20 @@ services:
       - api-backups:/app/apps/api/data/backups
       - api-uploads:/app/apps/api/uploads
       - api-thumbnails:/app/apps/api/public/thumbnails
+      - api-packages:/app/apps/api/storage
     environment:
       - NODE_ENV=production
       - PORT=8080
       - MSX_EDITION=${MSX_EDITION:-ee}
       - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-true}
       - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a cryptographically strong secret (e.g., openssl rand -hex 32)}
+      - PUBLIC_URL=${PUBLIC_URL:-http://localhost:8080}
+      - DEPLOYMENT_PRESET=${DEPLOYMENT_PRESET:-tier2_corporate}
+      - AUTO_SEED_ADMIN=${AUTO_SEED_ADMIN:-true}
+      - ADMIN_INIT_USERNAME=${ADMIN_INIT_USERNAME:-admin}
+      - ADMIN_INIT_PASSWORD=${ADMIN_INIT_PASSWORD:-}
+      - ENTERPRISE_HEADER_AUTH=${ENTERPRISE_HEADER_AUTH:-false}
       - ENTERPRISE_APPLIANCE=true
       - AIRGAP_ENFORCED=true
       - EMAIL_DRIVER=${EMAIL_DRIVER:-}

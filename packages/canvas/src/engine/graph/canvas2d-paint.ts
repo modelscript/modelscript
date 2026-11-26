@@ -77,7 +77,7 @@ export function paintSceneToCanvas2D(
   }
 
   let drawnNodes = 0;
-  const lodMinimal = cam.zoom < 0.35;
+  const lodMinimal = cam.zoom < 0.2;
   for (const summary of visibleNodes) {
     const cell = host.cells.get(summary.id);
     const glyph = cell?.getCompiledGlyph();

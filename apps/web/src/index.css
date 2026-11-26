@@ -482,6 +482,13 @@ html [data-color-mode][data-light-theme][data-dark-theme] {
   --space-6: 24px;
   --space-7: 28px;
   --space-8: 32px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --settings-item-py: 16px;
+  --settings-item-px: 16px;
+  --settings-card-p: 16px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
@@ -720,9 +727,13 @@ html[data-theme="light"][data-high-contrast="true"] {
 }
 
 html[data-density="compact"] {
-  --space-sm: 6px;
+  --space-xs: 2px;
+  --space-sm: 5px;
   --space-md: 10px;
   --space-lg: 14px;
+  --settings-item-py: 10px;
+  --settings-item-px: 12px;
+  --settings-card-p: 12px;
 }
 
 /* ─── Polyglot Package List Action Dropdown Button (Light-bluish brand style) ─── */

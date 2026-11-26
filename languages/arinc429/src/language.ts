@@ -35,6 +35,8 @@ export const arinc429Language = language({
 
   errorCodes: Arinc429ErrorCode,
 
+  conflicts: ($) => [[$["LabelDecl"]!, $["LabelAttr"]!]],
+
   rules: {
     Document: ($) =>
       repeat(choice($["BusDecl"]!, $["RateDecl"]!, $["LabelDecl"]!, $["FrameDecl"]!, $["WordDecl"]!, $["Comment"]!)),

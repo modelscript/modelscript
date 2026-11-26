@@ -95,7 +95,15 @@ export function mcpRouter(database: LibraryDatabase): Router {
       },
       deductCredits: async ({ costCredits, toolName, details }) => {
         if (costCredits > 0) {
-          database.deductUserCredits(userId, costCredits, null, `Hosted MCP: ${toolName}`, details);
+          const result = database.deductUserCredits(userId, costCredits, null, `Hosted MCP: ${toolName}`, details);
+          if (!result.success) {
+            const err = new Error(
+              `Insufficient compute credits to cover ${costCredits} cr for MCP tool '${toolName}' (balance: ${result.newBalance} cr).`,
+            ) as Error & { status?: number; statusCode?: number };
+            err.status = 402;
+            err.statusCode = 402;
+            throw err;
+          }
         }
       },
       socialBridge: {
@@ -140,8 +148,24 @@ export function mcpRouter(database: LibraryDatabase): Router {
       void transport.close();
       void mcpServer.close();
     });
-    await mcpServer.connect(transport as unknown as Parameters<typeof mcpServer.connect>[0]);
-    await transport.handleRequest(req, res, req.body);
+    try {
+      await mcpServer.connect(transport as unknown as Parameters<typeof mcpServer.connect>[0]);
+      await transport.handleRequest(req, res, req.body);
+    } catch (err: unknown) {
+      const status =
+        (err as { status?: number; statusCode?: number } | null)?.status ??
+        (err as { status?: number; statusCode?: number } | null)?.statusCode;
+      if (!res.headersSent) {
+        if (status === 402) {
+          res.status(402).json({
+            error: "Payment Required",
+            message: err instanceof Error ? err.message : "Insufficient compute credits.",
+          });
+          return;
+        }
+        res.status(500).json({ error: "MCP request failed" });
+      }
+    }
   });
 
   // GET /api/v1/mcp/sse — SSE handshake for MCP clients (Cursor, Claude Desktop, autonomous agents)

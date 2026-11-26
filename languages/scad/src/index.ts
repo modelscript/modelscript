@@ -29,6 +29,19 @@ import { lintScadCst, type ScadDiagnostic, type ScadLintOptions } from "./linter
 import { ScadPatcher, type ScadCstNode, type ScadCstTree } from "./patcher.js";
 
 export { buildScadDiagramFromCst } from "./diagram-builder.js";
+export {
+  applyScadOperationOverrides,
+  buildScadFeatureTreeFromCst,
+  countScadFeatureNodes,
+  EMPTY_SCAD_FEATURE_OVERRIDES,
+  extractScadParametersFromCst,
+  hasActiveScadOverrides,
+  type ScadFeatureKind,
+  type ScadFeatureNode,
+  type ScadFeatureOverrides,
+  type ScadModifierChar,
+  type ScadParameterInfo,
+} from "./feature-tree.js";
 export * from "./indexing.js";
 export * from "./interop.js";
 export { evaluateScad, lintScadCst, parseScadSource, ScadErrorCode, ScadEvaluator, scadLanguage, ScadPatcher };
@@ -163,10 +176,11 @@ export async function extractScadCadComponents(
   }
 
   const components: ScadCadComponent[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i]!;
+  const GHOST_COLOR: [number, number, number, number] = [0.96, 0.28, 0.34, 0.38];
+
+  const emitSolidComponent = (part: Solid, index: number, isGhost: boolean): void => {
     const mesh = ManifoldWorker.evaluateSolid(part);
-    if (mesh.indices.length === 0) continue;
+    if (mesh.indices.length === 0) return;
 
     const meta = part.sourceMetadata ?? mesh.sourceMetadata;
     const userPos: [number, number, number] = meta?.translation
@@ -182,46 +196,55 @@ export async function extractScadCadComponents(
       shiftedVerts[v + 2] = mesh.vertices[v + 2]! - userPos[2];
     }
 
-    const ports = mesh.tags.map((t, tagIdx) => {
-      const rawOrigin = (t as { origin?: unknown }).origin;
-      let offsetPosition: [number, number, number] = [0, 0, 0];
-      if (Array.isArray(rawOrigin) && rawOrigin.length >= 3) {
-        offsetPosition = [Number(rawOrigin[0]), Number(rawOrigin[1]), Number(rawOrigin[2])];
-      } else if (mesh.faceTagIndices && mesh.faceTagIndices.length > 0) {
-        const targetTagId = tagIdx + 1;
-        let sx = 0;
-        let sy = 0;
-        let sz = 0;
-        let count = 0;
-        for (let f = 0; f < mesh.faceTagIndices.length; f++) {
-          if (mesh.faceTagIndices[f] === targetTagId) {
-            const i0 = mesh.indices[f * 3]! * 3;
-            const i1 = mesh.indices[f * 3 + 1]! * 3;
-            const i2 = mesh.indices[f * 3 + 2]! * 3;
-            sx += (shiftedVerts[i0]! + shiftedVerts[i1]! + shiftedVerts[i2]!) / 3;
-            sy += (shiftedVerts[i0 + 1]! + shiftedVerts[i1 + 1]! + shiftedVerts[i2 + 1]!) / 3;
-            sz += (shiftedVerts[i0 + 2]! + shiftedVerts[i1 + 2]! + shiftedVerts[i2 + 2]!) / 3;
-            count++;
+    const ports = isGhost
+      ? []
+      : mesh.tags.map((t, tagIdx) => {
+          const rawOrigin = (t as { origin?: unknown }).origin;
+          let offsetPosition: [number, number, number] = [0, 0, 0];
+          if (Array.isArray(rawOrigin) && rawOrigin.length >= 3) {
+            offsetPosition = [Number(rawOrigin[0]), Number(rawOrigin[1]), Number(rawOrigin[2])];
+          } else if (mesh.faceTagIndices && mesh.faceTagIndices.length > 0) {
+            const targetTagId = tagIdx + 1;
+            let sx = 0;
+            let sy = 0;
+            let sz = 0;
+            let count = 0;
+            for (let f = 0; f < mesh.faceTagIndices.length; f++) {
+              if (mesh.faceTagIndices[f] === targetTagId) {
+                const i0 = mesh.indices[f * 3]! * 3;
+                const i1 = mesh.indices[f * 3 + 1]! * 3;
+                const i2 = mesh.indices[f * 3 + 2]! * 3;
+                sx += (shiftedVerts[i0]! + shiftedVerts[i1]! + shiftedVerts[i2]!) / 3;
+                sy += (shiftedVerts[i0 + 1]! + shiftedVerts[i1 + 1]! + shiftedVerts[i2 + 1]!) / 3;
+                sz += (shiftedVerts[i0 + 2]! + shiftedVerts[i1 + 2]! + shiftedVerts[i2 + 2]!) / 3;
+                count++;
+              }
+            }
+            if (count > 0) {
+              offsetPosition = [sx / count, sy / count, sz / count];
+            }
           }
-        }
-        if (count > 0) {
-          offsetPosition = [sx / count, sy / count, sz / count];
-        }
-      }
-      return {
-        name: t.portName,
-        port: {
-          feature: t.portType,
-          offsetPosition,
-        },
-      };
-    });
+          return {
+            name: t.portName,
+            port: {
+              feature: t.portType,
+              offsetPosition,
+            },
+          };
+        });
 
-    const compName = `${part.name || "part"}_${i + 1}`;
+    const compName = isGhost ? `${part.name || "ghost"}_ghost_${index + 1}` : `${part.name || "part"}_${index + 1}`;
+    const compUri = isGhost ? `scad://ghost/${compName}` : uri ? `${uri}#${compName}` : `scad://${compName}`;
+    const compColor: [number, number, number, number] | undefined = isGhost
+      ? [...GHOST_COLOR]
+      : meta?.color
+        ? [meta.color[0], meta.color[1], meta.color[2], meta.color[3]]
+        : undefined;
+
     components.push({
       name: compName,
       cad: {
-        uri: uri ? `${uri}#${compName}` : `scad://${compName}`,
+        uri: compUri,
         position: userPos,
         rotation: meta?.rotation ? [meta.rotation[0], meta.rotation[1], meta.rotation[2]] : [0, 0, 0],
         scale: meta?.scale ? [meta.scale[0], meta.scale[1], meta.scale[2]] : [1, 1, 1],
@@ -230,12 +253,24 @@ export async function extractScadCadComponents(
         vertices: shiftedVerts,
         indices: Array.from(mesh.indices),
         normals: Array.from(mesh.normals),
-        color: meta?.color ? [meta.color[0], meta.color[1], meta.color[2], meta.color[3]] : undefined,
+        color: compColor,
       },
       ports,
       dynamicBindings: [],
-      sourceMetadata: meta,
+      sourceMetadata: isGhost ? { ...(meta ?? {}), color: [...GHOST_COLOR] } : meta,
     });
+  };
+
+  for (let i = 0; i < parts.length; i++) {
+    emitSolidComponent(parts[i]!, i, false);
+  }
+
+  const ghostParts: Solid[] = [];
+  for (const gs of evaluator.getGhostSolids()) {
+    collectSelectableParts(gs, ghostParts);
+  }
+  for (let g = 0; g < ghostParts.length; g++) {
+    emitSolidComponent(ghostParts[g]!, g, true);
   }
 
   return components;

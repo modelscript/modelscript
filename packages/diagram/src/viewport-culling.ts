@@ -39,12 +39,12 @@ export type DiagramLodTier = "full" | "medium" | "low";
 /**
  * Resolves the Level-of-Detail (LOD) rendering tier from the current zoom scale.
  * - `full` (>= 0.65): all labels, ports, compartments, and shadows visible
- * - `medium` (0.35 - 0.65): strip expensive SVG filter shadows
- * - `low` (< 0.35): strip shadows and hide micro-labels/port badges for smooth macro panning
+ * - `medium` (0.2 - 0.65): strip expensive SVG filter shadows
+ * - `low` (< 0.2): strip shadows and hide micro-labels/port badges for smooth macro panning
  */
 export function resolveDiagramLodTier(scale: number): DiagramLodTier {
   if (!Number.isFinite(scale) || scale >= 0.65) return "full";
-  if (scale >= 0.35) return "medium";
+  if (scale >= 0.2) return "medium";
   return "low";
 }
 

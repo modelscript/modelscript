@@ -3,12 +3,14 @@
 import {
   PanelBltView,
   PanelButton,
+  PanelDataGrid,
   PanelKpiStrip,
   PanelShell,
   PanelSvgStage,
   PanelTabBar,
   PanelToolbar,
   type LanguagePanelProps,
+  type PanelDataGridColumn,
   type PanelKpiItem,
 } from "@modelscript/design-tokens/panel";
 import React, { useMemo, useState } from "react";
@@ -33,6 +35,7 @@ const TAB_ITEMS: { id: ModelicaTabId; label: string }[] = [
 
 export const ModelicaPanel: React.FC<LanguagePanelProps> = ({ code, colorMode, mode, isFullScreen = false, host }) => {
   const [activeTab, setActiveTab] = useState<ModelicaTabId>("diagram");
+  const [canvasThemeOverride, setCanvasThemeOverride] = useState<"light" | "dark" | null>(null);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [libQuery, setLibQuery] = useState("");
   const [libDomain, setLibDomain] = useState<string>("all");
@@ -41,7 +44,7 @@ export const ModelicaPanel: React.FC<LanguagePanelProps> = ({ code, colorMode, m
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
-  const isDark = colorMode !== "light";
+  const canvasTheme = canvasThemeOverride ?? colorMode;
 
   const model = useMemo(() => parseModelicaModelForPanel(code), [code]);
 
@@ -54,8 +57,8 @@ export const ModelicaPanel: React.FC<LanguagePanelProps> = ({ code, colorMode, m
   }, [model.components, selectedName]);
 
   const diagram = useMemo(
-    () => buildModelicaDiagramSvg(model, effectiveSelected?.name ?? null, isDark),
-    [model, effectiveSelected?.name, isDark],
+    () => buildModelicaDiagramSvg(model, effectiveSelected?.name ?? null, canvasTheme === "dark"),
+    [model, effectiveSelected?.name, canvasTheme],
   );
 
   const kpis = useMemo<PanelKpiItem[]>(() => {
@@ -255,12 +258,31 @@ export const ModelicaPanel: React.FC<LanguagePanelProps> = ({ code, colorMode, m
                 : "Auto-layout Schematic View (click a block to inspect properties)"}
             </span>
             {effectiveSelected && (
-              <span>
-                Selected: <strong>{effectiveSelected.name}</strong> ({effectiveSelected.typeName})
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span>
+                  Selected: <strong>{effectiveSelected.name}</strong> ({effectiveSelected.typeName})
+                </span>
+                <PanelButton
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveTab("properties");
+                  }}
+                  style={{ padding: "1px 6px", fontSize: 10.5 }}
+                >
+                  Edit Properties
+                </PanelButton>
               </span>
             )}
           </div>
-          <PanelSvgStage svg={diagram.svg} />
+          <PanelSvgStage
+            svg={diagram.svg}
+            canvasTheme={canvasTheme}
+            onToggleCanvasTheme={() =>
+              setCanvasThemeOverride((prev) => ((prev ?? colorMode) === "dark" ? "light" : "dark"))
+            }
+            onRevealLine={host?.onRevealLine}
+          />
         </div>
       )}
 
@@ -499,64 +521,56 @@ export const ModelicaPanel: React.FC<LanguagePanelProps> = ({ code, colorMode, m
             )}
           </div>
 
-          <div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                textTransform: "uppercase",
-                marginBottom: 6,
-                color: "var(--ms-text-muted, #94a3b8)",
-              }}
-            >
-              Components &amp; Variables ({model.components.length})
-            </div>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-              <thead>
-                <tr
-                  style={{
-                    textAlign: "left",
-                    borderBottom: "1px solid var(--ms-border, #2a2d3a)",
-                    color: "var(--ms-text-muted, #94a3b8)",
-                  }}
-                >
-                  <th style={{ padding: "4px 6px" }}>Name</th>
-                  <th style={{ padding: "4px 6px" }}>Type</th>
-                  <th style={{ padding: "4px 6px" }}>Kind</th>
-                  <th style={{ padding: "4px 6px" }}>Value / Mods</th>
-                  <th style={{ padding: "4px 6px" }}>Line</th>
-                </tr>
-              </thead>
-              <tbody>
-                {model.components.map((c) => {
-                  const isSel = effectiveSelected?.name === c.name;
-                  const summary =
-                    c.bindingValue ??
-                    (c.modifiers.length > 0 ? c.modifiers.map((m) => `${m.name}=${m.value}`).join(", ") : "—");
-                  return (
-                    <tr
-                      key={c.name}
-                      onClick={() => handleRevealComponent(c)}
-                      style={{
-                        cursor: "pointer",
-                        borderBottom: "1px solid var(--ms-border, #2a2d3a)",
-                        background: isSel ? "rgba(59, 130, 246, 0.14)" : "transparent",
-                      }}
-                    >
-                      <td style={{ padding: "5px 6px", fontWeight: 600 }}>{c.name}</td>
-                      <td style={{ padding: "5px 6px", fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
-                        {c.typeName}
-                      </td>
-                      <td style={{ padding: "5px 6px", fontSize: 11 }}>{c.variability}</td>
-                      <td style={{ padding: "5px 6px", fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
-                        {summary}
-                      </td>
-                      <td style={{ padding: "5px 6px", fontSize: 11 }}>L{c.startLine}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 240,
+              display: "flex",
+              flexDirection: "column",
+              border: "1px solid var(--ms-border)",
+              borderRadius: 6,
+              overflow: "hidden",
+            }}
+          >
+            <PanelDataGrid
+              rows={model.components}
+              columns={
+                [
+                  { key: "name", label: "Name", sortValue: (c) => c.name, render: (c) => <strong>{c.name}</strong> },
+                  {
+                    key: "typeName",
+                    label: "Type",
+                    mono: true,
+                    sortValue: (c) => c.typeName,
+                    render: (c) => c.typeName,
+                  },
+                  { key: "variability", label: "Kind", sortValue: (c) => c.variability, render: (c) => c.variability },
+                  {
+                    key: "value",
+                    label: "Value / Mods",
+                    mono: true,
+                    sortValue: (c) =>
+                      c.bindingValue ??
+                      (c.modifiers.length > 0 ? c.modifiers.map((m) => `${m.name}=${m.value}`).join(", ") : ""),
+                    render: (c) =>
+                      c.bindingValue ??
+                      (c.modifiers.length > 0 ? c.modifiers.map((m) => `${m.name}=${m.value}`).join(", ") : "—"),
+                  },
+                  {
+                    key: "startLine",
+                    label: "Line",
+                    align: "right",
+                    mono: true,
+                    sortValue: (c) => c.startLine,
+                    render: (c) => `L${c.startLine}`,
+                  },
+                ] as PanelDataGridColumn<ModelicaComponentInfo>[]
+              }
+              rowKey={(c) => c.name}
+              searchPlaceholder="Filter components & variables by name, type, or kind…"
+              onRowClick={handleRevealComponent}
+              emptyMessage="No Modelica components or variables declared."
+            />
           </div>
 
           {model.connects.length > 0 && (

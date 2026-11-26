@@ -57,6 +57,120 @@ export function extractModelNameFromText(text: string, filenameOrUri?: string): 
   return undefined;
 }
 
+interface LspDocumentSymbol {
+  name?: string | undefined;
+  detail?: string | undefined;
+  kind?: number | undefined;
+  containerName?: string | undefined;
+  children?: LspDocumentSymbol[] | undefined;
+}
+
+interface LspDocumentParameter {
+  name: string;
+  value: string;
+  unit?: string | undefined;
+  line: number;
+  startOffset: number;
+  endOffset: number;
+  valueStartOffset: number;
+  valueEndOffset: number;
+}
+
+const PRIMARY_SYMBOL_KINDS = new Set<number>([
+  2, // Module
+  3, // Namespace
+  4, // Package
+  5, // Class
+  11, // Interface
+  23, // Struct
+]);
+
+function pickPrimarySymbolName(symbols: LspDocumentSymbol[]): string | undefined {
+  let firstNamed: string | undefined;
+  for (const sym of symbols) {
+    const rawName = sym.name?.trim();
+    if (!rawName) continue;
+    const fullName = sym.containerName ? `${sym.containerName}.${rawName}` : rawName;
+    if (!firstNamed) firstNamed = fullName;
+    if (sym.kind !== undefined && PRIMARY_SYMBOL_KINDS.has(sym.kind)) {
+      return fullName;
+    }
+  }
+  return firstNamed;
+}
+
+async function qualifyModelicaNameViaLsp(
+  client: LanguageClient | undefined,
+  uri: string | undefined,
+  shortName: string,
+): Promise<string> {
+  if (!client || !uri || shortName.includes(".")) return shortName;
+  try {
+    const symbols = await client.sendRequest<LspDocumentSymbol[] | null>("textDocument/documentSymbol", {
+      textDocument: { uri },
+    });
+    if (Array.isArray(symbols)) {
+      const findQualified = (list: LspDocumentSymbol[], prefix: string): string | undefined => {
+        for (const sym of list) {
+          const symName = sym.name?.trim();
+          if (!symName) continue;
+          const fullName = sym.containerName
+            ? `${sym.containerName}.${symName}`
+            : prefix
+              ? `${prefix}.${symName}`
+              : symName;
+          if (symName === shortName || fullName.endsWith(`.${shortName}`)) {
+            return fullName;
+          }
+          if (Array.isArray(sym.children) && sym.children.length > 0) {
+            const nested = findQualified(sym.children, fullName);
+            if (nested) return nested;
+          }
+        }
+        return undefined;
+      };
+      const qualified = findQualified(symbols, "");
+      if (qualified) return qualified;
+    }
+  } catch {
+    // Fall back to unqualified name
+  }
+  return shortName;
+}
+
+export async function resolveModelNameViaLsp(
+  client: LanguageClient | undefined,
+  uri: string | undefined,
+  text: string,
+): Promise<string | undefined> {
+  if (client && uri) {
+    const cleanUri = uri.split("?")[0]!.split("#")[0]!.toLowerCase();
+    try {
+      if (cleanUri.endsWith(".mo")) {
+        const res = await client.sendRequest<{ className?: string | null }>("modelscript/getPrimaryClassName", {
+          uri,
+          documentText: text,
+        });
+        const className = res?.className?.trim();
+        if (className) {
+          return await qualifyModelicaNameViaLsp(client, uri, className);
+        }
+      } else {
+        const symbols = await client.sendRequest<LspDocumentSymbol[] | null>("textDocument/documentSymbol", {
+          textDocument: { uri },
+        });
+        if (Array.isArray(symbols) && symbols.length > 0) {
+          const primary = pickPrimarySymbolName(symbols);
+          if (primary) return primary;
+        }
+      }
+    } catch {
+      // Fall back to text heuristics if LSP request fails
+    }
+  }
+  return extractModelNameFromText(text, uri);
+}
+
 export function detectLanguageIdFromUri(uriStr?: string): string {
   if (!uriStr) return "modelica";
   const clean = uriStr.split("?")[0]!.split("#")[0]!.toLowerCase();
@@ -615,7 +729,7 @@ export function registerSimulationCommands(
             uri = candidate.uri.toString();
             if (!inputs.documentText) inputs.documentText = candidate.getText();
             if (!inputs.name) {
-              inputs.name = extractModelNameFromText(candidate.getText(), candidate.uri.path);
+              inputs.name = await resolveModelNameViaLsp(client, uri, inputs.documentText);
             }
             if (!targetLang && candidate.languageId && candidate.languageId !== "plaintext") {
               targetLang = candidate.languageId;
@@ -626,7 +740,11 @@ export function registerSimulationCommands(
           inputs.documentText = editor.document.getText();
         }
         if (inputs.documentText && !inputs.name) {
-          inputs.name = extractModelNameFromText(inputs.documentText, uri || editor?.document.uri.path);
+          inputs.name = await resolveModelNameViaLsp(
+            client,
+            uri || editor?.document.uri.toString(),
+            inputs.documentText,
+          );
         }
 
         const simDefaults = getSimulationDefaults();
@@ -749,8 +867,7 @@ export function registerSimulationCommands(
           }),
       );
       const report = res?.complianceReport as
-        | { overallStatus?: string; overallPass?: boolean; projectName?: string; summary?: string }
-        | undefined;
+        { overallStatus?: string; overallPass?: boolean; projectName?: string; summary?: string } | undefined;
       if (report) {
         const isPass = report.overallStatus ? report.overallStatus === "PASS" : Boolean(report.overallPass);
         const status = isPass ? "PASS" : "FAIL";
@@ -1099,16 +1216,9 @@ export function registerSimulationCommands(
           uri = candidate.uri.toString();
           if (!inputs.documentText) inputs.documentText = candidate.getText();
           if (!inputs.name) {
-            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-            const m = candidate.getText().match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-            if (m) {
-              inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-            }
+            inputs.name = await resolveModelNameViaLsp(client, uri, inputs.documentText);
           } else if (!inputs.name.includes(".")) {
-            const wm = candidate.getText().match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-            if (wm && wm[1]?.trim()) {
-              inputs.name = `${wm[1].trim()}.${inputs.name}`;
-            }
+            inputs.name = await qualifyModelicaNameViaLsp(client, uri, inputs.name);
           }
         }
       }
@@ -1129,14 +1239,11 @@ export function registerSimulationCommands(
         inputs.documentText = editor.document.getText();
       }
       if (inputs.documentText) {
-        const wm = inputs.documentText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+        const targetUri = uri ?? editor?.document.uri.toString();
         if (!inputs.name) {
-          const m = inputs.documentText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-          if (m) {
-            inputs.name = wm && wm[1]?.trim() ? `${wm[1].trim()}.${m[1]}` : m[1];
-          }
-        } else if (!inputs.name.includes(".") && wm && wm[1]?.trim()) {
-          inputs.name = `${wm[1].trim()}.${inputs.name}`;
+          inputs.name = await resolveModelNameViaLsp(client, targetUri, inputs.documentText);
+        } else if (!inputs.name.includes(".") && targetUri) {
+          inputs.name = await qualifyModelicaNameViaLsp(client, targetUri, inputs.name);
         }
       }
       try {
@@ -1628,23 +1735,71 @@ export function registerSimulationCommands(
 
         if (doc) {
           const text = doc.getText();
-          const mMatch = text.match(/\bm\s*=\s*([\d.]+)/);
-          if (mMatch) m = parseFloat(mMatch[1]!);
-          const aMatch = text.match(/\bA\s*=\s*([\d.]+)/);
-          if (aMatch) A = parseFloat(aMatch[1]!);
-          const cdMatch = text.match(/\bCd\s*=\s*([\d.]+)/i);
-          if (cdMatch) Cd = parseFloat(cdMatch[1]!);
-          const zMatch = text.match(/\bz_target\s*=\s*([\d.]+)/);
-          if (zMatch) z_target = parseFloat(zMatch[1]!);
-          const kzMatch = text.match(/\bkz\s*=\s*([\d.]+)/);
-          if (kzMatch) kz = parseFloat(kzMatch[1]!);
-          const kvMatch = text.match(/\bkv\s*=\s*([\d.]+)/);
-          if (kvMatch) kv = parseFloat(kvMatch[1]!);
-          const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
-          if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]!);
-          const wMatch =
-            text.match(/\b(?:w_max)\s*=\s*([\d.]+)/) || text.match(/\binput\s+Real\s+w\s*\([^)]*max\s*=\s*([\d.]+)/);
-          if (wMatch) w_max = parseFloat(wMatch[1]!);
+          let loadedFromCst = false;
+          if (client) {
+            try {
+              const cstParams = await client.sendRequest<LspDocumentParameter[]>("modelscript/getDocumentParameters", {
+                uri: doc.uri.toString(),
+                documentText: text,
+              });
+              if (Array.isArray(cstParams) && cstParams.length > 0) {
+                for (const p of cstParams) {
+                  const num = parseFloat(p.value);
+                  if (!Number.isFinite(num)) continue;
+                  switch (p.name) {
+                    case "m":
+                      m = num;
+                      break;
+                    case "A":
+                      A = num;
+                      break;
+                    case "Cd":
+                    case "cd":
+                    case "CD":
+                      Cd = num;
+                      break;
+                    case "z_target":
+                      z_target = num;
+                      break;
+                    case "kz":
+                      kz = num;
+                      break;
+                    case "kv":
+                      kv = num;
+                      break;
+                    case "v_climb_max":
+                      v_limit = num;
+                      break;
+                    case "w_max":
+                      w_max = num;
+                      break;
+                  }
+                }
+                loadedFromCst = true;
+              }
+            } catch {
+              // Fall back to text heuristics if LSP CST parameter extraction fails
+            }
+          }
+          if (!loadedFromCst) {
+            const mMatch = text.match(/\bm\s*=\s*([\d.]+)/);
+            if (mMatch) m = parseFloat(mMatch[1]!);
+            const aMatch = text.match(/\bA\s*=\s*([\d.]+)/);
+            if (aMatch) A = parseFloat(aMatch[1]!);
+            const cdMatch = text.match(/\bCd\s*=\s*([\d.]+)/i);
+            if (cdMatch) Cd = parseFloat(cdMatch[1]!);
+            const zMatch = text.match(/\bz_target\s*=\s*([\d.]+)/);
+            if (zMatch) z_target = parseFloat(zMatch[1]!);
+            const kzMatch = text.match(/\bkz\s*=\s*([\d.]+)/);
+            if (kzMatch) kz = parseFloat(kzMatch[1]!);
+            const kvMatch = text.match(/\bkv\s*=\s*([\d.]+)/);
+            if (kvMatch) kv = parseFloat(kvMatch[1]!);
+            const vLimitMatch = text.match(/\bv_climb_max\s*=\s*([\d.]+)/);
+            if (vLimitMatch) v_limit = parseFloat(vLimitMatch[1]!);
+            const wMatch =
+              text.match(/\b(?:w_max)\s*=\s*([\d.]+)/) || text.match(/\binput\s+Real\s+w\s*\([^)]*max\s*=\s*([\d.]+)/);
+            if (wMatch) w_max = parseFloat(wMatch[1]!);
+          }
         }
 
         const res = simulateDroneReachability({

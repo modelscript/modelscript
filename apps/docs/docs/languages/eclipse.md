@@ -1,6 +1,6 @@
 ---
 title: "ECLIPSE-Compatible Reservoir Engineering (.data, .dat, .inc)"
-description: "@modelscript/eclipse (languages/eclipse) provides zero-regex parsing, multiphase Darcy material balance solving, Peaceman well inflow modeling, linear DAE lowering, and Modelica 3.x projection for..."
+description: "@modelscript/eclipse provides zero-regex parsing, multiphase Darcy balance, Peaceman well inflow, DAE lowering, and Modelica projection for ECLIPSE decks."
 ---
 
 # ECLIPSE-Compatible Reservoir Engineering (`.data`, `.dat`, `.inc`)

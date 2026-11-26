@@ -84,7 +84,17 @@ function asStringArray(value: unknown): string[] {
     .filter((item): item is string => Boolean(item));
 }
 
-function extractLine(item: unknown): number | undefined {
+function offsetToLineNumber(source: string | undefined, offset: number): number | undefined {
+  if (!source || !Number.isFinite(offset) || offset < 0) return undefined;
+  const clamped = Math.min(offset, source.length);
+  let line = 1;
+  for (let i = 0; i < clamped; i++) {
+    if (source.charCodeAt(i) === 10) line++;
+  }
+  return line;
+}
+
+function extractLine(item: unknown, sourceCode?: string): number | undefined {
   const rec = asRecord(item);
   if (!rec) return undefined;
 
@@ -99,7 +109,14 @@ function extractLine(item: unknown): number | undefined {
   const location = asRecord(rec.location);
   const locRange = asRecord(location?.range);
   const locStart = asRecord(locRange?.start);
-  return asNumber(locStart?.line);
+  const locLine = asNumber(locStart?.line);
+  if (locLine !== undefined) return locLine;
+
+  const startOffset = asNumber(rec.startOffset) ?? asNumber(asRecord(rec.span)?.startOffset);
+  if (startOffset !== undefined) {
+    return offsetToLineNumber(sourceCode, startOffset);
+  }
+  return undefined;
 }
 
 function normalizeContractNode(
@@ -214,22 +231,31 @@ function normalizeRtmAxis(items: unknown[]): NormalizedRtmAxisItem[] {
 function normalizeRtmLinks(linksObj: Record<string, unknown> | undefined): NormalizedRtmLink[] {
   if (!linksObj || typeof linksObj !== "object") return [];
   const out: NormalizedRtmLink[] = [];
+  const seen = new Set<string>();
   for (const [key, val] of Object.entries(linksObj)) {
     const rec = asRecord(val);
     if (!rec) continue;
+    const sourceId =
+      typeof rec.sourceId === "string" || typeof rec.sourceId === "number"
+        ? (rec.sourceId as string | number)
+        : undefined;
+    const targetId =
+      typeof rec.targetId === "string" || typeof rec.targetId === "number"
+        ? (rec.targetId as string | number)
+        : undefined;
+    const sourceName = asString(rec.sourceName);
+    const targetName = asString(rec.targetName);
+    const linkKind = asString(rec.linkKind) ?? asString(rec.kind) ?? "link";
+    const dedupKey = `${sourceId ?? sourceName ?? key}|${targetId ?? targetName ?? ""}|${linkKind}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
     out.push({
       key,
-      sourceId:
-        typeof rec.sourceId === "string" || typeof rec.sourceId === "number"
-          ? (rec.sourceId as string | number)
-          : undefined,
-      targetId:
-        typeof rec.targetId === "string" || typeof rec.targetId === "number"
-          ? (rec.targetId as string | number)
-          : undefined,
-      sourceName: asString(rec.sourceName),
-      targetName: asString(rec.targetName),
-      linkKind: asString(rec.linkKind) ?? asString(rec.kind) ?? "link",
+      sourceId,
+      targetId,
+      sourceName,
+      targetName,
+      linkKind,
       status: asString(rec.status) ?? "unverified",
       isSuspect: Boolean(rec.isSuspect),
       line: extractLine(rec),
@@ -870,7 +896,8 @@ export const AnsatzRtmContractsPanel: React.FC<AnsatzRtmContractsPanelProps> = (
 
         <div
           style={{
-            overflowX: "auto",
+            overflow: "auto",
+            maxHeight: 460,
             border: `1px solid ${colors.border}`,
             borderRadius: 6,
           }}
@@ -878,7 +905,8 @@ export const AnsatzRtmContractsPanel: React.FC<AnsatzRtmContractsPanelProps> = (
           <table
             style={{
               width: "100%",
-              borderCollapse: "collapse",
+              borderCollapse: "separate",
+              borderSpacing: 0,
               fontSize: 11,
               color: colors.fg,
             }}
@@ -887,6 +915,11 @@ export const AnsatzRtmContractsPanel: React.FC<AnsatzRtmContractsPanelProps> = (
               <tr style={{ backgroundColor: colors.bgMuted }}>
                 <th
                   style={{
+                    position: "sticky",
+                    top: 0,
+                    left: 0,
+                    zIndex: 3,
+                    backgroundColor: colors.bgMuted,
                     textAlign: "left",
                     padding: "6px 8px",
                     borderBottom: `1px solid ${colors.border}`,
@@ -906,6 +939,10 @@ export const AnsatzRtmContractsPanel: React.FC<AnsatzRtmContractsPanelProps> = (
                       title={col.subtitle ? `${col.name} (${col.subtitle})` : col.name}
                       onClick={clickable ? () => handleReveal(col.line) : undefined}
                       style={{
+                        position: "sticky",
+                        top: 0,
+                        zIndex: 2,
+                        backgroundColor: colors.bgMuted,
                         textAlign: "center",
                         padding: "6px 8px",
                         borderBottom: `1px solid ${colors.border}`,
@@ -933,6 +970,10 @@ export const AnsatzRtmContractsPanel: React.FC<AnsatzRtmContractsPanelProps> = (
                       onClick={rowClickable ? () => handleReveal(row.line) : undefined}
                       title={row.subtitle ? `${row.name} (${row.subtitle})` : row.name}
                       style={{
+                        position: "sticky",
+                        left: 0,
+                        zIndex: 1,
+                        backgroundColor: colors.bg,
                         padding: "6px 8px",
                         borderBottom: `1px solid ${colors.border}`,
                         borderRight: `1px solid ${colors.border}`,

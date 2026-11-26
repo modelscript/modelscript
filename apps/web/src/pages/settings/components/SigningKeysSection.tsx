@@ -197,13 +197,124 @@ const ToggleSwitch = styled.label`
   }
 `;
 
+export interface PasteKeyRegistrationPayload {
+  publicKeyOpenssh: string;
+  label?: string;
+  trustLevel: "hardware_or_cli" | "unverified_paste";
+  challenge?: string;
+  signature?: string;
+}
+
+export function buildPasteKeyRegistrationPayload(params: {
+  publicKeyOpenssh: string;
+  label?: string;
+  challenge?: string;
+  signature?: string;
+}): PasteKeyRegistrationPayload {
+  const publicKeyOpenssh = params.publicKeyOpenssh.trim();
+  const label = params.label?.trim() || undefined;
+  const challenge = params.challenge?.trim() || "";
+  const signature = params.signature?.trim() || "";
+
+  if (challenge && signature) {
+    return {
+      publicKeyOpenssh,
+      ...(label ? { label } : {}),
+      trustLevel: "hardware_or_cli",
+      challenge,
+      signature,
+    };
+  }
+
+  return {
+    publicKeyOpenssh,
+    ...(label ? { label } : {}),
+    trustLevel: "unverified_paste",
+  };
+}
+
+export function getPasteKeyRegistrationToast(trustLevel: string): { message: string; title: string } {
+  if (trustLevel === "hardware_or_cli") {
+    return {
+      message: "Hardware/CLI master key verified and registered.",
+      title: "Master Key Verified",
+    };
+  }
+  return {
+    message:
+      "Public key added as unverified paste. Sign a challenge or commit with this key to upgrade it to a verified Master Key.",
+    title: "Key Added (Unverified)",
+  };
+}
+
+export const TrustLevelBadge: React.FC<{ trustLevel: string; prevKeyId?: number | null | undefined }> = ({
+  trustLevel,
+  prevKeyId,
+}) => {
+  if (trustLevel === "hardware_or_cli") {
+    return (
+      <AlgoTag
+        style={{
+          background: "rgba(9, 105, 218, 0.12)",
+          color: "var(--ms-accent, var(--color-accent-fg))",
+          border: "1px solid rgba(9, 105, 218, 0.3)",
+        }}
+      >
+        🔑 Master Key
+      </AlgoTag>
+    );
+  }
+  if (trustLevel === "delegated_by_master") {
+    return (
+      <AlgoTag
+        style={{
+          background: "rgba(130, 80, 223, 0.15)",
+          color: "var(--color-done-fg, #8250df)",
+          border: "1px solid rgba(130, 80, 223, 0.4)",
+        }}
+      >
+        ✨ Delegated by Master Key
+      </AlgoTag>
+    );
+  }
+  if (trustLevel === "pinned_tofu") {
+    return (
+      <AlgoTag style={{ background: "var(--color-warning-subtle)", color: "var(--color-warning-fg)" }}>
+        TOFU Pinned
+      </AlgoTag>
+    );
+  }
+  if (trustLevel === "web_browser" && !prevKeyId) {
+    return (
+      <AlgoTag style={{ background: "var(--color-neutral-subtle)", color: "var(--color-text-muted)" }}>
+        Browser Key
+      </AlgoTag>
+    );
+  }
+  if (trustLevel === "unverified_paste") {
+    return (
+      <AlgoTag
+        style={{
+          background: "var(--color-attention-subtle, rgba(154, 103, 0, 0.12))",
+          color: "var(--color-attention-fg, #9a6700)",
+          border: "1px solid var(--color-attention-muted, rgba(154, 103, 0, 0.4))",
+        }}
+        title="Public key was pasted without Proof-of-Possession verification"
+      >
+        Unverified Paste
+      </AlgoTag>
+    );
+  }
+  return null;
+};
+
 export const SigningKeysSection: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
 
   const [data, setData] = useState<UserSigningKeysResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [_error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [localDeviceKeys, setLocalDeviceKeys] = useState<StoredDeviceKey[]>([]);
 
   // Modal state
@@ -211,6 +322,9 @@ export const SigningKeysSection: React.FC = () => {
   const [registerMode, setRegisterMode] = useState<"paste" | "browser">("paste");
   const [newKeyOpenssh, setNewKeyOpenssh] = useState("");
   const [newKeyLabel, setNewKeyLabel] = useState("");
+  const [popChallenge, setPopChallenge] = useState("");
+  const [popSignature, setPopSignature] = useState("");
+  const [loadingChallenge, setLoadingChallenge] = useState(false);
   const [registering, setRegistering] = useState(false);
 
   // Revocation state
@@ -229,6 +343,7 @@ export const SigningKeysSection: React.FC = () => {
   // Delegation state
   const [delegatingDeviceKey, setDelegatingDeviceKey] = useState<AccountSigningKeyInfo | null>(null);
   const [delegationMasterKeyId, setDelegationMasterKeyId] = useState<number | null>(null);
+  const [delegationStatement, setDelegationStatement] = useState<string>("");
   const [delegationSignature, setDelegationSignature] = useState<string>("");
   const [delegating, setDelegating] = useState<boolean>(false);
 
@@ -275,27 +390,44 @@ export const SigningKeysSection: React.FC = () => {
     }
   };
 
+  const closeRegisterModal = () => {
+    setIsRegisterModalOpen(false);
+    setNewKeyOpenssh("");
+    setNewKeyLabel("");
+    setPopChallenge("");
+    setPopSignature("");
+  };
+
+  const handleFetchPopChallenge = async () => {
+    setLoadingChallenge(true);
+    try {
+      const { challenge } = await getSigningKeyChallenge(newKeyOpenssh.trim() || undefined);
+      setPopChallenge(challenge);
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to generate verification challenge"), "Challenge Error");
+    } finally {
+      setLoadingChallenge(false);
+    }
+  };
+
   const handleRegisterPasteKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newKeyOpenssh.trim()) return;
 
     setRegistering(true);
     try {
-      // 1. Get challenge
-      const { challenge } = await getSigningKeyChallenge(newKeyOpenssh.trim());
-
-      // 2. Register key
-      await registerAccountSigningKey({
-        publicKeyOpenssh: newKeyOpenssh.trim(),
-        label: newKeyLabel.trim() || undefined,
-        trustLevel: "hardware_or_cli",
-        challenge,
+      const payload = buildPasteKeyRegistrationPayload({
+        publicKeyOpenssh: newKeyOpenssh,
+        label: newKeyLabel,
+        challenge: popChallenge,
+        signature: popSignature,
       });
 
-      toast.success("Signing key registered successfully! Your account is now verified.", "Key Added");
-      setIsRegisterModalOpen(false);
-      setNewKeyOpenssh("");
-      setNewKeyLabel("");
+      const regResult = await registerAccountSigningKey(payload);
+      const toastInfo = getPasteKeyRegistrationToast(regResult.trust_level);
+
+      toast.success(toastInfo.message, toastInfo.title);
+      closeRegisterModal();
       await fetchKeys();
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Failed to register signing key"), "Registration Error");
@@ -310,7 +442,7 @@ export const SigningKeysSection: React.FC = () => {
       // Generate Ed25519 WebCrypto keypair if supported by browser
       let keyPair: CryptoKeyPair;
       try {
-        keyPair = (await window.crypto.subtle.generateKey({ name: "Ed25519" }, true, [
+        keyPair = (await window.crypto.subtle.generateKey({ name: "Ed25519" }, false, [
           "sign",
           "verify",
         ])) as CryptoKeyPair;
@@ -369,17 +501,16 @@ export const SigningKeysSection: React.FC = () => {
         id: String(regResult.id),
         privateKey: keyPair.privateKey,
         publicKeyOpenssh: openSsh,
-        publicKeyMultibase: regResult.publicKeyMultibase,
-        fingerprintSha256: regResult.fingerprintSha256,
+        publicKeyMultibase: regResult.public_key_multibase,
+        fingerprintSha256: regResult.fingerprint_sha256,
         label: regResult.label || newKeyLabel.trim() || "Web Browser Device Key",
-        createdAt: regResult.createdAt || new Date().toISOString(),
+        createdAt: regResult.created_at || new Date().toISOString(),
         trustLevel: "web_browser",
         isActive: true,
       });
 
       toast.success("Web Browser Device Key generated and registered!", "Verified Account Active");
-      setIsRegisterModalOpen(false);
-      setNewKeyLabel("");
+      closeRegisterModal();
       await fetchKeys();
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Failed to create web device key"), "Key Generation Failed");
@@ -390,11 +521,12 @@ export const SigningKeysSection: React.FC = () => {
 
   const handleStartDelegation = async (deviceKey: AccountSigningKeyInfo) => {
     const candidateMasters = (data?.keys || []).filter(
-      (k) => !k.revoked_at && (k.trust_level === "hardware_or_cli" || k.id !== deviceKey.id),
+      (k) => !k.revoked_at && k.trust_level === "hardware_or_cli" && k.id !== deviceKey.id,
     );
     const chosenMasterId = candidateMasters.length > 0 ? candidateMasters[0]!.id : null;
     setDelegatingDeviceKey(deviceKey);
     setDelegationMasterKeyId(chosenMasterId);
+    setDelegationStatement("");
     setDelegationSignature("");
 
     if (chosenMasterId) {
@@ -430,6 +562,7 @@ export const SigningKeysSection: React.FC = () => {
         "Delegation Verified",
       );
       setDelegatingDeviceKey(null);
+      setDelegationStatement("");
       setDelegationSignature("");
       await fetchKeys();
     } catch (err: unknown) {
@@ -486,6 +619,37 @@ export const SigningKeysSection: React.FC = () => {
         Cryptographic keys held exclusively by you. The server only holds your public key, ensuring that no
         administrator or server vulnerability can forge your Git commits, ActivityPub posts, or profile modifications.
       </DetailSubtitle>
+
+      {error && (
+        <Box
+          role="alert"
+          mb={3}
+          p={3}
+          style={{
+            border: "1px solid var(--color-danger-emphasis, #cf222e)",
+            borderRadius: "8px",
+            backgroundColor: "var(--color-danger-subtle, rgba(207, 34, 46, 0.1))",
+            color: "var(--color-danger-fg, #cf222e)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            fontSize: "13px",
+          }}
+        >
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+            <AlertIcon size={16} />
+            {error}
+          </span>
+          <SecondaryButton
+            type="button"
+            onClick={() => void fetchKeys()}
+            style={{ fontSize: "12px", padding: "4px 10px" }}
+          >
+            Retry
+          </SecondaryButton>
+        </Box>
+      )}
 
       {/* Verification Status Card */}
       <StatusCard $verified={isVerified}>
@@ -654,38 +818,7 @@ export const SigningKeysSection: React.FC = () => {
                   <KeyIcon size={16} />
                   {key.label || "Ed25519 Signing Key"}
                   <AlgoTag>{key.algo}</AlgoTag>
-                  {key.trust_level === "hardware_or_cli" && (
-                    <AlgoTag
-                      style={{
-                        background: "rgba(9, 105, 218, 0.12)",
-                        color: "var(--ms-accent, var(--color-accent-fg))",
-                        border: "1px solid rgba(9, 105, 218, 0.3)",
-                      }}
-                    >
-                      🔑 Master Key
-                    </AlgoTag>
-                  )}
-                  {key.trust_level === "delegated_by_master" && (
-                    <AlgoTag
-                      style={{
-                        background: "rgba(130, 80, 223, 0.15)",
-                        color: "var(--color-done-fg, #8250df)",
-                        border: "1px solid rgba(130, 80, 223, 0.4)",
-                      }}
-                    >
-                      ✨ Delegated by Master Key
-                    </AlgoTag>
-                  )}
-                  {key.trust_level === "pinned_tofu" && (
-                    <AlgoTag style={{ background: "var(--color-warning-subtle)", color: "var(--color-warning-fg)" }}>
-                      TOFU Pinned
-                    </AlgoTag>
-                  )}
-                  {key.trust_level === "web_browser" && !key.prev_key_id && (
-                    <AlgoTag style={{ background: "var(--color-neutral-subtle)", color: "var(--color-text-muted)" }}>
-                      Browser Device
-                    </AlgoTag>
-                  )}
+                  <TrustLevelBadge trustLevel={key.trust_level} prevKeyId={key.prev_key_id} />
                   {localDeviceKeys.some((ldk) => ldk.fingerprintSha256 === key.fingerprint_sha256) && (
                     <AlgoTag
                       style={{
@@ -859,7 +992,7 @@ export const SigningKeysSection: React.FC = () => {
             </span>
           }
           width="medium"
-          onClose={() => setIsRegisterModalOpen(false)}
+          onClose={closeRegisterModal}
         >
           <div style={{ maxHeight: "75vh", overflowY: "auto" }}>
             <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
@@ -910,17 +1043,116 @@ export const SigningKeysSection: React.FC = () => {
                     fontSize: "12px",
                     backgroundColor: "var(--color-canvas-default)",
                     color: "var(--color-text-primary)",
-                    marginBottom: "16px",
+                    marginBottom: "12px",
                   }}
                   required
                 />
 
+                <Box
+                  mb={3}
+                  p={3}
+                  style={{
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "6px",
+                    backgroundColor: "var(--color-canvas-subtle)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "8px",
+                      marginBottom: "6px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: "12px", color: "var(--color-text-primary)" }}>
+                      Optional: Proof-of-Possession (Instant Master Key Verification)
+                    </span>
+                    <SecondaryButton
+                      type="button"
+                      onClick={handleFetchPopChallenge}
+                      disabled={loadingChallenge || registering}
+                      style={{ fontSize: "12px", padding: "4px 10px" }}
+                    >
+                      {loadingChallenge ? "Generating..." : popChallenge ? "Refresh Challenge" : "Generate Challenge"}
+                    </SecondaryButton>
+                  </div>
+                  <DetailSubtitle style={{ fontSize: "12px", marginBottom: popChallenge ? "10px" : 0 }}>
+                    Without a signature, this key is registered as an <strong>Unverified Paste</strong>. To verify it
+                    immediately as a <strong>Master Key</strong>, generate a challenge and sign it with your private
+                    key.
+                  </DetailSubtitle>
+
+                  {popChallenge && (
+                    <>
+                      <FormLabel style={{ marginTop: "8px" }}>Challenge</FormLabel>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "10px" }}>
+                        <CodeSnippet style={{ flex: 1, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                          {popChallenge}
+                        </CodeSnippet>
+                        <CopyButton
+                          type="button"
+                          style={{ marginLeft: 0, flexShrink: 0 }}
+                          onClick={() => handleCopy(popChallenge, "pop-challenge")}
+                        >
+                          {copiedKeyId === "pop-challenge" ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                          {copiedKeyId === "pop-challenge" ? "Copied" : "Copy"}
+                        </CopyButton>
+                      </div>
+
+                      <FormLabel>Sign Command</FormLabel>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "10px" }}>
+                        <CodeSnippet style={{ flex: 1, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                          {`printf '%s' '${popChallenge}' | ssh-keygen -Y sign -f ~/.ssh/id_ed25519 -n modelscript`}
+                        </CodeSnippet>
+                        <CopyButton
+                          type="button"
+                          style={{ marginLeft: 0, flexShrink: 0 }}
+                          onClick={() =>
+                            handleCopy(
+                              `printf '%s' '${popChallenge}' | ssh-keygen -Y sign -f ~/.ssh/id_ed25519 -n modelscript`,
+                              "pop-cmd",
+                            )
+                          }
+                        >
+                          {copiedKeyId === "pop-cmd" ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                          {copiedKeyId === "pop-cmd" ? "Copied" : "Copy"}
+                        </CopyButton>
+                      </div>
+
+                      <FormLabel>Proof-of-Possession Signature (Optional)</FormLabel>
+                      <textarea
+                        rows={3}
+                        placeholder="Paste base64 or multibase (z...) signature over the challenge"
+                        value={popSignature}
+                        onChange={(e) => setPopSignature(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px",
+                          borderRadius: "6px",
+                          border: "1px solid var(--color-border)",
+                          fontFamily: "var(--font-mono, monospace)",
+                          fontSize: "12px",
+                          backgroundColor: "var(--color-canvas-default)",
+                          color: "var(--color-text-primary)",
+                        }}
+                      />
+                    </>
+                  )}
+                </Box>
+
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                  <SecondaryButton type="button" onClick={() => setIsRegisterModalOpen(false)}>
+                  <SecondaryButton type="button" onClick={closeRegisterModal}>
                     Cancel
                   </SecondaryButton>
                   <PrimaryButton type="submit" disabled={registering || !newKeyOpenssh.trim()}>
-                    {registering ? "Registering..." : "Register Key"}
+                    {registering
+                      ? "Registering..."
+                      : popChallenge.trim() && popSignature.trim()
+                        ? "Verify & Register Master Key"
+                        : "Add Unverified Key"}
                   </PrimaryButton>
                 </div>
               </form>
@@ -940,7 +1172,7 @@ export const SigningKeysSection: React.FC = () => {
                 />
 
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
-                  <SecondaryButton type="button" onClick={() => setIsRegisterModalOpen(false)}>
+                  <SecondaryButton type="button" onClick={closeRegisterModal}>
                     Cancel
                   </SecondaryButton>
                   <PrimaryButton type="button" onClick={handleGenerateBrowserKey} disabled={registering}>
@@ -1040,7 +1272,7 @@ export const SigningKeysSection: React.FC = () => {
               >
                 {(data?.keys || [])
                   .filter(
-                    (k) => !k.revoked_at && (k.trust_level === "hardware_or_cli" || k.id !== delegatingDeviceKey.id),
+                    (k) => !k.revoked_at && k.trust_level === "hardware_or_cli" && k.id !== delegatingDeviceKey.id,
                   )
                   .map((k) => (
                     <option key={k.id} value={k.id}>
@@ -1056,6 +1288,25 @@ export const SigningKeysSection: React.FC = () => {
               <CodeSnippet style={{ marginBottom: "16px" }}>
                 msx keys attest --master ~/.ssh/id_ed25519 --device {delegatingDeviceKey.fingerprint_sha256}
               </CodeSnippet>
+
+              {delegationStatement && (
+                <>
+                  <FormLabel>Delegation Statement (for offline signing)</FormLabel>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "16px" }}>
+                    <CodeSnippet style={{ flex: 1, margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+                      {delegationStatement}
+                    </CodeSnippet>
+                    <CopyButton
+                      type="button"
+                      style={{ marginLeft: 0, flexShrink: 0 }}
+                      onClick={() => handleCopy(delegationStatement, "delegation-stmt")}
+                    >
+                      {copiedKeyId === "delegation-stmt" ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+                      {copiedKeyId === "delegation-stmt" ? "Copied" : "Copy"}
+                    </CopyButton>
+                  </div>
+                </>
+              )}
 
               <FormLabel>3. Delegation Signature</FormLabel>
               <textarea

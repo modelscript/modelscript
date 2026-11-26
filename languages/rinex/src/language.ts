@@ -35,8 +35,24 @@ export const rinexLanguage = language({
 
   errorCodes: RinexErrorCode,
 
+  conflicts: ($) => [
+    [$["BodySection"]!, $["ObsEpochRecord"]!, $["NavEphemerisRecord"]!],
+    [$["ObsEpochRecord"]!, $["NumberLiteral"]!],
+    [$["NavEphemerisRecord"]!, $["NumberLiteral"]!],
+    [$["HeaderToken"]!, $["_HeaderTokens"]!, $["_ObsTypes"]!],
+    [
+      $["HeaderSection"]!,
+      $["HeaderToken"]!,
+      $["NumberLiteral"]!,
+      $["SatPrn"]!,
+      $["ObsTypeCode"]!,
+      $["Identifier"]!,
+      $["PunctToken"]!,
+    ],
+  ],
+
   rules: {
-    RinexFile: ($) => seq(field("header", $["HeaderSection"]!), optional(field("body", $["BodySection"]!))),
+    RinexFile: ($) => seq(field("header", $["HeaderSection"]!), field("body", $["BodySection"]!)),
 
     HeaderSection: ($) => seq(repeat($["HeaderRecord"]!), $["EndOfHeaderRecord"]!),
 
@@ -54,12 +70,14 @@ export const rinexLanguage = language({
         $["GenericHeader"]!,
       ),
 
-    VersionTypeHeader: ($) =>
-      seq(field("version", $["NumberLiteral"]!), repeat($["HeaderToken"]!), "RINEX VERSION / TYPE"),
+    _HeaderTokens: ($) => repeat($["HeaderToken"]!),
+    _ObsTypes: ($) => repeat(field("obsType", $["ObsTypeCode"]!)),
 
-    PgmRunByDateHeader: ($) => seq(repeat($["HeaderToken"]!), "PGM / RUN BY / DATE"),
+    VersionTypeHeader: ($) => seq(field("version", $["NumberLiteral"]!), $["_HeaderTokens"]!, "RINEX VERSION / TYPE"),
 
-    MarkerNameHeader: ($) => seq(field("marker", $["HeaderToken"]!), repeat($["HeaderToken"]!), "MARKER NAME"),
+    PgmRunByDateHeader: ($) => seq($["_HeaderTokens"]!, "PGM / RUN BY / DATE"),
+
+    MarkerNameHeader: ($) => seq(field("marker", $["HeaderToken"]!), $["_HeaderTokens"]!, "MARKER NAME"),
 
     ApproxPositionHeader: ($) =>
       seq(
@@ -77,8 +95,7 @@ export const rinexLanguage = language({
         "ANTENNA: DELTA H/E/N",
       ),
 
-    ObsTypesHeader: ($) =>
-      seq(field("count", $["NumberLiteral"]!), repeat(field("obsType", $["ObsTypeCode"]!)), "# / TYPES OF OBSERV"),
+    ObsTypesHeader: ($) => seq(field("count", $["NumberLiteral"]!), $["_ObsTypes"]!, "# / TYPES OF OBSERV"),
 
     TimeOfFirstObsHeader: ($) =>
       seq(
@@ -100,7 +117,7 @@ export const rinexLanguage = language({
 
     GenericHeader: ($) =>
       seq(
-        repeat($["HeaderToken"]!),
+        $["_HeaderTokens"]!,
         choice(
           "MARKER NUMBER",
           "OBSERVER / AGENCY",

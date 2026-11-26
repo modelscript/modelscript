@@ -133,6 +133,42 @@ export function createAnalyticsAndAuditRouter({ database }: AdminRouteContext): 
   );
 
   /**
+   * POST /api/v1/analytics/client-error
+   * Lightweight, privacy-preserving intake for ErrorBoundary / WASM crash beacons from apps/web.
+   * Logs bounded structured diagnostics without storing IP addresses or user PII.
+   */
+  router.post(
+    "/analytics/client-error",
+    express.text({ type: ["application/json", "text/plain"], limit: "8kb" }),
+    (req: Request, res: Response) => {
+      try {
+        let body: Record<string, unknown> = {};
+        if (typeof req.body === "string" && req.body.trim()) {
+          body = JSON.parse(req.body) as Record<string, unknown>;
+        } else if (req.body && typeof req.body === "object") {
+          body = req.body as Record<string, unknown>;
+        }
+
+        const report = {
+          name: typeof body["name"] === "string" ? body["name"].slice(0, 128) : "Error",
+          message: typeof body["message"] === "string" ? body["message"].slice(0, 500) : "Unknown client error",
+          path: typeof body["path"] === "string" ? body["path"].slice(0, 256) : "/",
+          stack: typeof body["stack"] === "string" ? body["stack"].slice(0, 1500) : undefined,
+          componentStack:
+            typeof body["componentStack"] === "string" ? body["componentStack"].slice(0, 1000) : undefined,
+          ua: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"].slice(0, 200) : undefined,
+        };
+        if (process.env["NODE_ENV"] !== "test") {
+          console.error("[ClientError]", JSON.stringify(report));
+        }
+        res.status(202).json({ success: true, recorded: true });
+      } catch {
+        res.status(400).json({ error: "Malformed client error report" });
+      }
+    },
+  );
+
+  /**
    * GET /api/v1/admin/analytics
    * Retrieves aggregated first-party page view analytics, top pages, and scrubbed geographic heatmaps
    */

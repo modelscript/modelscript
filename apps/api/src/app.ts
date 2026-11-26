@@ -19,7 +19,7 @@ import {
   mountEditionRoutes,
   type EnterprisePlugin,
 } from "./ee-loader.js";
-import { JobQueue } from "./jobs.js";
+import { JobQueue, reconcilePendingJobs } from "./jobs.js";
 import { optionalAuth, setAuthDatabase } from "./middleware/auth-middleware.js";
 import { responseCompressionMiddleware } from "./middleware/compression.js";
 import { requireFeatureFlag } from "./middleware/feature-flag-middleware.js";
@@ -47,6 +47,8 @@ import { ideWorkbenchRouter } from "./routes/ide-workbench.js";
 import { instancesRouter } from "./routes/instances.js";
 import { markdownMirrorRouter } from "./routes/markdown-mirror.js";
 import { mcpRouter } from "./routes/mcp.js";
+import { memoryRouter } from "./routes/memory.js";
+import { modelsRouter, runsRouter } from "./routes/models-and-runs.js";
 import { npmCompatRouter } from "./routes/npm-compat.js";
 import { oembedRouter, renderStandaloneEmbedBundle } from "./routes/oembed.js";
 import { ogRouter } from "./routes/og.js";
@@ -59,10 +61,12 @@ import { pscadRouter } from "./routes/pscad.js";
 import { publishRouter } from "./routes/publish.js";
 import { pushRouter } from "./routes/push.js";
 import { rdfRouter } from "./routes/rdf.js";
+import { recipeDebugRouter } from "./routes/recipe-debug.js";
 import { referencesRouter } from "./routes/references.js";
 import { registryCatalogRouter } from "./routes/registry-catalog.js";
 import { reposRouter } from "./routes/repos.js";
 import { rfqRouter } from "./routes/rfq.js";
+import { rlhfArenaRouter } from "./routes/rlhf-arena.js";
 import { scriptsRouter } from "./routes/scripts.js";
 import { searchRouter } from "./routes/search.js";
 import { createPostEvidenceRouter, createSigningKeysRouter } from "./routes/signing-keys.js";
@@ -244,6 +248,21 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     void seedPrepackagedLibraries(libraryStorage, database, jobQueue).catch((err) => {
       console.error("[StdlibSeed] Failed to pre-seed bundled standard libraries:", err);
     });
+  }
+
+  // Boot-time reconciliation: re-enqueue any published package releases lacking indexed classes/symbols
+  if (process.env["NODE_ENV"] !== "test" && shouldEnableWorkers) {
+    void reconcilePendingJobs(database, libraryStorage, jobQueue)
+      .then((res) => {
+        if (res.enqueued.length > 0) {
+          console.log(
+            `[JobQueue] Boot reconciliation re-enqueued ${res.enqueued.length} unindexed package release(s): ${res.enqueued.join(", ")}`,
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("[JobQueue] Boot reconciliation failed:", err);
+      });
   }
 
   // Dev auto-seeding (mock personas, sample posts, synthetic repos, example jobs) MUST NEVER run on
@@ -485,7 +504,8 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       req.path.startsWith("/npm") ||
       req.path.startsWith("/api/v1/physics") ||
       req.path.startsWith("/api/v1/cae") ||
-      req.path.startsWith("/api/v1/cloud");
+      req.path.startsWith("/api/v1/cloud") ||
+      req.path.startsWith("/api/v1/recipes");
 
     const cl = req.headers["content-length"];
     if (cl) {
@@ -572,19 +592,28 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
           req.path.startsWith("/actor") ||
           req.path.startsWith("/users/")));
 
-    if (process.env["NODE_ENV"] === "production" && allowedOrigins.size > 0 && !isPublicFederationPath) {
-      if (requestOrigin && allowedOrigins.has(requestOrigin)) {
-        res.header("Access-Control-Allow-Origin", requestOrigin);
-        res.header("Access-Control-Allow-Credentials", "true");
+    if (process.env["NODE_ENV"] === "production" && !isPublicFederationPath) {
+      if (allowedOrigins.size > 0) {
+        if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+          res.header("Access-Control-Allow-Origin", requestOrigin);
+          res.header("Access-Control-Allow-Credentials", "true");
+          res.header("Vary", "Origin");
+        } else if (!requestOrigin) {
+          res.header("Access-Control-Allow-Origin", Array.from(allowedOrigins)[0]!);
+        } else {
+          res.header("Vary", "Origin");
+        }
+      } else {
         res.header("Vary", "Origin");
-      } else if (!requestOrigin) {
-        res.header("Access-Control-Allow-Origin", Array.from(allowedOrigins)[0]!);
       }
     } else {
       res.header("Access-Control-Allow-Origin", "*");
     }
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization, Idempotency-Key, X-Package-Signature, X-Package-Public-Key, X-Content-SHA256, X-Package-OIDC-Token",
+    );
     res.header("X-Content-Type-Options", "nosniff");
     const embedFrameAncestors = process.env["EMBED_FRAME_ANCESTORS"] || "*";
     if (!isEmbedRoute) {
@@ -671,7 +700,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       isMaintenance = false;
     }
 
-    if (req.path.startsWith("/api/v1/analytics/pageview")) {
+    if (req.path.startsWith("/api/v1/analytics/pageview") || req.path.startsWith("/api/v1/analytics/client-error")) {
       if (!isMaintenance || maintenanceLevel === "scheduled") {
         next();
         return;
@@ -826,6 +855,11 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/supply-chain", supplyChainRouter());
   app.use("/api/v1/provisioning", provisioningRouter());
   app.use("/api/v1/social", socialRouter(database, federationWorker, featureFlagService));
+  app.use("/api/v1/rlhf", rlhfArenaRouter(database));
+  app.use("/api/v1/memory", memoryRouter(database, libraryStorage.dataDir));
+  app.use("/api/v1/recipes", recipeDebugRouter(database, libraryStorage.dataDir));
+  app.use("/api/v1/models", modelsRouter(database, libraryStorage.dataDir));
+  app.use("/api/v1/runs", runsRouter(database));
   const mountedReferencesRouter = referencesRouter(database);
   app.use("/api/v1/references", mountedReferencesRouter);
   app.use("/api/v1", pushRouter(database));
@@ -844,7 +878,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/libraries", publishRouter(libraryStorage, jobQueue, database, federationWorker));
   app.use("/api/v1", optionalAuth, simulateRouter(libraryStorage, jobQueue, database));
   app.use("/api/v1", optionalAuth, physicsRouter(jobQueue, database));
-  app.use("/api/v1", optionalAuth, aiRouter(database));
+  app.use("/api/v1", optionalAuth, aiRouter(database, libraryStorage.dataDir));
 
   const mountedScriptsRouter = scriptsRouter(database);
   app.use("/api/v1/jobs", mountedScriptsRouter);

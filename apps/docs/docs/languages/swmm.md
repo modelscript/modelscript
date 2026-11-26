@@ -1,6 +1,6 @@
 ---
 title: "EPA SWMM Stormwater & Urban Hydrology (.inp)"
-description: "@modelscript/swmm (languages/swmm) provides zero-regex parsing, 1D Saint-Venant dynamic wave hydraulic routing, DAE lowering, and Modelica 3.x projection for US EPA Stormwater Management Model (SWM..."
+description: "@modelscript/swmm provides zero-regex parsing, 1D Saint-Venant dynamic wave hydraulic routing, DAE lowering, and Modelica projection for US EPA SWMM 5.x."
 ---
 
 # EPA SWMM Stormwater & Urban Hydrology (`.inp`)

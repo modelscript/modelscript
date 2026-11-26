@@ -47,8 +47,12 @@ export function resolveSqliteMemoryBudget(): SqliteMemoryBudget {
 
 export function applyCommonSqlitePragmas(db: Database.Database, options?: { foreignKeys?: boolean }): void {
   const { mmapSize, cacheSize } = resolveSqliteMemoryBudget();
+  const synchronousMode =
+    process.env["SQLITE_SYNCHRONOUS"]?.toUpperCase() === "FULL" || process.env["NODE_ENV"] === "production"
+      ? "FULL"
+      : "NORMAL";
   db.pragma("journal_mode = WAL");
-  db.pragma("synchronous = NORMAL");
+  db.pragma(`synchronous = ${synchronousMode}`);
   db.pragma("temp_store = MEMORY");
   db.pragma(`mmap_size = ${mmapSize}`);
   db.pragma(`cache_size = ${cacheSize}`);

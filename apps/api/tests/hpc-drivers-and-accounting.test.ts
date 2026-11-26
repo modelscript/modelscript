@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { JobQueue } from "../src/jobs.js";
+import { failComputeJob } from "../src/services/compute-job-lifecycle.js";
 import { calculateCostCredits, COMPUTE_PROFILES } from "../src/services/hpc/compute-profiles.js";
 import { LocalProcessDriver } from "../src/services/hpc/drivers/local-driver.js";
 import { parseMemoryStringToBytes, parseSacctOutput, SlurmDriver } from "../src/services/hpc/drivers/slurm-driver.js";
@@ -459,4 +460,219 @@ test("HPC Drivers & Cost Accounting", async (t) => {
       }
     }
   });
+
+  await t.test(
+    "LocalProcessDriver.resolveSandboxCommand fails closed when sandbox.enabled=true and no runtime exists",
+    () => {
+      const origPath = process.env["PATH"];
+      const origNodeEnv = process.env["NODE_ENV"];
+      const origSandboxRuntime = process.env["HPC_SANDBOX_RUNTIME"];
+      try {
+        process.env["PATH"] = "";
+        delete process.env["HPC_SANDBOX_RUNTIME"];
+
+        const driver = new LocalProcessDriver();
+        const baseSpec: HpcJobSpec = {
+          jobId: "sandbox-fail-closed-1",
+          name: "FailClosedJob",
+          command: "omc",
+          args: ["sim.mos"],
+          workingDir: "/tmp/fail-closed",
+          resources: {},
+          sandbox: { enabled: true },
+        };
+
+        assert.throws(
+          () => driver.resolveSandboxCommand(baseSpec),
+          /no compliant sandbox runtime/i,
+          "Must fail closed when sandbox.enabled=true and no compliant runtime is available",
+        );
+
+        process.env["NODE_ENV"] = "test";
+        const fallbackResolved = driver.resolveSandboxCommand({
+          ...baseSpec,
+          sandbox: { enabled: true, allowUnsandboxedFallback: true },
+        });
+        assert.strictEqual(
+          fallbackResolved.runtime,
+          "none",
+          "Should allow unsandboxed fallback only when allowUnsandboxedFallback=true in test mode",
+        );
+      } finally {
+        if (origPath !== undefined) process.env["PATH"] = origPath;
+        else delete process.env["PATH"];
+        if (origNodeEnv !== undefined) process.env["NODE_ENV"] = origNodeEnv;
+        else delete process.env["NODE_ENV"];
+        if (origSandboxRuntime !== undefined) process.env["HPC_SANDBOX_RUNTIME"] = origSandboxRuntime;
+        else delete process.env["HPC_SANDBOX_RUNTIME"];
+      }
+    },
+  );
+
+  await t.test(
+    "LocalProcessDriver strips host secrets (DATABASE_URL, AWS_ACCESS_KEY_ID) from child process env",
+    async () => {
+      const origDbUrl = process.env["DATABASE_URL"];
+      const origAwsKey = process.env["AWS_ACCESS_KEY_ID"];
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hpc-test-env-strip-"));
+
+      try {
+        process.env["DATABASE_URL"] = "postgres://admin:supersecret@db.internal:5432/prod";
+        process.env["AWS_ACCESS_KEY_ID"] = "AKIAIOSFODNN7SECRETKEY";
+
+        const driver = new LocalProcessDriver();
+        const spec: HpcJobSpec = {
+          jobId: "env-strip-job-1",
+          name: "EnvStripCheck",
+          command: process.execPath,
+          args: [
+            "-e",
+            "console.log(JSON.stringify({ db: process.env.DATABASE_URL ?? null, aws: process.env.AWS_ACCESS_KEY_ID ?? null, custom: process.env.SAFE_USER_VAR ?? null, preload: process.env.LD_PRELOAD ?? null }))",
+          ],
+          workingDir: tmpDir,
+          resources: { cpusPerTask: 1 },
+          env: {
+            SAFE_USER_VAR: "allowed-value",
+            LD_PRELOAD: "/tmp/evil.so",
+          },
+        };
+
+        await driver.submit(spec);
+
+        let status = await driver.pollStatus("env-strip-job-1");
+        while (status.state === "RUNNING") {
+          await new Promise((r) => setTimeout(r, 40));
+          status = await driver.pollStatus("env-strip-job-1");
+        }
+
+        assert.strictEqual(status.state, "COMPLETED");
+        const logContent = fs.readFileSync(driver.getLogPath("env-strip-job-1", tmpDir), "utf8").trim();
+        const observed = JSON.parse(logContent) as {
+          db: string | null;
+          aws: string | null;
+          custom: string | null;
+          preload: string | null;
+        };
+
+        assert.strictEqual(observed.db, null, "DATABASE_URL must be stripped from child env");
+        assert.strictEqual(observed.aws, null, "AWS_ACCESS_KEY_ID must be stripped from child env");
+        assert.strictEqual(observed.preload, null, "LD_PRELOAD must be stripped from child env");
+        assert.strictEqual(observed.custom, "allowed-value", "Safe user env vars must be preserved");
+      } finally {
+        if (origDbUrl !== undefined) process.env["DATABASE_URL"] = origDbUrl;
+        else delete process.env["DATABASE_URL"];
+        if (origAwsKey !== undefined) process.env["AWS_ACCESS_KEY_ID"] = origAwsKey;
+        else delete process.env["AWS_ACCESS_KEY_ID"];
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  await t.test(
+    "parseSacctOutput does not let COMPLETED step lines overwrite FAILED or TIMEOUT primary job line",
+    () => {
+      const failedWithCompletedExtern = `
+12345|400|100.0|102400K|4|100|FAILED|1:0
+12345.batch|390|95.0|102400K|4|98|FAILED|1:0
+12345.extern|2|0.1|4096K|4|100|COMPLETED|0:0
+`;
+      const parsedFailed = parseSacctOutput(failedWithCompletedExtern);
+      assert.strictEqual(parsedFailed.state, "FAILED", "12345.extern COMPLETED must not overwrite FAILED primary line");
+      assert.strictEqual(parsedFailed.exitCode, 1, "Exit code must come from primary job line");
+
+      const timeoutWithCompletedExtern = `
+12345|7200|1800.0|512M|4|1800|TIMEOUT|0:15
+12345.extern|1|0.05|2048K|4|1800|COMPLETED|0:0
+`;
+      const parsedTimeout = parseSacctOutput(timeoutWithCompletedExtern);
+      assert.strictEqual(
+        parsedTimeout.state,
+        "FAILED",
+        "12345.extern COMPLETED must not overwrite TIMEOUT primary line",
+      );
+      assert.strictEqual(parsedTimeout.elapsedSeconds, 1800);
+    },
+  );
+
+  await t.test(
+    "failComputeJob settles elapsed credits for non-platform failures and refunds 100% on platform_fault or 0s",
+    () => {
+      const stdProfile = COMPUTE_PROFILES["standard"]!; // 10 cr/hr
+
+      const createMockDb = () => {
+        const calls: {
+          statusUpdates: Array<{ jobId: number; status: string }>;
+          settlements: Array<{ userId: number; jobId: number; cost: number; desc: string }>;
+          releases: Array<{ userId: number; jobId: number; reason: string }>;
+        } = { statusUpdates: [], settlements: [], releases: [] };
+
+        const mockDb = {
+          db: { transaction: (fn: () => void) => fn },
+          updateJobStatus: (jobId: number, status: string) => {
+            calls.statusUpdates.push({ jobId, status });
+          },
+          updateJobAccounting: () => {},
+          settleUserEscrow: (userId: number, jobId: number, cost: number, desc: string) => {
+            calls.settlements.push({ userId, jobId, cost, desc });
+          },
+          releaseUserEscrow: (userId: number, jobId: number, reason: string) => {
+            calls.releases.push({ userId, jobId, reason });
+          },
+        };
+        return { mockDb, calls };
+      };
+
+      // 1. Non-platform failure (timeout) with elapsedSeconds > 0 -> settle actual elapsed credits (refund unused escrow)
+      const run1 = createMockDb();
+      failComputeJob({
+        database: run1.mockDb as any,
+        dbJobId: 101,
+        userId: 7,
+        error: new Error("Wall-clock timeout"),
+        fallbackMessage: "Job failed",
+        elapsedSeconds: 1800, // 0.5h => 5 credits at 10 cr/hr
+        profile: stdProfile,
+        failureReason: "timeout",
+      });
+      assert.strictEqual(run1.calls.statusUpdates.length, 1);
+      assert.strictEqual(run1.calls.statusUpdates[0]!.status, "FAILED");
+      assert.strictEqual(
+        run1.calls.settlements.length,
+        1,
+        "Non-platform failure with elapsedSeconds > 0 must settle elapsed credits",
+      );
+      assert.strictEqual(run1.calls.settlements[0]!.cost, 5);
+      assert.strictEqual(run1.calls.releases.length, 0, "Must not 100% release escrow when compute was consumed");
+
+      // 2. Platform fault even with elapsedSeconds > 0 -> 100% release
+      const run2 = createMockDb();
+      failComputeJob({
+        database: run2.mockDb as any,
+        dbJobId: 102,
+        userId: 7,
+        error: new Error("Cluster node crashed"),
+        fallbackMessage: "Platform fault",
+        elapsedSeconds: 1800,
+        profile: stdProfile,
+        failureReason: "platform_fault",
+      });
+      assert.strictEqual(run2.calls.settlements.length, 0, "platform_fault must not settle credits");
+      assert.strictEqual(run2.calls.releases.length, 1, "platform_fault must release 100% of held escrow");
+
+      // 3. Zero elapsed seconds -> 100% release
+      const run3 = createMockDb();
+      failComputeJob({
+        database: run3.mockDb as any,
+        dbJobId: 103,
+        userId: 7,
+        error: new Error("Invalid input deck"),
+        fallbackMessage: "Job failed",
+        elapsedSeconds: 0,
+        profile: stdProfile,
+        failureReason: "user_error",
+      });
+      assert.strictEqual(run3.calls.settlements.length, 0, "elapsedSeconds === 0 must not settle credits");
+      assert.strictEqual(run3.calls.releases.length, 1, "elapsedSeconds === 0 must release 100% of held escrow");
+    },
+  );
 });

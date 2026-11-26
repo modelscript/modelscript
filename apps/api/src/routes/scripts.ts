@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import express, { type Router } from "express";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { LibraryDatabase } from "../database.js";
 import { optionalAuth, requireAuth } from "../middleware/auth-middleware.js";
+import { simulateRateLimiter } from "../middleware/rate-limiter.js";
 import {
   assertComputeJobAccess,
+  holdComputeEscrow,
   isComputeJobAuthorized,
   resolveComputeActor,
+  runComputePreflight,
 } from "../services/compute-job-lifecycle.js";
 import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 import { BUILTIN_STUDY_DEFINITIONS, CURATED_COMPATIBLE_MODELS } from "../services/studies/study-catalog.js";
@@ -41,7 +45,13 @@ import type {
 } from "../services/studies/study-types.js";
 import { enforceExportCompliance } from "../util/compliance.js";
 import { checkComputeSandboxing } from "../util/compute-sandboxing.js";
-import { getActiveCloudJob } from "./cloud.js";
+import { cancelActiveCloudJob, enqueueRetriedCloudJob, getActiveCloudJob, type CloudJobRecord } from "./cloud.js";
+
+const MAX_SSE_SUBSCRIBERS_PER_JOB = 20;
+
+function sanitizeDispositionName(value: string): string {
+  return String(value || "job").replace(/[^a-zA-Z0-9_.-]/g, "_") || "job";
+}
 
 export function scriptsRouter(db: LibraryDatabase): Router {
   const router = express.Router();
@@ -448,6 +458,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.post(
     "/templates/:id/run",
     optionalAuth,
+    simulateRateLimiter,
     enforceExportCompliance(() => db),
     express.json(),
     handleRunStudy,
@@ -456,6 +467,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
   router.post(
     "/runs",
     optionalAuth,
+    simulateRateLimiter,
     enforceExportCompliance(() => db),
     express.json(),
     handleRunStudy,
@@ -489,7 +501,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
     }
   });
 
-  router.post("/:id/cancel", requireAuth, (req, res) => {
+  router.post("/:id/cancel", requireAuth, async (req, res) => {
     try {
       const paramId = req.params["id"] as string;
       const job = db.getJob(paramId);
@@ -504,24 +516,21 @@ export function scriptsRouter(db: LibraryDatabase): Router {
         ) {
           return;
         }
-        db.updateJobStatus(job.id, "CANCELLED");
-        if (job.user_id) {
-          db.releaseUserEscrow(job.user_id, job.id, "User requested cancellation");
-        }
+        // Cancel underlying cloud / HPC / CAE job FIRST before updating DB status and releasing escrow
         try {
           if (job.metadata) {
-            const meta = JSON.parse(job.metadata);
-            if (meta.jobId) {
-              const cJob = getActiveCloudJob(meta.jobId);
-              if (cJob) {
-                cJob.status = "cancelled";
-                cJob.logs.push("[Cloud] Job cancelled via job manager.");
-                for (const sub of cJob.subscribers) sub({ type: "status", data: { status: "cancelled" } });
-              }
+            const meta = JSON.parse(job.metadata) as { jobId?: string | undefined };
+            if (typeof meta.jobId === "string" && meta.jobId) {
+              await cancelActiveCloudJob(meta.jobId, undefined, "User requested cancellation");
             }
           }
         } catch {
-          // Cloud job cancellation sync is best-effort
+          // Best-effort underlying process termination
+        }
+
+        db.updateJobStatus(job.id, "CANCELLED");
+        if (job.user_id) {
+          db.releaseUserEscrow(job.user_id, job.id, "User requested cancellation");
         }
 
         return res.json({ success: true, message: `Job ${job.id} cancelled` });
@@ -538,13 +547,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
         ) {
           return;
         }
-        cloudJob.status = "cancelled";
-        cloudJob.logs.push("[Cloud] Job cancelled via job manager.");
-        for (const sub of cloudJob.subscribers) sub({ type: "status", data: { status: "cancelled" } });
-        if (cloudJob.dbJobId) {
-          db.updateJobStatus(cloudJob.dbJobId, "CANCELLED");
-          if (cloudJob.userId) db.releaseUserEscrow(cloudJob.userId, cloudJob.dbJobId, "User requested cancellation");
-        }
+        await cancelActiveCloudJob(cloudJob.jobId, db, "User requested cancellation");
         return res.json({ success: true, message: `Job ${cloudJob.jobId} cancelled` });
       }
 
@@ -556,145 +559,246 @@ export function scriptsRouter(db: LibraryDatabase): Router {
     return;
   });
 
-  router.post("/:id/retry", optionalAuth, (req, res) => {
-    try {
-      const paramId = req.params["id"] as string;
-      const { userId: reqUserId } = resolveComputeActor(req);
-      if (process.env["NODE_ENV"] === "production" && !reqUserId) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const job = db.getJob(paramId);
-
-      if (job) {
-        if (
-          !assertComputeJobAccess(req, res, undefined, {
-            allowInTest: false,
-            ownerId: job.user_id,
-            allowWhenUnowned: true,
-          })
-        ) {
-          return;
+  router.post(
+    "/:id/retry",
+    optionalAuth,
+    simulateRateLimiter,
+    enforceExportCompliance(() => db),
+    (req, res) => {
+      try {
+        const paramId = req.params["id"] as string;
+        const { userId: reqUserId } = resolveComputeActor(req);
+        if (process.env["NODE_ENV"] === "production" && !reqUserId) {
+          return res.status(401).json({ error: "Authentication required" });
         }
-        const meta = job.metadata ? JSON.parse(job.metadata) : {};
-        const effectiveUserId = job.user_id ?? reqUserId ?? null;
-        const profileId = (meta.profile as string | undefined) || job.compute_profile || "standard";
 
-        if (effectiveUserId) {
-          const quota = checkComputeQuota(effectiveUserId, profileId, db, 0.05);
-          if (!quota.allowed) {
-            return res.status(402).json({
-              error: "Payment Required",
-              message: quota.reason,
-              balance: quota.userBalance,
-              required: quota.estimatedCost,
+        const retryCloudRecord = (existingCloudJob: CloudJobRecord, previousIdLabel: string) => {
+          if (!existingCloudJob.payload) {
+            return res.status(400).json({
+              error:
+                "Cannot retry job: original dispatch payload is unavailable. Please submit a new dispatch request.",
             });
           }
-        }
 
-        const newJobId = db.createJob(
-          job.name,
-          "PENDING",
-          job.type || "ADHOC",
-          job.trigger_source || "api",
-          job.repository_id ?? null,
-          meta,
-          effectiveUserId,
-        );
-
-        if (effectiveUserId) {
-          const quota = checkComputeQuota(effectiveUserId, profileId, db, 0.05);
-          const holdRes = db.holdUserCredits(
-            effectiveUserId,
-            quota.estimatedCost,
-            newJobId,
-            `Escrow hold for retried job ${job.name}`,
-            { previousJobId: job.id, profile: profileId },
-          );
-          if (!holdRes.success) {
-            db.updateJobStatus(newJobId, "FAILED");
-            return res.status(402).json({
-              error: "Payment Required",
-              message: holdRes.reason,
-              balance: holdRes.newBalance,
-              required: quota.estimatedCost,
-            });
+          const preflight = runComputePreflight(req, res, db, {
+            profileId: existingCloudJob.profile,
+            allowAnonymous: process.env["NODE_ENV"] !== "production",
+          });
+          if (!preflight.allowed) {
+            return;
           }
-        }
+          const { userId: billingUserId, estimatedCost } = preflight;
 
-        return res.status(202).json({
-          success: true,
-          jobId: newJobId.toString(),
-          previousJobId: job.id.toString(),
-          status: "queued",
-        });
-      }
+          const newCloudJobId = `cloud-${existingCloudJob.domain}-${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
+          const retried: CloudJobRecord = {
+            jobId: newCloudJobId,
+            domain: existingCloudJob.domain,
+            name: existingCloudJob.name,
+            profile: existingCloudJob.profile,
+            payload: existingCloudJob.payload,
+            status: "queued",
+            startTime: Date.now(),
+            logs: [`[Cloud] Retried from job ${previousIdLabel}`],
+            subscribers: [],
+            userId: billingUserId,
+          };
 
-      const cloudJob = getActiveCloudJob(paramId);
-      if (cloudJob) {
-        if (
-          !assertComputeJobAccess(req, res, undefined, {
-            allowInTest: false,
-            ownerId: cloudJob.userId,
-            allowWhenUnowned: true,
-          })
-        ) {
-          return;
-        }
-        const effectiveUserId = cloudJob.userId ?? reqUserId ?? null;
-        if (effectiveUserId) {
-          const quota = checkComputeQuota(effectiveUserId, cloudJob.profile || "standard", db, 0.05);
-          if (!quota.allowed) {
-            return res.status(402).json({
-              error: "Payment Required",
-              message: quota.reason,
-              balance: quota.userBalance,
-              required: quota.estimatedCost,
-            });
-          }
-          if (cloudJob.dbJobId) {
-            const holdRes = db.holdUserCredits(
-              effectiveUserId,
-              quota.estimatedCost,
-              cloudJob.dbJobId,
-              `Escrow hold for retried cloud job ${cloudJob.name}`,
-              { cloudJobId: cloudJob.jobId, profile: cloudJob.profile || "standard" },
+          let dbJobId: number | null = null;
+          const billingActive = Boolean(billingUserId && estimatedCost > 0);
+          try {
+            dbJobId = db.createJob(
+              `Cloud [${existingCloudJob.domain.toUpperCase()}]: ${existingCloudJob.name} (Retry)`,
+              "RUNNING",
+              "ADHOC",
+              existingCloudJob.domain === "modelica" ? "omc" : existingCloudJob.domain,
+              null,
+              {
+                jobId: newCloudJobId,
+                previousJobId: previousIdLabel,
+                profile: existingCloudJob.profile,
+                domain: existingCloudJob.domain,
+              },
+              billingUserId,
             );
-            if (!holdRes.success) {
+            retried.dbJobId = dbJobId;
+          } catch (err) {
+            console.error("[ScriptsRouter] Failed to create DB job record for cloud retry:", err);
+            if (billingActive) {
+              return res.status(503).json({
+                error: "Compute billing service temporarily unavailable. Please try again later.",
+              });
+            }
+          }
+
+          try {
+            if (
+              !holdComputeEscrow({
+                database: db,
+                res,
+                userId: billingUserId,
+                dbJobId,
+                estimatedCost,
+                description: `HPC Escrow Hold (Retry): Cloud [${existingCloudJob.domain.toUpperCase()}] ${existingCloudJob.name}`,
+                metadata: {
+                  jobId: newCloudJobId,
+                  previousJobId: previousIdLabel,
+                  profile: existingCloudJob.profile,
+                  domain: existingCloudJob.domain,
+                },
+              })
+            ) {
+              return;
+            }
+          } catch (err) {
+            console.error("[ScriptsRouter] Failed to hold compute escrow for cloud retry:", err);
+            if (billingActive) {
+              return res.status(503).json({
+                error: "Compute billing service temporarily unavailable. Please try again later.",
+              });
+            }
+          }
+
+          if (!enqueueRetriedCloudJob(existingCloudJob, retried, existingCloudJob.payload)) {
+            if (dbJobId) {
+              db.updateJobStatus(dbJobId, "FAILED");
+              if (billingUserId) {
+                db.releaseUserEscrow(billingUserId, dbJobId, "Retry enqueue unavailable");
+              }
+            }
+            return res.status(400).json({
+              error: "Cannot retry job: cloud execution handler is unavailable.",
+            });
+          }
+
+          return res.status(202).json({
+            success: true,
+            jobId: newCloudJobId,
+            previousJobId: previousIdLabel,
+            status: "queued",
+            streamUrl: `/api/v1/cloud/jobs/${newCloudJobId}/events`,
+          });
+        };
+
+        const job = db.getJob(paramId);
+
+        if (job) {
+          if (
+            !assertComputeJobAccess(req, res, undefined, {
+              allowInTest: false,
+              ownerId: job.user_id,
+              allowWhenUnowned: true,
+            })
+          ) {
+            return;
+          }
+          const meta = job.metadata ? (JSON.parse(job.metadata) as Record<string, unknown>) : {};
+          const linkedCloudJob = typeof meta["jobId"] === "string" ? getActiveCloudJob(meta["jobId"]) : undefined;
+          if (linkedCloudJob) {
+            return retryCloudRecord(linkedCloudJob, job.id.toString());
+          }
+
+          const storedInstance = meta["studyInstance"] as Record<string, unknown> | undefined;
+          const studyResults = meta["studyResults"] as StudyRunResultsPayload | undefined;
+          const hasStudyReplayMetadata = Boolean(
+            meta["templateSlug"] || storedInstance || studyResults || meta["modelName"] || meta["modelCode"],
+          );
+
+          if (!hasStudyReplayMetadata) {
+            return res.status(400).json({
+              error: "Cannot retry job: replay payload is missing for this job.",
+            });
+          }
+
+          const templateIdOrSlug = String(
+            meta["templateSlug"] ||
+              storedInstance?.["templateSlug"] ||
+              studyResults?.templateSlug ||
+              "modelica-sundials-dae",
+          );
+          const executionTarget = (meta["executionTarget"] || "local-wasm") as StudyExecutionTarget;
+          const computeProfile = job.compute_profile || (meta["computeProfile"] as string) || "standard";
+          const billingUserId = reqUserId ?? (process.env["NODE_ENV"] === "test" ? (job.user_id ?? null) : null);
+
+          if (billingUserId && (executionTarget === "hpc-cluster" || (executionTarget as string) === "hpc-slurm")) {
+            const user = db.getUserById(billingUserId);
+            const sandbox = checkComputeSandboxing(user);
+            if (sandbox.sandboxed) {
+              return res.status(403).json({
+                error: sandbox.error,
+                code: sandbox.code,
+                fallbackAvailable: sandbox.fallbackAvailable,
+              });
+            }
+            const quota = checkComputeQuota(billingUserId, computeProfile, db, 0.05);
+            if (!quota.allowed) {
               return res.status(402).json({
                 error: "Payment Required",
-                message: holdRes.reason,
-                balance: holdRes.newBalance,
+                message: quota.reason,
+                balance: quota.userBalance,
                 required: quota.estimatedCost,
               });
             }
           }
-        }
-        cloudJob.status = "queued";
-        cloudJob.error = undefined;
-        cloudJob.endTime = undefined;
-        cloudJob.logs.push(`[Cloud] Job retried at ${new Date().toISOString()}`);
-        if (cloudJob.dbJobId) {
-          db.updateJobStatus(cloudJob.dbJobId, "RUNNING");
-        }
-        return res.status(202).json({
-          success: true,
-          jobId: cloudJob.jobId,
-          previousJobId: cloudJob.jobId,
-          status: "queued",
-        });
-      }
 
-      return res.status(404).json({ error: "Job not found" });
-    } catch (error) {
-      console.error("Error retrying job:", error);
-      return res.status(500).json({ error: "Failed to retry job" });
-    }
-  });
+          const studyReq: StudyRunRequest = {
+            templateIdOrSlug,
+            modelId: (meta["modelId"] as string | undefined) || (storedInstance?.["modelId"] as string | undefined),
+            modelName:
+              (meta["modelName"] as string | undefined) ||
+              (storedInstance?.["modelName"] as string | undefined) ||
+              job.name,
+            modelDomain: (meta["modelDomain"] || storedInstance?.["modelDomain"]) as StudyDomain | undefined,
+            modelCode: meta["modelCode"] as string | undefined,
+            packageName: (meta["packageName"] || storedInstance?.["packageName"]) as string | undefined,
+            packageVersion: (meta["packageVersion"] || storedInstance?.["packageVersion"]) as string | undefined,
+            executionTarget,
+            computeProfile,
+            inputs: (meta["inputs"] || storedInstance?.["inputs"] || {}) as Record<string, string | number | boolean>,
+            parameterBindings: (meta["parameterBindings"] ||
+              storedInstance?.["parameterBindings"] ||
+              []) as StudyParameterBinding[],
+            observables: (meta["observables"] || storedInstance?.["observables"] || []) as string[],
+            studyInstanceSource: storedInstance?.["sourceContent"] as string | undefined,
+          };
+
+          const runOutput = executeStudyRun(db, studyReq, billingUserId);
+          return res.status(202).json({
+            ...runOutput,
+            success: true,
+            jobId: String(runOutput.jobId),
+            previousJobId: job.id.toString(),
+            status: "queued",
+            studyResults: runOutput.results,
+          });
+        }
+
+        const cloudJob = getActiveCloudJob(paramId);
+        if (cloudJob) {
+          if (
+            !assertComputeJobAccess(req, res, undefined, {
+              allowInTest: false,
+              ownerId: cloudJob.userId,
+              allowWhenUnowned: true,
+            })
+          ) {
+            return;
+          }
+          return retryCloudRecord(cloudJob, cloudJob.jobId);
+        }
+
+        return res.status(404).json({ error: "Job not found" });
+      } catch (error) {
+        console.error("Error retrying job:", error);
+        return res.status(500).json({ error: "Failed to retry job" });
+      }
+    },
+  );
 
   // ── 7b. Re-run a Job's Study Instance Artifact (.sedml, .ssv, .dakota) ──
   router.post(
     "/:id/rerun",
     optionalAuth,
+    simulateRateLimiter,
     enforceExportCompliance(() => db),
     express.json(),
     (req, res) => {
@@ -944,7 +1048,10 @@ export function scriptsRouter(db: LibraryDatabase): Router {
 
       if (req.query["download"] === "1" || req.query["raw"] === "1") {
         res.setHeader("Content-Type", studyInstance.mimeType || "text/plain; charset=utf-8");
-        res.setHeader("Content-Disposition", `attachment; filename="${studyInstance.filename}"`);
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${sanitizeDispositionName(studyInstance.filename)}"`,
+        );
         return res.send(studyInstance.sourceContent);
       }
 
@@ -1204,11 +1311,18 @@ export function scriptsRouter(db: LibraryDatabase): Router {
         return res.status(403).end();
       }
 
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-
       if (cloudJob) {
+        const isTerminal =
+          cloudJob.status === "completed" || cloudJob.status === "failed" || cloudJob.status === "cancelled";
+        if (!isTerminal && cloudJob.subscribers.length >= MAX_SSE_SUBSCRIBERS_PER_JOB) {
+          return res.status(429).json({ error: "Too many active event stream subscribers for this job" });
+        }
+
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders?.();
+
         res.write(
           `event: status\ndata: ${JSON.stringify({
             job: {
@@ -1225,7 +1339,26 @@ export function scriptsRouter(db: LibraryDatabase): Router {
           res.write(`event: log\ndata: ${JSON.stringify(line + "\n")}\n\n`);
         }
 
+        if (isTerminal) {
+          res.write(`event: complete\ndata: ${cloudJob.status.toUpperCase()}\n\n`);
+          res.end();
+          return;
+        }
+
+        let cleanedUp = false;
+        const cleanup = () => {
+          if (cleanedUp) return;
+          cleanedUp = true;
+          clearInterval(heartbeat);
+          const idx = cloudJob.subscribers.indexOf(listener);
+          if (idx !== -1) cloudJob.subscribers.splice(idx, 1);
+        };
+
         const listener = (event: { type: string; data: unknown }) => {
+          if (res.writableEnded || res.destroyed) {
+            cleanup();
+            return;
+          }
           if (event.type === "log") {
             res.write(`event: log\ndata: ${JSON.stringify(String(event.data) + "\n")}\n\n`);
           } else if (event.type === "status") {
@@ -1242,18 +1375,34 @@ export function scriptsRouter(db: LibraryDatabase): Router {
             );
             if (st === "completed" || st === "failed" || st === "cancelled") {
               res.write(`event: complete\ndata: ${String(st).toUpperCase()}\n\n`);
+              cleanup();
               res.end();
             }
           }
         };
 
+        const heartbeat = setInterval(() => {
+          if (res.writableEnded || res.destroyed) {
+            cleanup();
+            return;
+          }
+          try {
+            res.write(": keepalive\n\n");
+          } catch {
+            cleanup();
+          }
+        }, 25_000);
+        heartbeat.unref?.();
+
         cloudJob.subscribers.push(listener);
-        req.on("close", () => {
-          const idx = cloudJob.subscribers.indexOf(listener);
-          if (idx !== -1) cloudJob.subscribers.splice(idx, 1);
-        });
+        req.on("close", cleanup);
         return;
       }
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders?.();
 
       const jobId = job!.id;
       const sendStatusUpdate = () => {
@@ -1263,6 +1412,13 @@ export function scriptsRouter(db: LibraryDatabase): Router {
       };
 
       sendStatusUpdate();
+
+      const isJobTerminal = job!.status === "SUCCESS" || job!.status === "FAILED" || job!.status === "CANCELLED";
+      if (isJobTerminal) {
+        res.write(`event: complete\ndata: ${job!.status}\n\n`);
+        res.end();
+        return;
+      }
 
       let resultDir: string | undefined;
       try {
@@ -1308,9 +1464,27 @@ export function scriptsRouter(db: LibraryDatabase): Router {
 
       sendNewLogs();
 
+      const cleanupTimers = () => {
+        clearInterval(intervalId);
+        clearInterval(heartbeatId);
+      };
+
+      const heartbeatId = setInterval(() => {
+        if (res.writableEnded || res.destroyed) {
+          cleanupTimers();
+          return;
+        }
+        try {
+          res.write(": keepalive\n\n");
+        } catch {
+          cleanupTimers();
+        }
+      }, 25_000);
+      heartbeatId.unref?.();
+
       const intervalId = setInterval(() => {
         if (res.writableEnded || res.destroyed) {
-          clearInterval(intervalId);
+          cleanupTimers();
           return;
         }
         sendNewLogs();
@@ -1321,7 +1495,7 @@ export function scriptsRouter(db: LibraryDatabase): Router {
           currentJob &&
           (currentJob.status === "SUCCESS" || currentJob.status === "FAILED" || currentJob.status === "CANCELLED")
         ) {
-          clearInterval(intervalId);
+          cleanupTimers();
           if (!res.writableEnded && !res.destroyed) {
             res.write(`event: complete\ndata: ${currentJob.status}\n\n`);
             res.end();
@@ -1330,9 +1504,8 @@ export function scriptsRouter(db: LibraryDatabase): Router {
       }, 1000);
       intervalId.unref?.();
 
-      res.on("close", () => {
-        clearInterval(intervalId);
-      });
+      req.on("close", cleanupTimers);
+      res.on("close", cleanupTimers);
     } catch (error) {
       console.error("Error in stream:", error);
       if (!res.headersSent) {
@@ -1371,13 +1544,17 @@ export function scriptsRouter(db: LibraryDatabase): Router {
         return;
       }
       if (cloudJob?.resultPath && fs.existsSync(cloudJob.resultPath)) {
+        const safeName = sanitizeDispositionName(cloudJob.name);
         const ext = path.extname(cloudJob.resultPath).toLowerCase();
         if (ext === ".csv") {
           res.setHeader("Content-Type", "text/csv");
-          res.setHeader("Content-Disposition", `attachment; filename="${cloudJob.name}_res.csv"`);
+          res.setHeader("Content-Disposition", `attachment; filename="${safeName}_res.csv"`);
         } else {
           res.setHeader("Content-Type", "application/octet-stream");
-          res.setHeader("Content-Disposition", `attachment; filename="${cloudJob.name}_result${ext}"`);
+          res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${safeName}_result${sanitizeDispositionName(ext)}"`,
+          );
         }
         return fs.createReadStream(cloudJob.resultPath).pipe(res);
       }

@@ -99,11 +99,277 @@ export interface ReachabilityData {
 // Sends simulation requests to the LSP server and displays results as a chart.
 // Supports both batch (one-shot) and live (MQTT streaming) simulation modes.
 
+import { generateParquetBuffer } from "@modelscript/editor/internal/binary-export.js";
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
 import { CadViewerPanel } from "./cad-viewer-panel";
 import { MultiBodyAnimationPanel } from "./multibody-animation-panel";
 import { getNonce } from "./utils/nonce.js";
+import {
+  attachExtensionWebviewBridge,
+  type AttachExtensionWebviewBridgeOptions,
+} from "./webview/shared/extension-lsp-bridge.js";
+
+/** Summary statistics computed for a single simulated time-series signal. */
+export interface SignalStatistics {
+  min: number;
+  max: number;
+  peakToPeak: number;
+  mean: number;
+  rms: number;
+  finalVal: number;
+  /** Time when the signal enters and remains within ±2% of its final value (`null` if unsettled). */
+  settlingTime: number | null;
+  /** Optional mean signed delta (`current - baseline`) when comparing against a baseline run. */
+  baselineDeltaMean?: number | undefined;
+  /** Optional root-mean-square deviation against a baseline run. */
+  baselineRmse?: number | undefined;
+}
+
+/** Single engineering threshold check for a water/hydraulics simulation channel. */
+export interface WaterComplianceMetric {
+  name: string;
+  variable: string;
+  value: number;
+  limit: number;
+  direction: "min" | "max" | "range";
+  limitMax?: number | undefined;
+  unit?: string | undefined;
+  pass: boolean;
+  clause?: string | undefined;
+}
+
+/** Domain compliance report for water distribution / open-channel hydraulics simulations. */
+export interface WaterComplianceReport {
+  standard: string;
+  overallPass: boolean;
+  summary: string;
+  metrics: WaterComplianceMetric[];
+}
+
+/**
+ * Computes signal statistics (min, max, peak-to-peak, mean, RMS, final value, 2% settling time)
+ * and optional baseline comparison deltas for a trajectory.
+ */
+export function computeSignalStatistics(
+  t: readonly number[],
+  values: readonly number[],
+  baselineValues?: readonly number[],
+): SignalStatistics {
+  const n = Math.min(t.length, values.length);
+  if (n === 0) {
+    return {
+      min: 0,
+      max: 0,
+      peakToPeak: 0,
+      mean: 0,
+      rms: 0,
+      finalVal: 0,
+      settlingTime: null,
+    };
+  }
+
+  let min = Infinity;
+  let max = -Infinity;
+  let sum = 0;
+  let sumSq = 0;
+  let validCount = 0;
+  let lastValid = 0;
+
+  for (let i = 0; i < n; i++) {
+    const v = values[i]!;
+    if (!Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+    sum += v;
+    sumSq += v * v;
+    validCount++;
+    lastValid = v;
+  }
+
+  if (validCount === 0) {
+    return {
+      min: 0,
+      max: 0,
+      peakToPeak: 0,
+      mean: 0,
+      rms: 0,
+      finalVal: 0,
+      settlingTime: null,
+    };
+  }
+
+  const peakToPeak = max - min;
+  const mean = sum / validCount;
+  const rms = Math.sqrt(sumSq / validCount);
+  const finalVal = lastValid;
+
+  // 2% settling time: earliest time after which signal stays within ±2% of final value / span
+  let settlingTime: number | null = null;
+  if (n >= 2) {
+    const band = Math.max(0.02 * Math.abs(finalVal), 0.02 * peakToPeak, 1e-9);
+    let lastOutside = -1;
+    for (let i = n - 1; i >= 0; i--) {
+      const v = values[i]!;
+      if (Number.isFinite(v) && Math.abs(v - finalVal) > band) {
+        lastOutside = i;
+        break;
+      }
+    }
+    if (lastOutside === -1) {
+      settlingTime = t[0] ?? 0;
+    } else if (lastOutside + 1 < n) {
+      settlingTime = t[lastOutside + 1] ?? null;
+    }
+  }
+
+  let baselineDeltaMean: number | undefined;
+  let baselineRmse: number | undefined;
+  if (baselineValues && baselineValues.length > 0) {
+    const bn = Math.min(n, baselineValues.length);
+    let deltaSum = 0;
+    let sqErrSum = 0;
+    let cmpCount = 0;
+    for (let i = 0; i < bn; i++) {
+      const v = values[i]!;
+      const bv = baselineValues[i]!;
+      if (Number.isFinite(v) && Number.isFinite(bv)) {
+        const diff = v - bv;
+        deltaSum += diff;
+        sqErrSum += diff * diff;
+        cmpCount++;
+      }
+    }
+    if (cmpCount > 0) {
+      baselineDeltaMean = deltaSum / cmpCount;
+      baselineRmse = Math.sqrt(sqErrSum / cmpCount);
+    }
+  }
+
+  return {
+    min,
+    max,
+    peakToPeak,
+    mean,
+    rms,
+    finalVal,
+    settlingTime,
+    ...(baselineDeltaMean !== undefined ? { baselineDeltaMean } : {}),
+    ...(baselineRmse !== undefined ? { baselineRmse } : {}),
+  };
+}
+
+/**
+ * Evaluates standard EPA / AWWA / USACE water distribution and open-channel hydraulic
+ * compliance checks when water-domain channels are present in the simulation output.
+ */
+export function evaluateWaterCompliance(
+  t: readonly number[],
+  y: readonly (readonly number[])[],
+  states: readonly string[],
+): WaterComplianceReport | undefined {
+  if (t.length === 0 || states.length === 0) return undefined;
+
+  const metrics: WaterComplianceMetric[] = [];
+  for (let vi = 0; vi < states.length; vi++) {
+    const name = states[vi]!;
+    const col: number[] = [];
+    for (let ti = 0; ti < t.length; ti++) {
+      const v = y[ti]?.[vi];
+      if (v !== undefined && Number.isFinite(v)) col.push(v);
+    }
+    if (col.length === 0) continue;
+    const minVal = Math.min(...col);
+    const maxVal = Math.max(...col);
+
+    if (/(?:^|\.)(?:pressure|p_node|junction.*pressure|node.*pressure)/i.test(name)) {
+      metrics.push({
+        name: "Min Distribution Pressure",
+        variable: name,
+        value: minVal,
+        limit: 20,
+        direction: "min",
+        unit: "psi",
+        pass: minVal >= 20,
+        clause: "AWWA M32 / Ten States Standards",
+      });
+    } else if (/(?:chlorine|cl2|residual_cl|water_quality)/i.test(name)) {
+      metrics.push({
+        name: "Chlorine Residual",
+        variable: name,
+        value: minVal,
+        limit: 0.2,
+        limitMax: 4.0,
+        direction: "range",
+        unit: "mg/L",
+        pass: minVal >= 0.2 && maxVal <= 4.0,
+        clause: "EPA SWTR / MRDL",
+      });
+    } else if (/(?:pipe.*velocity|flow_velocity|link.*velocity|channel.*velocity)/i.test(name)) {
+      metrics.push({
+        name: "Max Pipe / Channel Velocity",
+        variable: name,
+        value: maxVal,
+        limit: 3.0,
+        direction: "max",
+        unit: "m/s",
+        pass: maxVal <= 3.0,
+        clause: "AWWA M32 Scour Limit",
+      });
+    }
+  }
+
+  if (metrics.length === 0) return undefined;
+  const passed = metrics.filter((m) => m.pass).length;
+  return {
+    standard: "EPA / AWWA Water & Hydraulics Compliance",
+    overallPass: passed === metrics.length,
+    summary: `${passed} of ${metrics.length} hydraulic & water quality checks passed.`,
+    metrics,
+  };
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
+  }
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Serializes simulation trajectories into an Apache Parquet binary payload encoded as Base64
+ * for transfer via `attachExtensionWebviewBridge` (`exportFile` with `encoding: "base64"`).
+ */
+export function encodeSimulationParquetBase64(
+  t: readonly number[],
+  y: readonly (readonly number[])[],
+  states: readonly string[],
+  visibleStates?: readonly string[],
+): string {
+  const selectedIndices: number[] = [];
+  const filterSet = visibleStates ? new Set(visibleStates) : null;
+  for (let vi = 0; vi < states.length; vi++) {
+    if (!filterSet || filterSet.has(states[vi]!)) {
+      selectedIndices.push(vi);
+    }
+  }
+  const columns = ["time", ...selectedIndices.map((vi) => states[vi]!)];
+  const records: Record<string, number | string>[] = new Array(t.length);
+  for (let ti = 0; ti < t.length; ti++) {
+    const row: Record<string, number | string> = { time: t[ti]! };
+    for (const vi of selectedIndices) {
+      row[states[vi]!] = y[ti]?.[vi] ?? 0;
+    }
+    records[ti] = row;
+  }
+  const parquetBytes = generateParquetBuffer(records, columns);
+  return uint8ArrayToBase64(parquetBytes);
+}
 
 /**
  * Time-series simulation result payload returned by the language server or client-side solver.
@@ -111,10 +377,12 @@ import { getNonce } from "./utils/nonce.js";
 interface SimulationResult {
   /** Array of simulation time points in seconds. */
   t: number[];
-  /** 2D array of state/variable trajectories (`y[varIndex][timeIndex]`). */
+  /** 2D array of state/variable trajectories (`y[timeIndex][varIndex]`). */
   y: number[][];
-  /** Ordered list of state and algebraic variable names corresponding to rows in `y`. */
+  /** Ordered list of state and algebraic variable names corresponding to columns in `y`. */
   states: string[];
+  /** Optional per-variable metadata (unit and description). */
+  variableMetadata?: Record<string, { unit?: string | undefined; description?: string | undefined }> | undefined;
   /** Tunable model parameters discovered for interactive sliders and sweeps. */
   parameters?:
     | {
@@ -151,6 +419,31 @@ interface SimulationResult {
   pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
   /** Optional PSCAD V5+ binary waveform (.psout) payload (Uint8Array or Base64 string). */
   pscadPsout?: Uint8Array | string | undefined;
+  /** Optional IEEE 2800-2022 or domain compliance report payload. */
+  complianceReport?: unknown | undefined;
+  /** Optional water/hydraulics domain compliance report payload. */
+  waterCompliance?: WaterComplianceReport | undefined;
+  /** Optional structured PSCAD exports & graphFrames for `@modelscript/editor` `SimulationResults`. */
+  pscadExports?:
+    | {
+        projectName?: string | undefined;
+        psoutBase64?: string | undefined;
+        comtrade?: { cfg: string; dat: string } | undefined;
+        pscadOut?: { inf: string; files: { name: string; content: string }[] } | undefined;
+        snapshot?: string | undefined;
+        graphFrames?:
+          | Array<{
+              id: string;
+              title: string;
+              kind: "graphframe" | "overlay" | "poly" | "xy";
+              curves: string[];
+              min?: number | undefined;
+              max?: number | undefined;
+            }>
+          | undefined;
+        nominalFreqHz?: number | undefined;
+      }
+    | undefined;
   /** Model or project name for export file naming. */
   projectName?: string | undefined;
 }
@@ -175,8 +468,20 @@ export class SimulationPanel {
   public sourceUri?: string | undefined;
   /** Target class name associated with this simulation panel. */
   public targetClassName?: string | undefined;
+  /** Backing language client used to dispatch re-simulation requests with parameter overrides. */
+  private _client?: LanguageClient | undefined;
+  /** Mutable options object shared with `attachExtensionWebviewBridge` so late `client` assignment is seen. */
+  private readonly bridgeOptions: AttachExtensionWebviewBridgeOptions = {
+    title: "Simulation Results",
+  };
   /** Language client used to dispatch re-simulation requests with parameter overrides. */
-  public client?: LanguageClient | undefined;
+  public get client(): LanguageClient | undefined {
+    return this._client;
+  }
+  public set client(value: LanguageClient | undefined) {
+    this._client = value;
+    this.bridgeOptions.client = value;
+  }
   /** Whether the webview frontend has finished initializing and sent its `ready` signal. */
   public isReady = false;
   /** Most recent batch simulation result cached for webview reloads. */
@@ -382,7 +687,7 @@ export class SimulationPanel {
    */
   static createOrShowLive(extensionUri: vscode.Uri, sessionId?: string, participantId?: string): void {
     const mqttWsUrl =
-      vscode.workspace.getConfiguration("modelscript.cosim").get<string>("mqttWsUrl") ?? "ws://localhost:9001";
+      vscode.workspace.getConfiguration("modelscript.cosim").get<string>("mqttWsUrl") ?? "wss://ansatz.social/mqtt";
 
     // Always create a new panel for live mode (don't reuse batch panels)
     if (SimulationPanel.currentPanel?.liveMode) {
@@ -459,40 +764,296 @@ export class SimulationPanel {
     this.liveMode = liveMode;
     this.panel.webview.html = this.getHtmlForWebview();
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
-    this.panel.webview.onDidReceiveMessage(
-      async (msg) => {
-        if (msg.type === "ready") {
-          this.isReady = true;
-          if (this.lastReachabilityData) {
-            SimulationPanel.postReachabilityData(this.lastReachabilityData);
-          } else if (this.lastResult) {
-            this.postResults(this.lastResult);
-          } else if (this.lastLiveConfig) {
-            if (this.lastLiveConfig.type === "live") {
-              this.postLiveConfig(
-                this.lastLiveConfig.mqttWsUrl || "",
-                this.lastLiveConfig.sessionId,
-                this.lastLiveConfig.participantId,
-              );
-            } else {
-              this.postLiveLocalConfig(this.lastLiveConfig.sessionId);
-            }
-          }
-        } else if (msg.type === "simulateRequest" && this.client) {
-          const uri = this.sourceUri;
-          if (!uri) return;
 
-          if (msg.payload?.reachabilityMode && !msg.payload?.sweepConfig) {
-            await vscode.window.withProgress(
-              {
-                location: vscode.ProgressLocation.Notification,
-                title: "Recomputing reachability flowpipes...",
-                cancellable: false,
-              },
-              async () => {
-                if (!this.client) return;
-                const reachResult: ReachabilityData = await this.client.sendRequest("modelscript/computeReachability", {
+    this.bridgeOptions.client = this._client;
+    this.bridgeOptions.getDocument = () => {
+      if (this.sourceUri) {
+        const match = vscode.workspace.textDocuments?.find((d) => d.uri.toString() === this.sourceUri);
+        if (match) return match;
+      }
+      return vscode.window.activeTextEditor?.document;
+    };
+    this.bridgeOptions.onUnhandledMessage = async (rawMsg) => {
+      type SimulationWebviewMessage =
+        | { type: "ready" }
+        | {
+            type: "simulateRequest";
+            payload?: {
+              reachabilityMode?: boolean;
+              sweepConfig?: unknown;
+              startTime?: number;
+              stopTime?: number;
+              interval?: number;
+              tolerance?: number;
+              solver?: string;
+              rtol?: number;
+              atol?: number;
+              numberOfIntervals?: number;
+              maxStep?: number;
+              steadyStateOnly?: boolean;
+              parameterOverrides?: Record<string, number>;
+            };
+          }
+        | {
+            type: "open3dAnimation";
+            payload: { simulationData: { t: number[]; y: number[][]; states: string[] } };
+          };
+      const msg = rawMsg as SimulationWebviewMessage;
+      if (msg.type === "ready") {
+        this.isReady = true;
+        if (this.lastReachabilityData) {
+          SimulationPanel.postReachabilityData(this.lastReachabilityData);
+        } else if (this.lastResult) {
+          this.postResults(this.lastResult);
+        } else if (this.lastLiveConfig) {
+          if (this.lastLiveConfig.type === "live") {
+            this.postLiveConfig(
+              this.lastLiveConfig.mqttWsUrl || "",
+              this.lastLiveConfig.sessionId,
+              this.lastLiveConfig.participantId,
+            );
+          } else {
+            this.postLiveLocalConfig(this.lastLiveConfig.sessionId);
+          }
+        }
+      } else if (msg.type === "simulateRequest" && this.client) {
+        const uri = this.sourceUri;
+        if (!uri) return;
+
+        if (msg.payload?.reachabilityMode && !msg.payload?.sweepConfig) {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Recomputing reachability flowpipes...",
+              cancellable: false,
+            },
+            async () => {
+              if (!this.client) return;
+              const reachResult: ReachabilityData = await this.client.sendRequest("modelscript/computeReachability", {
+                uri,
+                startTime: msg.payload?.startTime,
+                stopTime: msg.payload?.stopTime,
+                interval: msg.payload?.interval,
+                solver: msg.payload?.solver,
+                rtol: msg.payload?.rtol,
+                atol: msg.payload?.atol,
+                numberOfIntervals: msg.payload?.numberOfIntervals,
+                maxStep: msg.payload?.maxStep,
+                parameterOverrides: msg.payload?.parameterOverrides,
+              });
+              if (reachResult.error) {
+                vscode.window.showErrorMessage(`Reachability analysis failed: ${reachResult.error}`);
+                return;
+              }
+              if (reachResult.experiment) {
+                if (msg.payload?.startTime !== undefined) reachResult.experiment.startTime = msg.payload.startTime;
+                if (msg.payload?.stopTime !== undefined) reachResult.experiment.stopTime = msg.payload.stopTime;
+                if (msg.payload?.interval !== undefined) reachResult.experiment.interval = msg.payload.interval;
+                if (msg.payload?.tolerance !== undefined) reachResult.experiment.tolerance = msg.payload.tolerance;
+              }
+              if (reachResult.parameters && msg.payload?.parameterOverrides) {
+                for (const p of reachResult.parameters) {
+                  if (msg.payload.parameterOverrides[p.name] !== undefined) {
+                    p.defaultValue = msg.payload.parameterOverrides[p.name];
+                  }
+                }
+              }
+              SimulationPanel.postReachabilityData(reachResult);
+            },
+          );
+          return;
+        }
+
+        await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Simulating with new parameters...",
+            cancellable: false,
+          },
+          async () => {
+            if (!this.client) return;
+            let result: SimulationResult;
+            const isPscad = /\.(pscx|pslx|pswx|psmx)$/i.test(uri);
+
+            if (isPscad) {
+              let docText: string | undefined;
+              try {
+                const activeDoc = vscode.window.activeTextEditor?.document;
+                if (activeDoc && activeDoc.uri.toString() === uri) {
+                  docText = activeDoc.getText();
+                } else {
+                  const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
+                  docText = new TextDecoder().decode(bytes);
+                }
+              } catch {
+                // Fall back if cannot read directly
+              }
+
+              interface PhaseMapEntry {
+                a?: ArrayLike<number> | undefined;
+                b?: ArrayLike<number> | undefined;
+                c?: ArrayLike<number> | undefined;
+              }
+              interface PscadSimulationData {
+                time?: number[] | Float64Array | ArrayLike<number> | undefined;
+                t?: number[] | ArrayLike<number> | undefined;
+                busPhaseVoltages?: Map<string, PhaseMapEntry> | Record<string, PhaseMapEntry> | undefined;
+                busVoltages?: Map<string, ArrayLike<number>> | Record<string, ArrayLike<number>> | undefined;
+                branchPhaseCurrents?: Map<string, PhaseMapEntry> | Record<string, PhaseMapEntry> | undefined;
+                branchCurrents?: Map<string, ArrayLike<number>> | Record<string, ArrayLike<number>> | undefined;
+                comtrade?: { cfg: string; dat: string } | undefined;
+                pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
+                pscadPsout?: Uint8Array | string | undefined;
+              }
+              interface PscadActionResponse extends PscadSimulationData {
+                simulationResult?: PscadSimulationData | undefined;
+                settings?: { timeStepUs?: number | undefined; durationSec?: number | undefined } | undefined;
+                error?: string | undefined;
+                project?: string | undefined;
+              }
+
+              const res = await this.client.sendRequest<PscadActionResponse>("modelscript/executeAction", {
+                actionId: "simulate_hybrid_emt",
+                languageId: "pscad",
+                uri,
+                inputs: {
+                  documentText: docText,
+                  durationSec: msg.payload?.stopTime,
+                  timeStepSec: msg.payload?.interval,
+                  exportPsout: true,
+                },
+              });
+
+              const simRes: PscadSimulationData | undefined = res?.simulationResult ?? res;
+              const timeArr: number[] = Array.isArray(simRes?.time)
+                ? simRes.time
+                : simRes?.time instanceof Float64Array || ArrayBuffer.isView(simRes?.time)
+                  ? Array.from(simRes.time as unknown as ArrayLike<number>)
+                  : simRes?.t
+                    ? Array.isArray(simRes.t)
+                      ? simRes.t
+                      : Array.from(simRes.t as unknown as ArrayLike<number>)
+                    : [];
+
+              const stateNames: string[] = [];
+              const yRows: number[][] = [];
+
+              if (simRes?.busPhaseVoltages) {
+                const mapEntries: [string, PhaseMapEntry][] =
+                  simRes.busPhaseVoltages instanceof Map
+                    ? Array.from(simRes.busPhaseVoltages.entries())
+                    : Object.entries(simRes.busPhaseVoltages);
+                for (const [bus, phases] of mapEntries) {
+                  for (const ph of ["a", "b", "c"] as const) {
+                    if (phases?.[ph]) {
+                      stateNames.push(`v_${bus}_${ph}`);
+                      yRows.push(Array.from(phases[ph]));
+                    }
+                  }
+                }
+              } else if (simRes?.busVoltages) {
+                const mapEntries: [string, ArrayLike<number>][] =
+                  simRes.busVoltages instanceof Map
+                    ? Array.from(simRes.busVoltages.entries())
+                    : Object.entries(simRes.busVoltages);
+                for (const [bus, arr] of mapEntries) {
+                  stateNames.push(`v_${bus}`);
+                  yRows.push(Array.from(arr));
+                }
+              }
+
+              if (simRes?.branchPhaseCurrents) {
+                const mapEntries: [string, PhaseMapEntry][] =
+                  simRes.branchPhaseCurrents instanceof Map
+                    ? Array.from(simRes.branchPhaseCurrents.entries())
+                    : Object.entries(simRes.branchPhaseCurrents);
+                for (const [branch, phases] of mapEntries) {
+                  for (const ph of ["a", "b", "c"] as const) {
+                    if (phases?.[ph]) {
+                      stateNames.push(`i_${branch}_${ph}`);
+                      yRows.push(Array.from(phases[ph]));
+                    }
+                  }
+                }
+              } else if (simRes?.branchCurrents) {
+                const mapEntries: [string, ArrayLike<number>][] =
+                  simRes.branchCurrents instanceof Map
+                    ? Array.from(simRes.branchCurrents.entries())
+                    : Object.entries(simRes.branchCurrents);
+                for (const [branch, arr] of mapEntries) {
+                  stateNames.push(`i_${branch}`);
+                  yRows.push(Array.from(arr));
+                }
+              }
+
+              let yMatrix: number[][] = [];
+              if (yRows.length > 0 && timeArr.length > 0) {
+                const nSteps = timeArr.length;
+                const nVars = yRows.length;
+                yMatrix = new Array(nSteps);
+                for (let ti = 0; ti < nSteps; ti++) {
+                  const row = new Array(nVars);
+                  for (let vi = 0; vi < nVars; vi++) {
+                    row[vi] = yRows[vi]![ti] ?? 0;
+                  }
+                  yMatrix[ti] = row;
+                }
+              }
+
+              const dt = timeArr.length > 1 ? timeArr[1]! - timeArr[0]! : (res?.settings?.timeStepUs ?? 50) * 1e-6;
+              const tStop = timeArr[timeArr.length - 1] ?? res?.settings?.durationSec ?? 0.25;
+
+              interface PscadActionResponseWithReport extends PscadActionResponse {
+                simulationReport?: {
+                  status?: "ok" | "degraded" | "rejected" | undefined;
+                  fidelitySummary?: string | undefined;
+                };
+                diagnostics?: { code?: string; message?: string; severity?: string }[];
+              }
+              const typedRes = res as PscadActionResponseWithReport | undefined;
+              const fidelityErr =
+                typedRes?.simulationReport?.status === "rejected"
+                  ? (typedRes.simulationReport.fidelitySummary ??
+                    typedRes.diagnostics?.find((d) => d.code === "P6100" || d.severity === "error")?.message ??
+                    "PSCAD netlist rejected by strict fidelity gate.")
+                  : undefined;
+
+              result = {
+                t: timeArr,
+                y: yMatrix,
+                states: stateNames,
+                parameters: [],
+                experiment: {
+                  startTime: timeArr[0] ?? 0,
+                  stopTime: tStop,
+                  interval: dt,
+                  tolerance: 1e-4,
+                  solver: "Dommel Companion (EMT)",
+                },
+                error: res?.error ?? fidelityErr,
+                comtrade: res?.comtrade ?? simRes?.comtrade,
+                pscadOut: res?.pscadOut ?? simRes?.pscadOut,
+                pscadPsout: res?.pscadPsout ?? simRes?.pscadPsout,
+                projectName: res?.project ?? "pscad_model",
+              };
+            } else {
+              let className = this.targetClassName;
+              if (!className) {
+                const docText = vscode.window.activeTextEditor?.document.getText();
+                if (docText) {
+                  const wm = docText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
+                  const pkg = wm?.[1]?.trim();
+                  const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
+                  if (m?.[1]) {
+                    className = pkg ? `${pkg}.${m[1]}` : m[1];
+                    this.targetClassName = className;
+                  }
+                }
+              }
+              try {
+                const simulateRes = await this.client.sendRequest<SimulationResult>("modelscript/simulate", {
                   uri,
+                  ...(className ? { className } : {}),
                   startTime: msg.payload?.startTime,
                   stopTime: msg.payload?.stopTime,
                   interval: msg.payload?.interval,
@@ -501,221 +1062,28 @@ export class SimulationPanel {
                   atol: msg.payload?.atol,
                   numberOfIntervals: msg.payload?.numberOfIntervals,
                   maxStep: msg.payload?.maxStep,
+                  steadyStateOnly: msg.payload?.steadyStateOnly,
                   parameterOverrides: msg.payload?.parameterOverrides,
+                  sweepConfig: msg.payload?.sweepConfig,
                 });
-                if (reachResult.error) {
-                  vscode.window.showErrorMessage(`Reachability analysis failed: ${reachResult.error}`);
-                  return;
+                if (simulateRes?.error) {
+                  throw new Error(simulateRes.error);
                 }
-                if (reachResult.experiment) {
-                  if (msg.payload?.startTime !== undefined) reachResult.experiment.startTime = msg.payload.startTime;
-                  if (msg.payload?.stopTime !== undefined) reachResult.experiment.stopTime = msg.payload.stopTime;
-                  if (msg.payload?.interval !== undefined) reachResult.experiment.interval = msg.payload.interval;
-                  if (msg.payload?.tolerance !== undefined) reachResult.experiment.tolerance = msg.payload.tolerance;
-                }
-                if (reachResult.parameters && msg.payload?.parameterOverrides) {
-                  for (const p of reachResult.parameters) {
-                    if (msg.payload.parameterOverrides[p.name] !== undefined) {
-                      p.defaultValue = msg.payload.parameterOverrides[p.name];
-                    }
+                result = simulateRes;
+              } catch {
+                const activeDoc = vscode.window.activeTextEditor?.document;
+                const res = await this.client.sendRequest<
+                  Partial<SimulationResult> & {
+                    t?: number[] | Record<string, number> | undefined;
+                    y?: number[][] | Record<string, number[] | Record<string, number>> | undefined;
                   }
-                }
-                SimulationPanel.postReachabilityData(reachResult);
-              },
-            );
-            return;
-          }
-
-          await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: "Simulating with new parameters...",
-              cancellable: false,
-            },
-            async () => {
-              if (!this.client) return;
-              let result: SimulationResult;
-              const isPscad = /\.(pscx|pslx|pswx|psmx)$/i.test(uri);
-
-              if (isPscad) {
-                let docText: string | undefined;
-                try {
-                  const activeDoc = vscode.window.activeTextEditor?.document;
-                  if (activeDoc && activeDoc.uri.toString() === uri) {
-                    docText = activeDoc.getText();
-                  } else {
-                    const bytes = await vscode.workspace.fs.readFile(vscode.Uri.parse(uri));
-                    docText = new TextDecoder().decode(bytes);
-                  }
-                } catch {
-                  // Fall back if cannot read directly
-                }
-
-                interface PhaseMapEntry {
-                  a?: ArrayLike<number> | undefined;
-                  b?: ArrayLike<number> | undefined;
-                  c?: ArrayLike<number> | undefined;
-                }
-                interface PscadSimulationData {
-                  time?: number[] | Float64Array | ArrayLike<number> | undefined;
-                  t?: number[] | ArrayLike<number> | undefined;
-                  busPhaseVoltages?: Map<string, PhaseMapEntry> | Record<string, PhaseMapEntry> | undefined;
-                  busVoltages?: Map<string, ArrayLike<number>> | Record<string, ArrayLike<number>> | undefined;
-                  branchPhaseCurrents?: Map<string, PhaseMapEntry> | Record<string, PhaseMapEntry> | undefined;
-                  branchCurrents?: Map<string, ArrayLike<number>> | Record<string, ArrayLike<number>> | undefined;
-                  comtrade?: { cfg: string; dat: string } | undefined;
-                  pscadOut?: { inf: string; out: { suffix: string; content: string }[] } | undefined;
-                  pscadPsout?: Uint8Array | string | undefined;
-                }
-                interface PscadActionResponse extends PscadSimulationData {
-                  simulationResult?: PscadSimulationData | undefined;
-                  settings?: { timeStepUs?: number | undefined; durationSec?: number | undefined } | undefined;
-                  error?: string | undefined;
-                  project?: string | undefined;
-                }
-
-                const res = await this.client.sendRequest<PscadActionResponse>("modelscript/executeAction", {
-                  actionId: "simulate_hybrid_emt",
-                  languageId: "pscad",
+                >("modelscript/executeAction", {
+                  actionId: "simulate",
+                  languageId: activeDoc?.languageId ?? "modelica",
                   uri,
                   inputs: {
-                    documentText: docText,
-                    durationSec: msg.payload?.stopTime,
-                    timeStepSec: msg.payload?.interval,
-                    exportPsout: true,
-                  },
-                });
-
-                const simRes: PscadSimulationData | undefined = res?.simulationResult ?? res;
-                const timeArr: number[] = Array.isArray(simRes?.time)
-                  ? simRes.time
-                  : simRes?.time instanceof Float64Array || ArrayBuffer.isView(simRes?.time)
-                    ? Array.from(simRes.time as unknown as ArrayLike<number>)
-                    : simRes?.t
-                      ? Array.isArray(simRes.t)
-                        ? simRes.t
-                        : Array.from(simRes.t as unknown as ArrayLike<number>)
-                      : [];
-
-                const stateNames: string[] = [];
-                const yRows: number[][] = [];
-
-                if (simRes?.busPhaseVoltages) {
-                  const mapEntries: [string, PhaseMapEntry][] =
-                    simRes.busPhaseVoltages instanceof Map
-                      ? Array.from(simRes.busPhaseVoltages.entries())
-                      : Object.entries(simRes.busPhaseVoltages);
-                  for (const [bus, phases] of mapEntries) {
-                    for (const ph of ["a", "b", "c"] as const) {
-                      if (phases?.[ph]) {
-                        stateNames.push(`v_${bus}_${ph}`);
-                        yRows.push(Array.from(phases[ph]));
-                      }
-                    }
-                  }
-                } else if (simRes?.busVoltages) {
-                  const mapEntries: [string, ArrayLike<number>][] =
-                    simRes.busVoltages instanceof Map
-                      ? Array.from(simRes.busVoltages.entries())
-                      : Object.entries(simRes.busVoltages);
-                  for (const [bus, arr] of mapEntries) {
-                    stateNames.push(`v_${bus}`);
-                    yRows.push(Array.from(arr));
-                  }
-                }
-
-                if (simRes?.branchPhaseCurrents) {
-                  const mapEntries: [string, PhaseMapEntry][] =
-                    simRes.branchPhaseCurrents instanceof Map
-                      ? Array.from(simRes.branchPhaseCurrents.entries())
-                      : Object.entries(simRes.branchPhaseCurrents);
-                  for (const [branch, phases] of mapEntries) {
-                    for (const ph of ["a", "b", "c"] as const) {
-                      if (phases?.[ph]) {
-                        stateNames.push(`i_${branch}_${ph}`);
-                        yRows.push(Array.from(phases[ph]));
-                      }
-                    }
-                  }
-                } else if (simRes?.branchCurrents) {
-                  const mapEntries: [string, ArrayLike<number>][] =
-                    simRes.branchCurrents instanceof Map
-                      ? Array.from(simRes.branchCurrents.entries())
-                      : Object.entries(simRes.branchCurrents);
-                  for (const [branch, arr] of mapEntries) {
-                    stateNames.push(`i_${branch}`);
-                    yRows.push(Array.from(arr));
-                  }
-                }
-
-                let yMatrix: number[][] = [];
-                if (yRows.length > 0 && timeArr.length > 0) {
-                  const nSteps = timeArr.length;
-                  const nVars = yRows.length;
-                  yMatrix = new Array(nSteps);
-                  for (let ti = 0; ti < nSteps; ti++) {
-                    const row = new Array(nVars);
-                    for (let vi = 0; vi < nVars; vi++) {
-                      row[vi] = yRows[vi]![ti] ?? 0;
-                    }
-                    yMatrix[ti] = row;
-                  }
-                }
-
-                const dt = timeArr.length > 1 ? timeArr[1]! - timeArr[0]! : (res?.settings?.timeStepUs ?? 50) * 1e-6;
-                const tStop = timeArr[timeArr.length - 1] ?? res?.settings?.durationSec ?? 0.25;
-
-                interface PscadActionResponseWithReport extends PscadActionResponse {
-                  simulationReport?: {
-                    status?: "ok" | "degraded" | "rejected" | undefined;
-                    fidelitySummary?: string | undefined;
-                  };
-                  diagnostics?: { code?: string; message?: string; severity?: string }[];
-                }
-                const typedRes = res as PscadActionResponseWithReport | undefined;
-                const fidelityErr =
-                  typedRes?.simulationReport?.status === "rejected"
-                    ? (typedRes.simulationReport.fidelitySummary ??
-                      typedRes.diagnostics?.find((d) => d.code === "P6100" || d.severity === "error")?.message ??
-                      "PSCAD netlist rejected by strict fidelity gate.")
-                    : undefined;
-
-                result = {
-                  t: timeArr,
-                  y: yMatrix,
-                  states: stateNames,
-                  parameters: [],
-                  experiment: {
-                    startTime: timeArr[0] ?? 0,
-                    stopTime: tStop,
-                    interval: dt,
-                    tolerance: 1e-4,
-                    solver: "Dommel Companion (EMT)",
-                  },
-                  error: res?.error ?? fidelityErr,
-                  comtrade: res?.comtrade ?? simRes?.comtrade,
-                  pscadOut: res?.pscadOut ?? simRes?.pscadOut,
-                  pscadPsout: res?.pscadPsout ?? simRes?.pscadPsout,
-                  projectName: res?.project ?? "pscad_model",
-                };
-              } else {
-                let className = this.targetClassName;
-                if (!className) {
-                  const docText = vscode.window.activeTextEditor?.document.getText();
-                  if (docText) {
-                    const wm = docText.match(/^\s*within\s*([a-zA-Z0-9_.]+)\s*;/m);
-                    const pkg = wm?.[1]?.trim();
-                    const m = docText.match(/\b(?:model|block|class|record)\s+([A-Za-z0-9_]+)/);
-                    if (m?.[1]) {
-                      className = pkg ? `${pkg}.${m[1]}` : m[1];
-                      this.targetClassName = className;
-                    }
-                  }
-                }
-                try {
-                  const simulateRes = await this.client.sendRequest<SimulationResult>("modelscript/simulate", {
-                    uri,
-                    ...(className ? { className } : {}),
+                    ...(className ? { name: className } : {}),
+                    documentText: activeDoc?.getText(),
                     startTime: msg.payload?.startTime,
                     stopTime: msg.payload?.stopTime,
                     interval: msg.payload?.interval,
@@ -727,118 +1095,86 @@ export class SimulationPanel {
                     steadyStateOnly: msg.payload?.steadyStateOnly,
                     parameterOverrides: msg.payload?.parameterOverrides,
                     sweepConfig: msg.payload?.sweepConfig,
-                  });
-                  if (simulateRes?.error) {
-                    throw new Error(simulateRes.error);
-                  }
-                  result = simulateRes;
-                } catch {
-                  const activeDoc = vscode.window.activeTextEditor?.document;
-                  const res = await this.client.sendRequest<
-                    Partial<SimulationResult> & {
-                      t?: number[] | Record<string, number> | undefined;
-                      y?: number[][] | Record<string, number[] | Record<string, number>> | undefined;
-                    }
-                  >("modelscript/executeAction", {
-                    actionId: "simulate",
-                    languageId: activeDoc?.languageId ?? "modelica",
-                    uri,
-                    inputs: {
-                      ...(className ? { name: className } : {}),
-                      documentText: activeDoc?.getText(),
-                      startTime: msg.payload?.startTime,
-                      stopTime: msg.payload?.stopTime,
-                      interval: msg.payload?.interval,
-                      solver: msg.payload?.solver,
-                      rtol: msg.payload?.rtol,
-                      atol: msg.payload?.atol,
-                      numberOfIntervals: msg.payload?.numberOfIntervals,
-                      maxStep: msg.payload?.maxStep,
-                      steadyStateOnly: msg.payload?.steadyStateOnly,
-                      parameterOverrides: msg.payload?.parameterOverrides,
-                      sweepConfig: msg.payload?.sweepConfig,
-                    },
-                  });
-                  const rawResY: (number[] | Record<string, number>)[] = Array.isArray(res?.y)
-                    ? res.y
-                    : (Object.values(res?.y || {}) as (number[] | Record<string, number>)[]);
-                  result = {
-                    t: Array.isArray(res?.t) ? res.t : Object.values(res?.t || {}),
-                    y: rawResY.map((row: number[] | Record<string, number>) =>
-                      Array.isArray(row) ? row : Object.values(row),
-                    ),
-                    states: res?.states || [],
-                    parameters: res?.parameters,
-                    experiment: res?.experiment,
-                    error: res?.error,
-                    sweepResults: res?.sweepResults,
-                    telemetry: res?.telemetry,
-                  };
-                }
-              }
-
-              if (result && result.t) {
-                result.t = Array.isArray(result.t) ? result.t : Object.values(result.t);
-              }
-              if (result && result.y) {
-                const rawY = Array.isArray(result.y)
-                  ? result.y
-                  : (Object.values(result.y) as (number[] | Record<string, number>)[]);
-                result.y = rawY.map((row: number[] | Record<string, number>) =>
-                  Array.isArray(row) ? row : Object.values(row),
-                );
-              }
-
-              if (result.error) {
-                vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
-                return;
-              }
-              if (!result.t || result.t.length === 0) {
-                vscode.window.showWarningMessage("Simulation produced no data.");
-                return;
-              }
-
-              // Inject user requested overrides back into the result so the webview preserves them
-              if (result.experiment) {
-                if (msg.payload?.startTime !== undefined) result.experiment.startTime = msg.payload.startTime;
-                if (msg.payload?.stopTime !== undefined) result.experiment.stopTime = msg.payload.stopTime;
-                if (msg.payload?.interval !== undefined) result.experiment.interval = msg.payload.interval;
-                if (msg.payload?.tolerance !== undefined) result.experiment.tolerance = msg.payload.tolerance;
-                if (msg.payload?.solver !== undefined) result.experiment.solver = msg.payload.solver;
-              } else {
-                result.experiment = {
-                  startTime: msg.payload?.startTime,
-                  stopTime: msg.payload?.stopTime,
-                  interval: msg.payload?.interval,
-                  tolerance: msg.payload?.tolerance,
-                  solver: msg.payload?.solver,
+                  },
+                });
+                const rawResY: (number[] | Record<string, number>)[] = Array.isArray(res?.y)
+                  ? res.y
+                  : (Object.values(res?.y || {}) as (number[] | Record<string, number>)[]);
+                result = {
+                  t: Array.isArray(res?.t) ? res.t : Object.values(res?.t || {}),
+                  y: rawResY.map((row: number[] | Record<string, number>) =>
+                    Array.isArray(row) ? row : Object.values(row),
+                  ),
+                  states: res?.states || [],
+                  parameters: res?.parameters,
+                  experiment: res?.experiment,
+                  error: res?.error,
+                  sweepResults: res?.sweepResults,
+                  telemetry: res?.telemetry,
                 };
               }
+            }
 
-              if (result.parameters && msg.payload?.parameterOverrides) {
-                for (const p of result.parameters) {
-                  if (msg.payload.parameterOverrides[p.name] !== undefined) {
-                    p.defaultValue = msg.payload.parameterOverrides[p.name];
-                  }
+            if (result && result.t) {
+              result.t = Array.isArray(result.t) ? result.t : Object.values(result.t);
+            }
+            if (result && result.y) {
+              const rawY = Array.isArray(result.y)
+                ? result.y
+                : (Object.values(result.y) as (number[] | Record<string, number>)[]);
+              result.y = rawY.map((row: number[] | Record<string, number>) =>
+                Array.isArray(row) ? row : Object.values(row),
+              );
+            }
+
+            if (result.error) {
+              vscode.window.showErrorMessage(`Simulation failed: ${result.error}`);
+              return;
+            }
+            if (!result.t || result.t.length === 0) {
+              vscode.window.showWarningMessage("Simulation produced no data.");
+              return;
+            }
+
+            // Inject user requested overrides back into the result so the webview preserves them
+            if (result.experiment) {
+              if (msg.payload?.startTime !== undefined) result.experiment.startTime = msg.payload.startTime;
+              if (msg.payload?.stopTime !== undefined) result.experiment.stopTime = msg.payload.stopTime;
+              if (msg.payload?.interval !== undefined) result.experiment.interval = msg.payload.interval;
+              if (msg.payload?.tolerance !== undefined) result.experiment.tolerance = msg.payload.tolerance;
+              if (msg.payload?.solver !== undefined) result.experiment.solver = msg.payload.solver;
+            } else {
+              result.experiment = {
+                startTime: msg.payload?.startTime,
+                stopTime: msg.payload?.stopTime,
+                interval: msg.payload?.interval,
+                tolerance: msg.payload?.tolerance,
+                solver: msg.payload?.solver,
+              };
+            }
+
+            if (result.parameters && msg.payload?.parameterOverrides) {
+              for (const p of result.parameters) {
+                if (msg.payload.parameterOverrides[p.name] !== undefined) {
+                  p.defaultValue = msg.payload.parameterOverrides[p.name];
                 }
               }
+            }
 
-              this.postResults(result);
-            },
-          );
-        } else if (msg.type === "open3dAnimation" && this.client && this.sourceUri) {
-          // Launch the 3D Multi-Body Animation viewer
-          MultiBodyAnimationPanel.createOrShow(
-            this.extensionUri,
-            this.client,
-            msg.payload.simulationData,
-            this.sourceUri,
-          );
-        }
-      },
-      null,
-      this.disposables,
-    );
+            this.postResults(result);
+          },
+        );
+      } else if (msg.type === "open3dAnimation" && this.client && this.sourceUri) {
+        // Launch the 3D Multi-Body Animation viewer
+        MultiBodyAnimationPanel.createOrShow(
+          this.extensionUri,
+          this.client,
+          msg.payload.simulationData,
+          this.sourceUri,
+        );
+      }
+    };
+    this.disposables.push(attachExtensionWebviewBridge(this.panel.webview, this.bridgeOptions));
   }
 
   /**
@@ -846,19 +1182,66 @@ export class SimulationPanel {
    * to any open 3D CAD or Multi-Body animation panels.
    */
   public postResults(result: SimulationResult) {
-    this.lastResult = result;
+    const enriched: SimulationResult = { ...result };
+    if (!enriched.waterCompliance && enriched.t?.length && enriched.y?.length && enriched.states?.length) {
+      const waterReport = evaluateWaterCompliance(enriched.t, enriched.y, enriched.states);
+      if (waterReport) {
+        enriched.waterCompliance = waterReport;
+      }
+    }
+    if (!enriched.pscadExports && (enriched.comtrade || enriched.pscadOut || enriched.pscadPsout)) {
+      const psoutBase64 =
+        typeof enriched.pscadPsout === "string"
+          ? enriched.pscadPsout
+          : enriched.pscadPsout instanceof Uint8Array
+            ? uint8ArrayToBase64(enriched.pscadPsout)
+            : undefined;
+      enriched.pscadExports = {
+        projectName: enriched.projectName,
+        psoutBase64,
+        comtrade: enriched.comtrade,
+        pscadOut: enriched.pscadOut
+          ? {
+              inf: enriched.pscadOut.inf,
+              files: enriched.pscadOut.out.map((f) => ({ name: f.suffix, content: f.content })),
+            }
+          : undefined,
+      };
+    }
+
+    this.lastResult = enriched;
     this.lastReachabilityData = undefined;
     const isDark =
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Dark ||
       vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrast;
-    this.panel.webview.postMessage({ type: "simulationData", data: result, isDark });
+    this.panel.webview.postMessage({ type: "simulationData", data: enriched, isDark });
 
     // Also forward simulation data to the 3D CAD viewer for animation
-    if (CadViewerPanel.currentPanel && result.t && result.y && result.states) {
-      CadViewerPanel.currentPanel.sendSimulationData(result.t, result.y, result.states);
+    if (CadViewerPanel.currentPanel && enriched.t && enriched.y && enriched.states) {
+      CadViewerPanel.currentPanel.sendSimulationData(enriched.t, enriched.y, enriched.states);
     }
-    if (MultiBodyAnimationPanel.currentPanel && result.t && result.y && result.states) {
-      MultiBodyAnimationPanel.currentPanel.loadData({ t: result.t, y: result.y, states: result.states });
+    if (MultiBodyAnimationPanel.currentPanel && enriched.t && enriched.y && enriched.states) {
+      MultiBodyAnimationPanel.currentPanel.loadData({ t: enriched.t, y: enriched.y, states: enriched.states });
+    }
+  }
+
+  /**
+   * Forward an IEEE 2800-2022 or water/hydraulics domain compliance report to the active simulation panel.
+   */
+  static postComplianceReport(report: unknown, kind: "ieee2800" | "water" = "ieee2800"): void {
+    if (SimulationPanel.currentPanel) {
+      if (SimulationPanel.currentPanel.lastResult) {
+        if (kind === "water") {
+          SimulationPanel.currentPanel.lastResult.waterCompliance = report as WaterComplianceReport;
+        } else {
+          SimulationPanel.currentPanel.lastResult.complianceReport = report;
+        }
+      }
+      SimulationPanel.currentPanel.panel.webview.postMessage({
+        type: "complianceReport",
+        report,
+        kind,
+      });
     }
   }
 
@@ -1769,6 +2152,48 @@ export class SimulationPanel {
     .hud-value {
       font-weight: 600;
     }
+    #stats-drawer {
+      display: none;
+      max-height: 170px;
+      overflow-y: auto;
+      border-top: 1px solid var(--vscode-panel-border, #333);
+      background: var(--vscode-sideBar-background, #252526);
+      padding: 8px 12px;
+      font-size: 11px;
+      font-family: var(--vscode-editor-font-family, monospace);
+      flex: 0 0 auto;
+    }
+    #stats-drawer.visible {
+      display: block;
+    }
+    #stats-drawer table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    #stats-drawer th {
+      text-align: left;
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--vscode-descriptionForeground, #888);
+      border-bottom: 1px solid var(--vscode-panel-border, #333);
+      padding: 3px 6px;
+      position: sticky;
+      top: 0;
+      background: var(--vscode-sideBar-background, #252526);
+    }
+    #stats-drawer td {
+      padding: 3px 6px;
+      border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+      white-space: nowrap;
+    }
+    .stats-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body>
@@ -1873,8 +2298,9 @@ export class SimulationPanel {
     <div id="chart-container">
       <div id="sim-view-tabs" role="tablist" aria-label="Simulation View Tabs">
         <button class="sim-view-tab active" data-sim-tab="waveforms" role="tab" aria-selected="true">Waveforms</button>
+        <button class="sim-view-tab" data-sim-tab="studio" role="tab" aria-selected="false">Studio View</button>
         <button class="sim-view-tab" data-sim-tab="phasor-fft" role="tab" aria-selected="false">Phasor &amp; FFT</button>
-        <button class="sim-view-tab" data-sim-tab="ieee2800" role="tab" aria-selected="false">IEEE 2800</button>
+        <button class="sim-view-tab" data-sim-tab="ieee2800" role="tab" aria-selected="false">Compliance</button>
       </div>
       <div id="sim-tab-waveforms" class="sim-tab-panel active" role="tabpanel">
       <div id="toolbar">
@@ -1937,6 +2363,8 @@ export class SimulationPanel {
 
         <button id="btn-toggle-cursors" title="Toggle measurement cursors A & B to inspect delta-time and delta-y">📐<span class="lbl"> Cursors</span></button>
         <button id="btn-pin-run" class="overlay-only" title="Pin current trajectory as ghost baseline for comparison">📌<span class="lbl"> Pin Run</span></button>
+        <button id="btn-compare-baseline" class="overlay-only" title="Toggle baseline comparison overlay and delta metrics">⚖<span class="lbl"> Compare</span></button>
+        <button id="btn-toggle-stats" title="Toggle signal statistics drawer (min, max, mean, RMS, settling time)">📊<span class="lbl"> Stats</span></button>
 
         <span class="spacer"></span>
 
@@ -1944,6 +2372,8 @@ export class SimulationPanel {
           <button id="btn-export-menu" title="Export or copy results" aria-haspopup="true" aria-expanded="false">⬇<span class="lbl"> Export ▾</span></button>
           <div class="menu-panel" id="export-menu" role="menu">
             <button id="btn-export-csv" role="menuitem" title="Download trajectory as CSV">📥 CSV</button>
+            <button id="btn-export-json" role="menuitem" title="Download trajectory as JSON">{} JSON</button>
+            <button id="btn-export-parquet" role="menuitem" title="Download trajectory as Apache Parquet (.parquet)">📦 Parquet</button>
             <button id="btn-export-comtrade" role="menuitem" style="display: none;" title="Download IEEE C37.111 COMTRADE (.cfg + .dat)">⚡ COMTRADE</button>
             <button id="btn-export-out" role="menuitem" style="display: none;" title="Download PSCAD (.inf + .out)">📄 OUT</button>
             <button id="btn-export-psout" role="menuitem" style="display: none;" title="Download PSCAD V5 Binary Waveform (.psout)">💾 PSOUT</button>
@@ -1962,12 +2392,18 @@ export class SimulationPanel {
       <canvas id="canvas"></canvas>
       <div id="tooltip"></div>
       <div id="cursor-hud"></div>
+      <div id="stats-drawer" aria-label="Signal statistics"></div>
       <div id="placeholder">
         <div class="empty-icon">📈</div>
         <div class="empty-title">No results yet</div>
         <div>Run a simulation to see results</div>
         <button id="btn-empty-simulate">Simulate <kbd>Ctrl+Enter</kbd></button>
       </div>
+      </div>
+      <div id="sim-tab-studio" class="sim-tab-panel" role="tabpanel">
+        <div class="sim-tab-scroll" id="studio-results-container" style="padding: 0;">
+          <div style="padding: 16px; color: var(--vscode-descriptionForeground, #888); font-size: 13px;">Run a simulation to open the shared Ansatz Studio results view.</div>
+        </div>
       </div>
       <div id="sim-tab-phasor-fft" class="sim-tab-panel" role="tabpanel">
         <div class="sim-tab-scroll" id="phasor-fft-container">
@@ -1976,7 +2412,7 @@ export class SimulationPanel {
       </div>
       <div id="sim-tab-ieee2800" class="sim-tab-panel" role="tabpanel">
         <div class="sim-tab-scroll" id="ieee2800-container">
-          <div style="color: var(--vscode-descriptionForeground, #888); font-size: 13px;">Run IEEE 2800-2022 verification to view ride-through compliance results.</div>
+          <div style="color: var(--vscode-descriptionForeground, #888); font-size: 13px;">Run IEEE 2800-2022 or water/hydraulics verification to view domain compliance cards.</div>
         </div>
       </div>
     </div>

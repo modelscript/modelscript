@@ -49,638 +49,176 @@ export const EXAMPLE_INDEX_BY_LANG: ReadonlyMap<string, readonly ExampleIndexEnt
 export const EXAMPLE_INDEX_BY_ID: ReadonlyMap<string, ExampleIndexEntry> = new Map(EXAMPLE_INDEX.map((e) => [e.id, e]));
 
 const chunkLoaders: Record<string, () => Promise<{ default: LoadedLanguageExample[] }>> = {
-  acsl: () =>
-    import("./chunks/acsl.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  adams: () =>
-    import("./chunks/adams.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  ampl: () =>
-    import("./chunks/ampl.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  antimony: () =>
-    import("./chunks/antimony.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  apdl: () =>
-    import("./chunks/apdl.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  apt: () =>
-    import("./chunks/apt.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  arinc429: () =>
-    import("./chunks/arinc429.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  asm: () =>
-    import("./chunks/asm.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  asn1: () =>
-    import("./chunks/asn1.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  aspen: () =>
-    import("./chunks/aspen.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  atopile: () =>
-    import("./chunks/atopile.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  atp: () =>
-    import("./chunks/atp.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  automationml: () =>
-    import("./chunks/automationml.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  autosar: () =>
-    import("./chunks/autosar.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  bngl: () =>
-    import("./chunks/bngl.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  bufr: () =>
-    import("./chunks/bufr.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  c: () =>
-    import("./chunks/c.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  c37118: () =>
-    import("./chunks/c37118.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  cantera: () =>
-    import("./chunks/cantera.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  ccsds: () =>
-    import("./chunks/ccsds.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  cea: () =>
-    import("./chunks/cea.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  cellml: () =>
-    import("./chunks/cellml.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  cfd: () =>
-    import("./chunks/cfd.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  cgmes: () =>
-    import("./chunks/cgmes.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  chemkin: () =>
-    import("./chunks/chemkin.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  cif: () =>
-    import("./chunks/cif.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  comtrade: () =>
-    import("./chunks/comtrade.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "cplex-lp": () =>
-    import("./chunks/cplex-lp.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  csmp: () =>
-    import("./chunks/csmp.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  csv: () =>
-    import("./chunks/csv.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  cyme: () =>
-    import("./chunks/cyme.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  datcom: () =>
-    import("./chunks/datcom.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "dicom-rt": () =>
-    import("./chunks/dicom-rt.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  dnp3: () =>
-    import("./chunks/dnp3.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  doe2: () =>
-    import("./chunks/doe2.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  dxf: () =>
-    import("./chunks/dxf.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  dynamo: () =>
-    import("./chunks/dynamo.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  easy5: () =>
-    import("./chunks/easy5.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  eclipse: () =>
-    import("./chunks/eclipse.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  edif: () =>
-    import("./chunks/edif.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  endf6: () =>
-    import("./chunks/endf6.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  energyplus: () =>
-    import("./chunks/energyplus.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  epanet: () =>
-    import("./chunks/epanet.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  esl: () =>
-    import("./chunks/esl.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  esterel: () =>
-    import("./chunks/esterel.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  fea: () =>
-    import("./chunks/fea.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  febio: () =>
-    import("./chunks/febio.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  fiber: () =>
-    import("./chunks/fiber.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  fits: () =>
-    import("./chunks/fits.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  fortran: () =>
-    import("./chunks/fortran.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gams: () =>
-    import("./chunks/gams.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gaussian: () =>
-    import("./chunks/gaussian.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gcode: () =>
-    import("./chunks/gcode.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gdsii: () =>
-    import("./chunks/gdsii.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  genbank: () =>
-    import("./chunks/genbank.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gensys: () =>
-    import("./chunks/gensys.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gerber: () =>
-    import("./chunks/gerber.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gproms: () =>
-    import("./chunks/gproms.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gpss: () =>
-    import("./chunks/gpss.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  grib: () =>
-    import("./chunks/grib.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gridlabd: () =>
-    import("./chunks/gridlabd.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gtfs: () =>
-    import("./chunks/gtfs.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  gtsuite: () =>
-    import("./chunks/gtsuite.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  hdf4: () =>
-    import("./chunks/hdf4.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "hec-hms": () =>
-    import("./chunks/hec-hms.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "hec-ras": () =>
-    import("./chunks/hec-ras.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  hec1: () =>
-    import("./chunks/hec1.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  hec2: () =>
-    import("./chunks/hec2.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  ibis: () =>
-    import("./chunks/ibis.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  iec104: () =>
-    import("./chunks/iec104.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "ieee-cdf": () =>
-    import("./chunks/ieee-cdf.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  iges: () =>
-    import("./chunks/iges.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  igtl: () =>
-    import("./chunks/igtl.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  ihex: () =>
-    import("./chunks/ihex.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  irig106: () =>
-    import("./chunks/irig106.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "iucr-cif": () =>
-    import("./chunks/iucr-cif.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "jcamp-dx": () =>
-    import("./chunks/jcamp-dx.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  jedec: () =>
-    import("./chunks/jedec.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  jsbsim: () =>
-    import("./chunks/jsbsim.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  kicad: () =>
-    import("./chunks/kicad.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  landgem: () =>
-    import("./chunks/landgem.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  las: () =>
-    import("./chunks/las.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  lps: () =>
-    import("./chunks/lps.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  lsdyna: () =>
-    import("./chunks/lsdyna.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  lustre: () =>
-    import("./chunks/lustre.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  magicdraw: () =>
-    import("./chunks/magicdraw.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  matpower: () =>
-    import("./chunks/matpower.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  mcnp: () =>
-    import("./chunks/mcnp.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  melcor: () =>
-    import("./chunks/melcor.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  mlxtran: () =>
-    import("./chunks/mlxtran.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  modelica: () =>
-    import("./chunks/modelica.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  modelscript: () =>
-    import("./chunks/modelscript.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  modflow: () =>
-    import("./chunks/modflow.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  molfile: () =>
-    import("./chunks/molfile.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  mps: () =>
-    import("./chunks/mps.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  "nasa-cdf": () =>
-    import("./chunks/nasa-cdf.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  nec2: () =>
-    import("./chunks/nec2.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  netcdf: () =>
-    import("./chunks/netcdf.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  nifti: () =>
-    import("./chunks/nifti.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  nmea0183: () =>
-    import("./chunks/nmea0183.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  nmodl: () =>
-    import("./chunks/nmodl.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  nmtran: () =>
-    import("./chunks/nmtran.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  obj: () =>
-    import("./chunks/obj.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  ocpp: () =>
-    import("./chunks/ocpp.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  olga: () =>
-    import("./chunks/olga.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  oneliner: () =>
-    import("./chunks/oneliner.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  openadr: () =>
-    import("./chunks/openadr.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  opendrive: () =>
-    import("./chunks/opendrive.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  opendss: () =>
-    import("./chunks/opendss.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  openscenario: () =>
-    import("./chunks/openscenario.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  opensim: () =>
-    import("./chunks/opensim.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  optical: () =>
-    import("./chunks/optical.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  oscal: () =>
-    import("./chunks/oscal.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  owl2: () =>
-    import("./chunks/owl2.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  pdb: () =>
-    import("./chunks/pdb.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  phreeqc: () =>
-    import("./chunks/phreeqc.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  plcopen: () =>
-    import("./chunks/plcopen.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  plot3d: () =>
-    import("./chunks/plot3d.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  plscadd: () =>
-    import("./chunks/plscadd.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  powerfactory: () =>
-    import("./chunks/powerfactory.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  powerworld: () =>
-    import("./chunks/powerworld.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  pscad: () =>
-    import("./chunks/pscad.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  pslf: () =>
-    import("./chunks/pslf.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  psse: () =>
-    import("./chunks/psse.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  pypsa: () =>
-    import("./chunks/pypsa.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  qif: () =>
-    import("./chunks/qif.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  ran: () =>
-    import("./chunks/ran.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  relap5: () =>
-    import("./chunks/relap5.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  reqif: () =>
-    import("./chunks/reqif.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  rinex: () =>
-    import("./chunks/rinex.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  rocets: () =>
-    import("./chunks/rocets.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  rtds: () =>
-    import("./chunks/rtds.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  sbml: () =>
-    import("./chunks/sbml.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  sbol: () =>
-    import("./chunks/sbol.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  scad: () =>
-    import("./chunks/scad.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  scale: () =>
-    import("./chunks/scale.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  scl: () =>
-    import("./chunks/scl.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  sdl: () =>
-    import("./chunks/sdl.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  sedml: () =>
-    import("./chunks/sedml.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  segy: () =>
-    import("./chunks/segy.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  sel: () =>
-    import("./chunks/sel.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  sima: () =>
-    import("./chunks/sima.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  simpack: () =>
-    import("./chunks/simpack.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  simscript: () =>
-    import("./chunks/simscript.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  simulink: () =>
-    import("./chunks/simulink.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  sinda: () =>
-    import("./chunks/sinda.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  slam: () =>
-    import("./chunks/slam.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  smiles: () =>
-    import("./chunks/smiles.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  sparql: () =>
-    import("./chunks/sparql.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  spice: () =>
-    import("./chunks/spice.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  srec: () =>
-    import("./chunks/srec.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  ssp: () =>
-    import("./chunks/ssp.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  step: () =>
-    import("./chunks/step.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  stl: () =>
-    import("./chunks/stl.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  swmm: () =>
-    import("./chunks/swmm.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  sysml2: () =>
-    import("./chunks/sysml2.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "three-mf": () =>
-    import("./chunks/three-mf.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  topas: () =>
-    import("./chunks/topas.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  touchstone: () =>
-    import("./chunks/touchstone.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  tough: () =>
-    import("./chunks/tough.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  trasys: () =>
-    import("./chunks/trasys.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  trnsys: () =>
-    import("./chunks/trnsys.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  twentysim: () =>
-    import("./chunks/twentysim.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  urdf: () =>
-    import("./chunks/urdf.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  usd: () =>
-    import("./chunks/usd.json", { with: { type: "json" } }) as unknown as Promise<{ default: LoadedLanguageExample[] }>,
-  "usgs-dem": () =>
-    import("./chunks/usgs-dem.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  verilog: () =>
-    import("./chunks/verilog.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  "verilog-a": () =>
-    import("./chunks/verilog-a.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  vhdl: () =>
-    import("./chunks/vhdl.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
-  waterml: () =>
-    import("./chunks/waterml.json", { with: { type: "json" } }) as unknown as Promise<{
-      default: LoadedLanguageExample[];
-    }>,
+  acsl: () => import("./chunks/acsl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  adams: () => import("./chunks/adams.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  ampl: () => import("./chunks/ampl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  antimony: () => import("./chunks/antimony.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  apdl: () => import("./chunks/apdl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  apt: () => import("./chunks/apt.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  arinc429: () => import("./chunks/arinc429.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  asm: () => import("./chunks/asm.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  asn1: () => import("./chunks/asn1.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  aspen: () => import("./chunks/aspen.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  atopile: () => import("./chunks/atopile.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  atp: () => import("./chunks/atp.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  automationml: () => import("./chunks/automationml.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  autosar: () => import("./chunks/autosar.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  bngl: () => import("./chunks/bngl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  bufr: () => import("./chunks/bufr.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  c: () => import("./chunks/c.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  c37118: () => import("./chunks/c37118.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  cantera: () => import("./chunks/cantera.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  ccsds: () => import("./chunks/ccsds.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  cea: () => import("./chunks/cea.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  cellml: () => import("./chunks/cellml.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  cfd: () => import("./chunks/cfd.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  cgmes: () => import("./chunks/cgmes.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  chemkin: () => import("./chunks/chemkin.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  cif: () => import("./chunks/cif.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  comtrade: () => import("./chunks/comtrade.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "cplex-lp": () => import("./chunks/cplex-lp.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  csmp: () => import("./chunks/csmp.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  csv: () => import("./chunks/csv.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  cyme: () => import("./chunks/cyme.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  datcom: () => import("./chunks/datcom.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "dicom-rt": () => import("./chunks/dicom-rt.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  dnp3: () => import("./chunks/dnp3.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  doe2: () => import("./chunks/doe2.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  dxf: () => import("./chunks/dxf.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  dynamo: () => import("./chunks/dynamo.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  easy5: () => import("./chunks/easy5.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  eclipse: () => import("./chunks/eclipse.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  edif: () => import("./chunks/edif.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  endf6: () => import("./chunks/endf6.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  energyplus: () => import("./chunks/energyplus.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  epanet: () => import("./chunks/epanet.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  esl: () => import("./chunks/esl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  esterel: () => import("./chunks/esterel.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  fea: () => import("./chunks/fea.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  febio: () => import("./chunks/febio.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  fiber: () => import("./chunks/fiber.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  fits: () => import("./chunks/fits.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  fortran: () => import("./chunks/fortran.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gams: () => import("./chunks/gams.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gaussian: () => import("./chunks/gaussian.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gcode: () => import("./chunks/gcode.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gdsii: () => import("./chunks/gdsii.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  genbank: () => import("./chunks/genbank.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gensys: () => import("./chunks/gensys.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gerber: () => import("./chunks/gerber.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gproms: () => import("./chunks/gproms.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gpss: () => import("./chunks/gpss.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  grib: () => import("./chunks/grib.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gridlabd: () => import("./chunks/gridlabd.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gtfs: () => import("./chunks/gtfs.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  gtsuite: () => import("./chunks/gtsuite.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  hdf4: () => import("./chunks/hdf4.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "hec-hms": () => import("./chunks/hec-hms.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "hec-ras": () => import("./chunks/hec-ras.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  hec1: () => import("./chunks/hec1.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  hec2: () => import("./chunks/hec2.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  ibis: () => import("./chunks/ibis.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  iec104: () => import("./chunks/iec104.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "ieee-cdf": () => import("./chunks/ieee-cdf.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  iges: () => import("./chunks/iges.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  igtl: () => import("./chunks/igtl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  ihex: () => import("./chunks/ihex.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  irig106: () => import("./chunks/irig106.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "iucr-cif": () => import("./chunks/iucr-cif.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "jcamp-dx": () => import("./chunks/jcamp-dx.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  jedec: () => import("./chunks/jedec.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  jsbsim: () => import("./chunks/jsbsim.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  kicad: () => import("./chunks/kicad.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  landgem: () => import("./chunks/landgem.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  las: () => import("./chunks/las.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  lps: () => import("./chunks/lps.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  lsdyna: () => import("./chunks/lsdyna.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  lustre: () => import("./chunks/lustre.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  magicdraw: () => import("./chunks/magicdraw.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  matpower: () => import("./chunks/matpower.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  mcnp: () => import("./chunks/mcnp.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  melcor: () => import("./chunks/melcor.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  mlxtran: () => import("./chunks/mlxtran.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  modelica: () => import("./chunks/modelica.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  modelscript: () => import("./chunks/modelscript.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  modflow: () => import("./chunks/modflow.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  molfile: () => import("./chunks/molfile.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  mps: () => import("./chunks/mps.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "nasa-cdf": () => import("./chunks/nasa-cdf.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  nec2: () => import("./chunks/nec2.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  netcdf: () => import("./chunks/netcdf.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  nifti: () => import("./chunks/nifti.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  nmea0183: () => import("./chunks/nmea0183.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  nmodl: () => import("./chunks/nmodl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  nmtran: () => import("./chunks/nmtran.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  obj: () => import("./chunks/obj.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  ocpp: () => import("./chunks/ocpp.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  olga: () => import("./chunks/olga.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  oneliner: () => import("./chunks/oneliner.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  openadr: () => import("./chunks/openadr.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  opendrive: () => import("./chunks/opendrive.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  opendss: () => import("./chunks/opendss.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  openscenario: () => import("./chunks/openscenario.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  opensim: () => import("./chunks/opensim.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  optical: () => import("./chunks/optical.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  oscal: () => import("./chunks/oscal.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  owl2: () => import("./chunks/owl2.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  pdb: () => import("./chunks/pdb.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  phreeqc: () => import("./chunks/phreeqc.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  plcopen: () => import("./chunks/plcopen.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  plot3d: () => import("./chunks/plot3d.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  plscadd: () => import("./chunks/plscadd.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  powerfactory: () => import("./chunks/powerfactory.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  powerworld: () => import("./chunks/powerworld.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  pscad: () => import("./chunks/pscad.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  pslf: () => import("./chunks/pslf.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  psse: () => import("./chunks/psse.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  pypsa: () => import("./chunks/pypsa.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  qif: () => import("./chunks/qif.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  ran: () => import("./chunks/ran.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  relap5: () => import("./chunks/relap5.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  reqif: () => import("./chunks/reqif.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  rinex: () => import("./chunks/rinex.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  rocets: () => import("./chunks/rocets.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  rtds: () => import("./chunks/rtds.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sbml: () => import("./chunks/sbml.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sbol: () => import("./chunks/sbol.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  scad: () => import("./chunks/scad.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  scale: () => import("./chunks/scale.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  scl: () => import("./chunks/scl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sdl: () => import("./chunks/sdl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sedml: () => import("./chunks/sedml.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  segy: () => import("./chunks/segy.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sel: () => import("./chunks/sel.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sima: () => import("./chunks/sima.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  simpack: () => import("./chunks/simpack.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  simscript: () => import("./chunks/simscript.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  simulink: () => import("./chunks/simulink.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sinda: () => import("./chunks/sinda.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  slam: () => import("./chunks/slam.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  smiles: () => import("./chunks/smiles.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sparql: () => import("./chunks/sparql.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  spice: () => import("./chunks/spice.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  srec: () => import("./chunks/srec.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  ssp: () => import("./chunks/ssp.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  step: () => import("./chunks/step.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  stl: () => import("./chunks/stl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  swmm: () => import("./chunks/swmm.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  sysml2: () => import("./chunks/sysml2.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "three-mf": () => import("./chunks/three-mf.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  topas: () => import("./chunks/topas.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  touchstone: () => import("./chunks/touchstone.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  tough: () => import("./chunks/tough.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  trasys: () => import("./chunks/trasys.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  trnsys: () => import("./chunks/trnsys.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  twentysim: () => import("./chunks/twentysim.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  urdf: () => import("./chunks/urdf.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  usd: () => import("./chunks/usd.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "usgs-dem": () => import("./chunks/usgs-dem.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  verilog: () => import("./chunks/verilog.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  "verilog-a": () => import("./chunks/verilog-a.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  vhdl: () => import("./chunks/vhdl.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
+  waterml: () => import("./chunks/waterml.json") as unknown as Promise<{ default: LoadedLanguageExample[] }>,
 };
 
 const loadedLangCache = new Map<string, LoadedLanguageExample[]>();

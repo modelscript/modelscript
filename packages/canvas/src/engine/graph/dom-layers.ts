@@ -327,19 +327,55 @@ export function syncAlignmentGuidesDom(guidesG: SVGGElement | null, guides: Alig
   }
 }
 
-export function syncMagnetHighlightsDom(nodesG: SVGGElement | null, preview: WiringPreview | null): void {
+export function syncMagnetHighlightsDom(
+  nodesG: SVGGElement | null,
+  preview: WiringPreview | null,
+  canConnect?: (sourceNodeId: string, sourcePortId: string, targetNodeId: string, targetPortId: string) => boolean,
+): void {
   if (!nodesG) return;
+  nodesG.classList?.toggle("ms-wiring-active", Boolean(preview));
   const ports = nodesG.querySelectorAll(".ms-port");
   ports.forEach((el) => {
+    el.classList.remove("ms-magnet-source");
     el.classList.remove("ms-magnet-available");
     el.classList.remove("ms-magnet-adsorbed");
+    el.classList.remove("ms-magnet-incompatible");
     if (!preview) return;
     const cellId = el.closest?.("[data-cell-id]")?.getAttribute("data-cell-id");
     const portId = el.getAttribute("port") ?? el.getAttribute("port-id");
-    if (preview.snappedTarget && preview.snappedTarget.nodeId === cellId && preview.snappedTarget.portId === portId) {
+    if (!cellId || !portId) return;
+    if (cellId === preview.sourceNodeId && portId === preview.sourcePortId) {
+      el.classList.add("ms-magnet-source");
+    } else if (
+      preview.snappedTarget &&
+      preview.snappedTarget.nodeId === cellId &&
+      preview.snappedTarget.portId === portId
+    ) {
       el.classList.add("ms-magnet-adsorbed");
-    } else if (cellId !== preview.sourceNodeId || portId !== preview.sourcePortId) {
-      el.classList.add("ms-magnet-available");
+    } else {
+      const ok = canConnect ? canConnect(preview.sourceNodeId, preview.sourcePortId, cellId, portId) : true;
+      el.classList.add(ok ? "ms-magnet-available" : "ms-magnet-incompatible");
+    }
+  });
+}
+
+export function syncHoveredPortDom(
+  nodesG: SVGGElement | null,
+  hoveredPort: { nodeId: string; portId: string } | null,
+): void {
+  if (!nodesG) return;
+  const ports = nodesG.querySelectorAll(".ms-port");
+  ports.forEach((el) => {
+    if (!hoveredPort) {
+      el.classList.remove("ms-port-hover");
+      return;
+    }
+    const cellId = el.closest?.("[data-cell-id]")?.getAttribute("data-cell-id");
+    const portId = el.getAttribute("port") ?? el.getAttribute("port-id");
+    if (cellId === hoveredPort.nodeId && portId === hoveredPort.portId) {
+      el.classList.add("ms-port-hover");
+    } else {
+      el.classList.remove("ms-port-hover");
     }
   });
 }

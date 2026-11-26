@@ -64,6 +64,126 @@ function extractDomainSummaryFromZip(zip: AdmZip): Record<string, { files: strin
   return domains;
 }
 
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+
+function normalizeEd25519PublicKeyForInstall(rawKey: string): crypto.KeyObject | null {
+  try {
+    const str = rawKey.replace(/\\n/g, "\n").trim();
+
+    // 1. PEM SPKI
+    if (str.includes("-----BEGIN PUBLIC KEY-----")) {
+      return crypto.createPublicKey(str);
+    }
+
+    // 2. OpenSSH "ssh-ed25519 AAAA... [comment]"
+    if (str.startsWith("ssh-ed25519 ")) {
+      const parts = str.split(/\s+/);
+      if (parts[1]) {
+        const wireBytes = Buffer.from(parts[1], "base64");
+        if (wireBytes.length >= 51) {
+          const rawPubkey = wireBytes.subarray(wireBytes.length - 32);
+          const spkiDer = Buffer.concat([ED25519_SPKI_PREFIX, rawPubkey]);
+          return crypto.createPublicKey({ key: spkiDer, format: "der", type: "spki" });
+        }
+      }
+    }
+
+    // 3. Raw 64-char hex or "ed25519:<64-char hex>"
+    const hexCandidate = str.startsWith("ed25519:") ? str.slice("ed25519:".length).trim() : str;
+    if (/^[0-9a-fA-F]{64}$/.test(hexCandidate)) {
+      const rawPubkey = Buffer.from(hexCandidate, "hex");
+      const spkiDer = Buffer.concat([ED25519_SPKI_PREFIX, rawPubkey]);
+      return crypto.createPublicKey({ key: spkiDer, format: "der", type: "spki" });
+    }
+
+    // 4. Base64-encoded SPKI DER (44 bytes) or raw 32-byte Ed25519 public key
+    const b64Bytes = Buffer.from(str, "base64");
+    if (b64Bytes.length === 44 && b64Bytes.subarray(0, 12).equals(ED25519_SPKI_PREFIX)) {
+      return crypto.createPublicKey({ key: b64Bytes, format: "der", type: "spki" });
+    }
+    if (b64Bytes.length === 32) {
+      const spkiDer = Buffer.concat([ED25519_SPKI_PREFIX, b64Bytes]);
+      return crypto.createPublicKey({ key: spkiDer, format: "der", type: "spki" });
+    }
+  } catch {
+    // Fall through to null
+  }
+  return null;
+}
+
+export interface VerifyDownloadedPackageSignatureOptions {
+  buffer: Buffer;
+  contentHash: string;
+  signature: string;
+  publicKey: string;
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+}
+
+/**
+ * Verifies an Ed25519 package signature returned via `X-Package-Signature` and
+ * `X-Package-Public-Key` headers against the downloaded archive and its SHA-256 digest
+ * (matching `apps/api/src/util/package-signature.ts` signing formats).
+ */
+export function verifyDownloadedPackageSignature(options: VerifyDownloadedPackageSignatureOptions): {
+  valid: boolean;
+  error?: string;
+} {
+  const { buffer, contentHash, signature, publicKey, packageName, packageVersion } = options;
+
+  const keyObj = normalizeEd25519PublicKeyForInstall(publicKey);
+  if (!keyObj) {
+    return { valid: false, error: "Unable to parse Ed25519 public key from X-Package-Public-Key header" };
+  }
+
+  const trimmedSig = signature.trim();
+  const candidateSignatures: Buffer[] = [];
+  try {
+    const b64 = Buffer.from(trimmedSig, "base64");
+    if (b64.length === 64) {
+      candidateSignatures.push(b64);
+    }
+  } catch {
+    // ignore
+  }
+  if (/^[0-9a-fA-F]{128}$/.test(trimmedSig)) {
+    const hex = Buffer.from(trimmedSig, "hex");
+    if (hex.length === 64) {
+      candidateSignatures.push(hex);
+    }
+  }
+
+  if (candidateSignatures.length === 0) {
+    return { valid: false, error: "Invalid Ed25519 signature encoding (expected 64-byte base64 or hex)" };
+  }
+
+  const cleanHex = contentHash.toLowerCase().replace(/^sha256:/, "");
+  const formattedHash = `sha256:${cleanHex}`;
+
+  const candidateMessages: Buffer[] = [Buffer.from(formattedHash, "utf8"), Buffer.from(cleanHex, "utf8")];
+  if (/^[0-9a-fA-F]{64}$/.test(cleanHex)) {
+    candidateMessages.push(Buffer.from(cleanHex, "hex"));
+  }
+  if (packageName && packageVersion) {
+    candidateMessages.push(Buffer.from(`package:${packageName}@${packageVersion}:${formattedHash}`, "utf8"));
+  }
+  candidateMessages.push(buffer);
+
+  for (const sigBuf of candidateSignatures) {
+    for (const msgBuf of candidateMessages) {
+      try {
+        if (crypto.verify(null, msgBuf, keyObj, sigBuf)) {
+          return { valid: true };
+        }
+      } catch {
+        // Continue trying candidate message formats
+      }
+    }
+  }
+
+  return { valid: false, error: "Ed25519 cryptographic signature does not match downloaded archive or digest" };
+}
+
 export function installLocalArchive(
   archivePath: string,
   cwd: string,
@@ -673,23 +793,44 @@ export const Install: CommandModule<{}, InstallArgs> = {
           const expectedHash = dlRes.headers.get("x-content-sha256");
           if (expectedHash) {
             if (expectedHash.toLowerCase() !== actualHash.toLowerCase()) {
-              console.warn(`Warning: Content hash mismatch! Expected ${expectedHash}, got ${actualHash}`);
+              throw new Error(
+                `Content integrity mismatch for ${pkgName}@${resolvedVersion}: server header reported ${expectedHash}, downloaded ${actualHash}. Aborting install.`,
+              );
             } else {
               console.log(`✓ Verified CAS integrity: ${actualHash.slice(0, 19)}...`);
             }
           }
 
+          const pkgSignature = dlRes.headers.get("x-package-signature");
+          const pkgPublicKey = dlRes.headers.get("x-package-public-key");
+          if (pkgSignature && pkgPublicKey) {
+            const sigCheck = verifyDownloadedPackageSignature({
+              buffer,
+              contentHash: actualHash,
+              signature: pkgSignature,
+              publicKey: pkgPublicKey,
+              packageName: pkgName,
+              packageVersion: resolvedVersion,
+            });
+            if (!sigCheck.valid) {
+              throw new Error(
+                `Ed25519 signature verification failed for ${pkgName}@${resolvedVersion}: ${sigCheck.error ?? "invalid signature"}. Aborting install.`,
+              );
+            }
+            console.log(`✓ Verified Ed25519 signature`);
+          }
+
           // Check lockfile entry if present before extraction
           if (lockedPkg && lockedPkg.integrity) {
             if (!verifyIntegrity(buffer, lockedPkg.integrity)) {
-              if (isFrozen) {
+              if (isFrozen || lockedPkg.version === resolvedVersion) {
                 console.error(
                   `Error: Integrity verification failed for ${pkgName}@${resolvedVersion}: expected ${lockedPkg.integrity}, got ${actualHash}.`,
                 );
                 process.exit(1);
               } else {
                 console.warn(
-                  `⚠️ Lockfile integrity warning for ${pkgName}: expected ${lockedPkg.integrity}, got ${actualHash}`,
+                  `⚠️ Lockfile integrity updated for ${pkgName} (${lockedPkg.version} → ${resolvedVersion}): ${actualHash}`,
                 );
               }
             }

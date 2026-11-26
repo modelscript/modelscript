@@ -159,11 +159,11 @@ The official extension turns VS Code or Cursor into a complete multi-domain mode
 1. Open VS Code and open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 2. Search for **`ModelScript`** (`modelscript.modelscript`) and click **Install**.
 
-The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 105 documented engineering formats (106 total monorepo packages), interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
+The extension bundles the native WebAssembly Language Server (`@modelscript/lsp`), real-time diagnostics across all 169 documented engineering formats, interactive schematic and Bode plot panels, the 3D WebGL CAD viewer with formal verification overlays, and the DAP time-travel simulation debugger.
 
 ### 4. AI Coding Assistants & MCP Server (`@modelscript/mcp`)
 
-Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **121 static deterministic engineering tools** over the Model Context Protocol:
+Connect AI agents (Claude Code, Claude Desktop, Cursor, Windsurf, or custom orchestrators) to ModelScript's **124 static deterministic engineering tools** over the Model Context Protocol:
 
 ```bash
 # Register @modelscript/mcp in Claude Code with a single command
@@ -185,19 +185,13 @@ For **Cursor** (`.cursor/mcp.json`), **Claude Desktop**, or **VS Code**, add the
 
 See the [AI Agents & MCP Workflows Guide](./ai-agents.md) for closed-loop synthesis recipes and remote SSE gateway configuration.
 
-### 5. Native Desktop Studio (Tauri v2)
+### 5. Offline & Air-Gapped Desktop Workflows
 
-For air-gapped networks, classified labs, or hardware-in-the-loop (HIL) benches, download the standalone native desktop application (`@modelscript/desktop`) from [GitHub Releases](https://github.com/modelscript/modelscript/releases):
+For air-gapped networks, classified labs, or hardware-in-the-loop (HIL) benches, use the **VS Code Extension** (`.vsix` offline bundle), the **Ansatz Web Editor PWA** (installable from Chromium/Edge with offline WASM caching), or the **Air-Gapped Intranet Appliance** container below. Standalone native desktop installers (`.AppImage`, `.dmg`, `.msi`) are planned for a future release.
 
-- **Linux**: Standalone `.AppImage` or Debian/Ubuntu `.deb` packages.
-- **macOS**: Universal Apple Silicon / Intel `.dmg` disk image.
-- **Windows**: 64-bit `.msi` installer or portable `.exe`.
+### 6. Containerized Ansatz Network & Simulation Server (Community & Enterprise Editions)
 
-The desktop studio embeds offline WebAssembly GLR parsers, local SQLite artifact caching, and native serial/UDP bridges for real-time HIL testing.
-
-### 6. Containerized Hub & Simulation Server (Community & Enterprise Editions)
-
-Deploy the self-hosted ModelScript Hub, package registry, REST/GraphQL/SPARQL APIs, and multi-tenant MCP gateway via Docker in either **Community Edition** (`MSX_EDITION=ce`, pure `AGPL-3.0-or-later` open-core) or **Enterprise Edition** (`MSX_EDITION=ee`, with SSO/SAML, RBAC, Slurm HPC, and NERC CIP / FERC CEII compliance):
+Deploy the self-hosted Ansatz Network, package registry, REST/GraphQL/SPARQL APIs, and multi-tenant MCP gateway via Docker in either **Community Edition** (`MSX_EDITION=ce`, pure `AGPL-3.0-or-later` open-core) or **Enterprise Edition** (`MSX_EDITION=ee`, with SSO/SAML, RBAC, Slurm HPC, and NERC CIP / FERC CEII compliance):
 
 ```bash
 # Option A: Community Edition (pure AGPL-3.0-or-later open-core, zero ee/ code)
@@ -249,7 +243,7 @@ pnpm run dev           # Start API backend, LSP workers, and Studio
 ## Next Steps
 
 - Follow the **[Getting Started Tutorial](./getting-started.md)** to build, verify, simulate, and export your first connected multi-domain model.
-- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 146 registered `msx` commands.
+- Explore **[CLI Overview](../cli/overview.md)** for global flags, environment variables, and all 178 registered `msx` commands.
 
 ================================================================================
 DOCUMENT: Getting Started
@@ -474,7 +468,7 @@ msx dhf status drone_specs.sysml DroneSimulation.mo
 
 ## Next Steps
 
-- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 105 documented engineering formats (106 total monorepo packages) and cross-domain projections.
+- **[Polyglot Languages Overview](../languages/overview.md)** — Explore all 169 documented engineering formats and cross-domain projections.
 - **[AI Agents & MCP Workflows](./ai-agents.md)** — Automate closed-loop synthesis, TGG reconciliation, and RTM auditing with AI agents.
 - **[CI/CD & GitHub Actions](./ci-cd.md)** — Gate pull requests with `msx lint`, `msx verify --format sarif`, `msx pr-diff`, and `msx dhf export`.
 - **[Triple Graph Grammar (TGG) Engine](../architecture/tgg.md)** — Learn how bidirectional synchronization keeps SysML v2 and Modelica aligned.
@@ -734,7 +728,7 @@ flowchart LR
 
 | Stage                      | Command                                        | Output Format                             | Purpose                                                                                                 |
 | :------------------------- | :--------------------------------------------- | :---------------------------------------- | :------------------------------------------------------------------------------------------------------ |
-| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,408+ static syntax, type, unit, and structural rules across 105 documented formats.          |
+| **Static Analysis**        | `msx lint ./models ./requirements`             | `json`, `text`                            | Enforces 1,408+ static syntax, type, unit, and structural rules across 169 documented formats.          |
 | **Cross-Domain Alignment** | `msx polyglot verify .`                        | Terminal / Exit Code                      | Verifies `@satisfies` / `@verifies` bindings and cross-language port compatibility.                     |
 | **Visual PR Review**       | `msx pr-diff --base origin/main`               | `pr-comment`, `visual-svg`, `visual-html` | Generates color-coded schematic diffs (added = green, modified = amber, deleted = red).                 |
 | **Formal Verification**    | `msx verify <Class> <file> --format sarif`     | `sarif`, `junit`, `ctrf`, `html`, `dhf`   | Runs $\text{CDCL}(\mathcal{T})$ SMT, IC3/PDR, and flowpipe proofs; integrates with GitHub Security tab. |
@@ -918,7 +912,7 @@ msx cloud download job_01j8x9k2m ./artifacts
 ## Next Steps
 
 - **[CLI Overview](../cli/overview.md)** — Global flags (`--daemon`), environment variables, and exit code conventions.
-- **[CLI Commands Reference](../cli/commands.md)** — Exhaustive flag tables for all 146 registered `msx` commands.
+- **[CLI Commands Reference](../cli/commands.md)** — Exhaustive flag tables for all 178 registered `msx` commands.
 - **[Standards & Export Formats](../reference/export-formats.md)** — Details on SARIF 2.1.0, FMI 2.0/3.0, SSP, ReqIF, OSLC 3.0, and FDA/ISO DHF bundles.
 
 ================================================================================
@@ -1780,7 +1774,7 @@ CANONICAL URL: https://modelscript.org/ansatz/overview
 While **ModelScript** provides the core command-line toolchain (`msx`), WebAssembly GLR parsers, and linear-memory DAE simulation engine, **Ansatz** serves as the collaborative platform layer. It provides:
 
 1. **A Polyglot Package Registry:** A centralized and federated index for publishing and versioning Modelica, SysML v2, STEP, SBML, and ModelScript libraries with SPDX license auditing and polyglot standard library discovery (`msx stdlib`).
-2. **Federated Engineering Feeds:** W3C ActivityPub-powered social collaboration where engineers share reproducible models and simulation runs across 105 documented engineering formats, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
+2. **Federated Engineering Feeds:** W3C ActivityPub-powered social collaboration where engineers share reproducible models and simulation runs across 169 documented engineering formats, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
 3. **Scholarly Citations & Literature Graph (`/references`):** Integrated OpenAlex, Crossref, BibTeX, and RIS bibliographic hub linking peer-reviewed literature (`[@cite_key]`) directly to executable models, parameters, and verification cases.
 4. **Personal Activity Git Vault:** Every user account is backed by a cryptographically signed, user-owned Git repository vault that versions posts, model snapshots, citations, and annotations for complete data sovereignty and offline Git portability.
 5. **Cloud HPC Simulation Dispatcher:** An orchestration gateway bridging browser-based design with remote Slurm HPC clusters and continuum CAE solvers.
@@ -2051,7 +2045,7 @@ Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-
 
 In conventional social networks, posts consist of plain text, raster images, or static video. In **Ansatz Network**, posts carry **reproducible models**—compact, self-contained model, simulation, and experiment payloads embedded directly inside ActivityStreams 2.0 `Note` or `Article` objects:
 
-1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 105 documented engineering formats (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
+1. **Executable Multi-Physics Models**: Deflate-compressed (`#m=...`) or content-addressed source bundles across any of the 169 documented engineering formats (`Modelica`, `SysML v2`, `PSCAD`, `CIM/CGMES`, `OLGA`, `SPICE`, `URDF`, `OpenSCAD`, `DICOM-RT`).
 2. **Reproducible Simulation Trajectories**: Encapsulated DAE/ODE time-series datasets (`Vega-Lite` / Arrow binary attachments) paired with exact solver tolerances, Pantelides index metrics, and initial conditions.
 3. **Interactive 3D CAD, FEA & CFD Views**: Compressed STEP B-Rep geometries, 3MF surgical guides, or VTK Unstructured Grid (`.vtu`) von Mises stress fields rendered directly in the feed via Three.js and `CanvasContextPool`.
 4. **Semantic Architecture & Schematic Diffs**: Structural AST/DAE diffs (`PolyglotVersionDiffView`) highlighting added, modified, or deleted components and equations across Git revisions.
@@ -2257,7 +2251,7 @@ Engineering simulations for safety-critical aerospace, nuclear, and medical syst
 - **Content-Addressable Storage (SHA-256)**: Every published archive is indexed by its SHA-256 Merkle digest. Modifying a single byte of an equation or parameter table alters the digest and fails lockfile verification.
 - **Detached Ed25519 Publisher Signatures (`--signature`)**: Publishers sign package digests using their registered Ed25519 keys (`msx keys`). During `msx install`, the CLI verifies both the SHA-256 integrity hash and the publisher's cryptographic signature.
 - **SPDX License Compatibility Auditing**: During upload and installation, the registry parses SPDX license expressions (`AGPL-3.0-or-later`, `MPL-2.0`, `Apache-2.0`, `MIT`, or commercial licenses) and warns when a dependency tree mixes incompatible copyleft and proprietary terms.
-- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 105 documented engineering formats can be inspected and synchronized offline via `msx stdlib`.
+- **Polyglot Standard Library Sync (`msx stdlib`)**: Built-in standard libraries across all 169 documented engineering formats can be inspected and synchronized offline via `msx stdlib`.
 
 ---
 
@@ -2676,8 +2670,8 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/cad`           | `packages/cad`           | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, swept-volume clearance, GD&T stack-up, 3D formal verification overlays, Gerber ECAD & PCB router/DRC                       |
 | `@modelscript/diagram`       | `packages/diagram`       | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                                                   |
 | `@modelscript/exchange`      | `packages/exchange`      | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL                                        |
-| `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 105 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
-| `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
+| `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 169 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
+| `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 124 core and domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
 | `@modelscript/sdk`           | `packages/sdk`           | TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels                                                                               |
 | `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and ansatz environments                                                           |
 | `@modelscript/ide-client`    | `packages/ide`           | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                                                       |
@@ -2725,7 +2719,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 
 ### Layer 1: Core Engine & Languages
 
-- **Directories:** `languages/*` (105 documented domain formats / 106 total workspace packages across `Beta` [33], `Alpha` [72], and `Pre-Alpha` [1] tiers) and `packages/{dsl,runtime,solve,simulate,cad,diagram,exchange,lsp,mcp,sdk}`.
+- **Directories:** `languages/*` (169 documented domain formats across `Beta` [96], `Alpha` [72], and `Pre-Alpha` [1] tiers) and `packages/{dsl,runtime,solve,simulate,cad,diagram,exchange,lsp,mcp,sdk}`.
 - **Rule:** Pure computation, formal theory, parsers, and solvers. Zero UI dependencies, zero database dependencies, and zero Express/HTTP servers.
 - **Independence:** Can be compiled and embedded in any JavaScript, Node.js, WebAssembly, or desktop runtime.
 
@@ -6167,7 +6161,7 @@ The `msx` CLI registers **146 commands** organized across **169 documented engin
 | [`fmu`](./commands.md#fmu)                            | `export-fmu`           | Package models into FMI 2.0/3.0 Functional Mock-up Units (`.fmu`) or inspect/import existing FMUs.                                            |
 | [`import-fmu`](./commands.md#import-fmu)              | `fmu-import`           | Unpack an external `.fmu` archive and generate typed Modelica wrapper blocks and SSP bindings.                                                |
 | [`cosim`](./commands.md#cosim)                        | —                      | Orchestrate and inspect distributed FMI/SSP Co-Simulation sessions, participants, and adaptive step optimizers.                               |
-| [`polyglot`](./commands.md#polyglot)                  | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 105 documented formats.     |
+| [`polyglot`](./commands.md#polyglot)                  | —                      | Query cross-language symbol indices, verify digital thread links, and check operational digital twin drift across 169 documented formats.     |
 | [`align`](./commands.md#align)                        | —                      | Reconcile Triple Graph Grammar (TGG) correspondences across SysML v2, Modelica, Spice, and STEP artifacts.                                    |
 | [`sysml`](./commands.md#sysml)                        | —                      | Export, import, check, inspect, and bi-directionally synchronize SysML v2 `.sysml` and Modelica `.mo` models.                                 |
 | [`magicdraw`](./commands.md#magicdraw)                | —                      | Inspect, lint, diff, render diagrams, and migrate MagicDraw / Cameo (`.mdzip`, `.mdxml`, `.xmi`) models to SysML v2, ReqIF, or Modelica.      |
@@ -6273,7 +6267,7 @@ The `msx` CLI registers **146 commands** organized across **169 documented engin
 | [`whoami`](./commands.md#login-logout-whoami)             | —                | Display the currently authenticated user, organization roles, and active registry endpoint.                         |
 | [`token`](./commands.md#token)                            | —                | Manage granular personal access tokens (`create`, `list`, `revoke`).                                                |
 | [`install`](./commands.md#install)                        | `i`, `add`       | Resolve, verify, and install versioned dependencies from the Ansatz Package Registry into `.modelscript/packages/`. |
-| [`stdlib`](./commands.md#stdlib)                          | —                | Browse, search, and bootstrap official standard libraries across all 105 documented engineering formats.            |
+| [`stdlib`](./commands.md#stdlib)                          | —                | Browse, search, and bootstrap official standard libraries across all 169 documented engineering formats.            |
 | [`pack`](./commands.md#pack-publish-unpublish)            | —                | Create a deterministic, SHA-256 content-addressed `.zip` package archive from the workspace.                        |
 | [`publish`](./commands.md#pack-publish-unpublish)         | —                | Sign (Ed25519) and publish a package archive to the Ansatz Package Registry.                                        |
 | [`unpublish`](./commands.md#pack-publish-unpublish)       | —                | Retract or deprecate a published package version from the Ansatz Package Registry.                                  |
@@ -6319,7 +6313,7 @@ CANONICAL URL: https://modelscript.org/cli/commands
 
 # CLI Commands Reference
 
-This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **146 registered commands** across **105 documented engineering formats** (106 total monorepo packages) can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
+This reference documents the core and domain-specific commands, subcommands, and flags registered in `@modelscript/cli` (`apps/cli/src/main.ts` and `apps/cli/src/commands/`). All **178 registered commands** across **169 documented engineering formats** (106 total monorepo packages) can be invoked via `modelscript` or its shorthand alias `msx`, and any command can be accelerated with the global `--daemon` flag.
 
 ---
 
@@ -7010,7 +7004,7 @@ msx pscad verify-ieee2800 SolarPlant_250MW.pscx --tstop 3.0 --step 20us -o ieee2
 
 ### `polyglot`
 
-Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 105 documented engineering formats.
+Queries the unified multi-language `WorkspaceIndex`, verifies cross-domain traceability links (`@satisfies`, `@verifies`, `@allocates`), inspects digital threads, and monitors operational digital twin drift across all 169 documented engineering formats.
 
 ### CLI Command: `polyglot <action>`
 Multi-domain TGG projection, formal verification, and digital thread tracking
@@ -8337,7 +8331,7 @@ Options:
 
 ### `stdlib`
 
-Browses, searches, and bootstraps official standard libraries across all 105 documented engineering formats.
+Browses, searches, and bootstraps official standard libraries across all 169 documented engineering formats.
 
 ### CLI Command: `stdlib [action] [pack]`
 Manage, list, and synchronize polyglot standard libraries across 81 languages
@@ -9095,7 +9089,7 @@ CANONICAL URL: https://modelscript.org/languages/overview
 
 # Polyglot Language Ecosystem
 
-ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **105 documented engineering, scientific, and clinical formats** (106 total workspace language packages) share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
+ModelScript is not a single-language compiler—it is a **polyglot systems engineering framework**. All **169 documented engineering, scientific, and clinical formats** share the same WebAssembly GLR parser compiler (`@modelscript/dsl`), the same `SymbolIndex` and `WorkspaceIndex` architecture, and the same Triple Graph Grammar (TGG) synchronization engine.
 
 ---
 
@@ -31461,7 +31455,7 @@ The official ModelScript extension (`modelscript.modelscript`, source in `apps/i
 
 ### 1. Polyglot Language Server (`@modelscript/lsp`)
 
-A single unified Language Server Protocol instance provides incremental language intelligence across all 105 documented engineering formats (106 total monorepo packages; `.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.mlxtran`, `.3mf`, `.igtl`, and more):
+A single unified Language Server Protocol instance provides incremental language intelligence across all 169 documented engineering formats (`.mo`, `.sysml`, `.kerml`, `.msx`, `.mod`, `.pscx`, `.pswx`, `.raw`, `.dyr`, `.dsl`, `.dgs`, `.epc`, `.dyd`, `.dss`, `.ocpp`, `.oadr`, `.opt`, `.ran`, `.fbr`, `.inp`, `.ras`, `.tough`, `.nam`, `.lgm`, `.gtfs`, `.scad`, `.stp`, `.step`, `.usda`, `.owl`, `.ssp`, `.ssd`, `.ssv`, `.csv`, `.su2`, `.cfg`, `.gbr`, `.qif`, `.oscal.json`, `.aml`, `.osim`, `.rtplan`, `.cellml`, `.mlxtran`, `.3mf`, `.igtl`, and more):
 
 - **Real-Time Diagnostics**: Incremental GLR parsing + Salsa `lint__*` queries + cross-file unit/type checking across 1,408+ static diagnostic rules.
 - **Navigation & Refactoring**: Go-to-Definition, Find All References (across `.sysml` $\leftrightarrow$ `.mo` $\leftrightarrow$ `.msx` boundaries), Workspace Symbol Search, Rename Symbol, and Document Outline.
@@ -32399,7 +32393,7 @@ If you have questions regarding this policy, wish to request written permission 
 
 ## 8. Third-Party Trademarks & Nominative Fair Use
 
-ModelScript supports interoperability, parsing, linting, simulation, and compilation across 105 documented engineering formats (106 total monorepo packages) and file standards.
+ModelScript supports interoperability, parsing, linting, simulation, and compilation across 169 documented engineering formats and file standards.
 
 ### Non-Affiliation & Disclaimers
 

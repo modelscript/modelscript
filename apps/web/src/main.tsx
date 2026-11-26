@@ -7,28 +7,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-import { setConsoleFunction } from "three";
-
-// Suppress upstream THREE.Clock deprecation warning from @react-three/fiber until R3F migrates to THREE.Timer
-if (typeof setConsoleFunction === "function") {
-  setConsoleFunction((type: string, message: unknown, ...params: unknown[]) => {
-    if (
-      type === "warn" &&
-      typeof message === "string" &&
-      (message.includes("Clock: This module has been deprecated") || message.includes("THREE.Clock"))
-    ) {
-      return;
-    }
-    if (type === "log") {
-      console.log(message, ...params);
-    } else if (type === "error") {
-      console.error(message, ...params);
-    } else {
-      console.warn(message, ...params);
-    }
-  });
-}
-
+// Suppress upstream THREE.Clock deprecation warning from @react-three/fiber without eagerly importing three.js
 if (typeof window !== "undefined" && !window.__threeClockWarningFilterInstalled__) {
   window.__threeClockWarningFilterInstalled__ = true;
   const originalWarn = console.warn.bind(console);

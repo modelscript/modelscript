@@ -5,6 +5,7 @@ import { Router as createRouter } from "express";
 import type { LibraryDatabase, OrgRole } from "../database.js";
 import { optionalAuth, requireAuth, requireTokenScope } from "../middleware/auth-middleware.js";
 import { type ObjectSchema, registerOpenApiOperation, validateBody } from "../middleware/validate.js";
+import { isSafeProfileUrl } from "./users.js";
 
 const ORG_AUTH_SECURITY: Array<Record<string, string[]>> = [{ bearerAuth: [] }, { cookieAuth: [] }, { patAuth: [] }];
 
@@ -173,6 +174,11 @@ export function organizationsRouter(database: LibraryDatabase): Router {
         return;
       }
 
+      if (!isSafeProfileUrl(avatarUrl)) {
+        res.status(400).json({ error: "Invalid URL: must be http://, https://, or a relative path" });
+        return;
+      }
+
       const existingOrg = database.getOrganizationBySlug(slug);
       if (existingOrg) {
         res.status(409).json({ error: `Organization with slug '${slug}' already exists` });
@@ -320,6 +326,11 @@ export function organizationsRouter(database: LibraryDatabase): Router {
           ? body.industryPreset
           : undefined;
 
+    if (!isSafeProfileUrl(websiteRaw) || !isSafeProfileUrl(avatarUrlRaw) || !isSafeProfileUrl(bannerUrlRaw)) {
+      res.status(400).json({ error: "Invalid URL: must be http://, https://, or a relative path" });
+      return;
+    }
+
     try {
       const updated = database.updateOrganization(org.id, {
         name: typeof nameRaw === "string" && nameRaw.trim() ? nameRaw.trim() : undefined,
@@ -351,14 +362,23 @@ export function organizationsRouter(database: LibraryDatabase): Router {
    * GET /api/v1/organizations/:slug/members
    *
    * List members of an organization.
+   * Requires authenticated caller to be a member of the organization or an instance admin.
    */
-  router.get("/:slug/members", (req: Request, res: Response): void => {
+  router.get("/:slug/members", requireAuth, (req: Request, res: Response): void => {
     const slug = String(req.params["slug"] ?? "")
       .trim()
       .toLowerCase();
     const org = database.getOrganizationBySlug(slug);
     if (!org) {
       res.status(404).json({ error: `Organization '${slug}' not found` });
+      return;
+    }
+
+    const callerRole = database.getOrganizationMemberRole(org.id, req.user!.id);
+    const isAdmin =
+      req.user!.account_type === "admin" || req.user!.accountType === "admin" || req.user!.role === "admin";
+    if (!isAdmin && !callerRole) {
+      res.status(403).json({ error: "Only organization members can view the member list" });
       return;
     }
 

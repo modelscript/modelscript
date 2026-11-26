@@ -13,7 +13,10 @@ export const gensysDeckGrammar = language({
   name: "GensysDeck",
   word: ($) => $.Identifier,
   extras: ($) => [/\s+/, $.CommentLine],
-  conflicts: ($) => [[$.WheelsetDef], [$.TrackDef]],
+  conflicts: ($) => [
+    [$._OptConicity, $.Identifier],
+    [$._OptProfile, $.Identifier],
+  ],
   lsp: {
     folding: ["SubsystemDef", "BodyDef", "CouplingDef"],
     outline: ["SubsystemDef", "BodyDef", "WheelsetDef", "CouplingDef", "TrackDef"],
@@ -71,9 +74,12 @@ export const gensysDeckGrammar = language({
         field("jz", choice($.NumberLiteral, $.Identifier)),
         field("gauge", choice($.NumberLiteral, $.Identifier)),
         field("radius", choice($.NumberLiteral, $.Identifier)),
-        optional(field("conicity", choice($.NumberLiteral, $.Identifier))),
-        optional(field("profile", choice($.StringLiteral, $.Identifier))),
+        field("conicity", $._OptConicity),
+        field("profile", $._OptProfile),
       ),
+
+    _OptConicity: ($) => optional(choice($.NumberLiteral, $.Identifier)),
+    _OptProfile: ($) => optional(choice($.StringLiteral, $.Identifier)),
 
     BogieDef: ($) =>
       seq(
@@ -122,7 +128,7 @@ export const gensysDeckGrammar = language({
         semanticToken("keyword", "track"),
         field("name", $.Identifier),
         field("gauge", choice($.NumberLiteral, $.Identifier)),
-        optional(field("profile", choice($.StringLiteral, $.Identifier))),
+        field("profile", $._OptProfile),
       ),
 
     SimulationDef: ($) =>

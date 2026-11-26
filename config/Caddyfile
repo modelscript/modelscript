@@ -29,7 +29,16 @@ ide.modelscript.org {
     redir https://ansatz.social/studio{uri} permanent
 }
 
-{$PUBLIC_DOMAIN:localhost}, {$DOCS_DOMAIN:http://docs.localhost} {
+# Canonical 301 redirects from www. subdomains to apex domains
+www.modelscript.org {
+    redir https://modelscript.org{uri} permanent
+}
+
+www.ansatz.social {
+    redir https://ansatz.social{uri} permanent
+}
+
+{$PUBLIC_DOMAIN:localhost}, {$DOCS_DOMAIN:http://docs.localhost}, {$BLOG_DOMAIN:http://blog.localhost} {
     # Encode responses with gzip or zstd
     encode gzip zstd
 

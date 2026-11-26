@@ -17,6 +17,7 @@ import {
   type DiagramNode,
   type DiagramPort,
 } from "@modelscript/diagram/protocol";
+import { scanModelicaStructure } from "@modelscript/modelica/structure-scanner";
 import pako from "pako";
 import { ALL_ANSATZ_LANGUAGES } from "../constants";
 import {
@@ -79,44 +80,16 @@ function nextVersion(uri: string): number {
 }
 
 /**
- * Synchronously extracts the primary simulatable class name from Modelica source code.
- * Prefers a `model`/`block`/`class` with an `experiment(...)` annotation, otherwise the last
- * `model`/`block`/`class` definition in the snippet (since helper components/connectors precede the system model).
+ * Synchronously extracts the primary simulatable class name from Modelica source code
+ * by delegating to `@modelscript/modelica/structure-scanner` (zero regexes in `packages/editor`).
+ * Async callers should prefer `getPrimaryClassName(uri, text)` which queries the WASM GLR CST via LSP.
  */
 export function extractPrimaryModelicaClassName(code: string): string | null {
   if (!code || typeof code !== "string") return null;
-  const cleaned = code.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
-
-  const classRegex =
-    /\b(?:partial\s+|expandable\s+|encapsulated\s+)*(model|block|class|connector|record|package|function|type)\s+([A-Za-z_]\w*)\b/g;
-  const matches: { kind: string; name: string; index: number }[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = classRegex.exec(cleaned)) !== null) {
-    const kind = match[1]!.toLowerCase();
-    const name = match[2]!;
-    matches.push({ kind, name, index: match.index });
-  }
-  if (matches.length === 0) return null;
-
-  // Check if any model/block/class has an experiment(...) annotation before its `end <Name>;`
-  for (const m of matches) {
-    if (m.kind === "model" || m.kind === "block" || m.kind === "class") {
-      const endRegex = new RegExp(`\\bend\\s+${m.name}\\s*;`);
-      const rest = cleaned.slice(m.index);
-      const endMatch = endRegex.exec(rest);
-      const body = endMatch ? rest.slice(0, endMatch.index) : rest;
-      if (/\bexperiment\s*\(/i.test(body)) {
-        return m.name;
-      }
-    }
-  }
-
-  const simulatable = matches.filter((m) => m.kind === "model" || m.kind === "block" || m.kind === "class");
-  if (simulatable.length > 0) {
-    return simulatable[simulatable.length - 1]!.name;
-  }
-
-  return matches[0]!.name;
+  const scanned = scanModelicaStructure(code);
+  const name = scanned.className?.trim();
+  if (!name || name === "Model") return null;
+  return name;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -628,6 +601,53 @@ export async function getCadComponents(
     className,
     documentText,
   });
+}
+
+export async function getCadFeatureTree(
+  uri: string,
+  documentText?: string,
+): Promise<
+  Array<{
+    readonly id: string;
+    readonly kind: "boolean" | "transform" | "primitive" | "loop" | "module";
+    readonly op: string;
+    readonly label: string;
+    readonly line: number;
+    readonly startOffset: number;
+    readonly opOffset: number;
+    readonly modifier: "*" | "!" | "#" | "%" | null;
+    readonly children: Array<unknown>;
+  }>
+> {
+  return (await lsp(inferLanguageIdFromUri(uri))).sendRequest("modelscript/getCadFeatureTree", {
+    uri,
+    documentText,
+  });
+}
+
+export interface DocumentScalarParameter {
+  readonly name: string;
+  readonly value: string;
+  readonly unit?: string | undefined;
+  readonly line: number;
+  readonly startOffset: number;
+  readonly endOffset: number;
+  readonly valueStartOffset: number;
+  readonly valueEndOffset: number;
+}
+
+export async function getDocumentParameters(uri: string, documentText?: string): Promise<DocumentScalarParameter[]> {
+  return (await lsp(inferLanguageIdFromUri(uri))).sendRequest("modelscript/getDocumentParameters", {
+    uri,
+    documentText,
+  });
+}
+
+export async function getPrimaryClassName(uri: string, documentText?: string): Promise<string | null> {
+  const res = await (
+    await lsp(inferLanguageIdFromUri(uri))
+  ).sendRequest<{ className?: string | null }>("modelscript/getPrimaryClassName", { uri, documentText });
+  return res?.className ?? null;
 }
 
 export interface ApplyCadEditParams {
@@ -1591,4 +1611,79 @@ export async function getOwl2ClassHierarchyInAnsatz(uri: string): Promise<Ansatz
   const c = await lsp(inferLanguageIdFromUri(uri) ?? "owl2");
   const res = await c.sendRequest<AnsatzOwl2ClassNode[] | null>("modelscript/owl2/classHierarchy", { uri });
   return Array.isArray(res) ? res : [];
+}
+
+export interface AnsatzRelationalTokenSpan {
+  index: number;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  tokenId: number;
+  groupId: number;
+  relTypeId: number;
+  relSign: number;
+  symbolName?: string | undefined;
+  symbolKind?: string | undefined;
+  ontologyIri?: string | undefined;
+}
+
+export interface AnsatzGeneratorGroupSummary {
+  groupId: number;
+  label: string;
+  primaryRelType: number;
+  tokenCount: number;
+  symbolName?: string | undefined;
+  ontologyIri?: string | undefined;
+  toleranceSpec?: { lower?: number | undefined; upper?: number | undefined; unit?: string | undefined } | undefined;
+}
+
+export interface AnsatzRelationalHypergraphRecord {
+  exampleId: string;
+  uri: string;
+  dialect: string;
+  mInit: number;
+  tokenIds: number[];
+  groupIds: number[];
+  relTypeIds: number[];
+  relSigns: number[];
+  spans: AnsatzRelationalTokenSpan[];
+  groups: AnsatzGeneratorGroupSummary[];
+}
+
+export interface AnsatzHypergraphTokenOverride {
+  tokenIndex?: number | undefined;
+  symbolName?: string | undefined;
+  groupId?: number | undefined;
+  relTypeId?: number | undefined;
+  relSign?: -1 | 0 | 1 | undefined;
+  ontologyIri?: string | undefined;
+  toleranceSpec?: { lower?: number | undefined; upper?: number | undefined; unit?: string | undefined } | undefined;
+}
+
+export interface AnsatzRelationalHypergraphResponse {
+  success: boolean;
+  record?: AnsatzRelationalHypergraphRecord | undefined;
+  cached?: boolean | undefined;
+  error?: string | undefined;
+}
+
+export async function getRelationalHypergraphInAnsatz(
+  uri: string,
+  options?: {
+    source?: string | undefined;
+    dialect?: string | undefined;
+    overrides?: AnsatzHypergraphTokenOverride[] | undefined;
+  },
+): Promise<AnsatzRelationalHypergraphResponse> {
+  const c = await lsp(options?.dialect ?? inferLanguageIdFromUri(uri));
+  return c.sendRequest<AnsatzRelationalHypergraphResponse>("modelscript/getRelationalHypergraph", {
+    uri,
+    ...(options?.source !== undefined ? { source: options.source } : {}),
+    ...(options?.dialect !== undefined ? { dialect: options.dialect } : {}),
+    ...(options?.overrides !== undefined ? { overrides: options.overrides } : {}),
+  });
 }

@@ -78,6 +78,30 @@ export function normalizeCfdGeometry(raw: CfdGeometryPayload, targetSpan = 0.65)
 }
 
 /**
+ * Converts a normalized or raw CFD 3D geometry payload into an LbmVoxelizer-compatible
+ * triangle mesh obstacle positioned inside normalized [0, 1]^3 lattice domain coordinates.
+ */
+export function meshPayloadToLbmObstacle(
+  raw: CfdGeometryPayload,
+  options?: { center?: [number, number, number] | undefined; targetSpan?: number | undefined },
+): { vertices: Float32Array; indices: Uint32Array; inPhysicalUnits: false } {
+  const targetSpan = options?.targetSpan ?? 0.35;
+  const center = options?.center ?? [0.35, 0.5, 0.5];
+  const norm = normalizeCfdGeometry(raw, targetSpan);
+  const vertices = new Float32Array(norm.positions.length);
+  for (let i = 0; i < norm.positions.length; i += 3) {
+    vertices[i] = norm.positions[i]! + center[0];
+    vertices[i + 1] = norm.positions[i + 1]! + center[1];
+    vertices[i + 2] = norm.positions[i + 2]! + center[2];
+  }
+  return {
+    vertices,
+    indices: new Uint32Array(norm.indices),
+    inPhysicalUnits: false,
+  };
+}
+
+/**
  * Extracts surface triangle meshes from an SU2 ASCII mesh deck (.su2).
  * Inspects MARKER_TAG boundary elements, falling back to volume tets surface faces.
  */

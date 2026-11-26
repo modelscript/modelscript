@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import type { LibraryDatabase } from "../database.js";
 import type { JobQueue } from "../jobs.js";
+import { simulateRateLimiter } from "../middleware/rate-limiter.js";
 import {
   assertComputeJobAccess,
   completeComputeJob,
@@ -60,6 +61,7 @@ export function simulateRouter(
   // Request body: { libraryName?: string, libraryVersion?: string, modelName: string, modelSource?: string, dependencies?: { name: string; version: string }[], profile?: string }
   router.post(
     "/simulate",
+    simulateRateLimiter,
     enforceExportCompliance(() => database),
     async (req, res) => {
       const { libraryName, libraryVersion, modelName, modelSource, dependencies = [] } = req.body;
@@ -133,15 +135,9 @@ export function simulateRouter(
       const safeLibVerPart = String(libraryVersion || "0.0").replace(/[^a-zA-Z0-9_.-]/g, "_");
       const safeModelJobPart = String(modelName).replace(/[^a-zA-Z0-9_.-]/g, "_");
       const jobId = `simulate-${safeLibNamePart}-${safeLibVerPart}-${safeModelJobPart}-${crypto.randomUUID()}`;
-      if (userId) {
-        if (jobOwners.size >= 5000) {
-          const oldest = jobOwners.keys().next().value;
-          if (oldest !== undefined) jobOwners.delete(oldest);
-        }
-        jobOwners.set(jobId, userId);
-      }
 
       let dbJobId: number | null = null;
+      const billingActive = Boolean(database && userId && estimatedCost > 0);
       if (database) {
         try {
           dbJobId = database.createJob(
@@ -171,9 +167,22 @@ export function simulateRouter(
           ) {
             return;
           }
-        } catch {
-          // DB tracking is optional
+        } catch (err) {
+          console.error("[SimulateRouter] Failed to create DB job or hold escrow:", err);
+          if (billingActive) {
+            return res.status(503).json({
+              error: "Compute billing service temporarily unavailable. Please try again later.",
+            });
+          }
         }
+      }
+
+      if (userId) {
+        if (jobOwners.size >= 5000) {
+          const oldest = jobOwners.keys().next().value;
+          if (oldest !== undefined) jobOwners.delete(oldest);
+        }
+        jobOwners.set(jobId, userId);
       }
 
       jobQueue.enqueue(jobId, async () => {

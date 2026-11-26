@@ -11,6 +11,7 @@ import ComposeBox from "../components/ComposeBox";
 import { ComposeContext } from "../components/ComposeContext";
 import { AnsatzIcon } from "../components/icons";
 import PostSkeleton from "../components/PostSkeleton";
+import { RlhfArenaFeedSection } from "../components/RlhfArenaFeedSection";
 import { scrollToTop } from "../components/ScrollToTop";
 import Spinner from "../components/Spinner";
 import { VirtualPostList } from "../components/VirtualPostList";
@@ -18,7 +19,7 @@ import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 import { cacheTimelinePosts, getCachedTimelinePosts } from "../util/offline-storage";
 import { usePageTitle } from "../util/title";
-import type { FilterChip } from "./feed";
+import type { FeedTab, FilterChip } from "./feed";
 import {
   ComposePrompt,
   FeedEmptyState,
@@ -44,7 +45,7 @@ const HomeFeedPage: React.FC = () => {
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
   const [posts, setPosts] = useState<FeedPostItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"forYou" | "following" | "federated">("forYou");
+  const [activeTab, setActiveTab] = useState<FeedTab>("forYou");
   const [followingSort, setFollowingSort] = useState<"popular" | "recent">("recent");
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [activeFilter, setActiveFilter] = useState<string>("all");
@@ -78,6 +79,9 @@ const HomeFeedPage: React.FC = () => {
   }, [showSortMenu]);
 
   useEffect(() => {
+    if (activeTab === "rlhfArena") {
+      return;
+    }
     if (!token) {
       setPosts([]);
       setLoading(false);
@@ -260,7 +264,7 @@ const HomeFeedPage: React.FC = () => {
         }}
       >
         <div ref={headerRef} data-tour-id="tour-timeline">
-          {user && (
+          {user && activeTab !== "rlhfArena" && (
             <>
               <ComposePrompt>
                 <ComposeBox
@@ -312,7 +316,9 @@ const HomeFeedPage: React.FC = () => {
         </div>
 
         <div id="feed-tabpanel" role="tabpanel" aria-labelledby={`feed-tab-${activeTab}`}>
-          {loading ? (
+          {activeTab === "rlhfArena" ? (
+            <RlhfArenaFeedSection />
+          ) : loading ? (
             <Box>
               <PostSkeleton />
               <PostSkeleton hasArtifact />

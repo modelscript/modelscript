@@ -1,6 +1,6 @@
 ---
 title: "Ansatz Network Overview"
-description: "Ansatz (ansatz.social) is a federated engineering network and cloud computational platform powered by ModelScript. It extends the local ModelScript compiler and numerical solvers into a collaborati..."
+description: "Ansatz (ansatz.social) is a federated engineering network and cloud platform extending ModelScript's compiler and solvers into a collaborative web workspace."
 ---
 
 # Ansatz Network Overview
@@ -14,7 +14,7 @@ description: "Ansatz (ansatz.social) is a federated engineering network and clou
 While **ModelScript** provides the core command-line toolchain (`msx`), WebAssembly GLR parsers, and linear-memory DAE simulation engine, **Ansatz** serves as the collaborative platform layer. It provides:
 
 1. **A Polyglot Package Registry:** A centralized and federated index for publishing and versioning Modelica, SysML v2, STEP, SBML, and ModelScript libraries with SPDX license auditing and polyglot standard library discovery (`msx stdlib`).
-2. **Federated Engineering Feeds:** W3C ActivityPub-powered social collaboration where engineers share reproducible models and simulation runs across 105 documented engineering formats, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
+2. **Federated Engineering Feeds:** W3C ActivityPub-powered social collaboration where engineers share reproducible models and simulation runs across 169 documented engineering formats, 3D CAD/FEA/CFD snapshots, and schematic diffs across independent nodes.
 3. **Scholarly Citations & Literature Graph (`/references`):** Integrated OpenAlex, Crossref, BibTeX, and RIS bibliographic hub linking peer-reviewed literature (`[@cite_key]`) directly to executable models, parameters, and verification cases.
 4. **Personal Activity Git Vault:** Every user account is backed by a cryptographically signed, user-owned Git repository vault that versions posts, model snapshots, citations, and annotations for complete data sovereignty and offline Git portability.
 5. **Cloud HPC Simulation Dispatcher:** An orchestration gateway bridging browser-based design with remote Slurm HPC clusters and continuum CAE solvers.

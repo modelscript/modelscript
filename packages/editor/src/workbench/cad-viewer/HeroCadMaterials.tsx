@@ -713,7 +713,7 @@ export const SplitSectionGeometryPasses: React.FC<{
 }) => {
   const edgeGeometry = useMemo(() => {
     if (!showWireOpposite) return null;
-    return new THREE.EdgesGeometry(geometry, 22);
+    return buildCleanCreaseEdgeGeometry(geometry, 32);
   }, [geometry, showWireOpposite]);
 
   useEffect(() => {
@@ -1013,6 +1013,295 @@ export const Gdt3dOverlay: React.FC<{
  * Renders crisp Onshape-style CAD feature/crease edges over shaded geometry.
  * Automatically disposes the derived EdgesGeometry on unmount or geometry change.
  */
+/**
+ * Extracts crisp CAD crease edges from a `BufferGeometry`, welding sub-tolerance
+ * CSG boolean vertex drift, ignoring degenerate sliver triangles, and suppressing
+ * stray unpaired T-junction cracks on closed solids so curved cylinders and
+ * boolean bolt-hole faces render cleanly without black scratch artifacts.
+ */
+export function buildCleanCreaseEdgeGeometry(
+  geometry: THREE.BufferGeometry,
+  thresholdAngle = 32,
+): THREE.BufferGeometry {
+  const posAttr = geometry.getAttribute("position");
+  if (!posAttr || posAttr.count < 3) {
+    return new THREE.BufferGeometry();
+  }
+
+  geometry.computeBoundingBox();
+  const bb = geometry.boundingBox;
+  const diag = bb ? bb.min.distanceTo(bb.max) : 1;
+  const weldScale = Math.max(1e-4, diag * 5e-4);
+  const invWeld = 1 / weldScale;
+  const minAreaSq = weldScale * weldScale * 0.25;
+  const planeTol = Math.max(weldScale * 3, diag * 1.5e-3);
+  const invPlane = 1 / planeTol;
+  const thresholdDot = Math.cos((thresholdAngle * Math.PI) / 180);
+
+  const indexAttr = geometry.getIndex();
+  const triCount = indexAttr ? Math.floor(indexAttr.count / 3) : Math.floor(posAttr.count / 3);
+
+  const quantizeKey = (x: number, y: number, z: number): string =>
+    `${Math.round(x * invWeld)},${Math.round(y * invWeld)},${Math.round(z * invWeld)}`;
+
+  const canonicalPlane = (nx: number, ny: number, nz: number, px: number, py: number, pz: number) => {
+    let cx = nx;
+    let cy = ny;
+    let cz = nz;
+    if (cx < -1e-4 || (Math.abs(cx) <= 1e-4 && (cy < -1e-4 || (Math.abs(cy) <= 1e-4 && cz < 0)))) {
+      cx = -cx;
+      cy = -cy;
+      cz = -cz;
+    }
+    const d = cx * px + cy * py + cz * pz;
+    const nKey = `${Math.round(cx * 16)},${Math.round(cy * 16)},${Math.round(cz * 16)}`;
+    const dBin = Math.round(d * invPlane);
+    return { cx, cy, cz, d, nKey, dBin };
+  };
+
+  interface PlaneTri {
+    triIdx: number;
+    ax: number;
+    ay: number;
+    az: number;
+    bx: number;
+    by: number;
+    bz: number;
+    cx: number;
+    cy: number;
+    cz: number;
+    nx: number;
+    ny: number;
+    nz: number;
+  }
+
+  interface EdgeEntry {
+    ax: number;
+    ay: number;
+    az: number;
+    bx: number;
+    by: number;
+    bz: number;
+    triIdx: number;
+    outX: number;
+    outY: number;
+    outZ: number;
+    planeNKey: string;
+    planeDBin: number;
+    normals: Array<[number, number, number]>;
+  }
+
+  const planeBuckets = new Map<string, PlaneTri[]>();
+  const edges = new Map<string, EdgeEntry>();
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const ab = new THREE.Vector3();
+  const ac = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  const eDir = new THREE.Vector3();
+  const outDir = new THREE.Vector3();
+  const toOpp = new THREE.Vector3();
+
+  for (let t = 0; t < triCount; t++) {
+    const i0 = indexAttr ? indexAttr.getX(t * 3) : t * 3;
+    const i1 = indexAttr ? indexAttr.getX(t * 3 + 1) : t * 3 + 1;
+    const i2 = indexAttr ? indexAttr.getX(t * 3 + 2) : t * 3 + 2;
+
+    a.fromBufferAttribute(posAttr, i0);
+    b.fromBufferAttribute(posAttr, i1);
+    c.fromBufferAttribute(posAttr, i2);
+
+    ab.subVectors(b, a);
+    ac.subVectors(c, a);
+    n.crossVectors(ab, ac);
+    const lenSq = n.lengthSq();
+    if (lenSq < minAreaSq) continue;
+    n.multiplyScalar(1 / Math.sqrt(lenSq));
+
+    const plane = canonicalPlane(n.x, n.y, n.z, a.x, a.y, a.z);
+    const pKey = `${plane.nKey}|${plane.dBin}`;
+    let bucket = planeBuckets.get(pKey);
+    if (!bucket) {
+      bucket = [];
+      planeBuckets.set(pKey, bucket);
+    }
+    bucket.push({
+      triIdx: t,
+      ax: a.x,
+      ay: a.y,
+      az: a.z,
+      bx: b.x,
+      by: b.y,
+      bz: b.z,
+      cx: c.x,
+      cy: c.y,
+      cz: c.z,
+      nx: n.x,
+      ny: n.y,
+      nz: n.z,
+    });
+
+    const ka = quantizeKey(a.x, a.y, a.z);
+    const kb = quantizeKey(b.x, b.y, b.z);
+    const kc = quantizeKey(c.x, c.y, c.z);
+
+    const triPairs: Array<[string, THREE.Vector3, string, THREE.Vector3, THREE.Vector3]> = [
+      [ka, a, kb, b, c],
+      [kb, b, kc, c, a],
+      [kc, c, ka, a, b],
+    ];
+
+    for (const [k1, p1, k2, p2, opp] of triPairs) {
+      if (k1 === k2) continue;
+      const edgeKey = k1 < k2 ? `${k1}|${k2}` : `${k2}|${k1}`;
+      let entry = edges.get(edgeKey);
+      if (!entry) {
+        eDir.subVectors(p2, p1);
+        outDir.crossVectors(eDir, n);
+        const outLen = outDir.length();
+        if (outLen > 1e-12) {
+          outDir.multiplyScalar(1 / outLen);
+          toOpp.subVectors(opp, p1);
+          if (outDir.dot(toOpp) > 0) {
+            outDir.negate();
+          }
+        }
+        entry = {
+          ax: p1.x,
+          ay: p1.y,
+          az: p1.z,
+          bx: p2.x,
+          by: p2.y,
+          bz: p2.z,
+          triIdx: t,
+          outX: outDir.x,
+          outY: outDir.y,
+          outZ: outDir.z,
+          planeNKey: plane.nKey,
+          planeDBin: plane.dBin,
+          normals: [[n.x, n.y, n.z]],
+        };
+        edges.set(edgeKey, entry);
+      } else {
+        entry.normals.push([n.x, n.y, n.z]);
+      }
+    }
+  }
+
+  const pointInCoplanarPlane = (
+    px: number,
+    py: number,
+    pz: number,
+    planeNKey: string,
+    planeDBin: number,
+    skipTriIdx: number,
+  ): boolean => {
+    for (let db = -1; db <= 1; db++) {
+      const bucket = planeBuckets.get(`${planeNKey}|${planeDBin + db}`);
+      if (!bucket) continue;
+      for (let i = 0; i < bucket.length; i++) {
+        const tri = bucket[i]!;
+        if (tri.triIdx === skipTriIdx) continue;
+        const dist = Math.abs((px - tri.ax) * tri.nx + (py - tri.ay) * tri.ny + (pz - tri.az) * tri.nz);
+        if (dist > planeTol) continue;
+
+        const v0x = tri.cx - tri.ax;
+        const v0y = tri.cy - tri.ay;
+        const v0z = tri.cz - tri.az;
+        const v1x = tri.bx - tri.ax;
+        const v1y = tri.by - tri.ay;
+        const v1z = tri.bz - tri.az;
+        const v2x = px - tri.ax;
+        const v2y = py - tri.ay;
+        const v2z = pz - tri.az;
+
+        const dot00 = v0x * v0x + v0y * v0y + v0z * v0z;
+        const dot01 = v0x * v1x + v0y * v1y + v0z * v1z;
+        const dot02 = v0x * v2x + v0y * v2y + v0z * v2z;
+        const dot11 = v1x * v1x + v1y * v1y + v1z * v1z;
+        const dot12 = v1x * v2x + v1y * v2y + v1z * v2z;
+        const denom = dot00 * dot11 - dot01 * dot01;
+        if (denom <= 1e-18) continue;
+        const invDenom = 1 / denom;
+        const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+        const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+        if (u >= -2e-3 && v >= -2e-3 && u + v <= 1.002) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  let pairedEdges = 0;
+  let unpairedEdges = 0;
+  for (const entry of edges.values()) {
+    if (entry.normals.length >= 2) pairedEdges++;
+    else unpairedEdges++;
+  }
+  // On closed CSG solids (including heavily BSP-split boolean meshes), unpaired edges are T-junction cracks, not real boundaries.
+  const suppressStrayCracks = pairedEdges > unpairedEdges * 1.2;
+
+  const positions: number[] = [];
+  for (const entry of edges.values()) {
+    const count = entry.normals.length;
+    let keep = false;
+    if (count === 1) {
+      if (!suppressStrayCracks) {
+        const dx = entry.bx - entry.ax;
+        const dy = entry.by - entry.ay;
+        const dz = entry.bz - entry.az;
+        const edgeLen = Math.hypot(dx, dy, dz);
+        const probeEps = Math.min(edgeLen * 0.2, Math.max(weldScale * 5, diag * 2.5e-3));
+        const isCoplanarTJunction =
+          pointInCoplanarPlane(
+            entry.ax + dx * 0.5 + entry.outX * probeEps,
+            entry.ay + dy * 0.5 + entry.outY * probeEps,
+            entry.az + dz * 0.5 + entry.outZ * probeEps,
+            entry.planeNKey,
+            entry.planeDBin,
+            entry.triIdx,
+          ) ||
+          pointInCoplanarPlane(
+            entry.ax + dx * 0.25 + entry.outX * probeEps,
+            entry.ay + dy * 0.25 + entry.outY * probeEps,
+            entry.az + dz * 0.25 + entry.outZ * probeEps,
+            entry.planeNKey,
+            entry.planeDBin,
+            entry.triIdx,
+          ) ||
+          pointInCoplanarPlane(
+            entry.ax + dx * 0.75 + entry.outX * probeEps,
+            entry.ay + dy * 0.75 + entry.outY * probeEps,
+            entry.az + dz * 0.75 + entry.outZ * probeEps,
+            entry.planeNKey,
+            entry.planeDBin,
+            entry.triIdx,
+          );
+        keep = !isCoplanarTJunction;
+      }
+    } else if (count >= 2) {
+      const n0 = entry.normals[0]!;
+      for (let i = 1; i < count; i++) {
+        const ni = entry.normals[i]!;
+        const absDot = Math.abs(n0[0] * ni[0] + n0[1] * ni[1] + n0[2] * ni[2]);
+        if (absDot <= thresholdDot) {
+          keep = true;
+          break;
+        }
+      }
+    }
+    if (keep) {
+      positions.push(entry.ax, entry.ay, entry.az, entry.bx, entry.by, entry.bz);
+    }
+  }
+
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  return out;
+}
+
 export const CadEdgeOverlay: React.FC<{
   geometry: THREE.BufferGeometry;
   position?: [number, number, number];
@@ -1024,13 +1313,16 @@ export const CadEdgeOverlay: React.FC<{
 }> = ({
   geometry,
   position = [0, 0, 0],
-  thresholdAngle = 20,
+  thresholdAngle = 32,
   dark = true,
   color,
-  opacity = 0.85,
+  opacity = 0.78,
   clippingPlanes = [],
 }) => {
-  const edgeGeometry = useMemo(() => new THREE.EdgesGeometry(geometry, thresholdAngle), [geometry, thresholdAngle]);
+  const edgeGeometry = useMemo(
+    () => buildCleanCreaseEdgeGeometry(geometry, thresholdAngle),
+    [geometry, thresholdAngle],
+  );
 
   useEffect(() => {
     return () => {
@@ -1038,7 +1330,7 @@ export const CadEdgeOverlay: React.FC<{
     };
   }, [edgeGeometry]);
 
-  const edgeColor = color ?? (dark ? "#0f172a" : "#111827");
+  const edgeColor = color ?? (dark ? "#0f172a" : "#1e293b");
 
   return (
     <lineSegments geometry={edgeGeometry} position={position} renderOrder={1}>

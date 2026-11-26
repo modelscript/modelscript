@@ -1439,60 +1439,66 @@ export declare enum SyntaxKind {
   ERROR = 0,
   SourceFile = 80,
   Declaration = 81,
-  StorageClassSpecifier = 82,
-  TypeSpecifier = 83,
-  PrimitiveType = 84,
-  TypedefName = 85,
-  StructSpecifier = 86,
-  UnionSpecifier = 87,
-  StructDeclarationList = 88,
-  StructFieldDeclaration = 89,
-  StructDeclaratorList = 90,
-  EnumSpecifier = 91,
-  EnumeratorList = 92,
-  Enumerator = 93,
-  InitDeclaratorList = 94,
-  InitDeclarator = 95,
-  InitializerList = 96,
-  Declarator = 97,
-  VariableDeclarator = 98,
-  ArrayDeclarator = 99,
-  FunctionDeclarator = 100,
-  ParameterList = 101,
-  ParameterDeclaration = 102,
-  FunctionDefinition = 103,
-  Statement = 104,
-  CompoundStatement = 105,
-  ExpressionStatement = 106,
-  IfStatement = 107,
-  WhileStatement = 108,
-  DoWhileStatement = 109,
-  ForStatement = 110,
-  ReturnStatement = 111,
-  BreakStatement = 112,
-  ContinueStatement = 113,
-  Expression = 114,
-  AssignmentExpression = 115,
-  BinaryExpression = 116,
-  UnaryExpression = 117,
-  PostfixExpression = 118,
-  CallExpression = 119,
-  ArgumentList = 120,
-  SubscriptExpression = 121,
-  MemberExpression = 122,
-  PointerMemberExpression = 123,
-  PostfixIncrement = 124,
-  PrimaryExpression = 125,
-  START = 126,
-  _START = 126,
-  EmptyStatement = 129,
-  _EmptyStatement = 129,
-  IDENTIFIER = 184,
-  NUMBER = 185,
-  STRINGLITERAL = 186,
-  STRING_LITERAL = 186,
-  CHARLITERAL = 187,
-  CHAR_LITERAL = 187,
+  OptStorageClass = 82,
+  _OptStorageClass = 82,
+  StorageClassSpecifier = 83,
+  TypeSpecifier = 84,
+  PrimitiveType = 85,
+  TypedefName = 86,
+  StructSpecifier = 87,
+  UnionSpecifier = 88,
+  StructDeclarationList = 89,
+  StructFieldDeclaration = 90,
+  StructDeclaratorList = 91,
+  EnumSpecifier = 92,
+  EnumeratorList = 93,
+  Enumerator = 94,
+  InitDeclaratorList = 95,
+  InitDeclarator = 96,
+  InitializerList = 97,
+  Declarator = 98,
+  PointerPrefix = 99,
+  _PointerPrefix = 99,
+  VariableDeclarator = 100,
+  ArrayDeclarator = 101,
+  FunctionDeclarator = 102,
+  ParameterList = 103,
+  ParameterDeclaration = 104,
+  FunctionDefinition = 105,
+  Statement = 106,
+  CompoundStatement = 107,
+  ExpressionStatement = 108,
+  IfStatement = 109,
+  OptionalElse = 110,
+  _OptionalElse = 110,
+  WhileStatement = 111,
+  DoWhileStatement = 112,
+  ForStatement = 113,
+  ReturnStatement = 114,
+  BreakStatement = 115,
+  ContinueStatement = 116,
+  Expression = 117,
+  AssignmentExpression = 118,
+  BinaryExpression = 119,
+  UnaryExpression = 120,
+  PostfixExpression = 121,
+  CallExpression = 122,
+  ArgumentList = 123,
+  SubscriptExpression = 124,
+  MemberExpression = 125,
+  PointerMemberExpression = 126,
+  PostfixIncrement = 127,
+  PrimaryExpression = 128,
+  START = 129,
+  _START = 129,
+  EmptyStatement = 132,
+  _EmptyStatement = 132,
+  IDENTIFIER = 187,
+  NUMBER = 188,
+  STRINGLITERAL = 189,
+  STRING_LITERAL = 189,
+  CHARLITERAL = 190,
+  CHAR_LITERAL = 190,
   EOF = 1023,
 }
 
@@ -1778,10 +1784,10 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DeclarationNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     storage(node: SyntaxNode | null | undefined): SyntaxNode | null;
     storageList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declarators(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaratorsList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
@@ -1934,14 +1940,14 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is FunctionDefinitionNode;
+    storage(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    storageList(node: SyntaxNode | null | undefined): SyntaxNode[];
     returnType(node: SyntaxNode | null | undefined): SyntaxNode | null;
     returnTypeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declarator(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaratorList(node: SyntaxNode | null | undefined): SyntaxNode[];
     body(node: SyntaxNode | null | undefined): SyntaxNode | null;
     bodyList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    storage(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    storageList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const Statement: {
     readonly typeId: number;

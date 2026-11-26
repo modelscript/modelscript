@@ -46,7 +46,13 @@ export interface LbmCoSimOptions {
     | {
         boxes?: { min: [number, number, number]; max: [number, number, number] }[] | undefined;
         cylinders?:
-          | { center: [number, number, number]; radius: number; axis: "x" | "y" | "z"; length: number }[]
+          { center: [number, number, number]; radius: number; axis: "x" | "y" | "z"; length: number }[] | undefined;
+        meshes?:
+          | {
+              vertices: Float32Array | number[];
+              indices: Uint32Array | number[];
+              inPhysicalUnits?: boolean | undefined;
+            }[]
           | undefined;
         solidWalls?:
           | {

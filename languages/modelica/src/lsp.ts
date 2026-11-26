@@ -765,7 +765,10 @@ async function getModelicaContext(needsMsl = false): Promise<import("./context.j
       const { createWasmParser } = await import("../src-gen/bindings.js");
       const { Context } = await import("./context.js");
       const { initBltWasm } = await import("@modelscript/runtime");
-      const wasmPath = path.join(findRepoRoot(), "languages", "modelica", "dist", "parser.wasm");
+      const localWasmPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "parser.wasm");
+      const wasmPath = fs.existsSync(localWasmPath)
+        ? localWasmPath
+        : path.join(findRepoRoot(), "languages", "modelica", "dist", "parser.wasm");
       const { parser } = await createWasmParser(wasmPath);
       Context.registerParser(".mo", parser as never);
       await initBltWasm();

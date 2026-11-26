@@ -1,0 +1,33 @@
+{
+  "name": "@modelscript/blog",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "tsx scripts/check-blog.ts && tsx scripts/gen-og.ts && NODE_OPTIONS='--max-old-space-size=4096' vitepress build blog && tsx scripts/gen-feeds.ts",
+    "check": "tsx scripts/check-blog.ts",
+    "clean": "rimraf blog/.vitepress/dist",
+    "dev": "tsx scripts/gen-og.ts && vitepress dev blog --port 5174",
+    "dev:flagship": "tsx scripts/gen-og.ts && vitepress dev blog --port 5174",
+    "gen:feeds": "tsx scripts/gen-feeds.ts",
+    "gen:og": "tsx scripts/gen-og.ts",
+    "lint": "eslint blog scripts --no-warn-ignored",
+    "preview": "vitepress preview blog --port 4174",
+    "social": "tsx scripts/social-preview.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@modelscript/design-tokens": "workspace:*",
+    "@modelscript/embed": "workspace:*",
+    "katex": "^0.19.1",
+    "markdown-it-mathjax3": "^4.3.2",
+    "shiki": "^2.5.0",
+    "vitepress": "^1.1.4",
+    "vue": "^3.5.44"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "app"
+  }
+}

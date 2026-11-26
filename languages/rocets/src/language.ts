@@ -51,19 +51,15 @@ export const rocetsLanguage = language({
 
   errorCodes: RocetsErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
+  conflicts: ($) => [[$["Attribute"]!, $["Identifier"]!], [$["_OptPortFluid"]!]],
+
   rules: {
     Model: ($) =>
       seq(
         optional($["ModelHeader"]!),
-        repeat(
-          choice(
-            $["ComponentsSection"]!,
-            $["ConnectionsSection"]!,
-            $["PropsSection"]!,
-            $["BalanceSection"]!,
-            $["Comment"]!,
-          ),
-        ),
+        repeat(choice($["ComponentsSection"]!, $["ConnectionsSection"]!, $["PropsSection"]!, $["BalanceSection"]!)),
       ),
 
     ModelHeader: ($) =>
@@ -73,10 +69,7 @@ export const rocetsLanguage = language({
       ),
 
     ComponentsSection: ($) =>
-      seq(
-        choice("COMPONENTS:", "COMPONENTS", "MODULES:", "MODULES"),
-        repeat(choice($["ComponentDeclaration"]!, $["Comment"]!)),
-      ),
+      seq(choice("COMPONENTS:", "COMPONENTS", "MODULES:", "MODULES"), repeat($["ComponentDeclaration"]!)),
 
     ComponentDeclaration: ($) =>
       seq(
@@ -108,17 +101,12 @@ export const rocetsLanguage = language({
     StateAssignment: ($) => seq(field("state", $["Identifier"]!), "=", field("value", $["NumberLiteral"]!)),
 
     PortDeclaration: ($) =>
-      seq(
-        field("name", $["Identifier"]!),
-        optional(seq("(", choice("IN", "OUT", "BI"), ")")),
-        optional(seq("FLUID", "=", field("fluid", $["Identifier"]!))),
-      ),
+      seq(field("name", $["Identifier"]!), optional(seq("(", choice("IN", "OUT", "BI"), ")")), $["_OptPortFluid"]!),
+
+    _OptPortFluid: ($) => optional(seq("FLUID", "=", field("fluid", $["Identifier"]!))),
 
     ConnectionsSection: ($) =>
-      seq(
-        choice("CONNECTIONS:", "CONNECTIONS", "STREAMS:", "STREAMS"),
-        repeat(choice($["ConnectionStatement"]!, $["Comment"]!)),
-      ),
+      seq(choice("CONNECTIONS:", "CONNECTIONS", "STREAMS:", "STREAMS"), repeat($["ConnectionStatement"]!)),
 
     ConnectionStatement: ($) =>
       seq(
@@ -132,8 +120,7 @@ export const rocetsLanguage = language({
         optional(seq("FLUID", "=", field("fluid", $["Identifier"]!))),
       ),
 
-    PropsSection: ($) =>
-      seq(choice("PROPELLANTS:", "PROPS:", "FLUIDS:"), repeat(choice($["PropellantDeclaration"]!, $["Comment"]!))),
+    PropsSection: ($) => seq(choice("PROPELLANTS:", "PROPS:", "FLUIDS:"), repeat($["PropellantDeclaration"]!)),
 
     PropellantDeclaration: ($) =>
       seq(

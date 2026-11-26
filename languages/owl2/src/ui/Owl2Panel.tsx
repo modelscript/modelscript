@@ -139,7 +139,7 @@ function InferredBadge() {
   );
 }
 
-function renderOwl2TaxonomySvg(model: Owl2WorkbenchModel, showInferred: boolean): string {
+function renderOwl2TaxonomySvg(model: Owl2WorkbenchModel, showInferred: boolean, isDark: boolean): string {
   const classList = Array.from(model.classes.values());
   if (classList.length === 0) return "";
 
@@ -191,6 +191,12 @@ function renderOwl2TaxonomySvg(model: Owl2WorkbenchModel, showInferred: boolean)
     });
   }
 
+  const edgeAsserted = isDark ? "#38bdf8" : "#0284c7";
+  const edgeInferred = isDark ? "#f59e0b" : "#d97706";
+  const nodeFillNormal = isDark ? "#1e293b" : "#ffffff";
+  const nodeFillUnsat = isDark ? "#3b1219" : "#fef2f2";
+  const nodeTextColor = isDark ? "#e2e8f0" : "#0f172a";
+
   const assertedEdgesSvg = model.assertedSubClassEdges
     .map((e) => {
       const from = positions.get(e.child);
@@ -201,7 +207,7 @@ function renderOwl2TaxonomySvg(model: Owl2WorkbenchModel, showInferred: boolean)
       const x2 = to.x + nodeW / 2;
       const y2 = to.y + nodeH;
       const midY = (y1 + y2) / 2;
-      return `<path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" fill="none" stroke="#38bdf8" stroke-width="1.6" marker-end="url(#owl-arrow)" data-line="${e.line}"/>`;
+      return `<path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" fill="none" stroke="${edgeAsserted}" stroke-width="1.6" marker-end="url(#owl-arrow)" data-line="${e.line}"/>`;
     })
     .join("");
 
@@ -216,7 +222,7 @@ function renderOwl2TaxonomySvg(model: Owl2WorkbenchModel, showInferred: boolean)
           const x2 = to.x + nodeW / 2;
           const y2 = to.y + nodeH;
           const midY = (y1 + y2) / 2;
-          return `<path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#owl-arrow-inf)"/>`;
+          return `<path d="M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}" fill="none" stroke="${edgeInferred}" stroke-width="1.5" stroke-dasharray="5 3" marker-end="url(#owl-arrow-inf)"/>`;
         })
         .join("")
     : "";
@@ -226,11 +232,11 @@ function renderOwl2TaxonomySvg(model: Owl2WorkbenchModel, showInferred: boolean)
       const name = pos.cls.label;
       const label = name.length > 18 ? `${name.slice(0, 17)}…` : name;
       const stroke = pos.cls.unsatisfiable ? "#ef4444" : "#0891b2";
-      const fill = pos.cls.unsatisfiable ? "#3b1219" : "#1e293b";
+      const fill = pos.cls.unsatisfiable ? nodeFillUnsat : nodeFillNormal;
       const badge = pos.cls.unsatisfiable ? "⊥ " : "";
       return `<g data-line="${pos.cls.line}" data-id="${iri}" style="cursor:pointer;">
         <rect x="${pos.x}" y="${pos.y}" width="${nodeW}" height="${nodeH}" rx="7" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>
-        <text x="${pos.x + nodeW / 2}" y="${pos.y + 22}" text-anchor="middle" fill="#e2e8f0" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="600">${badge}${label}</text>
+        <text x="${pos.x + nodeW / 2}" y="${pos.y + 22}" text-anchor="middle" fill="${nodeTextColor}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="12" font-weight="600">${badge}${label}</text>
       </g>`;
     })
     .join("");
@@ -238,10 +244,10 @@ function renderOwl2TaxonomySvg(model: Owl2WorkbenchModel, showInferred: boolean)
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="100%" height="100%" style="max-height:100%;">
   <defs>
     <marker id="owl-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 1 L 10 5 L 0 9 z" fill="none" stroke="#38bdf8" stroke-width="1.4"/>
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="none" stroke="${edgeAsserted}" stroke-width="1.4"/>
     </marker>
     <marker id="owl-arrow-inf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 1 L 10 5 L 0 9 z" fill="none" stroke="#f59e0b" stroke-width="1.4"/>
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="none" stroke="${edgeInferred}" stroke-width="1.4"/>
     </marker>
   </defs>
   <g>${inferredEdgesSvg}</g>
@@ -543,7 +549,10 @@ export const Owl2Panel: React.FC<LanguagePanelProps> = ({
   const [sparqlResult, setSparqlResult] = useState<Owl2SparqlExecutionOutput | null>(null);
 
   const model = useMemo(() => buildOwl2WorkbenchModel(code), [code]);
-  const graphSvg = useMemo(() => renderOwl2TaxonomySvg(model, showInferred), [model, showInferred]);
+  const graphSvg = useMemo(
+    () => renderOwl2TaxonomySvg(model, showInferred, colorMode === "dark"),
+    [model, showInferred, colorMode],
+  );
   const materializedKb = useMemo(
     () => materializeOwl2KnowledgeBase(model, { includeInferred: showInferred }),
     [model, showInferred],

@@ -11,27 +11,29 @@ export interface WalletCardProps {
 }
 
 export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
+  const isLowBalance = creditBalance <= 0;
+
   return (
     <StyledWalletCard>
       <CardHeader>
         <Box display="flex" alignItems="center" gap="6px">
-          <ZapIcon size={14} fill="var(--color-accent-purple)" />
+          <ZapIcon size={14} fill={isLowBalance ? "var(--color-danger-fg, #ef4444)" : "var(--color-accent-purple)"} />
           <CardTitle>Compute Wallet</CardTitle>
         </Box>
         <span
           style={{
             fontSize: "10px",
-            color: "var(--color-accent-purple)",
+            color: isLowBalance ? "var(--color-danger-fg, #ef4444)" : "var(--color-accent-purple)",
             fontFamily: "var(--font-mono)",
-            background: "var(--color-accent-purple-bg)",
-            border: "1px solid var(--color-accent-purple-border)",
+            background: isLowBalance ? "rgba(239, 68, 68, 0.14)" : "var(--color-accent-purple-bg)",
+            border: isLowBalance ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid var(--color-accent-purple-border)",
             padding: "2px 6px",
             borderRadius: "4px",
             fontWeight: 700,
             letterSpacing: "0.02em",
           }}
         >
-          RESEARCH TIER
+          {isLowBalance ? "LOW BALANCE" : "PAY-AS-YOU-GO"}
         </span>
       </CardHeader>
 
@@ -42,7 +44,7 @@ export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
               fontSize: "26px",
               fontWeight: 800,
               fontFamily: "var(--font-mono)",
-              color: "var(--color-text-heading)",
+              color: isLowBalance ? "var(--color-danger-fg, #ef4444)" : "var(--color-text-heading)",
               letterSpacing: "-0.5px",
             }}
           >
@@ -52,7 +54,7 @@ export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
             style={{
               fontSize: "13px",
               fontWeight: 700,
-              color: "var(--color-accent-purple)",
+              color: isLowBalance ? "var(--color-danger-fg, #ef4444)" : "var(--color-accent-purple)",
               marginLeft: "4px",
               fontFamily: "var(--font-mono)",
             }}
@@ -77,7 +79,9 @@ export const WalletCard: React.FC<WalletCardProps> = ({ creditBalance }) => {
           fontFamily: "var(--font-mono)",
         }}
       >
-        <span style={{ color: "var(--color-text-muted)" }}>Auto-Allocation: Active</span>
+        <span style={{ color: isLowBalance ? "var(--color-danger-fg, #ef4444)" : "var(--color-text-muted)" }}>
+          {isLowBalance ? "Low balance — Top up for cloud jobs" : "$1.00 / credit · Cloud HPC"}
+        </span>
         <Link
           to="/settings/billing"
           style={{

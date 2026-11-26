@@ -24,19 +24,21 @@ export function InspectorTabs<T extends string = string>({
   ariaLabel = "Inspector sub-views",
 }: InspectorTabsProps<T>) {
   return (
-    <SegmentedControl
-      aria-label={ariaLabel}
-      size="small"
-      onChange={(idx) => {
-        const item = tabs[idx];
-        if (item) onChange(item.id);
-      }}
-    >
-      {tabs.map((t) => (
-        <SegmentedControl.Button key={t.id} selected={value === t.id}>
-          {t.label}
-        </SegmentedControl.Button>
-      ))}
-    </SegmentedControl>
+    <div style={{ overflowX: "auto", maxWidth: "100%", scrollbarWidth: "none", display: "flex" }}>
+      <SegmentedControl
+        aria-label={ariaLabel}
+        size="small"
+        onChange={(idx) => {
+          const item = tabs[idx];
+          if (item) onChange(item.id);
+        }}
+      >
+        {tabs.map((t) => (
+          <SegmentedControl.Button key={t.id} selected={value === t.id}>
+            {t.label}
+          </SegmentedControl.Button>
+        ))}
+      </SegmentedControl>
+    </div>
   );
 }

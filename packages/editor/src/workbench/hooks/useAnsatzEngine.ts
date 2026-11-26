@@ -1,22 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { type AmplSolveResultData } from "@modelscript/ampl/ui/AmplOptimizationResults";
 import {
-  box,
-  cylinder,
-  intersect,
-  ManifoldWorker,
-  mirror,
   patchModelicaCadAnnotation,
-  rotate,
-  scale,
-  sphere,
-  subtract,
-  translate,
-  union,
   type DynamicBindingConfig,
   type GdtOverlayPayload,
   type ModelicaTelemetryParams,
-  type Solid,
   type SpoolKinematicsSpec,
 } from "@modelscript/cad";
 import { extractThreeMfCadComponents } from "@modelscript/three-mf/cad";
@@ -35,7 +24,6 @@ import {
 import { AnimationController } from "../cad-viewer/animation-controller";
 import { extractCadComponents, parseSourceCadVariables } from "../cad-viewer/parse-cad-annotations";
 import { type HistorianSession } from "../CosimPanel";
-import { type AmplSolveResultData } from "../panels/AmplOptimizationResults";
 import type { MobileTab } from "../panels/AnsatzMobileTabBar";
 import type { AnsatzView } from "../panels/types";
 import { type ExperimentOverrides, type ParameterInfo, type SweepState } from "../SimulationParameters";
@@ -112,6 +100,8 @@ export interface UseAnsatzEngineProps {
   projectFiles?: Record<string, string> | undefined;
   activeFileName?: string | undefined;
   onUpdateProjectFile?: ((fileName: string, content: string) => void) | undefined;
+  /** Optional non-destructive OpenSCAD source with feature-tree modifiers (`*`, `!`, `#`) applied. */
+  scadOverrideCode?: string | undefined;
 }
 
 /** Extract STEP filename from // @step-file: annotation or ISO-10303-21 FILE_NAME header. */
@@ -1010,429 +1000,6 @@ export function tessellateStepSource(
   return { vtkBuffer, stlBuffer, components };
 }
 
-function splitTopLevelArgs(input: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let start = 0;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "(" || ch === "[") depth++;
-    else if (ch === ")" || ch === "]") depth = Math.max(0, depth - 1);
-    else if (ch === "," && depth === 0) {
-      parts.push(input.slice(start, i).trim());
-      start = i + 1;
-    }
-  }
-  const tail = input.slice(start).trim();
-  if (tail) parts.push(tail);
-  return parts;
-}
-
-function evalScadExpr(rawExpr: string | undefined, vars: Record<string, number>, fallback = 0): number {
-  if (!rawExpr) return fallback;
-  const tokens = rawExpr.trim().match(/(\d+(?:\.\d+)?|\.\d+|[A-Za-z_$]\w*|[+\-*/()])/g) ?? [];
-  if (tokens.length === 0) return fallback;
-
-  let pos = 0;
-
-  const parseExpression = (): number => {
-    let val = parseTerm();
-    while (pos < tokens.length && (tokens[pos] === "+" || tokens[pos] === "-")) {
-      const op = tokens[pos++]!;
-      const right = parseTerm();
-      val = op === "+" ? val + right : val - right;
-    }
-    return val;
-  };
-
-  const parseTerm = (): number => {
-    let val = parseFactor();
-    while (pos < tokens.length && (tokens[pos] === "*" || tokens[pos] === "/")) {
-      const op = tokens[pos++]!;
-      const right = parseFactor();
-      val = op === "*" ? val * right : right !== 0 ? val / right : 0;
-    }
-    return val;
-  };
-
-  const parseFactor = (): number => {
-    const tok = tokens[pos];
-    if (tok === undefined) return 0;
-    if (tok === "+") {
-      pos++;
-      return parseFactor();
-    }
-    if (tok === "-") {
-      pos++;
-      return -parseFactor();
-    }
-    if (tok === "(") {
-      pos++;
-      const inner = parseExpression();
-      if (tokens[pos] === ")") pos++;
-      return inner;
-    }
-    pos++;
-    if (/^[A-Za-z_$]/.test(tok)) {
-      if (tokens[pos] === "(") {
-        pos++;
-        const arg = parseExpression();
-        if (tokens[pos] === ")") pos++;
-        if (tok === "sin") return Math.sin((arg * Math.PI) / 180);
-        if (tok === "cos") return Math.cos((arg * Math.PI) / 180);
-        if (tok === "abs") return Math.abs(arg);
-        if (tok === "sqrt") return Math.sqrt(Math.max(0, arg));
-      }
-      return vars[tok] !== undefined ? vars[tok]! : fallback;
-    }
-    const num = parseFloat(tok);
-    return Number.isFinite(num) ? num : fallback;
-  };
-
-  const res = parseExpression();
-  return Number.isFinite(res) ? res : fallback;
-}
-
-/** Tessellate OpenSCAD source primitives (cube, cylinder, sphere) into 3D CadComponents + VTK buffer. */
-export function tessellateScadSource(scadCode: string): {
-  vtkBuffer: Uint8Array;
-  components: CadComponent[];
-} {
-  const cleanCode = scadCode.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
-  const vars: Record<string, number> = {};
-  const scalarVarRegex = /\b([A-Za-z_]\w*)\s*=\s*(-?\d+(?:\.\d+)?)\s*;/g;
-  let vm: RegExpExecArray | null;
-  while ((vm = scalarVarRegex.exec(cleanCode)) !== null) {
-    vars[vm[1]!] = parseFloat(vm[2]!);
-  }
-  const exprVarRegex = /(?:^|[;\n{}])\s*([A-Za-z_]\w*)\s*=\s*([^;=\n[\]]+?)\s*;/g;
-  while ((vm = exprVarRegex.exec(cleanCode)) !== null) {
-    const name = vm[1]!;
-    if (!(name in vars)) {
-      const evaluated = evalScadExpr(vm[2]!, vars, NaN);
-      if (Number.isFinite(evaluated)) {
-        vars[name] = evaluated;
-      }
-    }
-  }
-
-  const parseNamedArgs = (argsStr: string): { named: Record<string, string>; positional: string[] } => {
-    const parts = splitTopLevelArgs(argsStr);
-    const named: Record<string, string> = {};
-    const positional: string[] = [];
-    for (const p of parts) {
-      const kv = /^([A-Za-z_$]\w*)\s*=\s*(.+)$/.exec(p);
-      if (kv) {
-        named[kv[1]!] = kv[2]!.trim();
-      } else if (p.trim()) {
-        positional.push(p.trim());
-      }
-    }
-    return { named, positional };
-  };
-
-  const parseVec3 = (expr: string | undefined, def: [number, number, number]): [number, number, number] => {
-    if (!expr) return def;
-    const inner = /\[\s*([\s\S]*)\s*\]/.exec(expr)?.[1];
-    if (!inner) {
-      const s = evalScadExpr(expr, vars, def[0]);
-      return [s, s, s];
-    }
-    const items = splitTopLevelArgs(inner);
-    return [
-      evalScadExpr(items[0], vars, def[0]),
-      evalScadExpr(items[1], vars, def[1]),
-      evalScadExpr(items[2], vars, def[2]),
-    ];
-  };
-
-  let cursor = 0;
-  const skipWs = () => {
-    while (cursor < cleanCode.length && /\s/.test(cleanCode[cursor]!)) cursor++;
-  };
-
-  const readBalanced = (openCh: string, closeCh: string): string => {
-    if (cleanCode[cursor] !== openCh) return "";
-    cursor++;
-    const start = cursor;
-    let depth = 1;
-    while (cursor < cleanCode.length && depth > 0) {
-      const ch = cleanCode[cursor]!;
-      if (ch === openCh) depth++;
-      else if (ch === closeCh) depth--;
-      cursor++;
-    }
-    return cleanCode.slice(start, Math.max(start, cursor - 1));
-  };
-
-  const foldSolids = (items: Solid[], op: "union" | "difference" | "intersection"): Solid | null => {
-    if (items.length === 0) return null;
-    let acc = items[0]!;
-    for (let i = 1; i < items.length; i++) {
-      const next = items[i]!;
-      if (op === "difference") acc = subtract(acc, next);
-      else if (op === "intersection") acc = intersect(acc, next);
-      else acc = union(acc, next);
-    }
-    return acc;
-  };
-
-  const parseBlockStatements = (): Solid[] => {
-    const solids: Solid[] = [];
-    while (cursor < cleanCode.length) {
-      skipWs();
-      if (cursor >= cleanCode.length || cleanCode[cursor] === "}") {
-        if (cleanCode[cursor] === "}") cursor++;
-        break;
-      }
-      if (cleanCode[cursor] === ";") {
-        cursor++;
-        continue;
-      }
-      const node = parseStatement();
-      if (node) solids.push(node);
-    }
-    return solids;
-  };
-
-  const parseStatement = (): Solid | null => {
-    skipWs();
-    if (cursor >= cleanCode.length) return null;
-    if (cleanCode[cursor] === "{") {
-      const saved = cursor + 1;
-      cursor = saved;
-      return foldSolids(parseBlockStatements(), "union");
-    }
-    // Optional modifier prefix (*, !, #, %)
-    if ("*!#%".includes(cleanCode[cursor]!)) {
-      const mod = cleanCode[cursor]!;
-      cursor++;
-      const inner = parseStatement();
-      return mod === "*" ? null : inner;
-    }
-    const identMatch = /^([A-Za-z_$]\w*)/.exec(cleanCode.slice(cursor));
-    if (!identMatch) {
-      // Advance to next semicolon or closing brace
-      while (cursor < cleanCode.length && cleanCode[cursor] !== ";" && cleanCode[cursor] !== "}") cursor++;
-      if (cleanCode[cursor] === ";") cursor++;
-      return null;
-    }
-    const ident = identMatch[1]!;
-    cursor += ident.length;
-    skipWs();
-    // Skip assignments `name = expr;`
-    if (cleanCode[cursor] === "=") {
-      cursor++;
-      const eqStart = cursor;
-      while (cursor < cleanCode.length && cleanCode[cursor] !== ";" && cleanCode[cursor] !== "}") cursor++;
-      const rhs = cleanCode.slice(eqStart, cursor).trim();
-      const val = evalScadExpr(rhs, vars, NaN);
-      if (Number.isFinite(val)) vars[ident] = val;
-      if (cleanCode[cursor] === ";") cursor++;
-      return null;
-    }
-    if (cleanCode[cursor] !== "(") {
-      while (cursor < cleanCode.length && cleanCode[cursor] !== ";" && cleanCode[cursor] !== "}") cursor++;
-      if (cleanCode[cursor] === ";") cursor++;
-      return null;
-    }
-    const argsStr = readBalanced("(", ")");
-    skipWs();
-    if (ident === "for") {
-      // Evaluate OpenSCAD range loop `for (i = [start : end])` or `[start : step : end]`
-      const loopMatch = /^\s*([A-Za-z_$]\w*)\s*=\s*\[\s*([^\]]+)\s*\]\s*$/.exec(argsStr);
-      const bodyStartCursor = cursor;
-      const runOneIteration = (): Solid[] => {
-        cursor = bodyStartCursor;
-        if (cleanCode[cursor] === "{") {
-          cursor++;
-          return parseBlockStatements();
-        }
-        const single = parseStatement();
-        return single ? [single] : [];
-      };
-      if (loopMatch) {
-        const varName = loopMatch[1]!;
-        const rangeParts = loopMatch[2]!.split(":").map((s) => evalScadExpr(s.trim(), vars, NaN));
-        const startVal = rangeParts[0] ?? 0;
-        const stepVal = rangeParts.length >= 3 ? (rangeParts[1] ?? 1) : 1;
-        const endVal = rangeParts.length >= 3 ? (rangeParts[2] ?? startVal) : (rangeParts[1] ?? startVal);
-        const iterSolids: Solid[] = [];
-        const hadPrev = Object.prototype.hasOwnProperty.call(vars, varName);
-        const prevVal = vars[varName];
-        if (Number.isFinite(startVal) && Number.isFinite(endVal) && Number.isFinite(stepVal) && stepVal !== 0) {
-          let guard = 0;
-          for (let v = startVal; stepVal > 0 ? v <= endVal + 1e-9 : v >= endVal - 1e-9; v += stepVal) {
-            if (++guard > 64) break;
-            vars[varName] = v;
-            iterSolids.push(...runOneIteration());
-          }
-        } else {
-          iterSolids.push(...runOneIteration());
-        }
-        if (hadPrev && prevVal !== undefined) {
-          vars[varName] = prevVal;
-        } else {
-          Reflect.deleteProperty(vars, varName);
-        }
-        return foldSolids(iterSolids, "union");
-      }
-      return foldSolids(runOneIteration(), "union");
-    }
-    if (cleanCode[cursor] === ";") {
-      cursor++;
-      return buildPrimitiveSolid(ident, argsStr);
-    }
-    const children =
-      cleanCode[cursor] === "{"
-        ? (() => {
-            cursor++;
-            return parseBlockStatements();
-          })()
-        : (() => {
-            const single = parseStatement();
-            return single ? [single] : [];
-          })();
-    return applyOperatorOrCsg(ident, argsStr, children);
-  };
-
-  const buildPrimitiveSolid = (name: string, argsStr: string): Solid | null => {
-    const low = name.toLowerCase();
-    const { named, positional } = parseNamedArgs(argsStr);
-    if (low === "cube") {
-      const sizeArg = named.size ?? positional[0];
-      const [wxRaw, wyRaw, wzRaw] = parseVec3(sizeArg, [10, 10, 10]);
-      const centered = (named.center ?? positional[1] ?? "false").trim().toLowerCase() === "true";
-      const w = Math.max(0.08, Math.abs(wxRaw) / 25);
-      const h = Math.max(0.08, Math.abs(wyRaw) / 25);
-      const d = Math.max(0.08, Math.abs(wzRaw) / 25);
-      const b = box({ width: w, height: h, depth: d });
-      return centered ? b : translate(b, [w / 2, h / 2, d / 2]);
-    }
-    if (low === "cylinder") {
-      const hRaw =
-        named.h !== undefined
-          ? evalScadExpr(named.h, vars, 12)
-          : positional[0] !== undefined
-            ? evalScadExpr(positional[0], vars, 12)
-            : 12;
-      let r1Raw = 6;
-      let r2Raw = 6;
-      if (named.r !== undefined) {
-        r1Raw = r2Raw = evalScadExpr(named.r, vars, 6);
-      } else if (named.r1 !== undefined || named.r2 !== undefined) {
-        r1Raw = evalScadExpr(named.r1, vars, evalScadExpr(named.r2, vars, 6));
-        r2Raw = evalScadExpr(named.r2, vars, r1Raw);
-      } else if (named.d !== undefined) {
-        r1Raw = r2Raw = evalScadExpr(named.d, vars, 12) / 2;
-      } else if (named.d1 !== undefined || named.d2 !== undefined) {
-        r1Raw = evalScadExpr(named.d1, vars, evalScadExpr(named.d2, vars, 12)) / 2;
-        r2Raw = evalScadExpr(named.d2, vars, r1Raw * 2) / 2;
-      } else if (positional[1] !== undefined) {
-        r1Raw = r2Raw = evalScadExpr(positional[1], vars, 6);
-      }
-      const centered = (named.center ?? "false").trim().toLowerCase() === "true";
-      const segs = Math.min(48, Math.max(12, Math.round(evalScadExpr(named.$fn, vars, 24))));
-      const h = Math.max(0.08, Math.abs(hRaw) / 25);
-      const r1 = Math.max(0.02, Math.abs(r1Raw) / 25);
-      const r2 = Math.max(0.02, Math.abs(r2Raw) / 25);
-      const cyl = cylinder({ height: h, radiusBottom: r1, radiusTop: r2, segments: segs });
-      return centered ? cyl : translate(cyl, [0, 0, h / 2]);
-    }
-    if (low === "sphere") {
-      const rRaw =
-        named.r !== undefined
-          ? evalScadExpr(named.r, vars, 8)
-          : named.d !== undefined
-            ? evalScadExpr(named.d, vars, 16) / 2
-            : positional[0] !== undefined
-              ? evalScadExpr(positional[0], vars, 8)
-              : 8;
-      const segs = Math.min(40, Math.max(12, Math.round(evalScadExpr(named.$fn, vars, 20))));
-      const r = Math.max(0.05, Math.abs(rRaw) / 25);
-      return sphere({ radius: r, widthSegments: segs, heightSegments: Math.max(10, Math.round(segs * 0.75)) });
-    }
-    return null;
-  };
-
-  const applyOperatorOrCsg = (name: string, argsStr: string, children: Solid[]): Solid | null => {
-    const low = name.toLowerCase();
-    if (low === "difference") return foldSolids(children, "difference");
-    if (low === "intersection") return foldSolids(children, "intersection");
-    if (low === "union" || low === "color" || low === "render") return foldSolids(children, "union");
-    const child = foldSolids(children, "union");
-    if (!child) return null;
-    const { named, positional } = parseNamedArgs(argsStr);
-    if (low === "translate") {
-      const [dx, dy, dz] = parseVec3(named.v ?? positional[0], [0, 0, 0]);
-      return translate(child, [dx / 25, dy / 25, dz / 25]);
-    }
-    if (low === "scale") {
-      const [sx, sy, sz] = parseVec3(named.v ?? positional[0], [1, 1, 1]);
-      return scale(child, [sx, sy, sz]);
-    }
-    if (low === "mirror") {
-      const [mx, my, mz] = parseVec3(named.v ?? positional[0], [0, 0, 0]);
-      return mirror(child, [mx, my, mz]);
-    }
-    if (low === "rotate") {
-      const aArg = named.a ?? positional[0];
-      if (named.v !== undefined || positional[1] !== undefined) {
-        const deg = evalScadExpr(aArg, vars, 0);
-        const [ax, ay, az] = parseVec3(named.v ?? positional[1], [0, 0, 1]);
-        return rotate(child, [ax, ay, az], deg);
-      }
-      if (aArg && aArg.includes("[")) {
-        const [rx, ry, rz] = parseVec3(aArg, [0, 0, 0]);
-        let res = child;
-        if (Math.abs(rx) > 1e-6) res = rotate(res, [1, 0, 0], rx);
-        if (Math.abs(ry) > 1e-6) res = rotate(res, [0, 1, 0], ry);
-        if (Math.abs(rz) > 1e-6) res = rotate(res, [0, 0, 1], rz);
-        return res;
-      }
-      const rz = evalScadExpr(aArg, vars, 0);
-      return rotate(child, [0, 0, 1], rz);
-    }
-    return child;
-  };
-
-  const scadRoot = foldSolids(parseBlockStatements(), "union");
-  const rootSolid = scadRoot ? rotate(scadRoot, [1, 0, 0], -90) : null;
-  const mesh: TriangulatedMesh = { positions: [], normals: [] };
-  if (rootSolid) {
-    try {
-      const evaluated = ManifoldWorker.evaluateSolid(rootSolid);
-      const { vertices, indices } = evaluated;
-      for (let t = 0; t + 2 < indices.length; t += 3) {
-        const i0 = indices[t]! * 3;
-        const i1 = indices[t + 1]! * 3;
-        const i2 = indices[t + 2]! * 3;
-        pushTriangle(
-          mesh,
-          [vertices[i0]!, vertices[i0 + 1]!, vertices[i0 + 2]!],
-          [vertices[i1]!, vertices[i1 + 1]!, vertices[i1 + 2]!],
-          [vertices[i2]!, vertices[i2 + 1]!, vertices[i2 + 2]!],
-        );
-      }
-    } catch {
-      // Leave mesh empty if manifold CSG fails on malformed user input
-    }
-  }
-
-  const vtkBuffer = buildVtkXmlBuffer(mesh);
-  const glbUri = buildGlbDataUri(mesh, "OpenSCAD_Solid", [0.25, 0.78, 0.52, 1.0]);
-  const components: CadComponent[] = glbUri
-    ? [
-        {
-          name: "OpenSCAD_Solid",
-          cad: { uri: glbUri, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-          ports: [],
-        },
-      ]
-    : [];
-  return { vtkBuffer, components };
-}
-
 function attachScadKinematicController(
   scadCode: string,
   components: CadComponent[],
@@ -1513,6 +1080,186 @@ function attachScadKinematicController(
   return enhanced;
 }
 
+function isIdentCharCode(code: number): boolean {
+  return (
+    (code >= 48 && code <= 57) || // 0-9
+    (code >= 65 && code <= 90) || // A-Z
+    (code >= 97 && code <= 122) || // a-z
+    code === 95 // _
+  );
+}
+
+function isWhitespaceCharCode(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 13;
+}
+
+const MODELICA_CLASS_KEYWORDS = new Set(["model", "block", "class", "package", "function", "record"]);
+
+function hasModelicaClassDeclaration(code: string, className: string): boolean {
+  if (!className) return false;
+  const n = code.length;
+  let i = 0;
+  while (i < n) {
+    const ch = code.charCodeAt(i);
+    // Skip line comments // ...
+    if (ch === 47 && i + 1 < n && code.charCodeAt(i + 1) === 47) {
+      i += 2;
+      while (i < n && code.charCodeAt(i) !== 10) i++;
+      continue;
+    }
+    // Skip block comments /* ... */
+    if (ch === 47 && i + 1 < n && code.charCodeAt(i + 1) === 42) {
+      i += 2;
+      while (i + 1 < n && !(code.charCodeAt(i) === 42 && code.charCodeAt(i + 1) === 47)) i++;
+      i += 2;
+      continue;
+    }
+    // Skip string literals "..."
+    if (ch === 34) {
+      i++;
+      while (i < n && code.charCodeAt(i) !== 34) {
+        if (code.charCodeAt(i) === 92) i++;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (isIdentCharCode(ch)) {
+      const start = i;
+      while (i < n && isIdentCharCode(code.charCodeAt(i))) i++;
+      const tok = code.slice(start, i);
+      if (MODELICA_CLASS_KEYWORDS.has(tok)) {
+        let j = i;
+        while (j < n && isWhitespaceCharCode(code.charCodeAt(j))) j++;
+        if (j > i && j < n && isIdentCharCode(code.charCodeAt(j))) {
+          const nameStart = j;
+          while (j < n && isIdentCharCode(code.charCodeAt(j))) j++;
+          if (code.slice(nameStart, j) === className) return true;
+        }
+      }
+      continue;
+    }
+    i++;
+  }
+  return false;
+}
+
+function findBalancedExperimentBody(code: string): string | null {
+  const lower = code.toLowerCase();
+  const n = code.length;
+  let pos = 0;
+  while (pos < n) {
+    const idx = lower.indexOf("experiment", pos);
+    if (idx < 0) return null;
+    const beforeOk = idx === 0 || !isIdentCharCode(code.charCodeAt(idx - 1));
+    const afterIdx = idx + 10;
+    const afterOk = afterIdx >= n || !isIdentCharCode(code.charCodeAt(afterIdx));
+    if (beforeOk && afterOk) {
+      let j = afterIdx;
+      while (j < n && isWhitespaceCharCode(code.charCodeAt(j))) j++;
+      if (j < n && code.charCodeAt(j) === 40) {
+        // '('
+        const openIdx = j;
+        let depth = 1;
+        j++;
+        while (j < n && depth > 0) {
+          const c = code.charCodeAt(j);
+          if (c === 34 || c === 39) {
+            const quote = c;
+            j++;
+            while (j < n && code.charCodeAt(j) !== quote) {
+              if (code.charCodeAt(j) === 92) j++;
+              j++;
+            }
+          } else if (c === 40) {
+            depth++;
+          } else if (c === 41) {
+            depth--;
+            if (depth === 0) return code.slice(openIdx + 1, j);
+          }
+          j++;
+        }
+        return null;
+      }
+    }
+    pos = idx + 10;
+  }
+  return null;
+}
+
+function parseExperimentAttributes(body: string): Map<string, { raw: string; quoted: boolean }> {
+  const attrs = new Map<string, { raw: string; quoted: boolean }>();
+  const n = body.length;
+  let i = 0;
+  while (i < n) {
+    while (i < n && (isWhitespaceCharCode(body.charCodeAt(i)) || body.charCodeAt(i) === 44)) i++;
+    if (i >= n) break;
+    if (!isIdentCharCode(body.charCodeAt(i))) {
+      i++;
+      continue;
+    }
+    const keyStart = i;
+    while (i < n && isIdentCharCode(body.charCodeAt(i))) i++;
+    const key = body.slice(keyStart, i).toLowerCase();
+
+    while (i < n && isWhitespaceCharCode(body.charCodeAt(i))) i++;
+    if (i >= n || body.charCodeAt(i) !== 61) {
+      // Skip until next top-level comma
+      let depth = 0;
+      while (i < n) {
+        const c = body.charCodeAt(i);
+        if (c === 34 || c === 39) {
+          const q = c;
+          i++;
+          while (i < n && body.charCodeAt(i) !== q) {
+            if (body.charCodeAt(i) === 92) i++;
+            i++;
+          }
+        } else if (c === 40) {
+          depth++;
+        } else if (c === 41 && depth > 0) {
+          depth--;
+        } else if (c === 44 && depth === 0) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    i++; // consume '='
+    while (i < n && isWhitespaceCharCode(body.charCodeAt(i))) i++;
+    if (i >= n) break;
+
+    const first = body.charCodeAt(i);
+    if (first === 34 || first === 39) {
+      const quote = first;
+      i++;
+      const valStart = i;
+      while (i < n && body.charCodeAt(i) !== quote) {
+        if (body.charCodeAt(i) === 92) i++;
+        i++;
+      }
+      const val = body.slice(valStart, i);
+      if (i < n && body.charCodeAt(i) === quote) i++;
+      if (!attrs.has(key)) attrs.set(key, { raw: val, quoted: true });
+    } else {
+      const valStart = i;
+      let depth = 0;
+      while (i < n) {
+        const c = body.charCodeAt(i);
+        if (c === 40) depth++;
+        else if (c === 41 && depth > 0) depth--;
+        else if (depth === 0 && (c === 44 || isWhitespaceCharCode(c))) break;
+        i++;
+      }
+      const val = body.slice(valStart, i).trim();
+      if (!attrs.has(key)) attrs.set(key, { raw: val, quoted: false });
+    }
+  }
+  return attrs;
+}
+
 /** Extract experiment(StartTime=..., StopTime=..., Tolerance=..., Interval=...) annotation from source. */
 export function extractExperimentFromCode(code: string): {
   StartTime?: number;
@@ -1526,16 +1273,18 @@ export function extractExperimentFromCode(code: string): {
   numberOfIntervals?: number;
   solver?: string;
 } | null {
-  const match = /experiment\s*\(([^)]*)\)/i.exec(code);
-  if (!match?.[1]) return null;
-  const body = match[1];
+  const body = findBalancedExperimentBody(code);
+  if (!body) return null;
+  const attrs = parseExperimentAttributes(body);
   const numAttr = (name: string): number | undefined => {
-    const m = new RegExp(`\\b${name}\\s*=\\s*([+-]?\\d*\\.?\\d+(?:[eE][+-]?\\d+)?)`, "i").exec(body);
-    return m?.[1] !== undefined ? parseFloat(m[1]) : undefined;
+    const entry = attrs.get(name.toLowerCase());
+    if (!entry || entry.quoted || !entry.raw) return undefined;
+    const parsed = Number(entry.raw);
+    return Number.isFinite(parsed) ? parsed : undefined;
   };
   const strAttr = (name: string): string | undefined => {
-    const m = new RegExp(`\\b${name}\\s*=\\s*["']([^"']+)["']`, "i").exec(body);
-    return m?.[1];
+    const entry = attrs.get(name.toLowerCase());
+    return entry?.quoted && entry.raw.length > 0 ? entry.raw : undefined;
   };
   const startTime = numAttr("StartTime");
   const stopTime = numAttr("StopTime");
@@ -1584,6 +1333,7 @@ export function useAnsatzEngine({
   projectFiles,
   activeFileName,
   onUpdateProjectFile,
+  scadOverrideCode,
 }: UseAnsatzEngineProps) {
   const toast = useToast();
   const { preferences: modelingPrefs } = useModelingPreferences();
@@ -2170,19 +1920,15 @@ export function useAnsatzEngine({
       editorValue,
     );
 
-    const runScadLspFallback = (allowClientFallback = false, onSettled?: () => void) => {
-      getCadComponents(documentUri, undefined, editorValue)
+    const runScadLspFallback = (clearOnEmpty = false, onSettled?: () => void, sourceOverride?: string) => {
+      const targetSource = sourceOverride ?? editorValue;
+      getCadComponents(documentUri, undefined, targetSource)
         .then((components) => {
           if (cancelled) return;
           if (!Array.isArray(components) || components.length === 0) {
-            if (allowClientFallback) {
-              const { components: scadComps } = tessellateScadSource(editorValue);
-              if (!cancelled && scadComps.length > 0) {
-                setVtkBuffer(null);
-                setCadComponents(
-                  attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode),
-                );
-              }
+            if (clearOnEmpty) {
+              setVtkBuffer(null);
+              setCadComponents([]);
             }
             onSettled?.();
             return;
@@ -2205,21 +1951,12 @@ export function useAnsatzEngine({
           });
           setVtkBuffer(null);
           setCadComponents(
-            attachScadKinematicController(editorValue, mapped, animationControllerRef, setAnimationMode),
+            attachScadKinematicController(targetSource, mapped, animationControllerRef, setAnimationMode),
           );
           onSettled?.();
         })
         .catch(() => {
           if (cancelled) return;
-          if (allowClientFallback) {
-            const { components: scadComps } = tessellateScadSource(editorValue);
-            if (!cancelled && scadComps.length > 0) {
-              setVtkBuffer(null);
-              setCadComponents(
-                attachScadKinematicController(editorValue, scadComps, animationControllerRef, setAnimationMode),
-              );
-            }
-          }
           onSettled?.();
         });
     };
@@ -2244,38 +1981,34 @@ export function useAnsatzEngine({
           return `${p}:${val.length}:${val.slice(0, 64)}`;
         })
         .join("\0");
-      const scadSig = `${documentUri}\0${editorValue}\0${pairedSig}`;
+      const effectiveScadCode = scadOverrideCode ?? editorValue;
+      const hasFeatureOverride = Boolean(scadOverrideCode && scadOverrideCode !== editorValue);
+      const scadSig = `${documentUri}\0${effectiveScadCode}\0${pairedSig}\0${hasFeatureOverride ? "ov" : "base"}`;
       if (lastScadCadSigRef.current === scadSig) {
         return;
       }
-
-      const isInitialScadRender = lastScadCadSigRef.current === null;
-      const debounceMs = isInitialScadRender ? 0 : 450;
+      const wasFeatureOverride = Boolean(lastScadCadSigRef.current?.endsWith("\0ov"));
       const markScadSettled = () => {
         if (!cancelled) {
           lastScadCadSigRef.current = scadSig;
         }
       };
 
-      // Provide immediate client-side CSG preview for standalone SCAD files so 3D & VR
-      // never stall on "No shape classes found" while waiting for the LSP worker.
-      if (!hasPairedNonScadArtifacts && isInitialScadRender) {
-        const { components: initialScadComps } = tessellateScadSource(editorValue);
-        if (initialScadComps.length > 0) {
-          setGdtOverlay(null);
-          setVtkBuffer(null);
-          setCadComponents(
-            attachScadKinematicController(editorValue, initialScadComps, animationControllerRef, setAnimationMode),
-          );
-        }
+      if (hasFeatureOverride) {
+        setGdtOverlay(null);
+        runScadLspFallback(true, markScadSettled, effectiveScadCode);
+        return;
       }
+
+      const isInitialScadRender = lastScadCadSigRef.current === null || wasFeatureOverride;
+      const debounceMs = isInitialScadRender ? 0 : 450;
 
       const timerId = setTimeout(() => {
         if (cancelled) return;
 
         if (!hasPairedNonScadArtifacts) {
           setGdtOverlay(null);
-          runScadLspFallback(true, markScadSettled);
+          runScadLspFallback(false, markScadSettled, editorValue);
           return;
         }
 
@@ -2447,6 +2180,7 @@ export function useAnsatzEngine({
     activeFileName,
     onUpdateProjectFile,
     showCadView,
+    scadOverrideCode,
   ]);
 
   // ── Live MQTT data bridge ──
@@ -2648,10 +2382,7 @@ export function useAnsatzEngine({
       const extractedPrimary = extractPrimaryModelicaClassName(liveCode);
       const hasSelectedInCode =
         selectedTreeClassName &&
-        (selectedTreeClassName.includes(".") ||
-          new RegExp(
-            `\\b(?:model|block|class|package|function|record)\\s+${selectedTreeClassName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-          ).test(liveCode));
+        (selectedTreeClassName.includes(".") || hasModelicaClassDeclaration(liveCode, selectedTreeClassName));
       const targetClass = (hasSelectedInCode ? selectedTreeClassName : extractedPrimary) || undefined;
 
       let progressSub: { dispose: () => void } | null = null;

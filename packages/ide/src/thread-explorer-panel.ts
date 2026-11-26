@@ -3,6 +3,7 @@
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
+import { attachExtensionWebviewBridge } from "./webview/shared/extension-lsp-bridge.js";
 
 interface ThreadDomainNode {
   domain: string;
@@ -39,7 +40,7 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
 
     if (ThreadExplorerPanel.currentPanel) {
       ThreadExplorerPanel.currentPanel._panel.reveal(column);
-      ThreadExplorerPanel.currentPanel.refresh();
+      void ThreadExplorerPanel.currentPanel.refresh();
       return;
     }
 
@@ -59,9 +60,16 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
     // Listen to real-time digital thread status updates from the language server
     const notifDisposable = this._client.onNotification("modelscript/threadStatusChanged", (event) => {
       this._panel.webview.postMessage({ type: "threadStatusChanged", event });
-      this.refresh();
+      void this.refresh();
     });
     this._disposables.push(notifDisposable);
+
+    const bridgeSub = attachExtensionWebviewBridge(this._panel.webview, {
+      client: this._client,
+      getDocument: () => vscode.window.activeTextEditor?.document,
+      title: "Digital Thread Explorer",
+    });
+    this._disposables.push(bridgeSub);
 
     this._panel.webview.onDidReceiveMessage(
       async (msg) => {
@@ -120,6 +128,38 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
             break;
           }
 
+          case "reconcileSlot": {
+            try {
+              const result = await this._client.sendRequest("modelscript/reconcileThreadSlot", {
+                slot: msg.slot,
+                sourceDomain: msg.sourceDomain,
+                targetDomain: msg.targetDomain,
+              });
+              this._panel.webview.postMessage({ type: "reconcileResult", slot: msg.slot, result });
+              await this.refresh();
+              vscode.window.showInformationMessage(`Reconciled digital thread slot '${String(msg.slot ?? "")}'.`);
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(`Failed to reconcile slot: ${message}`);
+            }
+            break;
+          }
+
+          case "verifyAll": {
+            try {
+              this._panel.webview.postMessage({ type: "verificationStarted" });
+              const report = await this._client.sendRequest("modelscript/verifyAll", {
+                uri: typeof msg.uri === "string" ? msg.uri : "",
+              });
+              this._panel.webview.postMessage({ type: "verifyAllReport", report });
+              await this.refresh();
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(`Unified verification failed: ${message}`);
+            }
+            break;
+          }
+
           case "exportProvenance": {
             try {
               const graphData = await this._client.sendRequest<ThreadGraphData>("modelscript/getThreadGraph", {});
@@ -169,6 +209,22 @@ export class ThreadExplorerPanel extends BaseWebviewPanel {
   }
 
   public async refresh(): Promise<void> {
+    const activeDoc = vscode.window.activeTextEditor?.document;
+    const projectFiles: Record<string, string> = {};
+    for (const doc of vscode.workspace.textDocuments ?? []) {
+      const name = doc.uri.path.split("/").pop();
+      if (name) {
+        projectFiles[name] = doc.getText();
+      }
+    }
+    void this._panel.webview.postMessage({
+      type: "syncThreadDocument",
+      data: {
+        documentUri: activeDoc?.uri.toString() ?? "",
+        activeFileName: activeDoc?.uri.path.split("/").pop() ?? "",
+        projectFiles,
+      },
+    });
     try {
       const graphData = await this._client.sendRequest("modelscript/getThreadGraph", {});
       this._panel.webview.postMessage({ type: "graphData", data: graphData });

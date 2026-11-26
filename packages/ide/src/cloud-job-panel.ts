@@ -56,7 +56,7 @@ export class CloudJobPanel {
     this._extensionUri = extensionUri;
     this._client = client;
     this._targetUri = targetUri ?? vscode.window.activeTextEditor?.document.uri.toString();
-    this._apiBaseUrl = "http://localhost:3000/api/v1";
+    this._apiBaseUrl = "https://ansatz.social/api/v1";
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     this._panel.webview.onDidReceiveMessage(

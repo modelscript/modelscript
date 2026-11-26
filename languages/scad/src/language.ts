@@ -78,9 +78,9 @@ async function resolveScadSourceAndRoot(
     } catch {}
   }
 
-  let rootNode: ScadCstNode | undefined = uri
-    ? ctx.documentManager?.documentTrees?.get(uri)?.tree?.rootNode
-    : undefined;
+  const cachedTree = uri ? ctx.documentManager?.documentTrees?.get(uri) : undefined;
+  let rootNode: ScadCstNode | undefined =
+    cachedTree && (!source || cachedTree.text === source) ? cachedTree.tree?.rootNode : undefined;
   if (!rootNode && source && ctx.parserService) {
     try {
       await ctx.parserService.ensureLanguageParserLoaded?.("scad");

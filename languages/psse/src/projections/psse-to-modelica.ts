@@ -55,7 +55,7 @@ export function psseToModelica(psseCase: PsseCase, options?: PsseModelicaOptions
     genIdx++;
     const bus = psseCase.buses.get(gen.i);
     const baseKv = bus && bus.baseKv > 0 ? bus.baseKv : 138.0;
-    const vNomVolts = (baseKv * 1000) / Math.sqrt(3); // Line-to-neutral peak or RMS
+    const vNomVolts = (baseKv * 1000 * Math.SQRT2) / Math.sqrt(3); // Line-to-neutral peak amplitude for per-phase positive-sequence equivalent
     const vSetpoint = gen.vs > 0 ? gen.vs * vNomVolts : vNomVolts;
     const phaseRad = ((bus?.va ?? 0) * Math.PI) / 180;
     const genId = `gen_${gen.i}_${gen.id.trim() || genIdx}`;

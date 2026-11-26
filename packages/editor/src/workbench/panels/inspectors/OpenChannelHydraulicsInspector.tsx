@@ -128,44 +128,11 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
       });
     }
 
-    // Default reach synthesis if none or single parsed
-    if (list.length < 2) {
-      const defaultStations = [1000, 800, 600, 400, 200, 0];
-      return defaultStations.map((sta, idx) => {
-        const inv = 120.0 - idx * 2.8;
-        const depth = 2.4 + idx * 0.25;
-        const wElev = inv + depth;
-        const v = 1.8 - idx * 0.08;
-        const egl = wElev + (v * v) / (2 * 9.80665);
-        const fr = v / Math.sqrt(9.80665 * depth);
-        return {
-          station: sta,
-          invertElev: inv,
-          waterElev: wElev,
-          eglElev: egl,
-          flowM3s: 125.0,
-          velocityMs: v,
-          froude: fr,
-          manning: 0.035,
-          topWidthM: 20 + depth * 4,
-          areaM2: 20 * depth + 2 * depth * depth,
-          points: [
-            { x: 0, z: inv + 5.5 },
-            { x: 10, z: inv + 2.0 },
-            { x: 20, z: inv },
-            { x: 35, z: inv },
-            { x: 45, z: inv + 2.0 },
-            { x: 55, z: inv + 5.5 },
-          ],
-          line: 1 + idx * 10,
-        };
-      });
-    }
-
     return list.sort((a, b) => b.station - a.station); // HEC-RAS reaches ordered upstream to downstream
   }, [lines]);
 
-  const activeSection = sections[Math.min(selectedStationIdx, sections.length - 1)] ?? sections[0]!;
+  const activeSection: RiverCrossSection | undefined =
+    sections.length > 0 ? (sections[Math.min(selectedStationIdx, sections.length - 1)] ?? sections[0]) : undefined;
 
   // Bounds for SVG Longitudinal Profile
   const bounds = useMemo(() => {
@@ -215,6 +182,34 @@ export const OpenChannelHydraulicsInspector: React.FC<OpenChannelHydraulicsInspe
       .map((s) => `L ${toSvgX(s.station).toFixed(1)} ${toSvgY(s.invertElev).toFixed(1)}`)
       .join(" ") +
     " Z";
+
+  if (!activeSection) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          padding: "32px 20px",
+          textAlign: "center",
+          color: textMuted,
+          border: `1px solid ${borderCol}`,
+          borderRadius: 8,
+          backgroundColor: cardBg,
+        }}
+      >
+        <div style={{ fontWeight: 600, fontSize: 13, color: textPrimary }}>
+          No river cross-sections parsed from source
+        </div>
+        <div style={{ fontSize: 12, maxWidth: 420 }}>
+          Add HEC-RAS cross-section declarations (<code>Type RM</code>, <code>Node RM</code>, or{" "}
+          <code>Station = ...</code>) to inspect water surface profiles and hydraulic geometry.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, color: textPrimary, fontSize: 13 }}>

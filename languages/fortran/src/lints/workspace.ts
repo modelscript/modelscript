@@ -85,10 +85,14 @@ export function lintFortranWorkspace(workspace: WorkspaceDocumentInput, rootUri?
     for (const d of lintFortranSource(text)) {
       diagnostics.push({
         uri,
-        code: String(d.code),
+        code: d.id ?? String(d.code),
         rule: d.rule ?? "fortran-lint",
         severity: d.severity,
         message: d.message,
+        line: d.line,
+        column: d.column,
+        endLine: d.endLine,
+        endColumn: d.endColumn,
       });
     }
 

@@ -17,6 +17,7 @@ import {
 
 export type AnsatzBackendProviderMode = "ansatz" | "custom";
 export type AnsatzCustomProtocol = "openai" | "anthropic";
+export type AnsatzComputeDial = "fast-m0" | "auto-escalate" | "certified-m32";
 
 export interface AnsatzContextSnapshot {
   fileName?: string | undefined;
@@ -49,6 +50,9 @@ export interface AnsatzChatRequest {
   model?: string | undefined;
   temperature?: number | undefined;
   maxTokens?: number | undefined;
+  computeDial?: AnsatzComputeDial | undefined;
+  packagePins?: Record<string, string> | undefined;
+  memoryContext?: string | undefined;
 }
 
 export interface AnsatzProvidersInfo {
@@ -59,7 +63,7 @@ export interface AnsatzProvidersInfo {
   ollamaQualityModel?: string | undefined;
 }
 
-function buildAnsatzSystemPrompt(context?: AnsatzContextSnapshot): string {
+function buildAnsatzSystemPrompt(context?: AnsatzContextSnapshot, memoryContext?: string): string {
   const parts = [
     "You are Ansatz AI, an expert physical-modeling and systems engineering assistant inside ModelScript / Ansatz.",
     "You help users author, debug, flatten, and simulate models across Modelica, SysML v2, CAD/STEP, power grids, fluid networks, and other engineering DSLs.",
@@ -86,6 +90,10 @@ function buildAnsatzSystemPrompt(context?: AnsatzContextSnapshot): string {
         context.code.length > 12_000 ? `${context.code.slice(0, 12_000)}\n... (truncated)` : context.code;
       parts.push(`\nActive Source:\n\`\`\`${context.dialect || "modelica"}\n${trimmedCode}\n\`\`\``);
     }
+  }
+
+  if (memoryContext && memoryContext.trim()) {
+    parts.push(`\n${memoryContext.trim()}`);
   }
 
   return parts.join("\n");
@@ -154,7 +162,7 @@ export class AnsatzAiService {
     const { provider, model } = await this.resolveProvider(req);
     const systemMessage: LLMMessage = {
       role: "system",
-      content: buildAnsatzSystemPrompt(req.context),
+      content: buildAnsatzSystemPrompt(req.context, req.memoryContext),
     };
     const workingMessages: LLMMessage[] = [systemMessage, ...req.messages.filter((m) => m.role !== "system")];
 
@@ -182,6 +190,11 @@ export class AnsatzAiService {
           model,
           temperature: req.temperature ?? 0.2,
           maxTokens: req.maxTokens ?? 2048,
+          ...(req.computeDial === "certified-m32"
+            ? { reasoningEffort: "high" as const }
+            : req.computeDial === "fast-m0"
+              ? { reasoningEffort: "none" as const }
+              : {}),
           tools: mergedTools.length > 0 ? mergedTools : undefined,
           toolChoice: mergedTools.length > 0 ? ("auto" as const) : undefined,
         };

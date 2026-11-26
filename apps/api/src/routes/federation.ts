@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type {
+  AiGovernancePolicy,
+  FederatedMemoryShardRelease,
+  FederatedVerificationAttestation,
+} from "@modelscript/runtime";
 import type { NextFunction, Request, Response } from "express";
 import { Router, json } from "express";
 import crypto from "node:crypto";
@@ -121,6 +126,10 @@ export function serializeArtifactAttachment(
     fmu: "application/x-fmu",
     "cfd-result": "application/json",
     "fea-result": "application/json",
+    "training-recipe": "application/vnd.modelscript.training-recipe+json",
+    "memory-shard": "application/vnd.modelscript.memory-shard+json",
+    "dataset-pretrain": "application/vnd.modelscript.dataset+json",
+    "dataset-posttrain": "application/vnd.modelscript.dataset+json",
     pdf: "application/pdf",
     picture: "image/png",
     video: "video/mp4",
@@ -152,6 +161,425 @@ export function serializeArtifactAttachment(
   }
 
   return attachment;
+}
+
+export const ANSATZ_CONTROL_PLANE_NS = "https://modelscript.org/ns/ansatz#";
+
+const ANSATZ_JSONLD_CONTEXT = {
+  ansatz: ANSATZ_CONTROL_PLANE_NS,
+  MemoryShardRelease: "ansatz:MemoryShardRelease",
+  DatasetRelease: "ansatz:DatasetRelease",
+  TrainingRecipeRelease: "ansatz:TrainingRecipeRelease",
+  VerificationAttestation: "ansatz:VerificationAttestation",
+  originNode: "ansatz:originNode",
+  packageName: "ansatz:packageName",
+  version: "ansatz:version",
+  embedderId: "ansatz:embedderId",
+  embedderHash: "ansatz:embedderHash",
+  manifestCid: "ansatz:manifestCid",
+  mirrorUrl: { "@id": "ansatz:mirrorUrl", "@type": "@id" },
+  signerPubkey: "ansatz:signerPubkey",
+  aiGovernance: "ansatz:aiGovernance",
+  formalCertSummary: "ansatz:formalCertSummary",
+  targetReleaseId: { "@id": "ansatz:targetReleaseId", "@type": "@id" },
+  verifierNode: "ansatz:verifierNode",
+  verifierPubkey: "ansatz:verifierPubkey",
+  passedGates: "ansatz:passedGates",
+  verifiedAtIso: "ansatz:verifiedAtIso",
+};
+
+type AnsatzControlPlaneObjectType = FederatedMemoryShardRelease["type"] | FederatedVerificationAttestation["type"];
+
+export type ParseInboundMlControlPlaneResult =
+  | {
+      matched: false;
+      valid: false;
+    }
+  | {
+      matched: true;
+      valid: false;
+      error: string;
+    }
+  | {
+      matched: true;
+      valid: true;
+      kind: "release";
+      release: FederatedMemoryShardRelease;
+      proof?: Record<string, unknown> | undefined;
+    }
+  | {
+      matched: true;
+      valid: true;
+      kind: "attestation";
+      attestation: FederatedVerificationAttestation;
+      proof?: Record<string, unknown> | undefined;
+    };
+
+function normalizeAnsatzControlPlaneType(rawType: unknown): AnsatzControlPlaneObjectType | null {
+  const candidates = Array.isArray(rawType) ? rawType : typeof rawType === "string" ? [rawType] : [];
+  for (const entry of candidates) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (trimmed === "ansatz:MemoryShardRelease" || trimmed === `${ANSATZ_CONTROL_PLANE_NS}MemoryShardRelease`) {
+      return "ansatz:MemoryShardRelease";
+    }
+    if (trimmed === "ansatz:DatasetRelease" || trimmed === `${ANSATZ_CONTROL_PLANE_NS}DatasetRelease`) {
+      return "ansatz:DatasetRelease";
+    }
+    if (trimmed === "ansatz:TrainingRecipeRelease" || trimmed === `${ANSATZ_CONTROL_PLANE_NS}TrainingRecipeRelease`) {
+      return "ansatz:TrainingRecipeRelease";
+    }
+    if (
+      trimmed === "ansatz:VerificationAttestation" ||
+      trimmed === `${ANSATZ_CONTROL_PLANE_NS}VerificationAttestation`
+    ) {
+      return "ansatz:VerificationAttestation";
+    }
+  }
+  return null;
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function parseGateSummary(raw: unknown): { gate1: boolean; gate2: boolean; gate3: boolean; gate4: boolean } | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (
+    typeof obj["gate1"] !== "boolean" ||
+    typeof obj["gate2"] !== "boolean" ||
+    typeof obj["gate3"] !== "boolean" ||
+    typeof obj["gate4"] !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    gate1: obj["gate1"],
+    gate2: obj["gate2"],
+    gate3: obj["gate3"],
+    gate4: obj["gate4"],
+  };
+}
+
+function parseAiGovernancePolicy(raw: unknown): AiGovernancePolicy | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (
+    typeof obj["allowRag"] !== "boolean" ||
+    typeof obj["allowPretrain"] !== "boolean" ||
+    typeof obj["allowPosttrain"] !== "boolean"
+  ) {
+    return null;
+  }
+  const tenantScope = obj["tenantScope"];
+  if (tenantScope !== "public" && tenantScope !== "org" && tenantScope !== "project-private") {
+    return null;
+  }
+  if (obj["license"] !== undefined && typeof obj["license"] !== "string") {
+    return null;
+  }
+  if (obj["reciprocalTrainingLicense"] !== undefined && typeof obj["reciprocalTrainingLicense"] !== "string") {
+    return null;
+  }
+  if (obj["attributionRequired"] !== undefined && typeof obj["attributionRequired"] !== "boolean") {
+    return null;
+  }
+
+  const policy: AiGovernancePolicy = {
+    allowRag: obj["allowRag"],
+    allowPretrain: obj["allowPretrain"],
+    allowPosttrain: obj["allowPosttrain"],
+    tenantScope,
+  };
+  if (obj["license"] !== undefined) {
+    policy.license = obj["license"];
+  }
+  if (obj["reciprocalTrainingLicense"] !== undefined) {
+    policy.reciprocalTrainingLicense = obj["reciprocalTrainingLicense"];
+  }
+  if (obj["attributionRequired"] !== undefined) {
+    policy.attributionRequired = obj["attributionRequired"];
+  }
+  return policy;
+}
+
+/**
+ * Serializes a signed ML control-plane release (`memory-shard`, `dataset-*`, or `training-recipe`)
+ * into a compliant ActivityStreams 2.0 `Create` JSON-LD payload under `https://modelscript.org/ns/ansatz#`.
+ * Heavy Parquet/DiskANN blobs are never embedded inline; peers replicate them asynchronously via `mirrorUrl`.
+ */
+export function serializeMlReleaseActivity(
+  release: FederatedMemoryShardRelease,
+  actorUrl: string,
+  proof?: Record<string, unknown>,
+): Record<string, unknown> {
+  const published = new Date().toISOString();
+  const normalizedId = release.id.replace(/\/$/, "");
+  const addressing = buildAddressingForVisibility("public", actorUrl);
+
+  const object: Record<string, unknown> = {
+    id: release.id,
+    type: release.type,
+    attributedTo: actorUrl,
+    originNode: release.originNode,
+    packageName: release.packageName,
+    version: release.version,
+    manifestCid: release.manifestCid,
+    mirrorUrl: release.mirrorUrl,
+    signerPubkey: release.signerPubkey,
+    aiGovernance: { ...release.aiGovernance },
+    formalCertSummary: {
+      gate1: Boolean(release.formalCertSummary.gate1),
+      gate2: Boolean(release.formalCertSummary.gate2),
+      gate3: Boolean(release.formalCertSummary.gate3),
+      gate4: Boolean(release.formalCertSummary.gate4),
+    },
+  };
+
+  if (release.embedderId !== undefined) {
+    object["embedderId"] = release.embedderId;
+  }
+  if (release.embedderHash !== undefined) {
+    object["embedderHash"] = release.embedderHash;
+  }
+  if (proof) {
+    object["proof"] = proof;
+  }
+
+  return {
+    "@context": [
+      "https://www.w3.org/ns/activitystreams",
+      ...(proof ? ["https://w3id.org/security/data-integrity/v1"] : []),
+      ANSATZ_JSONLD_CONTEXT,
+    ],
+    id: `${normalizedId}/activity`,
+    type: "Create",
+    actor: actorUrl,
+    published,
+    to: addressing.to,
+    cc: addressing.cc,
+    object,
+  };
+}
+
+/**
+ * Serializes an independent peer `ansatz:VerificationAttestation` into a compliant
+ * ActivityStreams 2.0 `Create` JSON-LD payload.
+ */
+export function serializeVerificationAttestationActivity(
+  attestation: FederatedVerificationAttestation,
+  actorUrl: string,
+  proof?: Record<string, unknown>,
+): Record<string, unknown> {
+  const digest = crypto
+    .createHash("sha256")
+    .update(`${attestation.targetReleaseId}:${attestation.manifestCid}:${attestation.verifiedAtIso}`)
+    .digest("hex")
+    .slice(0, 24);
+  const attestationId = `${actorUrl.replace(/\/$/, "")}/attestations/${digest}`;
+  const addressing = buildAddressingForVisibility("public", actorUrl);
+
+  const object: Record<string, unknown> = {
+    id: attestationId,
+    type: "ansatz:VerificationAttestation",
+    attributedTo: actorUrl,
+    targetReleaseId: attestation.targetReleaseId,
+    manifestCid: attestation.manifestCid,
+    verifierNode: attestation.verifierNode,
+    verifierPubkey: attestation.verifierPubkey,
+    passedGates: {
+      gate1: Boolean(attestation.passedGates.gate1),
+      gate2: Boolean(attestation.passedGates.gate2),
+      gate3: Boolean(attestation.passedGates.gate3),
+      gate4: Boolean(attestation.passedGates.gate4),
+    },
+    verifiedAtIso: attestation.verifiedAtIso,
+  };
+
+  if (proof) {
+    object["proof"] = proof;
+  }
+
+  return {
+    "@context": [
+      "https://www.w3.org/ns/activitystreams",
+      ...(proof ? ["https://w3id.org/security/data-integrity/v1"] : []),
+      ANSATZ_JSONLD_CONTEXT,
+    ],
+    id: `${attestationId}/activity`,
+    type: "Create",
+    actor: actorUrl,
+    published: attestation.verifiedAtIso,
+    to: addressing.to,
+    cc: addressing.cc,
+    object,
+  };
+}
+
+/**
+ * Parses and validates an inbound ActivityPub `Create` activity carrying an ML control-plane object
+ * (`ansatz:MemoryShardRelease`, `ansatz:DatasetRelease`, `ansatz:TrainingRecipeRelease`, or
+ * `ansatz:VerificationAttestation`).
+ */
+export function parseInboundMlControlPlaneActivity(
+  activity: Record<string, unknown>,
+): ParseInboundMlControlPlaneResult {
+  if (!activity || typeof activity !== "object" || Array.isArray(activity)) {
+    return { matched: false, valid: false };
+  }
+  if (activity["type"] !== "Create") {
+    return { matched: false, valid: false };
+  }
+  const rawObj = activity["object"];
+  if (!rawObj || typeof rawObj !== "object" || Array.isArray(rawObj)) {
+    return { matched: false, valid: false };
+  }
+
+  const obj = rawObj as Record<string, unknown>;
+  const normalizedType = normalizeAnsatzControlPlaneType(obj["type"]);
+  if (!normalizedType) {
+    return { matched: false, valid: false };
+  }
+
+  const rawProof = obj["proof"];
+  const proof =
+    rawProof && typeof rawProof === "object" && !Array.isArray(rawProof)
+      ? (rawProof as Record<string, unknown>)
+      : undefined;
+
+  if (!isNonEmptyString(obj["manifestCid"])) {
+    return { matched: true, valid: false, error: "Missing or invalid manifestCid" };
+  }
+  const manifestCid = obj["manifestCid"].trim();
+
+  if (normalizedType === "ansatz:VerificationAttestation") {
+    if (!isNonEmptyString(obj["targetReleaseId"])) {
+      return { matched: true, valid: false, error: "Missing or invalid targetReleaseId" };
+    }
+    if (!isNonEmptyString(obj["verifierNode"])) {
+      return { matched: true, valid: false, error: "Missing or invalid verifierNode" };
+    }
+    if (!isNonEmptyString(obj["verifierPubkey"])) {
+      return { matched: true, valid: false, error: "Missing or invalid verifierPubkey" };
+    }
+    if (!isNonEmptyString(obj["verifiedAtIso"]) || Number.isNaN(Date.parse(obj["verifiedAtIso"]))) {
+      return { matched: true, valid: false, error: "Missing or invalid verifiedAtIso timestamp" };
+    }
+    const passedGates = parseGateSummary(obj["passedGates"]);
+    if (!passedGates) {
+      return {
+        matched: true,
+        valid: false,
+        error: "Invalid passedGates summary: gate1..gate4 must all be booleans",
+      };
+    }
+
+    const attestation: FederatedVerificationAttestation = {
+      type: "ansatz:VerificationAttestation",
+      targetReleaseId: obj["targetReleaseId"].trim(),
+      manifestCid,
+      verifierNode: obj["verifierNode"].trim(),
+      verifierPubkey: obj["verifierPubkey"].trim(),
+      passedGates,
+      verifiedAtIso: obj["verifiedAtIso"].trim(),
+    };
+
+    return {
+      matched: true,
+      valid: true,
+      kind: "attestation",
+      attestation,
+      ...(proof ? { proof } : {}),
+    };
+  }
+
+  // Release object: ansatz:MemoryShardRelease | ansatz:DatasetRelease | ansatz:TrainingRecipeRelease
+  if (!isNonEmptyString(obj["id"])) {
+    return { matched: true, valid: false, error: "Missing or invalid release id" };
+  }
+  if (!isNonEmptyString(obj["originNode"])) {
+    return { matched: true, valid: false, error: "Missing or invalid originNode" };
+  }
+  if (!isNonEmptyString(obj["packageName"])) {
+    return { matched: true, valid: false, error: "Missing or invalid packageName" };
+  }
+  if (!isNonEmptyString(obj["version"])) {
+    return { matched: true, valid: false, error: "Missing or invalid version" };
+  }
+  if (!isNonEmptyString(obj["signerPubkey"])) {
+    return { matched: true, valid: false, error: "Missing or invalid signerPubkey" };
+  }
+  if (!isNonEmptyString(obj["mirrorUrl"])) {
+    return { matched: true, valid: false, error: "Missing or invalid mirrorUrl" };
+  }
+
+  const mirrorUrlRaw = obj["mirrorUrl"].trim();
+  let safeMirrorUrl: URL;
+  try {
+    safeMirrorUrl = assertSafePublicUrl(mirrorUrlRaw);
+  } catch (err) {
+    return {
+      matched: true,
+      valid: false,
+      error: `Unsafe mirrorUrl: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  if (safeMirrorUrl.protocol !== "https:") {
+    return {
+      matched: true,
+      valid: false,
+      error: `Unsafe mirrorUrl protocol '${safeMirrorUrl.protocol}': HTTPS is required`,
+    };
+  }
+
+  if (obj["embedderId"] !== undefined && !isNonEmptyString(obj["embedderId"])) {
+    return { matched: true, valid: false, error: "Invalid embedderId" };
+  }
+  if (obj["embedderHash"] !== undefined && !isNonEmptyString(obj["embedderHash"])) {
+    return { matched: true, valid: false, error: "Invalid embedderHash" };
+  }
+
+  const aiGovernance = parseAiGovernancePolicy(obj["aiGovernance"]);
+  if (!aiGovernance) {
+    return { matched: true, valid: false, error: "Missing or invalid aiGovernance policy" };
+  }
+
+  const formalCertSummary = parseGateSummary(obj["formalCertSummary"]);
+  if (!formalCertSummary) {
+    return {
+      matched: true,
+      valid: false,
+      error: "Invalid formalCertSummary: gate1..gate4 must all be booleans",
+    };
+  }
+
+  const release: FederatedMemoryShardRelease = {
+    type: normalizedType,
+    id: obj["id"].trim(),
+    originNode: obj["originNode"].trim(),
+    packageName: obj["packageName"].trim(),
+    version: obj["version"].trim(),
+    manifestCid,
+    mirrorUrl: safeMirrorUrl.href,
+    signerPubkey: obj["signerPubkey"].trim(),
+    aiGovernance,
+    formalCertSummary,
+  };
+  if (isNonEmptyString(obj["embedderId"])) {
+    release.embedderId = obj["embedderId"].trim();
+  }
+  if (isNonEmptyString(obj["embedderHash"])) {
+    release.embedderHash = obj["embedderHash"].trim();
+  }
+
+  return {
+    matched: true,
+    valid: true,
+    kind: "release",
+    release,
+    ...(proof ? { proof } : {}),
+  };
 }
 
 export async function resolveActorHandle(
@@ -1256,6 +1684,11 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     const remoteUser = db.getOrCreateRemoteUser(remoteActorUrl as string, remoteActorProfile);
 
     try {
+      const mlControlPlane =
+        activity?.type === "Create"
+          ? parseInboundMlControlPlaneActivity(activity as Record<string, unknown>)
+          : ({ matched: false, valid: false } as const);
+
       if (activity.type === "Follow" && fullLocalUser) {
         const isLocked = Boolean(fullLocalUser.locked);
         if (isLocked) {
@@ -1587,6 +2020,180 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
           ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
           details: { reportId: report.id, remoteActor: remoteActorUrl, reason: flagReason },
         });
+      } else if (mlControlPlane.matched) {
+        if (!mlControlPlane.valid) {
+          console.warn(
+            `[Federation] Rejected invalid ML control-plane activity from ${remoteActorUrl}: ${mlControlPlane.error}`,
+          );
+          res.status(400).json({ error: mlControlPlane.error });
+          return;
+        }
+
+        if (mlControlPlane.kind === "release") {
+          const { release } = mlControlPlane;
+          console.info(
+            `[Federation] Accepted ${release.type} '${release.packageName}@${release.version}' (cid=${release.manifestCid}) from ${remoteActorUrl}`,
+          );
+          if (release.type === "ansatz:MemoryShardRelease") {
+            try {
+              const memContract = {
+                embedderId: release.embedderId ?? "unknown",
+                embedderHash: release.manifestCid,
+                vectorDim: 256,
+              };
+              const governance = {
+                allowRag: true,
+                allowPretrain: false,
+                allowPosttrain: false,
+                tenantScope: "public",
+              };
+              db.db
+                .prepare(
+                  `INSERT INTO memory_shard_manifests (
+                     shard_id, recipe_name, recipe_version, dataset_kind, dialect,
+                     origin_node, signer_pubkey, memory_contract_json, ai_governance_json,
+                     tenant_scope, provenance_json
+                   ) VALUES (?, ?, ?, 'memory-shard', 'polyglot', ?, ?, ?, ?, 'public', ?)
+                   ON CONFLICT(shard_id) DO UPDATE SET
+                     origin_node = excluded.origin_node,
+                     signer_pubkey = excluded.signer_pubkey,
+                     provenance_json = excluded.provenance_json`,
+                )
+                .run(
+                  release.manifestCid,
+                  release.packageName,
+                  release.version,
+                  release.originNode,
+                  release.signerPubkey ?? "",
+                  JSON.stringify(memContract),
+                  JSON.stringify(governance),
+                  JSON.stringify({
+                    releaseId: release.id,
+                    mirrorUrl: release.mirrorUrl ?? null,
+                    remoteActor: remoteActorUrl,
+                    formalCertSummary: release.formalCertSummary ?? null,
+                    independentReproductions: 0,
+                  }),
+                );
+            } catch (persistErr) {
+              console.warn(
+                `[Federation] Failed to persist memory shard manifest '${release.manifestCid}':`,
+                persistErr,
+              );
+            }
+          }
+          db.logAudit({
+            actorId: remoteUser.id,
+            action: "federated_ml_release_received",
+            resourceType: "ml_release",
+            resourceId: release.id,
+            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+            details: {
+              type: release.type,
+              originNode: release.originNode,
+              packageName: release.packageName,
+              version: release.version,
+              manifestCid: release.manifestCid,
+              mirrorUrl: release.mirrorUrl,
+              embedderId: release.embedderId,
+              formalCertSummary: release.formalCertSummary,
+              remoteActor: remoteActorUrl,
+            },
+          });
+        } else {
+          const { attestation } = mlControlPlane;
+          console.info(
+            `[Federation] Accepted ansatz:VerificationAttestation for '${attestation.targetReleaseId}' (cid=${attestation.manifestCid}) from ${remoteActorUrl}`,
+          );
+          try {
+            const allGatesPassed = Boolean(
+              attestation.passedGates.gate1 &&
+              attestation.passedGates.gate2 &&
+              attestation.passedGates.gate3 &&
+              attestation.passedGates.gate4,
+            );
+            db.db
+              .prepare(
+                `INSERT INTO federated_verification_attestations (
+                   target_release_id, manifest_cid, verifier_node, verifier_pubkey,
+                   gate1, gate2, gate3, gate4, all_gates_passed, verified_at_iso, proof_json
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(target_release_id, verifier_node, verifier_pubkey) DO UPDATE SET
+                   manifest_cid = excluded.manifest_cid,
+                   gate1 = excluded.gate1,
+                   gate2 = excluded.gate2,
+                   gate3 = excluded.gate3,
+                   gate4 = excluded.gate4,
+                   all_gates_passed = excluded.all_gates_passed,
+                   verified_at_iso = excluded.verified_at_iso`,
+              )
+              .run(
+                attestation.targetReleaseId,
+                attestation.manifestCid,
+                attestation.verifierNode,
+                attestation.verifierPubkey,
+                attestation.passedGates.gate1 ? 1 : 0,
+                attestation.passedGates.gate2 ? 1 : 0,
+                attestation.passedGates.gate3 ? 1 : 0,
+                attestation.passedGates.gate4 ? 1 : 0,
+                allGatesPassed ? 1 : 0,
+                attestation.verifiedAtIso,
+                null,
+              );
+
+            if (allGatesPassed) {
+              const cntRow = db.db
+                .prepare(
+                  `SELECT SUM(CASE WHEN all_gates_passed = 1 THEN 1 ELSE 0 END) AS repros
+                   FROM federated_verification_attestations
+                   WHERE target_release_id = ? OR manifest_cid = ?`,
+                )
+                .get(attestation.targetReleaseId, attestation.manifestCid) as { repros: number | null } | undefined;
+              const repros = Number(cntRow?.repros ?? 0);
+              for (const table of ["compiled_dataset_shards", "memory_shard_manifests"] as const) {
+                const rows = db.db
+                  .prepare(
+                    `SELECT shard_id, provenance_json FROM ${table}
+                     WHERE shard_id = ? OR (recipe_name || '@' || recipe_version) = ?`,
+                  )
+                  .all(attestation.manifestCid, attestation.targetReleaseId) as Array<{
+                  shard_id: string;
+                  provenance_json: string;
+                }>;
+                const upd = db.db.prepare(`UPDATE ${table} SET provenance_json = ? WHERE shard_id = ?`);
+                for (const r of rows) {
+                  try {
+                    const prov = JSON.parse(r.provenance_json) as Record<string, unknown>;
+                    prov["independentReproductions"] = repros;
+                    upd.run(JSON.stringify(prov), r.shard_id);
+                  } catch {
+                    // Ignore malformed provenance JSON
+                  }
+                }
+              }
+            }
+          } catch (attestErr) {
+            console.warn(
+              `[Federation] Failed to persist verification attestation for '${attestation.targetReleaseId}':`,
+              attestErr,
+            );
+          }
+          db.logAudit({
+            actorId: remoteUser.id,
+            action: "federated_verification_attestation_received",
+            resourceType: "verification_attestation",
+            resourceId: attestation.targetReleaseId,
+            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip,
+            details: {
+              targetReleaseId: attestation.targetReleaseId,
+              manifestCid: attestation.manifestCid,
+              verifierNode: attestation.verifierNode,
+              passedGates: attestation.passedGates,
+              verifiedAtIso: attestation.verifiedAtIso,
+              remoteActor: remoteActorUrl,
+            },
+          });
+        }
       } else if (
         activity.type === "Create" &&
         activity.object &&

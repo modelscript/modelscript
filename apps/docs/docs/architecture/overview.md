@@ -1,6 +1,6 @@
 ---
 title: "Architecture Overview"
-description: "ModelScript is built on a data-oriented, WebAssembly-first compiler architecture. Rather than allocating deep hierarchies of garbage-collected JavaScript AST wrapper objects, every stage of the com..."
+description: "ModelScript's data-oriented, WebAssembly-first compiler architecture runs parsing, DAE flattening, linear algebra, and verification on SoA linear memory."
 ---
 
 # Architecture Overview
@@ -98,8 +98,8 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/cad`           | `packages/cad`           | OpenCascade (OCCT) B-Rep kernel, CSG evaluator, STEP AP214/AP242 serializer, swept-volume clearance, GD&T stack-up, 3D formal verification overlays, Gerber ECAD & PCB router/DRC                       |
 | `@modelscript/diagram`       | `packages/diagram`       | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                                                   |
 | `@modelscript/exchange`      | `packages/exchange`      | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL                                        |
-| `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 105 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
-| `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
+| `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 169 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
+| `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 124 core and domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                         |
 | `@modelscript/sdk`           | `packages/sdk`           | TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels                                                                               |
 | `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and ansatz environments                                                           |
 | `@modelscript/ide-client`    | `packages/ide`           | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                                                       |

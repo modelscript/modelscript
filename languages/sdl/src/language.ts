@@ -18,15 +18,17 @@ export const sdlLanguage = language({
   },
   errorCodes: SdlErrorCode,
 
+  extras: ($) => [/[ \t\r\n]+/, $["Comment"]!],
+
   rules: {
-    Specification: ($) => repeat(choice($["SystemDef"]!, $["Comment"]!)),
+    Specification: ($) => repeat($["SystemDef"]!),
 
     SystemDef: ($) =>
       seq(
         "SYSTEM",
         field("name", $["Identifier"]!),
         ";",
-        repeat(choice($["SignalDef"]!, $["ChannelDef"]!, $["BlockDef"]!, $["Comment"]!)),
+        repeat(choice($["SignalDef"]!, $["ChannelDef"]!, $["BlockDef"]!)),
         "ENDSYSTEM",
         optional($["Identifier"]!),
         ";",
@@ -68,7 +70,7 @@ export const sdlLanguage = language({
         "BLOCK",
         field("name", $["Identifier"]!),
         ";",
-        repeat(choice($["SignalDef"]!, $["SignalRouteDef"]!, $["ConnectDef"]!, $["ProcessDef"]!, $["Comment"]!)),
+        repeat(choice($["SignalDef"]!, $["SignalRouteDef"]!, $["ConnectDef"]!, $["ProcessDef"]!)),
         "ENDBLOCK",
         optional($["Identifier"]!),
         ";",
@@ -92,7 +94,7 @@ export const sdlLanguage = language({
         field("name", $["Identifier"]!),
         optional(seq("(", $["NumberLiteral"]!, optional(seq(",", $["NumberLiteral"]!)), ")")),
         ";",
-        repeat(choice($["DclDef"]!, $["TimerDef"]!, $["StartDef"]!, $["StateDef"]!, $["Comment"]!)),
+        repeat(choice($["DclDef"]!, $["TimerDef"]!, $["StartDef"]!, $["StateDef"]!)),
         "ENDPROCESS",
         optional($["Identifier"]!),
         ";",
@@ -118,7 +120,7 @@ export const sdlLanguage = language({
         field("name", choice($["Identifier"]!, "*")),
         repeat(seq(",", $["Identifier"]!)),
         ";",
-        repeat(choice($["InputDef"]!, $["Comment"]!)),
+        repeat($["InputDef"]!),
         optional(seq("ENDSTATE", optional($["Identifier"]!), ";")),
       ),
 
@@ -133,16 +135,7 @@ export const sdlLanguage = language({
 
     Transition: ($) =>
       seq(
-        repeat(
-          choice(
-            $["OutputAction"]!,
-            $["TaskAction"]!,
-            $["SetAction"]!,
-            $["ResetAction"]!,
-            $["DecisionAction"]!,
-            $["Comment"]!,
-          ),
-        ),
+        repeat(choice($["OutputAction"]!, $["TaskAction"]!, $["SetAction"]!, $["ResetAction"]!, $["DecisionAction"]!)),
         optional($["Terminator"]!),
       ),
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export * from "./amr-adapter.js";
 export * from "./boundary-layer-extruder.js";
 export * from "./mesh-quality-analyzer.js";
 export * from "./patch-classifier.js";
