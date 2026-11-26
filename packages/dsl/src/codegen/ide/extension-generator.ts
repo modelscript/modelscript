@@ -2652,9 +2652,11 @@ export function bundleExtension(
 export async function buildIdeExtension(outDir: string, options?: ExtensionOptions): Promise<void> {
   const fsSpec = "fs";
   const pathSpec = "path";
+  const urlSpec = "url";
   const esbuildSpec = "esbuild";
   const fs = await import(fsSpec);
   const path = await import(pathSpec);
+  const { fileURLToPath } = await import(urlSpec);
   const esbuild = await import(esbuildSpec);
 
   const shouldMinify = options?.minify ?? true;
@@ -2669,7 +2671,7 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
   fs.mkdirSync(path.join(outDir, "server", "dist"), { recursive: true });
 
   // 1. Locate repository root and discover workspace languages
-  const currentDir = path.dirname(new URL(import.meta.url).pathname);
+  const currentDir = path.dirname(fileURLToPath(import.meta.url));
   let repoRoot = currentDir;
   let workspaceVersion = "0.1.0";
   while (repoRoot !== path.dirname(repoRoot)) {
