@@ -931,6 +931,7 @@ export const AnsatzEditorPage: React.FC = () => {
     } else if (titleParam) {
       setCurrentTitle(titleParam);
     } else if (!hasInitialTarget && !hasHydratedFromUrlRef.current) {
+      hasHydratedFromUrlRef.current = true;
       baselineCodeRef.current = "";
       setIsDirty(false);
       setProjectFiles({});
@@ -986,6 +987,7 @@ export const AnsatzEditorPage: React.FC = () => {
 
     baselineCodeRef.current = initialCode;
     setIsDirty(false);
+    setSimulationResetKey((k) => k + 1);
     setProjectFiles(nextFiles);
     setActiveFile(nextActiveFile);
     setCurrentCode(initialCode);
@@ -1511,6 +1513,7 @@ export const AnsatzEditorPage: React.FC = () => {
     setProjectFiles(mergedFiles);
     setActiveFile(nextActiveFile);
     setCurrentCode(nextCode);
+    setSimulationResetKey((k) => k + 1);
     if (Object.keys(baseFiles).length === 0) {
       setCurrentTitle(templateTitle);
     }
@@ -1628,8 +1631,9 @@ export const AnsatzEditorPage: React.FC = () => {
   const handleToggleSplit = useCallback(() => {
     if (currentView === "code" || !canSplit) return;
     setIsSplit((prev) => !prev);
-  }, [currentView, canSplit, setIsSplit]);
+  }, [currentView, canSplit]);
   const [simulateTriggerCount, setSimulateTriggerCount] = useState<number>(() => (autoSimulateParam === "1" ? 1 : 0));
+  const [simulationResetKey, setSimulationResetKey] = useState<number>(0);
   const [isSimulating, setIsSimulating] = useState(false);
   const [diagramType, setDiagramType] = useState<string>(
     () => diagramTypeParam || (typeof payload?.diagramType === "string" ? payload.diagramType : undefined) || "diagram",
@@ -1705,7 +1709,7 @@ export const AnsatzEditorPage: React.FC = () => {
       handleActiveViewChange("simulation");
     }
     setSimulateTriggerCount((c) => c + 1);
-  }, [currentLang, currentView, handleActiveViewChange, setCurrentView]);
+  }, [currentLang, currentView, handleActiveViewChange, setCurrentView, setSimulateTriggerCount]);
 
   // Desktop-grade global keyboard shortcuts for workbench view navigation and actions
   useEffect(() => {
@@ -1968,6 +1972,7 @@ export const AnsatzEditorPage: React.FC = () => {
               initialAnchor={payload?.anchor}
               externalParams={payload?.params}
               simulateTriggerCount={simulateTriggerCount}
+              simulationResetKey={simulationResetKey}
               onCodeChange={handleCodeChange}
               onClassLoaded={handleClassLoaded}
               onActiveViewChange={handleActiveViewChange}
