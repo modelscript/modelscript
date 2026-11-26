@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   lint:
+    name: Lint & Manifest Checks
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -64,6 +65,7 @@ jobs:
           fi
 
   build_prereqs:
+    name: Build Prerequisites
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -87,6 +89,7 @@ jobs:
           retention-days: 1
 
   test:
+    name: Tests (Shard ${{ matrix.shard }}/12)
     needs: [build_prereqs]
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
@@ -298,6 +301,7 @@ jobs:
         run: npm run test:benchmarks
 
   publish_reports:
+    name: Publish CI Reports
     needs: [test, modelica_testsuite]
     runs-on: ubuntu-latest
     if: always() && !startsWith(github.event.head_commit.message, 'chore(release):')
@@ -375,6 +379,7 @@ jobs:
           retention-days: 7
 
   build:
+    name: Build Packages & Apps
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -482,6 +487,7 @@ jobs:
           npm run verify:pack
 
   docker_build:
+    name: Build Docker Images
     needs: [build, lint]
     if: github.actor != 'nektos/act' && github.event_name != 'schedule' && !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-latest
