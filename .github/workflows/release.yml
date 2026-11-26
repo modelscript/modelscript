@@ -61,7 +61,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.DEPLOY_PAT }}
       - name: Import GPG Key
-        uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
@@ -154,7 +154,7 @@ jobs:
           name: modelscript-vsix
           path: apps/ide/dist/extension/modelscript.vsix
       - name: Create or Update GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
@@ -169,15 +169,15 @@ jobs:
         run: npx nx build @modelscript/docs --skip-nx-cache
 
       # --- Publish EE & CE Docker images to GHCR ---
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push EE & CE Docker images
-        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
           files: docker-compose.yml
@@ -252,7 +252,7 @@ jobs:
           cat SHA256SUMS.txt
 
       - name: Attach All VSIXs & HPC Binaries to GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           tag_name: v${{ needs.release.outputs.version }}
           files: |
@@ -292,7 +292,7 @@ jobs:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
       - name: Set up Docker Buildx for HPC & CAE images
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c14e847fe6c8ac0403b4cbd6f # v3
@@ -302,7 +302,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Cloud HPC worker image (Linux/Vulkan)
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
         with:
           context: .
           file: Dockerfile.hpc
@@ -317,7 +317,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push Cloud HPC CUDA FP64 worker image
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
         with:
           context: .
           file: Dockerfile.hpc
@@ -332,7 +332,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push CAE CalculiX FEA solver image (multi-arch)
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
         with:
           context: docker/cae
           file: docker/cae/Dockerfile.calculix
@@ -347,7 +347,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push CAE SU2 CFD solver image (multi-arch)
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v6
         with:
           context: docker/cae
           file: docker/cae/Dockerfile.su2
