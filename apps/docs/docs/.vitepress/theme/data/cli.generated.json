@@ -2077,17 +2077,19 @@
         "name": "action",
         "aliases": [],
         "type": "string",
-        "description": "Action to perform (compile | inspect)",
+        "description": "Action to perform (compile | inspect | audit | diff)",
         "choices": [
           "compile",
-          "inspect"
+          "inspect",
+          "audit",
+          "diff"
         ]
       },
       {
         "name": "paths",
         "aliases": [],
         "type": "string",
-        "description": "Input files, directories, or JSONL shard paths",
+        "description": "Input files, directories, JSON example arrays, or JSONL shard paths",
         "array": true
       }
     ],
@@ -2107,6 +2109,13 @@
         "type": "number",
         "description": "Maximum examples per m_init-bucketed shard",
         "default": 256
+      },
+      {
+        "name": "batch-size",
+        "aliases": [],
+        "type": "number",
+        "description": "Batch size used for Dynamic-m bucketing efficiency audit",
+        "default": 8
       },
       {
         "name": "m-cap",
@@ -6923,6 +6932,90 @@
     "subcommands": []
   },
   {
+    "name": "model",
+    "specs": [
+      "model <action> [target]"
+    ],
+    "aliases": [],
+    "describe": "List, inspect, or formally promote models in the ModelScript Model Registry",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Model Registry action (list | inspect | promote)",
+        "choices": [
+          "list",
+          "inspect",
+          "promote"
+        ]
+      },
+      {
+        "name": "target",
+        "aliases": [],
+        "type": "string",
+        "description": "Model ref (`name@version`) for inspect/promote, or optional name filter for list"
+      }
+    ],
+    "options": [
+      {
+        "name": "api",
+        "aliases": [],
+        "type": "string",
+        "description": "Base URL of the ModelScript API server",
+        "default": "http://localhost:3001"
+      },
+      {
+        "name": "token",
+        "aliases": [],
+        "type": "string",
+        "description": "Bearer auth token (defaults to MODELSCRIPT_API_TOKEN)"
+      },
+      {
+        "name": "kind",
+        "aliases": [],
+        "type": "string",
+        "description": "Filter models by kind (for list)",
+        "choices": [
+          "model-core",
+          "lora-adapter",
+          "projection-head"
+        ]
+      },
+      {
+        "name": "stage",
+        "aliases": [],
+        "type": "string",
+        "description": "Filter by promotionStage (list) or targetStage (promote, defaults to production)",
+        "choices": [
+          "draft",
+          "staging",
+          "production",
+          "deprecated"
+        ]
+      },
+      {
+        "name": "name",
+        "aliases": [],
+        "type": "string",
+        "description": "Explicit model name"
+      },
+      {
+        "name": "version",
+        "aliases": [],
+        "type": "string",
+        "description": "Explicit model version"
+      },
+      {
+        "name": "eval-report",
+        "aliases": [],
+        "type": "string",
+        "description": "Path to FormalModelEvalReport JSON file to attach during promotion"
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "modflow",
     "specs": [
       "modflow <action> [files..]"
@@ -10100,6 +10193,79 @@
         "type": "boolean",
         "description": "Emit JSON output",
         "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
+    "name": "runs",
+    "specs": [
+      "runs <action> [runUid]"
+    ],
+    "aliases": [],
+    "describe": "List or inspect live Dynamic-m training runs and telemetry time-series",
+    "positionals": [
+      {
+        "name": "action",
+        "aliases": [],
+        "type": "string",
+        "description": "Training runs action (list | inspect)",
+        "choices": [
+          "list",
+          "inspect"
+        ]
+      },
+      {
+        "name": "runUid",
+        "aliases": [],
+        "type": "string",
+        "description": "Training run UID (required for inspect)"
+      }
+    ],
+    "options": [
+      {
+        "name": "api",
+        "aliases": [],
+        "type": "string",
+        "description": "Base URL of the ModelScript API server",
+        "default": "http://localhost:3001"
+      },
+      {
+        "name": "token",
+        "aliases": [],
+        "type": "string",
+        "description": "Bearer auth token (defaults to MODELSCRIPT_API_TOKEN)"
+      },
+      {
+        "name": "status",
+        "aliases": [],
+        "type": "string",
+        "description": "Filter training runs by status (for list)",
+        "choices": [
+          "queued",
+          "running",
+          "paused",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      {
+        "name": "recipe",
+        "aliases": [],
+        "type": "string",
+        "description": "Filter training runs by recipeName (for list)"
+      },
+      {
+        "name": "backend",
+        "aliases": [],
+        "type": "string",
+        "description": "Filter training runs by backend (for list)",
+        "choices": [
+          "webgpu",
+          "pytorch",
+          "slurm"
+        ]
       }
     ],
     "subcommands": []

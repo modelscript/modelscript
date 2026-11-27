@@ -61,6 +61,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .nx/cache
+        save-always: true
         key: ${{ runner.os }}-nx-${{ inputs.nx-cache-prefix }}-${{ github.sha }}
         restore-keys: |
           ${{ runner.os }}-nx-${{ inputs.nx-cache-prefix }}-
@@ -80,6 +81,7 @@ runs:
           packages/simulate/src/wasm/*.wasm
           packages/simulate/.cache/**
           packages/dsl/.cache/**
+        save-always: true
         key: ${{ runner.os }}-wasm-${{ hashFiles('packages/dsl/src/**', 'packages/runtime/src/wasm/**', 'packages/runtime/assembly/**', 'languages/*/assembly/**') }}
         restore-keys: |
           ${{ runner.os }}-wasm-

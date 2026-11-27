@@ -853,8 +853,9 @@ export class SimulationPanel {
               }
               if (reachResult.parameters && msg.payload?.parameterOverrides) {
                 for (const p of reachResult.parameters) {
-                  if (msg.payload.parameterOverrides[p.name] !== undefined) {
-                    p.defaultValue = msg.payload.parameterOverrides[p.name];
+                  const overrideVal = msg.payload.parameterOverrides[p.name];
+                  if (overrideVal !== undefined) {
+                    p.defaultValue = overrideVal;
                   }
                 }
               }
@@ -1155,8 +1156,9 @@ export class SimulationPanel {
 
             if (result.parameters && msg.payload?.parameterOverrides) {
               for (const p of result.parameters) {
-                if (msg.payload.parameterOverrides[p.name] !== undefined) {
-                  p.defaultValue = msg.payload.parameterOverrides[p.name];
+                const overrideVal = msg.payload.parameterOverrides[p.name];
+                if (overrideVal !== undefined) {
+                  p.defaultValue = overrideVal;
                 }
               }
             }

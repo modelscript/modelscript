@@ -83,8 +83,9 @@ async function main(): Promise<void> {
 
   let ResvgCtor: (new (svg: string, opts?: Record<string, unknown>) => { render(): { asPng(): Buffer } }) | null = null;
   try {
-    const mod = await import("@resvg/resvg-js");
-    ResvgCtor = mod.Resvg as typeof ResvgCtor;
+    const resvgPkg = "@resvg/resvg-js";
+    const mod = (await import(resvgPkg)) as { Resvg?: typeof ResvgCtor };
+    ResvgCtor = mod.Resvg ?? null;
   } catch {
     console.warn("⚠ @resvg/resvg-js unavailable; falling back to SVG OG cards.");
   }

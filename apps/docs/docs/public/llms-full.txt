@@ -191,22 +191,21 @@ For air-gapped networks, classified labs, or hardware-in-the-loop (HIL) benches,
 
 ### 6. Containerized Ansatz Network & Simulation Server (Community & Enterprise Editions)
 
-Deploy the self-hosted Ansatz Network, package registry, REST/GraphQL/SPARQL APIs, and multi-tenant MCP gateway via Docker in either **Community Edition** (`MSX_EDITION=ce`, pure `AGPL-3.0-or-later` open-core) or **Enterprise Edition** (`MSX_EDITION=ee`, with SSO/SAML, RBAC, Slurm HPC, and NERC CIP / FERC CEII compliance):
+Deploy a self-hosted federated Ansatz node or an air-gapped Enterprise Appliance via Docker in either **Community Edition** (`api-ce`, pure `AGPL-3.0-or-later` open-core) or **Enterprise Edition** (`api-ee` / `appliance`, with SSO/SAML, RBAC, Slurm HPC, and NERC CIP / FERC CEII compliance):
 
 ```bash
-# Option A: Community Edition (pure AGPL-3.0-or-later open-core, zero ee/ code)
-docker pull ghcr.io/modelscript/api-ce:latest
-docker pull ghcr.io/modelscript/web:latest
+# Option A: Self-Hosted Federated Node (Community Edition — recommended)
+export PUBLIC_DOMAIN=hub.example.org
+export JWT_SECRET=$(openssl rand -hex 32)
+docker compose -f docker-compose.federated.yml up -d
 
-# Option B: Enterprise Edition & Air-Gapped Intranet Appliance (requires MSX_LICENSE_KEY in production)
-docker pull ghcr.io/modelscript/api-ee:latest
-docker pull ghcr.io/modelscript/appliance:latest
-
-# Launch backend simulation cluster and Studio
-docker compose up -d
+# Option B: Hardened Enterprise Intranet Appliance (air-gapped, requires MSX_LICENSE_KEY)
+export MSX_LICENSE_KEY=msx_lic_...
+export JWT_SECRET=$(openssl rand -hex 32)
+docker compose -f ee/deploy/docker-compose.yml up -d
 ```
 
-See the [Platform Administration Guide](./administration.md) for Kubernetes Helm charts, offline `MSX_LICENSE_KEY` provisioning, Slurm HPC worker setup, and PostgreSQL audit-ledger configuration.
+See the [Self-Hosting Guide](../ansatz/self-hosting.md) for federated node upgrades and Cloudflare Tunnels, and the [Platform Administration Guide](./administration.md) for Kubernetes manifests (`ee/deploy/kubernetes-appliance.yaml`), offline `MSX_LICENSE_KEY` provisioning, and Slurm HPC worker setup.
 
 ---
 
@@ -2360,13 +2359,15 @@ Ansatz can be deployed as an independent federated instance, a public flagship c
 
 Ansatz offers targeted deployment profiles to match your infrastructure sizing and operational goals:
 
-| Profile              | Active Containers                                           | Target Use Case                                                                 | Database Engine                     | Min. RAM   |
-| :------------------- | :---------------------------------------------------------- | :------------------------------------------------------------------------------ | :---------------------------------- | :--------- |
-| **`flagship`**       | `caddy`, `web`, `api` (EE), `timescaledb`, `mqtt`, `tunnel` | `modelscript.org` + `ansatz.social` public cluster with dual-domain routing     | SQLite WAL + TimescaleDB            | 4–8 GB     |
-| **`federated`**      | `caddy`, `web`, `api`, `timescaledb`, `mqtt`, `tunnel`      | Research lab with live IoT simulation telemetry streaming                       | SQLite WAL + TimescaleDB            | 4 GB       |
-| **`federated-lite`** | `caddy`, `web`, `api`, `tunnel`                             | **Embedded DB only** (no Postgres/MQTT). Lightweight homelabs & VPS             | **SQLite WAL only**                 | **1–2 GB** |
-| **`corporate`**      | `caddy`, `web`, `api` (EE), `timescaledb` (optional)        | Enterprise intranet, air-gapped enclave, SSO domain allowlist, internal `/docs` | SQLite WAL (+ optional TimescaleDB) | 2–4 GB     |
-| **`quick-tunnel`**   | `caddy`, `web`, `api`, `quick-tunnel`                       | Zero-config demo with ephemeral `trycloudflare.com` URL                         | SQLite WAL only                     | 1.5 GB     |
+| Deployment File / Profile                        | Active Containers                                      | Target Use Case                                                                | Database Engine                     | Min. RAM   |
+| :----------------------------------------------- | :----------------------------------------------------- | :----------------------------------------------------------------------------- | :---------------------------------- | :--------- |
+| **`docker-compose.federated.yml`** _(default)_   | `caddy`, `web`, `api` (`api-ce`)                       | **Recommended** self-hosted federated node (homelab, university, lab VPS)      | **SQLite WAL only**                 | **1–2 GB** |
+| **`docker-compose.federated.yml` + `historian`** | `caddy`, `web`, `api`, `timescaledb`, `mqtt`           | Federated research lab with live IoT simulation telemetry streaming            | SQLite WAL + TimescaleDB            | 4 GB       |
+| **`ee/deploy/docker-compose.yml`**               | `modelscript-appliance` (EE)                           | Hardened air-gapped Enterprise Intranet Appliance (NERC CIP / FERC CEII / SSO) | SQLite WAL (embedded)               | 2–4 GB     |
+| **`docker-compose.yml` + `flagship`**            | `caddy`, `web`, `api` (`api-ee`) (+ optional `tunnel`) | `modelscript.org` + `ansatz.social` flagship cluster with dual-domain routing  | SQLite WAL (+ optional TimescaleDB) | 4–8 GB     |
+| **`docker-compose.yml` + `quick-tunnel`**        | `caddy`, `web`, `api`, `quick-tunnel`                  | Zero-config demo with ephemeral `trycloudflare.com` URL                        | SQLite WAL only                     | 1.5 GB     |
+
+_(Add `--profile tunnel` to either `docker-compose.federated.yml` or `docker-compose.yml` to enable Cloudflare Zero Trust Tunnel ingress; add `--profile historian` and set `ENABLE_TIMESCALE=true ENABLE_MQTT=true` to enable TimescaleDB + Mosquitto.)_
 
 ---
 
@@ -2382,34 +2383,24 @@ If you are hosting behind residential CGNAT, corporate firewalls, or on a develo
    ```
 4. Start the stack:
    ```bash
-   docker compose --profile federated-lite --profile tunnel up -d
+   docker compose -f docker-compose.federated.yml --profile tunnel up -d
    ```
 5. You can now close all inbound firewall ports (`sudo ufw default deny incoming`). The tunnel connects outbound to Cloudflare Edge over encrypted QUIC/HTTP2.
 
 ---
 
-## Quick Start Deployment
+## Quick Start Deployment (Federated Node)
 
-### 1. Scaffold or Download Configuration Files
-
-You can scaffold the deployment directory with the `msx hub init` CLI command:
-
-```bash
-msx hub init --profile federated --dir ansatz --domain hub.mycompany.org
-cd ansatz
-```
-
-Or download the compose files and runtime configs (`config/Caddyfile`, `config/mosquitto.conf`, and `config/init-timescaledb.sql`) directly with `curl`:
+### 1. Download Standalone Federated Node Configuration
 
 ```bash
 mkdir -p ansatz/config && cd ansatz
-curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/docker-compose.yml
-curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/docker-compose.prod.yml
-curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/.env.production.example
-curl -fsSL https://raw.githubusercontent.com/modelscript/modelscript/main/config/Caddyfile -o config/Caddyfile
+curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/docker-compose.federated.yml
+curl -fsSLO https://raw.githubusercontent.com/modelscript/modelscript/main/.env.example
+curl -fsSL https://raw.githubusercontent.com/modelscript/modelscript/main/config/Caddyfile.federated -o config/Caddyfile.federated
 curl -fsSL https://raw.githubusercontent.com/modelscript/modelscript/main/config/mosquitto.conf -o config/mosquitto.conf
 curl -fsSL https://raw.githubusercontent.com/modelscript/modelscript/main/config/init-timescaledb.sql -o config/init-timescaledb.sql
-cp .env.production.example .env
+cp .env.example .env
 ```
 
 ### 2. Configure Environment (`.env`)
@@ -2419,7 +2410,6 @@ PUBLIC_DOMAIN=hub.mycompany.org
 PUBLIC_URL=https://hub.mycompany.org
 NODE_ENV=production
 JWT_SECRET=generate-with-openssl-rand-hex-32
-TOTP_ENCRYPTION_KEY=generate-with-openssl-rand-hex-32
 
 # Cloudflare Tunnel (optional for zero-port ingress; leave blank for direct Caddy ACME)
 CLOUDFLARE_TUNNEL_TOKEN=
@@ -2427,32 +2417,31 @@ CLOUDFLARE_TUNNEL_TOKEN=
 # Headless Preinstallation (Optional: skip setup wizard automatically on first boot)
 AUTO_SEED_ADMIN=true
 ADMIN_INIT_USERNAME=admin
-ADMIN_INIT_EMAIL=admin@mycompany.org
 ADMIN_INIT_PASSWORD=StrongSecurePassword123!
-DEPLOYMENT_PRESET=tier1_federated
+DEPLOYMENT_PRESET=federated
 ```
 
 ### 3. Launch Services
 
-#### Option A: Lightweight Homelab / VPS (Embedded SQLite only, ~1-2 GB RAM)
+#### Option A: Standalone Federated Node (Embedded SQLite only, ~1–2 GB RAM)
 
 ```bash
-docker compose --profile federated-lite up -d
+docker compose -f docker-compose.federated.yml up -d
 ```
 
-#### Option B: Full Federated Node (with TimescaleDB Telemetry Historian)
+#### Option B: Federated Node + Telemetry Historian (TimescaleDB & MQTT)
+
+Set `ENABLE_TIMESCALE=true`, `ENABLE_MQTT=true`, and `TIMESCALE_PASSWORD=<strong-password>` in `.env`, then run:
 
 ```bash
-docker compose --profile federated up -d
+docker compose -f docker-compose.federated.yml --profile historian up -d
 ```
 
-#### Option C: Flagship Cluster (`modelscript.org` + `ansatz.social`)
-
-Both `--profile flagship` and `--profile federated` activate the production stack (`caddy`, `web`, `api`). Add `--profile tunnel` to enable Cloudflare Zero Trust Tunnel ingress:
+#### Option C: Hardened Enterprise Intranet Appliance (Air-Gapped EE)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml \
-  --env-file .env --profile flagship up -d
+MSX_LICENSE_KEY=msx_lic_... JWT_SECRET=$(openssl rand -hex 32) \
+  docker compose -f ee/deploy/docker-compose.yml up -d
 ```
 
 #### Option D: 1-Click Ephemeral Demo (No Account or Domain Needed)
@@ -2485,32 +2474,25 @@ For automated CI/CD, Terraform, or Ansible deployments, setting `ADMIN_INIT_USER
 
 ## Database Operations, Diagnostics & Hot Backups
 
-- **Primary Application Database (Always Embedded SQLite WAL):** Users, social graph, ActivityPub outbox/inbox, packages, permissions, and audit logs run on high-performance `better-sqlite3` on the persistent `api-data` volume.
-- **Telemetry Historian (Optional PostgreSQL / TimescaleDB):** Handled via TimescaleDB when the `federated` or `flagship` profile is active.
+- **Primary Application Database (Always Embedded SQLite WAL):** Users, social graph, ActivityPub outbox/inbox, packages, permissions, and audit logs run on high-performance `better-sqlite3` on the persistent `api-data` volume. Schema migrations run automatically on container startup.
+- **Telemetry Historian (Optional PostgreSQL / TimescaleDB):** Enabled via `--profile historian` with `ENABLE_TIMESCALE=true`.
 
-### Hot SQLite Backups & Diagnostics (`msx db`)
+### Hot SQLite Backups & Diagnostics
 
-To create an online hot backup, run deep health checks, or export a redacted diagnostic bundle without stopping the service:
+For local workspaces with `@modelscript/cli` installed, `msx db` provides offline backup, integrity check, and migration bundle commands:
 
 ```bash
 # Create an online SQLite WAL snapshot with SHA-256 verification
 msx db backup --label nightly
-
-# Or invoke inside the running production API container
-docker compose exec api node apps/cli/dist/main.js db backup --label nightly
 
 # Run deep operational health checks (SQLite integrity, audit hash-chain, disk headroom)
 msx db doctor
 
 # Generate a redacted diagnostic support bundle (zero secrets or password hashes)
 msx db support-bundle --file support-diagnostic.json
-
-# Export or import a portable instance migration bundle (settings, federation rules, flags)
-msx db export-bundle --file migration-bundle.json
-msx db import-bundle --file migration-bundle.json
 ```
 
-Backups are recorded in `apps/api/data/backups/` and verified with SHA-256 checksums and SQLite `PRAGMA integrity_check`.
+For containerized deployments, use the **Admin Console → Database & Backups** panel (`POST /api/v1/admin/backups`) or run an atomic SQLite `VACUUM INTO` backup via `scripts/ops/upgrade-consumer.sh` (below).
 
 ---
 
@@ -2537,38 +2519,30 @@ Scrape `GET /api/v1/admin/metrics` (authenticated with an admin Bearer token or 
 
 ## Upgrading & Rollback Runbook
 
-### Standard Zero-Data-Loss Upgrade
+### Automated Zero-Data-Loss Upgrade (Federated Node & EE Appliance)
 
-1. **Enable Read-Only Drain (Optional):** Set Maintenance Mode to `read_only` in `/admin` or run a pre-upgrade snapshot:
-   ```bash
-   docker compose exec api node apps/cli/dist/main.js db backup --label pre-upgrade
-   ```
-2. **Preview & Apply Schema Migrations:**
-   ```bash
-   docker compose exec api node apps/cli/dist/main.js db upgrade --dry-run
-   ```
-3. **Pull New Images & Recreate Containers:**
-   ```bash
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship pull
-   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship up -d --wait --remove-orphans
-   ```
-4. **Verify Post-Upgrade Health:**
-   ```bash
-   docker compose exec api node apps/cli/dist/main.js db doctor
-   ```
+Use the consumer upgrade script, which takes an atomic SQLite `VACUUM INTO` snapshot into `./backups/`, pulls the pinned release tag, waits for healthchecks, and rolls back automatically from local cache if healthchecks fail:
 
-### Point-in-Time Rollback Procedure
+```bash
+# Upgrade a Federated Node to release v0.2.0
+./scripts/ops/upgrade-consumer.sh 0.2.0 docker-compose.federated.yml
 
-If a deployment needs to be rolled back to a previous release:
+# Upgrade a Hardened Enterprise Appliance to release v0.2.0
+./scripts/ops/upgrade-consumer.sh 0.2.0 ee/deploy/docker-compose.yml modelscript-appliance
+```
 
-1. **Restore the Pre-Upgrade SQLite Snapshot** (automatically creates a `pre-restore` safety backup before swapping the database file):
+### Manual Upgrade & Point-in-Time Rollback
+
+1. **Pull and roll out a pinned release tag:**
    ```bash
-   docker compose exec api node apps/cli/dist/main.js db restore --file modelscript-backup-pre-upgrade.db
+   IMAGE_TAG=0.2.0 docker compose -f docker-compose.federated.yml pull
+   IMAGE_TAG=0.2.0 docker compose -f docker-compose.federated.yml up -d --wait --remove-orphans
    ```
-2. **Pin the Previous Container Image Tag** (`IMAGE_TAG=sha-<previous>` or `IMAGE_TAG=<previous-version>`) and restart:
+2. **Roll back to a previous tag** (using cached images with `--pull never`):
    ```bash
-   IMAGE_TAG=0.1.0 docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env --profile flagship up -d --wait
+   IMAGE_TAG=0.1.0 docker compose -f docker-compose.federated.yml up -d --pull never --wait
    ```
+3. **Restore a pre-upgrade SQLite snapshot** (if needed): stop `api`, copy `./backups/modelscript-<timestamp>.db` over `/app/apps/api/data/modelscript.db` in the `api-data` volume (removing any stale `-wal`/`-shm` files), and restart `api`.
 
 ================================================================================
 DOCUMENT: Compiler Architecture Overview
@@ -2671,7 +2645,7 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/diagram`       | `packages/diagram`       | Polyglot schematic layout engine, orthogonal Manhattan router, TCC / R-X / P-Q / Water Diff specialized builders, SVG/Canvas renderer                                                                   |
 | `@modelscript/exchange`      | `packages/exchange`      | FMI 2.0/3.0 FMU import/export, SSP 1.0/2.0 container toolkit, Co-Simulation Master Orchestrator, MISRA-C / Q8.24 fixed-point firmware synthesizer, WebSerial HIL                                        |
 | `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 169 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
-| `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 124 core and domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
+| `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 124 core and domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                         |
 | `@modelscript/sdk`           | `packages/sdk`           | TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels                                                                               |
 | `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and ansatz environments                                                           |
 | `@modelscript/ide-client`    | `packages/ide`           | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                                                       |
@@ -14671,7 +14645,7 @@ CANONICAL URL: https://modelscript.org/languages/opendss
 
 ### 1. Multi-Phase Unbalanced AC Power Flow
 
-- Solves unbalanced radial and weakly meshed 3-phase/4-wire distribution networks via the **nodal admittance matrix ($Y_{\text{bus}}$)** formulation and **Forward-Backward Sweep (FBS)**, relating bus current injections to bus voltages and computing constant-power load currents:
+- Solves unbalanced radial and weakly meshed 3-phase/4-wire distribution networks via the **nodal admittance matrix ($Y\_{\text{bus}}$)** formulation and **Forward-Backward Sweep (FBS)**, relating bus current injections to bus voltages and computing constant-power load currents:
   $$I_{\text{inj}}(V) = Y_{\text{bus}} V$$
   $$I_i(V_i) = \left( \frac{P_i + j Q_i}{V_i} \right)^*$$
 

@@ -46,22 +46,22 @@ jobs:
       - name: Run Lint
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            npx nx run-many -t lint --parallel=3
+            npx nx run-many -t lint --parallel=4
           else
             if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
               export NX_BASE="HEAD~1"
             fi
-            npx nx affected -t lint --parallel=3
+            npx nx affected -t lint --parallel=4
           fi
       - name: Run Typecheck
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            npx nx run-many -t typecheck --parallel=3
+            npx nx run-many -t typecheck --parallel=4
           else
             if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
               export NX_BASE="HEAD~1"
             fi
-            npx nx affected -t typecheck --parallel=3
+            npx nx affected -t typecheck --parallel=4
           fi
 
   build_prereqs:
@@ -405,13 +405,13 @@ jobs:
       - name: Run Build
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            npx nx run-many -t build --parallel=2 --exclude=@modelscript/web
+            npx nx run-many -t build --parallel=4 --exclude=@modelscript/web
             npx nx run @modelscript/web:build
           else
             if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
               export NX_BASE="HEAD~1"
             fi
-            npx nx affected -t build --parallel=2 --exclude=@modelscript/web
+            npx nx affected -t build --parallel=4 --exclude=@modelscript/web
             if npx nx show projects --affected | grep -qx "@modelscript/web"; then
               npx nx run @modelscript/web:build
             fi
@@ -441,7 +441,7 @@ jobs:
           fi
       - name: Build All Packages for Docs Check
         if: steps.check-docs.outputs.run_docs == 'true'
-        run: npx nx run-many -t build --parallel=3
+        run: npx nx run-many -t build --parallel=4
       - name: Check Docs Generated Data & Links
         if: steps.check-docs.outputs.run_docs == 'true'
         run: pnpm --filter @modelscript/docs run check
@@ -518,9 +518,9 @@ jobs:
       - name: Install Playwright Chromium
         run: |
           if [ "${{ steps.cache-playwright.outputs.cache-hit }}" = "true" ]; then
-            npx playwright install-deps chromium
+            pnpm --filter @modelscript/api exec playwright install-deps chromium
           else
-            npx playwright install --with-deps chromium
+            pnpm --filter @modelscript/api exec playwright install --with-deps chromium
           fi
       - name: Run Chromium Unified Canvas E2E Smoke Test
         run: npx tsx --test packages/canvas/tests/chromium-canvas-e2e.test.ts
