@@ -30,11 +30,6 @@ export interface BridgeContext {
   readonly activeHoverIds: Set<SymbolId>;
 }
 
-/** Returns the global fallback environment for cross-document LSP resolution. */
-export function getGlobalLspBridgeEnv(): BridgeEnvLike {
-  return globalThis as unknown as BridgeEnvLike;
-}
-
 /** Checks whether a symbol entry represents a declaration rather than a reference or equation usage. */
 export function isDecl(entry: SymbolEntry): boolean {
   return (

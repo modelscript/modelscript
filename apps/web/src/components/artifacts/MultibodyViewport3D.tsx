@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { Verification3DOverlayPayload } from "@modelscript/cad";
-import { HeroStudioEnvironment } from "@modelscript/editor/workbench/cad-viewer/HeroCadMaterials";
+import { HeroStudioEnvironment } from "@modelscript/cad-viewer/HeroCadMaterials";
 import type {
   DigitalTwinClearanceResult,
   DigitalTwinEnvironmentAsset,

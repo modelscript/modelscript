@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { analyzeDxfGeometry } from "./cad/geometry.js";
 import { DXF_ENTITY_SPECS, lookupDxfEntitySchema } from "./catalog/index.js";
 import { lintDxf } from "./lints/index.js";
@@ -97,12 +100,52 @@ const DXF_GROUP_CODE_DOCS: Record<string, string> = {
 const DXF_SECTION_NAMES = ["HEADER", "CLASSES", "TABLES", "BLOCKS", "ENTITIES", "OBJECTS"];
 const DXF_HEADER_VARS = ["$ACADVER", "$INSUNITS", "$EXTMIN", "$EXTMAX", "$CLAYER", "$MEASUREMENT"];
 
-function lineRange(lineNum1Based: number, lines: string[]): LspRange {
+interface DxfCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+function buildDxfCstLineMap(content: string): Map<number, DxfCstLineEntry> {
+  const byRow = new Map<number, DxfCstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("dxf", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+    }
+    return byRow;
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  return byRow;
+}
+
+function lineRange(lineNum1Based: number, cstLines: Map<number, DxfCstLineEntry>): LspRange {
   const zero = Math.max(0, lineNum1Based - 1);
-  const text = lines[zero] ?? "";
+  const entry = cstLines.get(zero);
   return {
-    start: { line: zero, character: 0 },
-    end: { line: zero, character: Math.max(1, text.length) },
+    start: { line: zero, character: entry?.startCol ?? 0 },
+    end: { line: zero, character: Math.max((entry?.startCol ?? 0) + 1, entry?.endCol ?? 1) },
   };
 }
 
@@ -112,10 +155,10 @@ function lineRange(lineNum1Based: number, lines: string[]): LspRange {
 export function validateDxf(content: string, _uri = "drawing.dxf"): LspDiagnostic[] {
   const doc = parseDxf(content);
   const diags = lintDxf(doc);
-  const lines = content.split(/\r?\n/);
+  const cstLines = buildDxfCstLineMap(content);
 
   return diags.map((d) => ({
-    range: lineRange(d.line, lines),
+    range: lineRange(d.line, cstLines),
     severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
     code: d.id,
     source: "modelscript-dxf",
@@ -128,22 +171,22 @@ export function validateDxf(content: string, _uri = "drawing.dxf"): LspDiagnosti
  */
 export function getDxfDocumentSymbols(content: string): LspDocumentSymbol[] {
   const doc = parseDxf(content);
-  const lines = content.split(/\r?\n/);
+  const cstLines = buildDxfCstLineMap(content);
   const symbols: LspDocumentSymbol[] = [];
 
   for (const sec of doc.sections) {
     const startZero = Math.max(0, sec.startLine - 1);
     const endZero = Math.max(startZero, sec.endLine - 1);
     const range: LspRange = {
-      start: { line: startZero, character: 0 },
-      end: { line: endZero, character: (lines[endZero] ?? "").length },
+      start: { line: startZero, character: cstLines.get(startZero)?.startCol ?? 0 },
+      end: { line: endZero, character: cstLines.get(endZero)?.endCol ?? 0 },
     };
-    const selectionRange = lineRange(sec.startLine, lines);
+    const selectionRange = lineRange(sec.startLine, cstLines);
     const children: LspDocumentSymbol[] = [];
 
     if (sec.name === "TABLES") {
       for (const layer of doc.layers.values()) {
-        const lr = lineRange(layer.line, lines);
+        const lr = lineRange(layer.line, cstLines);
         children.push({
           name: layer.name,
           detail: `ACI ${layer.color} (${layer.lineType})`,
@@ -154,21 +197,23 @@ export function getDxfDocumentSymbols(content: string): LspDocumentSymbol[] {
       }
     } else if (sec.name === "BLOCKS") {
       for (const blk of doc.blocks.values()) {
+        const blkStart = Math.max(0, blk.line - 1);
+        const blkEnd = Math.max(0, blk.endLine - 1);
         const br: LspRange = {
-          start: { line: Math.max(0, blk.line - 1), character: 0 },
-          end: { line: Math.max(0, blk.endLine - 1), character: (lines[Math.max(0, blk.endLine - 1)] ?? "").length },
+          start: { line: blkStart, character: cstLines.get(blkStart)?.startCol ?? 0 },
+          end: { line: blkEnd, character: cstLines.get(blkEnd)?.endCol ?? 0 },
         };
         children.push({
           name: blk.name,
           detail: `${blk.entities.length} entity(ies)`,
           kind: LspSymbolKind.Class,
           range: br,
-          selectionRange: lineRange(blk.line, lines),
+          selectionRange: lineRange(blk.line, cstLines),
         });
       }
     } else if (sec.name === "ENTITIES") {
       doc.entities.forEach((ent, idx) => {
-        const er = lineRange(ent.line, lines);
+        const er = lineRange(ent.line, cstLines);
         const label = ent.type === "INSERT" ? `INSERT ${ent.blockName}` : `${ent.type} #${idx + 1}`;
         children.push({
           name: label,
@@ -197,16 +242,16 @@ export function getDxfDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides Markdown hover documentation for DXF entity keywords, group codes, blocks, and layers.
  */
 export function getDxfHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const rawLine = lines[position.line];
-  if (rawLine === undefined) return null;
-  const token = rawLine.trim();
+  const cstLines = buildDxfCstLineMap(content);
+  const entry = cstLines.get(position.line);
+  if (!entry) return null;
+  const token = entry.text.trim();
   if (!token) return null;
 
   const upper = token.toUpperCase();
   const range: LspRange = {
-    start: { line: position.line, character: 0 },
-    end: { line: position.line, character: rawLine.length },
+    start: { line: position.line, character: entry.startCol },
+    end: { line: position.line, character: entry.endCol },
   };
 
   // 1. Entity schema hover
@@ -277,8 +322,8 @@ export function getDxfHover(content: string, position: LspPosition): LspHover | 
  * Provides LSP completion items for DXF entity types, section names, and header variables.
  */
 export function getDxfCompletions(content: string, position: LspPosition): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const prevLine = position.line > 0 ? (lines[position.line - 1] ?? "").trim() : "";
+  const cstLines = buildDxfCstLineMap(content);
+  const prevLine = position.line > 0 ? (cstLines.get(position.line - 1)?.text.trim() ?? "") : "";
   const items: LspCompletionItem[] = [];
 
   if (prevLine === "0") {

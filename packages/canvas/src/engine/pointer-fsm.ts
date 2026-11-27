@@ -119,6 +119,7 @@ export interface WiringPreview {
   sourcePoint: WorldPoint;
   currentPoint: WorldPoint;
   snappedTarget?: { nodeId: string; portId: string; x: number; y: number } | null | undefined;
+  incompatibleTarget?: { nodeId: string; portId: string; x: number; y: number } | null | undefined;
 }
 
 export interface PointerFsmCallbacks {
@@ -864,10 +865,26 @@ export class CanvasPointerFSM {
       const snappedTarget = targetHit
         ? { nodeId: targetHit.nodeId, portId: targetHit.portId, x: targetHit.x, y: targetHit.y }
         : null;
+      let incompatibleTarget: { nodeId: string; portId: string; x: number; y: number } | null = null;
+      if (!snappedTarget && this.callbacks.validateConnection) {
+        const incompatHit = this.scene.hitTestPort(evt.u, evt.v, this.portSnapRadius, undefined, (nodeId, portId) => {
+          if (nodeId === srcNodeId && portId === srcPortId) return false;
+          return !this.callbacks.validateConnection!(srcNodeId, srcPortId, nodeId, portId);
+        });
+        if (incompatHit) {
+          incompatibleTarget = {
+            nodeId: incompatHit.nodeId,
+            portId: incompatHit.portId,
+            x: incompatHit.x,
+            y: incompatHit.y,
+          };
+        }
+      }
       this.wiringPreview = {
         ...this.wiringPreview,
         currentPoint: snappedTarget ? { x: snappedTarget.x, y: snappedTarget.y } : { x: evt.u, y: evt.v },
         snappedTarget,
+        incompatibleTarget,
       };
       this.callbacks.onWiringPreview?.(this.wiringPreview);
       return;

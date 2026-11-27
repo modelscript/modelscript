@@ -5,6 +5,7 @@
  */
 
 import { collectWasmSyntaxErrors } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import { analyzeAdamsMobility, lintAdamsModel } from "./lints/index.js";
 import { getAdamsWasmParser, parseAdams } from "./parser/index.js";
 import type { AdamsDataset } from "./types.js";
@@ -73,15 +74,71 @@ export interface LspHover {
   range?: LspRange | undefined;
 }
 
-function findLineAndCol(text: string, searchPattern: string): LspRange {
-  const lines = text.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
-    const match = line.indexOf(searchPattern);
-    if (match >= 0) {
+interface AdamsCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+}
+
+function buildAdamsCstLines(content: string): AdamsCstLineEntry[] {
+  let rootNode: unknown = null;
+  try {
+    rootNode = getAdamsWasmParser().parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    return groupAllCstTokensByLine(rootNode as CstNodeLike).map(({ row, tokens }) => {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
       return {
-        start: { line: i, character: match },
-        end: { line: i, character: match + searchPattern.length },
+        row,
+        text,
+        startCol,
+        endCol,
+        startOffset: typeof first?.startIndex === "number" ? first.startIndex : undefined,
+        endOffset: typeof last?.endIndex === "number" ? last.endIndex : undefined,
+      };
+    });
+  }
+
+  const entries: AdamsCstLineEntry[] = [];
+  const rawLines = content.split(/\r?\n/);
+  let offset = 0;
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (trimmed) {
+      const startCol = Math.max(0, raw.search(/\S/));
+      entries.push({
+        row: i,
+        text: trimmed,
+        startCol,
+        endCol: startCol + trimmed.length,
+        startOffset: offset + startCol,
+        endOffset: offset + startCol + trimmed.length,
+      });
+    }
+    offset += raw.length + 1;
+  }
+  return entries;
+}
+
+function findPatternInCst(entries: AdamsCstLineEntry[], searchPattern: string): LspRange {
+  for (const entry of entries) {
+    const match = entry.text.indexOf(searchPattern);
+    if (match >= 0) {
+      const charStart = entry.startCol + match;
+      return {
+        start: { line: entry.row, character: charStart },
+        end: { line: entry.row, character: charStart + searchPattern.length },
       };
     }
   }
@@ -173,6 +230,7 @@ export function getAdamsDocumentSymbols(content: string): LspDocumentSymbol[] {
   }
 
   const symbols: LspDocumentSymbol[] = [];
+  const cstLines = buildAdamsCstLines(content);
 
   // Group markers by part
   const markersByPart = new Map<
@@ -188,9 +246,9 @@ export function getAdamsDocumentSymbols(content: string): LspDocumentSymbol[] {
   // Parts
   for (const part of dataset.parts.values()) {
     const searchId = `PART/${part.id}`;
-    const range = findLineAndCol(content, searchId);
+    const range = findPatternInCst(cstLines, searchId);
     const markerChildren: LspDocumentSymbol[] = (markersByPart.get(part.id) ?? []).map((m) => {
-      const mRange = findLineAndCol(content, `MARKER/${m.id}`);
+      const mRange = findPatternInCst(cstLines, `MARKER/${m.id}`);
       return {
         name: `MARKER/${m.id}`,
         detail: `(${m.position.x}, ${m.position.y}, ${m.position.z})`,
@@ -215,7 +273,7 @@ export function getAdamsDocumentSymbols(content: string): LspDocumentSymbol[] {
   // Joints
   for (const joint of dataset.joints.values()) {
     const searchId = `JOINT/${joint.id}`;
-    const range = findLineAndCol(content, searchId);
+    const range = findPatternInCst(cstLines, searchId);
     symbols.push({
       name: searchId,
       detail: `${joint.type} [I=${joint.iMarkerId} -> J=${joint.jMarkerId}], DOF=${joint.dofCount}`,
@@ -228,7 +286,7 @@ export function getAdamsDocumentSymbols(content: string): LspDocumentSymbol[] {
   // Forces
   for (const force of dataset.forces.values()) {
     const searchId = `${force.type}/${force.id}`;
-    const range = findLineAndCol(content, searchId);
+    const range = findPatternInCst(cstLines, searchId);
     const detail =
       force.type === "SPRINGDAMPER"
         ? `K=${force.stiffness ?? 0} N/m, C=${force.damping ?? 0} Ns/m`
@@ -245,7 +303,7 @@ export function getAdamsDocumentSymbols(content: string): LspDocumentSymbol[] {
   // Motions
   for (const mot of dataset.motions.values()) {
     const searchId = `MOTION/${mot.id}`;
-    const range = findLineAndCol(content, searchId);
+    const range = findPatternInCst(cstLines, searchId);
     symbols.push({
       name: searchId,
       detail: `${mot.type}: ${mot.functionExpr}`,
@@ -269,16 +327,38 @@ export function getAdamsHover(content: string, offset: number): LspHover | null 
     return null;
   }
 
-  // Extract word under cursor
-  let start = offset;
-  let end = offset;
-  while (start > 0 && /[\w/.]/.test(content[start - 1] ?? "")) {
-    start--;
+  // Extract word under cursor using CST line spans
+  const cstLines = buildAdamsCstLines(content);
+  let token = "";
+  const hitLine = cstLines.find(
+    (entry) =>
+      entry.startOffset !== undefined &&
+      entry.endOffset !== undefined &&
+      offset >= entry.startOffset &&
+      offset <= entry.endOffset,
+  );
+  if (hitLine && hitLine.startOffset !== undefined) {
+    const rel = offset - hitLine.startOffset;
+    let start = rel;
+    let end = rel;
+    while (start > 0 && /[\w/.]/.test(hitLine.text[start - 1] ?? "")) {
+      start--;
+    }
+    while (end < hitLine.text.length && /[\w/.]/.test(hitLine.text[end] ?? "")) {
+      end++;
+    }
+    token = hitLine.text.slice(start, end).trim();
+  } else {
+    let start = offset;
+    let end = offset;
+    while (start > 0 && /[\w/.]/.test(content[start - 1] ?? "")) {
+      start--;
+    }
+    while (end < content.length && /[\w/.]/.test(content[end] ?? "")) {
+      end++;
+    }
+    token = content.slice(start, end).trim();
   }
-  while (end < content.length && /[\w/.]/.test(content[end] ?? "")) {
-    end++;
-  }
-  const token = content.slice(start, end).trim();
   if (!token) return null;
 
   const upper = token.toUpperCase();

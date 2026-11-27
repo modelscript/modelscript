@@ -183,21 +183,22 @@ type TriFilter = "all" | "true" | "false";
 
 const PageRoot = styled.div`
   width: 100%;
-  max-width: 1280px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 20px 18px 56px;
+  padding: 20px 20px 56px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  color: var(--color-text-primary, #e6edf3);
+  color: var(--color-text-primary);
   box-sizing: border-box;
 `;
 
 const HeaderCard = styled.header`
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.24));
-  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   padding: 16px 20px;
-  background: var(--color-bg-elevated, #111827);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -206,10 +207,11 @@ const HeaderCard = styled.header`
 `;
 
 const FilterBar = styled.section`
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.22));
-  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   padding: 14px 16px;
-  background: var(--color-bg-elevated, #111827);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
@@ -222,32 +224,32 @@ const FieldGroup = styled.label`
   gap: 4px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-text-secondary, #94a3b8);
+  color: var(--color-text-muted);
 `;
 
 const Input = styled.input`
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.3));
-  background: var(--color-search-bg, rgba(15, 23, 42, 0.45));
-  color: var(--color-text-primary, #e6edf3);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-canvas-inset);
+  color: var(--color-text-primary);
   font-size: 12px;
   outline: none;
   &:focus {
-    border-color: #38bdf8;
+    border-color: var(--ms-brand);
   }
 `;
 
 const Select = styled.select`
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.3));
-  background: var(--color-search-bg, rgba(15, 23, 42, 0.7));
-  color: var(--color-text-primary, #e6edf3);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-canvas-inset);
+  color: var(--color-text-primary);
   font-size: 12px;
   outline: none;
   &:focus {
-    border-color: #38bdf8;
+    border-color: var(--ms-brand);
   }
 `;
 
@@ -255,24 +257,24 @@ const BulkBar = styled.div`
   position: sticky;
   top: 10px;
   z-index: 20;
-  border: 1px solid rgba(56, 189, 248, 0.45);
+  border: 1px solid var(--color-accent-blue-border);
   border-radius: 12px;
   padding: 12px 16px;
-  background:
-    linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(99, 102, 241, 0.16)), var(--color-bg-elevated, #0f172a);
+  background: var(--color-bg-card);
   backdrop-filter: blur(10px);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--ms-shadow-card);
 `;
 
 const TableShell = styled.div`
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.22));
-  border-radius: 14px;
-  background: var(--color-bg-elevated, #111827);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   overflow: hidden;
 `;
 

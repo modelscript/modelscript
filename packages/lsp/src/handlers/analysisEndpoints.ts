@@ -3,6 +3,7 @@
 import { parseCsvMeasurements } from "@modelscript/csv/csv-parser";
 import { generateRomWasmSource } from "@modelscript/exchange/fmu";
 import { extractModelicaCosimGraph } from "@modelscript/modelica";
+import { injectPredefinedTypes } from "@modelscript/modelica/factory";
 import {
   CandidateFilter,
   Causality,
@@ -34,48 +35,31 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { loadPolyglotCoordinatorProviders } from "../services/polyglot-coordinator-loader.js";
+import { createFlattenArenaFromInstance, type FlattenableClassInstanceLike } from "../services/server-lifecycle.js";
 import { evaluateArenaExprToNum, getArenaParameterInfo, printArenaExpression } from "../utils/arena-utils.js";
 import type { CstParserLike, CstTreeLike } from "../utils/ast-utils.js";
 import { extractMeshSourceDirectives, stripFileExtension } from "../utils/lexical-utils.js";
 import { registerFormalVerificationEndpoints } from "./formalVerificationEndpoints.js";
 import { flattenTargetClass } from "./simulationEndpoints.js";
 
-interface CosimLspContextInternals {
-  documentManager?: {
-    documentTrees?: Map<string, { tree?: CstTreeLike | null }>;
-  };
-  state?: {
-    sharedContext?: { parse?(ext: string, text: string): CstTreeLike | null };
-  };
-}
-
 const lspRequire = createRequire(import.meta.url);
 let cosimMoParserInstance: CstParserLike | null = null;
 
-function callFlattenArenaFromInstance(classInstance: unknown, ctx: unknown): DAEBuilder {
-  const fn = (
-    globalThis as unknown as {
-      flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder;
-    }
-  ).flattenArenaFromInstance;
-  if (typeof fn !== "function") {
-    throw new Error("flattenArenaFromInstance is not initialized.");
-  }
-  return fn(classInstance, ctx);
+function callFlattenArenaFromInstance(context: LspContext, classInstance: unknown, ctx: unknown): DAEBuilder {
+  const fn = context.flattenArenaFromInstance ?? createFlattenArenaFromInstance(context.workspaceManager);
+  return fn(classInstance as FlattenableClassInstanceLike, ctx);
 }
 
 function callInjectPredefinedTypes(index: unknown): void {
-  const fn = (globalThis as unknown as { injectPredefinedTypes?: (idx: unknown) => void }).injectPredefinedTypes;
-  fn?.(index);
+  injectPredefinedTypes(index as Parameters<typeof injectPredefinedTypes>[0]);
 }
 
 function parseCosimModelicaTree(context: LspContext, uri: string, text: string): CstTreeLike | null {
-  const ctxInternal = context as unknown as CosimLspContextInternals;
-  const existing = ctxInternal.documentManager?.documentTrees?.get?.(uri)?.tree;
+  const existing = context.documentManager?.documentTrees?.get?.(uri)?.tree as CstTreeLike | null | undefined;
   if (existing?.rootNode) return existing;
   try {
     const sc =
-      ctxInternal.state?.sharedContext ??
+      (context.state?.sharedContext as { parse?(ext: string, text: string): CstTreeLike | null } | undefined) ??
       (context.parserService?.sharedContext as { parse?(ext: string, text: string): CstTreeLike | null } | undefined);
     if (sc && typeof sc.parse === "function") {
       return sc.parse(".mo", text);
@@ -232,7 +216,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           return { success: false, error: `No Modelica context found for URI '${params.uri}'` };
         }
 
-        const arena = callFlattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(context, classInstance, docContext);
         const exp = arena.experiment;
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 1;
@@ -439,7 +423,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         throw new Error(`No Modelica context found for URI '${params.uri}'`);
       }
 
-      const arena = callFlattenArenaFromInstance(classInstance, docContext);
+      const arena = callFlattenArenaFromInstance(context, classInstance, docContext);
       const exp = arena.experiment;
 
       // In Optimica, the controls are usually identified by looking at variables with free=true.
@@ -461,11 +445,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
       // ── Constraints injection ──
       let stateConstraints: { variable: string; bound: number; type: "<=" | ">=" }[] | undefined;
-      const pExt = params as unknown as {
+      const pExt: typeof params & {
         constraintsUri?: string;
         constraintsFilter?: string;
         variableMap?: Record<string, unknown>;
-      };
+      } = params;
       const constraintsUri = pExt.constraintsUri ?? params.sysmlUri;
       const qe = context.workspaceManager.getQueryEngine("sysml2");
       if (constraintsUri && qe) {
@@ -577,10 +561,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const qe =
           context.workspaceManager.getQueryEngine("modelica") || context.workspaceManager.getQueryEngine("sysml2");
         let queryDB: unknown = undefined;
-        const qeWithToDb = qe as unknown as { toQueryDB?: () => unknown } | undefined;
-        if (qeWithToDb && typeof qeWithToDb.toQueryDB === "function") {
+        if (qe && typeof qe.toQueryDB === "function") {
           try {
-            queryDB = qeWithToDb.toQueryDB();
+            queryDB = qe.toQueryDB();
           } catch {
             // QueryEngine DB conversion unavailable; fall back to unified workspace index below.
           }
@@ -606,12 +589,10 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         if (!arena && context.parserService?.sharedContext) {
           try {
-            const sc = context.parserService.sharedContext as unknown as {
-              flattenArena?: (model: string, cfg: unknown, uri: string) => DAEBuilder | null;
-            };
+            const sc = context.parserService.sharedContext;
             const modelName = params.target || extractModelNameFromUri(params.uri);
             if (typeof sc.flattenArena === "function") {
-              arena = sc.flattenArena(modelName, undefined, params.uri);
+              arena = (sc.flattenArena(modelName, undefined, params.uri) as DAEBuilder | null) ?? null;
             }
           } catch {
             // Fallback arena flattening unavailable; verification continues without DAE arena.
@@ -619,11 +600,16 @@ export function registerAnalysisEndpoints(context: LspContext) {
         }
 
         // 3. Perform simulation if needed for trajectory verification or B2B
-        const options: UnifiedVerificationOptions = params.options || { all: true };
+        const options: UnifiedVerificationOptions & {
+          digitalThread?: boolean;
+          polyglotThread?: boolean;
+          tradeStudy?: boolean;
+          pareto?: boolean;
+        } = params.options || { all: true };
         if (!options.cancellationToken && token) {
           options.cancellationToken = token;
         }
-        let report: UnifiedVerificationReport;
+        let report: UnifiedVerificationReport & { tradeStudy?: unknown };
         try {
           let simResult: Awaited<ReturnType<typeof simulateArenaAsync>> | undefined = undefined;
           const needsSim = Boolean(options.all || options.trajectories === true || options.b2b);
@@ -645,11 +631,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
           }
 
           // 4. Run Unified Verification via Theory Coordinator & Verifier
-          const wmExt = context.workspaceManager as unknown as {
+          const wmExt: {
             getCoordinator?: () => SemanticTheoryCoordinator;
             coordinator?: SemanticTheoryCoordinator;
-          };
-          const coordinator = wmExt?.getCoordinator?.() || wmExt?.coordinator || new SemanticTheoryCoordinator();
+          } = context.workspaceManager;
+          const coordinator = wmExt.getCoordinator?.() || wmExt.coordinator || new SemanticTheoryCoordinator();
 
           report = await UnifiedVerifier.verify(
             {
@@ -667,11 +653,10 @@ export function registerAnalysisEndpoints(context: LspContext) {
           (arena as { free?: () => void } | null)?.free?.();
         }
 
-        const optsPoly = options as unknown as { digitalThread?: boolean; polyglotThread?: boolean };
         const isTargetedSingleStage = Boolean(
           !options.all &&
-          !optsPoly.digitalThread &&
-          !optsPoly.polyglotThread &&
+          !options.digitalThread &&
+          !options.polyglotThread &&
           (options.flowpipes ||
             options.decisions ||
             options.barriers ||
@@ -699,16 +684,16 @@ export function registerAnalysisEndpoints(context: LspContext) {
             addDiscoveredFile(d.uri, d.getText());
           }
 
-          const unifiedWs = context.workspaceManager?.unifiedWorkspace as unknown as
+          const unifiedWs:
             | {
                 getAllDocumentEntries?: () => Array<{ uri?: string; text?: string }>;
                 getIndex?: () => {
-                  documents?: Map<string, string | { text?: string; source?: string }>;
-                  symbolsByResource?: Map<string, unknown>;
+                  documents?: Map<string, string | { text?: string; source?: string }> | undefined;
+                  symbolsByResource?: Map<string, unknown> | undefined;
                 };
                 getDocument?: (uri: string) => unknown;
               }
-            | undefined;
+            | undefined = context.workspaceManager?.unifiedWorkspace;
           if (unifiedWs && typeof unifiedWs.getAllDocumentEntries === "function") {
             for (const entry of unifiedWs.getAllDocumentEntries()) {
               if (entry?.uri && entry.text && entry.text.trim().length > 0 && !isVirtualStdlibUri(entry.uri)) {
@@ -727,13 +712,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
             }
           }
           if (indexedIndex?.symbolsByResource) {
+            const wmDocs: typeof context.workspaceManager & { getDocument?: (uri: string) => unknown } =
+              context.workspaceManager;
             for (const resUri of indexedIndex.symbolsByResource.keys()) {
               if (!resUri || isVirtualStdlibUri(resUri)) continue;
-              const docsExt = context.documents as unknown as { get?: (uri: string) => unknown } | undefined;
-              const wmDocs = context.workspaceManager as unknown as
-                { getDocument?: (uri: string) => unknown } | undefined;
               const uDoc = (unifiedWs?.getDocument?.(resUri) ??
-                docsExt?.get?.(resUri) ??
+                context.documents?.get?.(resUri) ??
                 wmDocs?.getDocument?.(resUri)) as { getText?: () => string; text?: string } | undefined;
               const docText =
                 typeof uDoc?.text === "string"
@@ -912,12 +896,14 @@ export function registerAnalysisEndpoints(context: LspContext) {
                   }));
                   diagsByUri.set(art.uri, mapped);
                 }
-                const ctxExt = context as unknown as {
-                  validationService?: { mergeDigitalThreadDiagnostics?: (m: typeof diagsByUri) => void };
-                };
                 if (!hasStaleDocument()) {
-                  if (typeof ctxExt.validationService?.mergeDigitalThreadDiagnostics === "function") {
-                    ctxExt.validationService.mergeDigitalThreadDiagnostics(diagsByUri);
+                  if (typeof context.validationService?.mergeDigitalThreadDiagnostics === "function") {
+                    context.validationService.mergeDigitalThreadDiagnostics(
+                      diagsByUri as Map<
+                        string,
+                        Parameters<typeof context.connection.sendDiagnostics>[0]["diagnostics"]
+                      >,
+                    );
                   } else if (typeof context.connection?.sendDiagnostics === "function") {
                     for (const [uri, diagnostics] of diagsByUri.entries()) {
                       context.connection.sendDiagnostics({
@@ -939,18 +925,17 @@ export function registerAnalysisEndpoints(context: LspContext) {
         }
 
         // 5. Query active trade study Pareto fronts if requested
-        const optsExt = options as unknown as { tradeStudy?: boolean; pareto?: boolean };
-        if (optsExt.tradeStudy || optsExt.pareto) {
-          const wmCand = context.workspaceManager as unknown as {
+        if (options.tradeStudy || options.pareto) {
+          const wmCand: typeof context.workspaceManager & {
             getCandidates?: (uri: string) => Parameters<typeof CandidateFilter.extractParetoFronts>[0];
-          };
-          const paramsCand = params as unknown as {
+          } = context.workspaceManager;
+          const paramsCand: typeof params & {
             candidates?: Parameters<typeof CandidateFilter.extractParetoFronts>[0];
-          };
-          const rawCandidates = wmCand?.getCandidates?.(params.uri) || paramsCand.candidates || [];
+          } = params;
+          const rawCandidates = wmCand.getCandidates?.(params.uri) || paramsCand.candidates || [];
           if (rawCandidates.length > 0) {
             const paretoFronts = CandidateFilter.extractParetoFronts(rawCandidates);
-            (report as unknown as { tradeStudy?: unknown }).tradeStudy = {
+            report.tradeStudy = {
               candidatesCount: rawCandidates.length,
               paretoFrontsCount: paretoFronts.length,
               topParetoFront: paretoFronts[0] || [],
@@ -987,7 +972,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           if (!report.artifacts) {
             report.artifacts = {};
           }
-          (report.artifacts as unknown as { formattedOutput?: string }).formattedOutput = formattedOutput;
+          Object.assign(report.artifacts, { formattedOutput });
         }
 
         return report;
@@ -1091,7 +1076,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
               severity: "error",
               message: `MiL-vs-SiL discrepancy on signal '${disc.variable}' at t=${disc.time.toFixed(4)}s: |MiL(${disc.milValue.toExponential(3)}) - SiL(${disc.silValue.toExponential(3)})| = ${disc.absError.toExponential(3)} > tol (${disc.tolerance.toExponential(3)})`,
               location: { uri: params.uri },
-              witness: disc as unknown as Record<string, unknown>,
+              witness: { ...disc },
             });
           }
         }
@@ -1217,7 +1202,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = callFlattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(context, classInstance, docContext);
 
         // Build measurements map from either COMTRADE (.cff) or CSV data
         const measurements = new Map<string, { t: number[]; y: number[] }>();
@@ -1426,7 +1411,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = callFlattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(context, classInstance, docContext);
         const exp = arena.experiment;
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 10;
@@ -1556,7 +1541,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
 
         // Run BLT transformation
         const { blocks } = performBltTransformationArena(arena);
@@ -1652,7 +1637,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = callFlattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(context, classInstance, docContext);
         const parameters: string[] = [];
         const parameterValues: Record<string, number> = {};
         const variables: string[] = [];
@@ -1706,7 +1691,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
 
         const bounds: IntervalBound[] = [];
         for (let i = 0; i < arena.varCount; i++) {
@@ -1764,7 +1749,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
 
         // Build a simple optimization problem from the DAE
         const controls: string[] = [];
@@ -1855,7 +1840,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
 
         return { parameters: getArenaParameterInfo(arena) };
       } catch (e) {
@@ -1939,7 +1924,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return errorResult("No Modelica context found.");
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
 
         const simulator = new ArenaSimulator(arena);
 
@@ -2108,7 +2093,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
 
         // Extract initial parameter values
         const fittedParameters: { name: string; initial: number; fitted: number }[] = [];
@@ -2259,7 +2244,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
 
         const eqIdx = params.equationIndex ?? 0;
         if (eqIdx >= arena.eqCount) return null;
@@ -2307,8 +2292,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         console.error("[extractCosimGraph] Error:", e);
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       } finally {
-        const ctxInternal = context as unknown as CosimLspContextInternals;
-        if (!ctxInternal.documentManager?.documentTrees?.get?.(params.uri)?.tree) {
+        if (!context.documentManager?.documentTrees?.get?.(params.uri)?.tree) {
           tree?.delete?.();
         }
       }

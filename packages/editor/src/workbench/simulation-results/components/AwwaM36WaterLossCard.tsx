@@ -3,7 +3,16 @@
 import { exportAwwaM36Csv } from "@modelscript/epanet";
 import { DownloadIcon, GraphIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
-import styled from "styled-components";
+import {
+  ActionBtn,
+  ActionButtons,
+  CardContainer,
+  type ComplianceTone,
+  HeaderRow,
+  StackedBarSegment,
+  StatusPill,
+  TitleGroup,
+} from "./ComplianceCardPrimitives";
 
 export interface AwwaM36AuditReport {
   utilityName: string;
@@ -33,154 +42,58 @@ export interface AwwaM36WaterLossCardProps {
   colorMode?: "light" | "dark" | undefined;
 }
 
-const CardContainer = styled.div<{ $isDark: boolean }>`
-  border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
-  border-radius: 10px;
-  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  font-family: inherit;
-  margin-top: 8px;
-`;
+const bandToTone = (band: "Band A" | "Band B" | "Band C" | "Band D"): ComplianceTone =>
+  band === "Band A" ? "success" : band === "Band B" ? "brand" : band === "Band C" ? "warning" : "danger";
 
-const HeaderRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-`;
+const KpiCard: React.FC<{
+  label: string;
+  highlight?: boolean;
+  valueColor?: string;
+  children: React.ReactNode;
+}> = ({ label, highlight = false, valueColor, children }) => (
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: 4,
+      padding: "10px 12px",
+      borderRadius: 6,
+      background: "var(--ms-bg-elv, var(--bgColor-muted, #1e1e22))",
+      border: `1px solid ${highlight ? "var(--ms-brand, #0969da)" : "var(--ms-border, var(--borderColor-muted, #30363d))"}`,
+    }}
+  >
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 600,
+        textTransform: "uppercase",
+        color: "var(--ms-text-2, var(--fgColor-muted, #8b949e))",
+      }}
+    >
+      {label}
+    </span>
+    <div
+      style={{
+        fontSize: 16,
+        fontWeight: 700,
+        color:
+          valueColor ??
+          (highlight
+            ? "var(--ms-brand, var(--fgColor-accent, #58a6ff))"
+            : "var(--ms-text, var(--fgColor-default, #c9d1d9))"),
+      }}
+    >
+      {children}
+    </div>
+  </div>
+);
 
-const TitleGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const BandBadge = styled.span<{ $band: "Band A" | "Band B" | "Band C" | "Band D" }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: #ffffff;
-  background: ${(p) =>
-    p.$band === "Band A"
-      ? "var(--color-success-emphasis, #238636)"
-      : p.$band === "Band B"
-        ? "var(--ms-brand)"
-        : p.$band === "Band C"
-          ? "var(--color-attention-emphasis, #9a6700)"
-          : "var(--color-danger-emphasis, #da3633)"};
-`;
-
-const ActionButtons = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const ActionBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--color-border-default, #30363d);
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  color: var(--color-fg-default, #c9d1d9);
-  cursor: pointer;
-  transition: background 0.15s ease;
-
-  &:hover {
-    background: var(--color-canvas-subtle, #21262d);
-  }
-`;
-
-const KpiGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 8px;
-`;
-
-const KpiCard = styled.div<{ $highlight?: boolean }>`
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  border: 1px solid ${(p) => (p.$highlight ? "var(--ms-brand)" : "var(--borderColor-muted, var(--ms-border))")};
-
-  & > span:first-child {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--fgColor-muted, var(--ms-text-2));
-  }
-
-  & > div:last-child {
-    font-size: 16px;
-    font-weight: 700;
-    color: ${(p) =>
-      p.$highlight ? "var(--fgColor-accent, var(--ms-brand))" : "var(--fgColor-default, var(--ms-text))"};
-  }
-`;
-
-const WaterBalanceSection = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 6px;
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  border: 1px solid var(--color-border-subtle, #30363d);
-`;
-
-const StackedBar = styled.div`
-  display: flex;
-  height: 24px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.05);
-`;
-
-const BarSegment = styled.div<{ $fraction: number; $color: string }>`
-  width: ${(p) => Math.max(0, Math.min(100, p.$fraction * 100))}%;
-  background: ${(p) => p.$color};
-  transition: width 0.3s ease;
-`;
-
-const LegendRow = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-size: 11px;
-  color: var(--color-fg-muted, #8b949e);
-  margin-top: 4px;
-`;
-
-const LegendItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-
-  & > span:first-child {
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-  }
-`;
+const LegendItem: React.FC<{ color: string; label: string }> = ({ color, label }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <span style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+    <span>{label}</span>
+  </div>
+);
 
 const DEFAULT_M36_REPORT: AwwaM36AuditReport = {
   utilityName: "Austin Water Utility",
@@ -276,33 +189,33 @@ export const AwwaM36WaterLossCard: React.FC<AwwaM36WaterLossCardProps> = ({
   };
 
   return (
-    <CardContainer $isDark={isDark} data-testid="awwa-m36-water-loss-card">
+    <CardContainer isDark={isDark} data-testid="awwa-m36-water-loss-card">
       <HeaderRow>
         <TitleGroup>
-          <GraphIcon size={20} fill="var(--fgColor-accent, var(--ms-brand))" />
+          <GraphIcon size={20} fill="var(--ms-brand, var(--fgColor-accent, #58a6ff))" />
           <div>
             <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700 }}>AWWA M36 Water Audit &amp; Loss Control</h3>
-            <span style={{ fontSize: "11px", color: "var(--color-fg-muted, #8b949e)" }}>
+            <span style={{ fontSize: "11px", color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))" }}>
               {activeReport.utilityName} • Audit Year {activeReport.auditYear}
             </span>
           </div>
         </TitleGroup>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <BandBadge $band={activeReport.iliBand}>
+          <StatusPill tone={bandToTone(activeReport.iliBand)}>
             {activeReport.iliBand} (ILI {activeReport.ili.toFixed(2)})
-          </BandBadge>
+          </StatusPill>
           <ActionButtons>
-            <ActionBtn type="button" onClick={handleExportCsv} title="Export AWWA CSV Audit">
+            <ActionBtn isDark={isDark} onClick={handleExportCsv} title="Export AWWA CSV Audit">
               <DownloadIcon size={14} />
               CSV
             </ActionBtn>
-            <ActionBtn type="button" onClick={handleExport} title="Export JSON Audit">
+            <ActionBtn isDark={isDark} onClick={handleExport} title="Export JSON Audit">
               <DownloadIcon size={14} />
               JSON
             </ActionBtn>
             {onClose && (
-              <ActionBtn type="button" onClick={onClose} title="Dismiss">
+              <ActionBtn isDark={isDark} onClick={onClose} title="Dismiss">
                 <XIcon size={14} />
               </ActionBtn>
             )}
@@ -310,85 +223,96 @@ export const AwwaM36WaterLossCard: React.FC<AwwaM36WaterLossCardProps> = ({
         </div>
       </HeaderRow>
 
-      <KpiGrid>
-        <KpiCard $highlight={true}>
-          <span>ILI Index</span>
-          <div>{activeReport.ili.toFixed(2)}</div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+          gap: 8,
+        }}
+      >
+        <KpiCard label="ILI Index" highlight>
+          {activeReport.ili.toFixed(2)}
         </KpiCard>
-        <KpiCard>
-          <span>CARL</span>
-          <div>
-            {activeReport.carlLitersPerConnDay.toFixed(1)}{" "}
-            <span style={{ fontSize: "10px", color: "#8b949e" }}>L/conn/d</span>
-          </div>
+        <KpiCard label="CARL">
+          {activeReport.carlLitersPerConnDay.toFixed(1)}{" "}
+          <span style={{ fontSize: "10px", color: "#8b949e" }}>L/conn/d</span>
         </KpiCard>
-        <KpiCard>
-          <span>UARL</span>
-          <div>
-            {activeReport.uarlLitersPerConnDay.toFixed(1)}{" "}
-            <span style={{ fontSize: "10px", color: "#8b949e" }}>L/conn/d</span>
-          </div>
+        <KpiCard label="UARL">
+          {activeReport.uarlLitersPerConnDay.toFixed(1)}{" "}
+          <span style={{ fontSize: "10px", color: "#8b949e" }}>L/conn/d</span>
         </KpiCard>
-        <KpiCard>
-          <span>Real Losses</span>
-          <div>
-            {realPct.toFixed(1)}%{" "}
-            <span style={{ fontSize: "10px", color: "#8b949e" }}>
-              ({(activeReport.realLossesM3 / 1e6).toFixed(2)} Mm³)
-            </span>
-          </div>
+        <KpiCard label="Real Losses">
+          {realPct.toFixed(1)}%{" "}
+          <span style={{ fontSize: "10px", color: "#8b949e" }}>
+            ({(activeReport.realLossesM3 / 1e6).toFixed(2)} Mm³)
+          </span>
         </KpiCard>
-        <KpiCard>
-          <span>Loss Cost</span>
-          <div>
-            ${(activeReport.annualLossCostUsd / 1e6).toFixed(2)}M{" "}
-            <span style={{ fontSize: "10px", color: "#8b949e" }}>/yr</span>
-          </div>
+        <KpiCard label="Loss Cost">
+          ${(activeReport.annualLossCostUsd / 1e6).toFixed(2)}M{" "}
+          <span style={{ fontSize: "10px", color: "#8b949e" }}>/yr</span>
         </KpiCard>
-        <KpiCard $highlight={true}>
-          <span>Recoverable</span>
-          <div style={{ color: "#3fb950" }}>
-            ${(activeReport.recoverableRevenueUsd / 1e6).toFixed(2)}M{" "}
-            <span style={{ fontSize: "10px", color: "#8b949e" }}>/yr</span>
-          </div>
+        <KpiCard label="Recoverable" highlight valueColor="#3fb950">
+          ${(activeReport.recoverableRevenueUsd / 1e6).toFixed(2)}M{" "}
+          <span style={{ fontSize: "10px", color: "#8b949e" }}>/yr</span>
         </KpiCard>
-      </KpiGrid>
+      </div>
 
-      <WaterBalanceSection>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          padding: 12,
+          borderRadius: 6,
+          background: "var(--ms-bg-elv, var(--bgColor-muted, #1e1e22))",
+          border: "1px solid var(--ms-border-subtle, var(--color-border-subtle, #30363d))",
+        }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 600 }}>
           <span>Top-Down Water Balance</span>
-          <span style={{ color: "var(--color-fg-muted, #8b949e)" }}>
+          <span style={{ color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))" }}>
             Total Input: {(activeReport.systemInputVolumeM3 / 1e6).toFixed(1)} Mm³/yr
           </span>
         </div>
 
-        <StackedBar>
-          <BarSegment $fraction={authPct / 100} $color="#238636" title={`Authorized: ${authPct.toFixed(1)}%`} />
-          <BarSegment
-            $fraction={apparentPct / 100}
-            $color="#9a6700"
-            title={`Apparent Losses: ${apparentPct.toFixed(1)}%`}
-          />
-          <BarSegment $fraction={realPct / 100} $color="#da3633" title={`Real Losses: ${realPct.toFixed(1)}%`} />
-        </StackedBar>
+        <div
+          style={{
+            display: "flex",
+            height: 24,
+            borderRadius: 4,
+            overflow: "hidden",
+            background: "rgba(255, 255, 255, 0.05)",
+          }}
+        >
+          <StackedBarSegment pct={authPct} color="#238636" title={`Authorized: ${authPct.toFixed(1)}%`} />
+          <StackedBarSegment pct={apparentPct} color="#9a6700" title={`Apparent Losses: ${apparentPct.toFixed(1)}%`} />
+          <StackedBarSegment pct={realPct} color="#da3633" title={`Real Losses: ${realPct.toFixed(1)}%`} />
+        </div>
 
-        <LegendRow>
-          <LegendItem>
-            <span style={{ background: "#238636" }} />
-            <span>Authorized Consumption ({authPct.toFixed(1)}%)</span>
-          </LegendItem>
-          <LegendItem>
-            <span style={{ background: "#9a6700" }} />
-            <span>Apparent Losses ({apparentPct.toFixed(1)}%)</span>
-          </LegendItem>
-          <LegendItem>
-            <span style={{ background: "#da3633" }} />
-            <span>Real Leakage Losses ({realPct.toFixed(1)}%)</span>
-          </LegendItem>
-        </LegendRow>
-      </WaterBalanceSection>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+            fontSize: 11,
+            color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
+            marginTop: 4,
+          }}
+        >
+          <LegendItem color="#238636" label={`Authorized Consumption (${authPct.toFixed(1)}%)`} />
+          <LegendItem color="#9a6700" label={`Apparent Losses (${apparentPct.toFixed(1)}%)`} />
+          <LegendItem color="#da3633" label={`Real Leakage Losses (${realPct.toFixed(1)}%)`} />
+        </div>
+      </div>
 
-      <div style={{ fontSize: "12px", color: "var(--color-fg-muted, #8b949e)", fontStyle: "italic" }}>
+      <div
+        style={{
+          fontSize: "12px",
+          color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
+          fontStyle: "italic",
+        }}
+      >
         {activeReport.summary}
       </div>
     </CardContainer>

@@ -21,6 +21,7 @@ import {
 } from "@modelscript/diagram/quantum-chemistry";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -170,7 +171,7 @@ export class QuantumChemistryPanel extends BaseWebviewPanel {
           <td>${m.frequencyCm1.toFixed(1)} cm⁻¹</td>
           <td>${m.irIntensityKmPerMol.toFixed(2)} km/mol</td>
           <td>${(m.ramanActivityA4Amu ?? 0).toFixed(2)} Å⁴/amu</td>
-          <td><span class="sym-badge">${m.symmetry ?? "A"}</span></td>
+          <td><span class="sym-badge">${escapeXml(m.symmetry ?? "A")}</span></td>
         </tr>`,
       )
       .join("");
@@ -190,10 +191,14 @@ export class QuantumChemistryPanel extends BaseWebviewPanel {
       )
       .join("");
 
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <style>
     body {
       margin: 0;
@@ -397,7 +402,7 @@ export class QuantumChemistryPanel extends BaseWebviewPanel {
     ${diagsHtml}
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     document.getElementById('modeSelect').addEventListener('change', (e) => {

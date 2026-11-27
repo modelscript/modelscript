@@ -94,6 +94,11 @@ export const ClassSimulationTab: React.FC<ClassSimulationTabProps> = ({
   const { theme } = useTheme();
   const colorMode = theme === "dark" ? "dark" : "light";
 
+  // Preload SimulationResults chunk while the solver runs instead of waiting until after completion.
+  React.useEffect(() => {
+    void import("@modelscript/editor/workbench/SimulationResults");
+  }, []);
+
   const {
     sourceCode,
     experimentConfig,

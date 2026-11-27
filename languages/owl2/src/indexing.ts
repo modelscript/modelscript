@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { DslIndexFileContext, SyntaxNode } from "@modelscript/dsl";
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import type { SymbolEntry, SymbolIndex, UnifiedWorkspace } from "@modelscript/runtime";
 import { detectOwl2Format, parseOwlXmlToAxioms, parseTurtleToOwl2Axioms } from "./parser/index.js";
 
@@ -212,21 +213,14 @@ export function indexOwl2Document(ctx: DslIndexFileContext): void {
     usedCst = true;
   } else if (format === "ttl" || format === "owx") {
     if (format === "ttl") {
-      const pfxRegex = /(?:@prefix|PREFIX)\s+([A-Za-z0-9_-]*:)\s*<([^>\s<]+)>/gi;
-      let m: RegExpExecArray | null;
-      while ((m = pfxRegex.exec(text)) !== null) {
-        prefixes.set(m[1]!, m[2]!);
-      }
+      extractTurtlePrefixes(text, prefixes);
     } else {
-      const pfxRegex = /<Prefix\b([^>]*)>/gi;
-      let m: RegExpExecArray | null;
-      while ((m = pfxRegex.exec(text)) !== null) {
-        const attrs = m[1]!;
-        const nameMatch = attrs.match(/\bname="([^"]*)"/i);
-        const iriMatch = attrs.match(/\bIRI="([^"]*)"/i);
-        if (nameMatch && iriMatch) {
-          const p = nameMatch[1]!;
-          prefixes.set(p.endsWith(":") ? p : `${p}:`, iriMatch[1]!);
+      const xmlDoc = parseXmlSync(text);
+      if (xmlDoc.root) {
+        const extractedXml = extractOwlXmlMetadata(xmlDoc.root, prefixes, imports);
+        if (extractedXml.ontologyIri) {
+          ontologyIri = extractedXml.ontologyIri;
+          ontologyNameRange = extractedXml.ontologyNameRange;
         }
       }
     }
@@ -484,6 +478,148 @@ export function resolveOwl2Entity(
   }
 
   return undefined;
+}
+
+function localXmlName(name: string): string {
+  const idx = name.indexOf(":");
+  return idx >= 0 ? name.slice(idx + 1) : name;
+}
+
+function getXmlAttr(
+  elem: XmlElement,
+  nameLower: string,
+): { value: string; valueStart: number; valueEnd: number } | undefined {
+  for (const attr of elem.attributes) {
+    if (attr.name.toLowerCase() === nameLower) {
+      return { value: attr.value, valueStart: attr.valueStart, valueEnd: attr.valueEnd };
+    }
+  }
+  return undefined;
+}
+
+function extractOwlXmlMetadata(
+  root: XmlElement,
+  prefixes: Map<string, string>,
+  imports: string[],
+): {
+  ontologyIri?: string | undefined;
+  ontologyNameRange?: { startOffset: number; endOffset: number } | undefined;
+} {
+  let ontologyIri: string | undefined;
+  let ontologyNameRange: { startOffset: number; endOffset: number } | undefined;
+
+  const stack: XmlElement[] = [root];
+  while (stack.length > 0) {
+    const elem = stack.pop()!;
+    const tag = localXmlName(elem.name).toLowerCase();
+
+    if (tag === "prefix") {
+      const nameAttr = getXmlAttr(elem, "name");
+      const iriAttr = getXmlAttr(elem, "iri");
+      if (nameAttr !== undefined && iriAttr !== undefined) {
+        const p = nameAttr.value;
+        prefixes.set(p.endsWith(":") ? p : `${p}:`, iriAttr.value);
+      }
+    } else if (tag === "ontology" && !ontologyIri) {
+      const iriAttr = getXmlAttr(elem, "ontologyiri") ?? getXmlAttr(elem, "rdf:about");
+      if (iriAttr && iriAttr.value) {
+        ontologyIri = iriAttr.value;
+        ontologyNameRange = { startOffset: iriAttr.valueStart, endOffset: iriAttr.valueEnd };
+      }
+    } else if (tag === "import") {
+      const target = extractIri(elem.text);
+      if (target) imports.push(target);
+    }
+
+    for (let i = elem.children.length - 1; i >= 0; i--) {
+      stack.push(elem.children[i]!);
+    }
+  }
+
+  return { ontologyIri, ontologyNameRange };
+}
+
+function isPrefixNameChar(ch: number): boolean {
+  return (ch >= 65 && ch <= 90) || (ch >= 97 && ch <= 122) || (ch >= 48 && ch <= 57) || ch === 95 || ch === 45;
+}
+
+function extractTurtlePrefixes(text: string, prefixes: Map<string, string>): void {
+  const len = text.length;
+  let i = 0;
+
+  while (i < len) {
+    const ch = text.charCodeAt(i);
+    if (ch <= 32) {
+      i++;
+      continue;
+    }
+    if (ch === 35) {
+      // '#' comment
+      while (i < len && text.charCodeAt(i) !== 10 && text.charCodeAt(i) !== 13) i++;
+      continue;
+    }
+    if (ch === 34 || ch === 39) {
+      // Skip string literals
+      const quote = ch;
+      i++;
+      while (i < len) {
+        const c = text.charCodeAt(i);
+        if (c === 92) {
+          i += 2;
+          continue;
+        }
+        if (c === quote) {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+
+    const rem7 = text.slice(i, i + 7).toLowerCase();
+    const rem6 = text.slice(i, i + 6).toLowerCase();
+    let advance = 0;
+    if (rem7 === "@prefix" && (i + 7 >= len || text.charCodeAt(i + 7) <= 32)) {
+      advance = 7;
+    } else if (
+      rem6 === "prefix" &&
+      (i === 0 || text.charCodeAt(i - 1) <= 32) &&
+      (i + 6 >= len || text.charCodeAt(i + 6) <= 32)
+    ) {
+      advance = 6;
+    }
+
+    if (advance > 0) {
+      let j = i + advance;
+      while (j < len && text.charCodeAt(j) <= 32) j++;
+      const pfxStart = j;
+      while (j < len && isPrefixNameChar(text.charCodeAt(j))) j++;
+      if (j < len && text.charCodeAt(j) === 58) {
+        // ':'
+        const pfx = text.slice(pfxStart, j + 1);
+        j++;
+        while (j < len && text.charCodeAt(j) <= 32) j++;
+        if (j < len && text.charCodeAt(j) === 60) {
+          // '<'
+          const iriStart = j + 1;
+          let iriEnd = iriStart;
+          while (iriEnd < len) {
+            const c = text.charCodeAt(iriEnd);
+            if (c === 62 || c === 60 || c <= 32) break;
+            iriEnd++;
+          }
+          if (iriEnd < len && text.charCodeAt(iriEnd) === 62) {
+            prefixes.set(pfx, text.slice(iriStart, iriEnd));
+            i = iriEnd + 1;
+            continue;
+          }
+        }
+      }
+    }
+
+    i++;
+  }
 }
 
 function findMatchingParen(text: string, openIndex: number): number {

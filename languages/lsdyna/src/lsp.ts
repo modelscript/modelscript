@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lookupLsDynaSchema } from "./catalog/library-package-adapter.js";
 import { lintLsDynaDeck } from "./lints/index.js";
 import { parseLsDynaDeck } from "./parser/deck-parser.js";
@@ -183,10 +186,68 @@ const LSDYNA_KEYWORD_DOCS: Record<string, { detail: string; doc: string; snippet
   },
 };
 
-function makeLineRange(lineZeroBased: number, length: number): LspRange {
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface LsDynaCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildLsDynaCstIndex(content: string): LsDynaCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("lsdyna", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
+function makeLineRange(cstIndex: LsDynaCstIndex, lineZeroBased: number): LspRange {
+  const safeLine = Math.max(0, lineZeroBased);
+  const entry = cstIndex.byRow.get(safeLine);
+  const startChar = entry?.startCol ?? 0;
+  const endChar = Math.max(startChar + 1, entry?.endCol ?? 1);
   return {
-    start: { line: Math.max(0, lineZeroBased), character: 0 },
-    end: { line: Math.max(0, lineZeroBased), character: Math.max(1, length) },
+    start: { line: safeLine, character: startChar },
+    end: { line: safeLine, character: endChar },
   };
 }
 
@@ -196,13 +257,12 @@ function makeLineRange(lineZeroBased: number, length: number): LspRange {
 export function validateLsDyna(content: string, _uri = "model.k"): LspDiagnostic[] {
   const deck = parseLsDynaDeck(content);
   const diags = lintLsDynaDeck(deck);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildLsDynaCstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
     return {
-      range: makeLineRange(lineIdx, lineText.length),
+      range: makeLineRange(cstIndex, lineIdx),
       severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
       code: d.id,
       source: "modelscript-lsdyna",
@@ -216,17 +276,17 @@ export function validateLsDyna(content: string, _uri = "model.k"): LspDiagnostic
  */
 export function getLsDynaDocumentSymbols(content: string): LspDocumentSymbol[] {
   const deck = parseLsDynaDeck(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildLsDynaCstIndex(content);
   const fullRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: (lines[lines.length - 1] ?? "").length },
+    start: { line: 0, character: cstIndex.byRow.get(0)?.startCol ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   const children: LspDocumentSymbol[] = [];
 
   for (const part of deck.parts.values()) {
     const ln = Math.max(0, (part.loc?.line ?? 1) - 1);
-    const r = makeLineRange(ln, (lines[ln] ?? "").length);
+    const r = makeLineRange(cstIndex, ln);
     children.push({
       name: `PART ${part.pid}${part.title ? ` (${part.title})` : ""}`,
       detail: `SECID=${part.secid}, MID=${part.mid}`,
@@ -238,7 +298,7 @@ export function getLsDynaDocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const mat of deck.materials.values()) {
     const ln = Math.max(0, (mat.loc?.line ?? 1) - 1);
-    const r = makeLineRange(ln, (lines[ln] ?? "").length);
+    const r = makeLineRange(cstIndex, ln);
     children.push({
       name: `${mat.type} ${mat.mid}`,
       detail: `RO=${mat.ro}, E=${mat.e}, PR=${mat.pr}`,
@@ -250,7 +310,7 @@ export function getLsDynaDocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const sec of deck.sections.values()) {
     const ln = Math.max(0, (sec.loc?.line ?? 1) - 1);
-    const r = makeLineRange(ln, (lines[ln] ?? "").length);
+    const r = makeLineRange(cstIndex, ln);
     children.push({
       name: `SECTION_${sec.kind} ${sec.secid}`,
       detail: `ELFORM=${sec.elform}`,
@@ -262,7 +322,7 @@ export function getLsDynaDocumentSymbols(content: string): LspDocumentSymbol[] {
 
   if (deck.controlTermination) {
     const ln = Math.max(0, (deck.controlTermination.loc?.line ?? 1) - 1);
-    const r = makeLineRange(ln, (lines[ln] ?? "").length);
+    const r = makeLineRange(cstIndex, ln);
     children.push({
       name: "CONTROL_TERMINATION",
       detail: `ENDTIM=${deck.controlTermination.endtim}`,
@@ -278,7 +338,7 @@ export function getLsDynaDocumentSymbols(content: string): LspDocumentSymbol[] {
       detail: `${deck.nodes.size} nodes, ${deck.elements.size} elements, ${deck.parts.size} parts`,
       kind: LspSymbolKind.Package,
       range: fullRange,
-      selectionRange: makeLineRange(0, (lines[0] ?? "").length),
+      selectionRange: makeLineRange(cstIndex, 0),
       children,
     },
   ];
@@ -288,11 +348,11 @@ export function getLsDynaDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides Markdown hover documentation for LS-DYNA keywords at a given cursor position.
  */
 export function getLsDynaHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildLsDynaCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
 
-  const trimmed = line.trim();
+  const trimmed = entry.text.trim();
   if (!trimmed.startsWith("*")) return null;
 
   const token = trimmed.split(/[\s,]/)[0]?.toUpperCase() ?? "";
@@ -318,7 +378,7 @@ export function getLsDynaHover(content: string, position: LspPosition): LspHover
       kind: "markdown",
       value: mdLines.join("\n"),
     },
-    range: makeLineRange(position.line, line.length),
+    range: makeLineRange(cstIndex, position.line),
   };
 }
 

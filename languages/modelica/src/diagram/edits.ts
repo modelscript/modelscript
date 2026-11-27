@@ -5,6 +5,7 @@
 // handleEdgeDelete, handleComponentsDelete) to produce LSP TextEdit arrays.
 
 import { CstUnparser } from "@modelscript/dsl";
+import { CstDocumentSession, CstTransaction, type CstTextEdit } from "@modelscript/dsl/unparser";
 import type { SyntaxNode as DslSyntaxNode } from "@modelscript/dsl/utils";
 import { Position, Range, TextEdit } from "vscode-languageserver";
 
@@ -2946,4 +2947,118 @@ export function computeCoordinateSystemEdits(
   }
 
   return [];
+}
+
+/**
+ * Plans fast Modelica diagram edits (`move`, `resize`, `rotate`, `moveEdge`, `connect`, `disconnect`,
+ * `reconnect`, `deleteComponents`, `updateName`, `updateDescription`, `updateParameter`, `updateProperty`)
+ * directly against a live {@link CstDocumentSession}, coalescing all resulting edits through {@link CstTransaction}.
+ * Returns `null` for actions requiring full workspace resolution (e.g. `addComponent`, icon primitive edits).
+ */
+export function planModelicaEditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<Record<string, unknown>>,
+  className?: string,
+): { edits: CstTextEdit[]; hasStructural: boolean } | null {
+  if (actions.length === 0) return { edits: [], hasStructural: false };
+
+  // Defer workspace-dependent or icon-primitive actions to the LSP backend
+  const unsupported = actions.some((a) => {
+    const t = String(a["type"] ?? "");
+    if (
+      t === "addComponent" ||
+      t === "addIconPrimitive" ||
+      t === "updateIconPrimitive" ||
+      t === "deleteIconPrimitive" ||
+      t === "reorderIconPrimitive" ||
+      t === "updateCoordinateSystem"
+    ) {
+      return true;
+    }
+    if (t === "move" && Array.isArray(a["items"])) {
+      return (a["items"] as Array<{ name?: string }>).some((i) => i.name?.startsWith("__icon_gfx_"));
+    }
+    if (t === "resize" && a["item"]) {
+      return String((a["item"] as { name?: string }).name ?? "").startsWith("__icon_gfx_");
+    }
+    if (t === "deleteComponents" && Array.isArray(a["names"])) {
+      return (a["names"] as string[]).some((n) => n.startsWith("__icon_gfx_"));
+    }
+    return false;
+  });
+  if (unsupported) return null;
+
+  const docText = session.text;
+  const fallbackInstance = buildFallbackClassInstance(docText, className);
+  if (!fallbackInstance) return null;
+
+  const tx = new CstTransaction(session);
+  let hasStructural = false;
+
+  const pushEdits = (rawEdits: TextEdit[]) => {
+    for (const e of rawEdits) {
+      const startOff = session.positionToOffset(e.range.start);
+      const endOff = session.positionToOffset(e.range.end);
+      tx.replaceRange(startOff, endOff, e.newText);
+    }
+  };
+
+  for (const act of actions) {
+    const t = String(act["type"] ?? "");
+    if (t === "move" && Array.isArray(act["items"])) {
+      pushEdits(computePlacementEdits(docText, fallbackInstance, act["items"] as PlacementItem[]));
+    } else if ((t === "resize" || t === "rotate") && act["item"]) {
+      pushEdits(computePlacementEdits(docText, fallbackInstance, [act["item"] as PlacementItem]));
+    } else if (t === "moveEdge" && Array.isArray(act["edges"])) {
+      pushEdits(computeEdgePointEdits(docText.split("\n"), fallbackInstance, act["edges"] as EdgeItem[]));
+    } else if (t === "connect" && typeof act["source"] === "string" && typeof act["target"] === "string") {
+      pushEdits(
+        computeConnectInsert(
+          docText,
+          fallbackInstance,
+          act["source"],
+          act["target"],
+          act["points"] as Array<{ x: number; y: number }> | undefined,
+        ),
+      );
+      hasStructural = true;
+    } else if (t === "disconnect" && typeof act["source"] === "string" && typeof act["target"] === "string") {
+      pushEdits(computeConnectRemove(docText, fallbackInstance, act["source"], act["target"]));
+      hasStructural = true;
+    } else if (
+      t === "reconnect" &&
+      typeof act["oldSource"] === "string" &&
+      typeof act["oldTarget"] === "string" &&
+      typeof act["newSource"] === "string" &&
+      typeof act["newTarget"] === "string"
+    ) {
+      pushEdits(computeConnectRemove(docText, fallbackInstance, act["oldSource"], act["oldTarget"]));
+      pushEdits(
+        computeConnectInsert(
+          docText,
+          fallbackInstance,
+          act["newSource"],
+          act["newTarget"],
+          act["points"] as Array<{ x: number; y: number }> | undefined,
+        ),
+      );
+      hasStructural = true;
+    } else if (t === "deleteComponents" && Array.isArray(act["names"])) {
+      pushEdits(computeComponentsDelete(docText, fallbackInstance, act["names"] as string[]));
+      hasStructural = true;
+    } else if (t === "updateName" && typeof act["oldName"] === "string" && typeof act["newName"] === "string") {
+      pushEdits(computeNameEdit(fallbackInstance, act["oldName"], act["newName"], docText));
+      hasStructural = true;
+    } else if (t === "updateDescription" && typeof act["name"] === "string" && typeof act["description"] === "string") {
+      pushEdits(computeDescriptionEdit(docText, fallbackInstance, act["name"], act["description"]));
+    } else if (t === "updateParameter" && typeof act["name"] === "string" && typeof act["parameter"] === "string") {
+      pushEdits(
+        computeParameterEdit(fallbackInstance, act["name"], act["parameter"], String(act["value"] ?? ""), docText),
+      );
+    } else if (t === "updateProperty" && typeof act["name"] === "string" && typeof act["key"] === "string") {
+      pushEdits(computeParameterEdit(fallbackInstance, act["name"], act["key"], String(act["value"] ?? ""), docText));
+    }
+  }
+
+  return { edits: tx.commit().edits, hasStructural };
 }

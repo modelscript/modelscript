@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { simulateGtSuiteTransient } from "./dae/cylinder-dae.js";
 import { gtsuiteToDae } from "./dae/gtsuite-to-dae.js";
 import { lintGtModel } from "./lints/index.js";
@@ -76,6 +79,96 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  firstTokEnd: number;
+}
+
+interface GtsuiteCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  entries: CstLineEntry[];
+  rootRange: LspRange;
+}
+
+function buildGtsuiteCstIndex(content: string): GtsuiteCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  const entries: CstLineEntry[] = [];
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("gtsuite", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const firstTokEnd = first?.endPosition?.column ?? startCol + Math.max(1, first?.text?.length ?? 1);
+      const entry: CstLineEntry = { row, text: lineText, startCol, endCol, firstTokEnd };
+      byRow.set(row, entry);
+      entries.push(entry);
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const firstTok = trimmed.match(/^[^\s=,;]+/)?.[0] ?? "";
+      const endCol = startCol + trimmed.length;
+      const entry: CstLineEntry = {
+        row: i,
+        text: trimmed,
+        startCol,
+        endCol,
+        firstTokEnd: startCol + Math.max(1, firstTok.length),
+      };
+      byRow.set(i, entry);
+      entries.push(entry);
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  const rootRange: LspRange =
+    entries.length > 0
+      ? {
+          start: { line: entries[0]!.row, character: entries[0]!.startCol },
+          end: { line: lastRow, character: lastEndCol },
+        }
+      : DEFAULT_RANGE;
+
+  return { byRow, entries, rootRange };
+}
+
+function findIdentifierRange(cstIndex: GtsuiteCstIndex, id: string): LspRange | undefined {
+  for (const entry of cstIndex.entries) {
+    const idx = entry.text.indexOf(id);
+    if (idx >= 0) {
+      return {
+        start: { line: entry.row, character: entry.startCol + idx },
+        end: { line: entry.row, character: entry.startCol + idx + id.length },
+      };
+    }
+  }
+  return undefined;
+}
+
 /**
  * Validates a GT-SUITE engine model and returns LSP diagnostics.
  */
@@ -83,35 +176,19 @@ export function validateGtsuite(content: string, uri: string = "model.gtm"): Lsp
   try {
     const model = parseGtmModel(content, uri);
     const diags = lintGtModel(model);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildGtsuiteCstIndex(content);
+    const firstEntry = cstIndex.entries[0];
+    const fallbackRange: LspRange = firstEntry
+      ? {
+          start: { line: firstEntry.row, character: firstEntry.startCol },
+          end: { line: firstEntry.row, character: Math.max(firstEntry.startCol + 1, firstEntry.firstTokEnd) },
+        }
+      : DEFAULT_RANGE;
 
     return diags.map((d) => {
-      let matchedLine = 0;
-      if (d.componentId) {
-        const found = lines.findIndex((l) => l.includes(d.componentId!));
-        if (found >= 0) matchedLine = found;
-      }
-      const lt = lines[matchedLine] ?? "";
-      let startChar = 0;
-      let endChar = 0;
-      if (d.componentId) {
-        const idx = lt.indexOf(d.componentId);
-        if (idx >= 0) {
-          startChar = idx;
-          endChar = idx + d.componentId.length;
-        }
-      }
-      if (endChar <= startChar) {
-        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
-        const tok = lt.slice(startChar).match(/^[^\s=,;]+/);
-        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
-      }
-
+      const matched = d.componentId ? findIdentifierRange(cstIndex, d.componentId) : undefined;
       return {
-        range: {
-          start: { line: matchedLine, character: startChar },
-          end: { line: matchedLine, character: Math.max(startChar + 1, endChar) },
-        },
+        range: matched ?? fallbackRange,
         severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
         code: `M${d.code}`,
         source: "modelscript-gtsuite",
@@ -137,6 +214,7 @@ export function validateGtsuite(content: string, uri: string = "model.gtm"): Lsp
 export function getGtsuiteDocumentSymbols(content: string, uri: string = "model.gtm"): LspDocumentSymbol[] {
   try {
     const model = parseGtmModel(content, uri);
+    const cstIndex = buildGtsuiteCstIndex(content);
     const children: LspDocumentSymbol[] = [];
 
     for (const comp of model.components) {
@@ -157,12 +235,16 @@ export function getGtsuiteDocumentSymbols(content: string, uri: string = "model.
         detail = `Type: ${comp.kind}`;
       }
 
+      const compRange =
+        findIdentifierRange(cstIndex, comp.id) ??
+        (comp.title ? findIdentifierRange(cstIndex, comp.title) : undefined) ??
+        DEFAULT_RANGE;
       children.push({
         name: `${comp.title || comp.id} [${comp.kind}]`,
         detail,
         kind,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: compRange,
+        selectionRange: compRange,
       });
     }
 
@@ -171,8 +253,13 @@ export function getGtsuiteDocumentSymbols(content: string, uri: string = "model.
         name: model.name || "GT-SUITE Model",
         detail: `Components: ${model.components.length} | Connections: ${model.connections.length} | Speed: ${model.simulationSettings.engineSpeedRpm} RPM`,
         kind: LspSymbolKind.Package,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: cstIndex.rootRange,
+        selectionRange: cstIndex.entries[0]
+          ? {
+              start: { line: cstIndex.entries[0].row, character: cstIndex.entries[0].startCol },
+              end: { line: cstIndex.entries[0].row, character: cstIndex.entries[0].endCol },
+            }
+          : DEFAULT_RANGE,
         children: children.length > 0 ? children : undefined,
       },
     ];
@@ -191,8 +278,9 @@ export function getGtsuiteHover(
 ): LspHover | undefined {
   try {
     const model = parseGtmModel(content, uri);
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
+    const cstIndex = buildGtsuiteCstIndex(content);
+    const entry = cstIndex.byRow.get(position.line);
+    const line = entry?.text ?? "";
 
     for (const comp of model.components) {
       if (line.includes(comp.id) || (comp.title && line.includes(comp.title))) {

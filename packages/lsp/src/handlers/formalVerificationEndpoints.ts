@@ -27,17 +27,11 @@ import {
 import { ClosedLoopCompilerEngine, runSelfHealingPipeline } from "../agent/index.js";
 import { LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { getRequirements } from "../requirements.js";
+import { createFlattenArenaFromInstance, type FlattenableClassInstanceLike } from "../services/server-lifecycle.js";
 
-function callFlattenArenaFromInstance(classInstance: unknown, ctx: unknown): DAEBuilder {
-  const fn = (
-    globalThis as unknown as {
-      flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder;
-    }
-  ).flattenArenaFromInstance;
-  if (typeof fn !== "function") {
-    throw new Error("flattenArenaFromInstance is not initialized.");
-  }
-  return fn(classInstance, ctx);
+function callFlattenArenaFromInstance(context: LspContext, classInstance: unknown, ctx: unknown): DAEBuilder {
+  const fn = context.flattenArenaFromInstance ?? createFlattenArenaFromInstance(context.workspaceManager);
+  return fn(classInstance as FlattenableClassInstanceLike, ctx);
 }
 
 export function registerFormalVerificationEndpoints(context: LspContext): void {
@@ -109,7 +103,7 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return { success: false, error: "Context not initialized." };
 
-        const arena = callFlattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(context, target, docContext);
         try {
           const tSpan: [number, number] = params.tSpan ?? [0, 1.0];
           const dt = params.dt ?? 0.05;
@@ -288,7 +282,7 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
             if (found) target = found;
           }
           if (target) {
-            const arena = callFlattenArenaFromInstance(target, docContext);
+            const arena = callFlattenArenaFromInstance(context, target, docContext);
             try {
               const verifyReport = await UnifiedVerifier.verify({ uri: params.uri, arena }, { barriers: true });
               const barrierStage = verifyReport.stages["barriers"];

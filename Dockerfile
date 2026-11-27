@@ -30,6 +30,7 @@ COPY ee/package.json ee/
 
 # Packages manifests
 COPY packages/cad/package.json packages/cad/
+COPY packages/cad-viewer/package.json packages/cad-viewer/
 COPY packages/canvas/package.json packages/canvas/
 COPY packages/design-tokens/package.json packages/design-tokens/
 COPY packages/diagram/package.json packages/diagram/
@@ -41,10 +42,12 @@ COPY packages/examples/pscad-microgrid/package.json packages/examples/pscad-micr
 COPY packages/examples/telecom-co-microgrid/package.json packages/examples/telecom-co-microgrid/
 COPY packages/exchange/package.json packages/exchange/
 COPY packages/ide/package.json packages/ide/
+COPY packages/ide-packager/package.json packages/ide-packager/
 COPY packages/lsp/package.json packages/lsp/
 COPY packages/mcp/package.json packages/mcp/
 COPY packages/react/package.json packages/react/
 COPY packages/native/package.json packages/native/
+COPY packages/rotunda/package.json packages/rotunda/
 COPY packages/runtime/package.json packages/runtime/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/simulate/package.json packages/simulate/

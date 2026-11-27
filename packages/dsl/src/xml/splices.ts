@@ -19,7 +19,7 @@ export function setAttributeSpanSplice(
   element: ElementSpan,
   name: string,
   value: string,
-  existingAttrSpan?: AttributeSpan | null
+  existingAttrSpan?: AttributeSpan | null,
 ): Splice {
   if (existingAttrSpan) {
     return { start: existingAttrSpan.valueStart, end: existingAttrSpan.valueEnd, text: encodeAttr(value) };
@@ -41,6 +41,9 @@ export function setAttributeSpanSplice(
   return { start: at, end: at, text: ` ${name}="${encodeAttr(value)}"` };
 }
 
+/**
+ * @deprecated Use `CstXmlAdapter.setAttribute(tx, elNode, name, value)` from `@modelscript/dsl/unparser` instead.
+ */
 export function setAttributeSplice(el: XmlElement, name: string, value: string, source: string): Splice {
   return setAttributeSpanSplice(source, el, name, value);
 }
@@ -56,12 +59,18 @@ export function removeElementSpanSplice(source: string, span: { start: number; e
   return { start, end, text: "" };
 }
 
-/** Removes an element together with its leading indentation and trailing line break. */
+/**
+ * Removes an element together with its leading indentation and trailing line break.
+ * @deprecated Use `CstXmlAdapter.deleteElement(tx, node)` from `@modelscript/dsl/unparser` instead.
+ */
 export function removeElementSplice(el: XmlElement, source: string): Splice {
   return removeElementSpanSplice(source, el);
 }
 
-/** Inserts element text as the last child, matching the parent's child indentation and EOL. */
+/**
+ * Inserts element text as the last child, matching the parent's child indentation and EOL.
+ * @deprecated Use `CstXmlAdapter.appendChild(tx, parent, childXml)` from `@modelscript/dsl/unparser` instead.
+ */
 export function appendChildSplice(parent: XmlElement, childXml: string, source: string): Splice {
   const eol = /\r\r\n/.test(source) ? "\r\r\n" : /\r\n/.test(source) ? "\r\n" : "\n";
   const first = parent.children[0];
@@ -76,7 +85,10 @@ export function appendChildSplice(parent: XmlElement, childXml: string, source: 
   return { start: at, end: at, text: `${indent}${childXml}${eol}` };
 }
 
-/** Replaces the inner text content of a non-self-closing XML element. */
+/**
+ * Replaces the inner text content of a non-self-closing XML element.
+ * @deprecated Use `CstXmlAdapter.setElementText(tx, node, newText)` from `@modelscript/dsl/unparser` instead.
+ */
 export function setElementTextSplice(el: XmlElement, newText: string): Splice {
   const encoded = newText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return {
@@ -90,7 +102,7 @@ export function setElementTextSplice(el: XmlElement, newText: string): Splice {
 export function setAttributeCstSplice(
   node: { element: XmlElement; source: string },
   name: string,
-  value: string
+  value: string,
 ): Splice {
   return setAttributeSplice(node.element, name, value, node.source);
 }
@@ -101,9 +113,6 @@ export function removeElementCstSplice(node: { element: XmlElement; source: stri
 }
 
 /** CST node convenience for appending a child */
-export function appendChildCstSplice(
-  parent: { element: XmlElement; source: string },
-  childXml: string
-): Splice {
+export function appendChildCstSplice(parent: { element: XmlElement; source: string }, childXml: string): Splice {
   return appendChildSplice(parent.element, childXml, parent.source);
 }

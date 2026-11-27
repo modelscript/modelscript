@@ -1,8 +1,44 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  CstDocumentSession,
+  CstTransaction,
+  CstXmlAdapter,
+  encodeXmlAttrValue,
+  type CstTextEdit,
+} from "@modelscript/dsl/unparser";
+import type { SyntaxNode } from "@modelscript/dsl/utils";
+import { getXmlWasmParser } from "@modelscript/dsl/xml";
 import { Range, TextEdit } from "vscode-languageserver";
-import { type GenericSyntaxNode, getNodeChildren } from "../cst-lowering.js";
+import { getNodeChildren, type GenericSyntaxNode } from "../cst-lowering.js";
 import { detectOwl2Format } from "../parser/index.js";
+
+function createOwlXmlCstSession(docText: string): CstDocumentSession {
+  let parser: unknown = null;
+  try {
+    parser = getXmlWasmParser();
+  } catch {
+    parser = null;
+  }
+  return new CstDocumentSession({
+    uri: "file:///ontology.owx",
+    text: docText,
+    parser: parser as never,
+    xmlFallback: true,
+  });
+}
+
+function owlElementHasIriName(elNode: SyntaxNode, docText: string, cleanTarget: string): boolean {
+  const checkAttr = (node: SyntaxNode): boolean => {
+    const iri = CstXmlAdapter.getAttribute(node, "IRI", docText)?.value;
+    if (iri !== undefined && (iri === cleanTarget || iri === `#${cleanTarget}`)) return true;
+    for (const ch of CstXmlAdapter.getChildElements(node)) {
+      if (checkAttr(ch)) return true;
+    }
+    return false;
+  };
+  return checkAttr(elNode);
+}
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -251,33 +287,29 @@ function localIriFragment(name: string): string {
   return `#${clean}`;
 }
 
-function removeXmlBlocksMatching(docText: string, tagNames: string[], predicates: RegExp[]): TextEdit[] {
-  const edits: TextEdit[] = [];
-  const lineStarts = [0];
-  for (let i = 0; i < docText.length; i++) {
-    if (docText.charCodeAt(i) === 10) lineStarts.push(i + 1);
-  }
-  const offsetToPos = (offset: number) => {
-    let lo = 0;
-    let hi = lineStarts.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (lineStarts[mid]! <= offset) lo = mid;
-      else hi = mid - 1;
-    }
-    return { line: lo, character: offset - lineStarts[lo]! };
-  };
-
-  for (const tag of tagNames) {
-    const blockRe = new RegExp(`^[ \\t]*<${tag}\\b[\\s\\S]*?<\\/${tag}>[ \\t]*\\r?\\n?`, "gm");
-    let m: RegExpExecArray | null;
-    while ((m = blockRe.exec(docText)) !== null) {
-      if (predicates.every((re) => re.test(m![0]))) {
-        edits.push(TextEdit.del(Range.create(offsetToPos(m.index), offsetToPos(m.index + m[0].length))));
+function removeOwlXmlElementsMatching(
+  docText: string,
+  tagNamesLower: Set<string>,
+  requiredCleanIris: string[][],
+): TextEdit[] {
+  const session = createOwlXmlCstSession(docText);
+  try {
+    const root = session.rootNode;
+    if (!root) return [];
+    const tx = new CstTransaction(session);
+    const candidates = CstXmlAdapter.findElements(root, docText, (_n, tag) => tagNamesLower.has(tag.toLowerCase()));
+    for (const el of candidates) {
+      const matched = requiredCleanIris.some((group) =>
+        group.every((cleanIri) => owlElementHasIriName(el, docText, cleanIri)),
+      );
+      if (matched) {
+        CstXmlAdapter.deleteElement(tx, el);
       }
     }
+    return tx.commit().edits;
+  } finally {
+    session.dispose();
   }
-  return deduplicateAndSort(edits);
 }
 
 /**
@@ -290,31 +322,36 @@ export function computeOWL2ElementInsert(docText: string, elementType: string, e
 
   if (format === "owx") {
     if (!isOwlXmlOntology(docText)) return [];
-    const closeIdx = docText.lastIndexOf("</Ontology>");
-    if (closeIdx === -1) return [];
-    const linesBefore = docText.slice(0, closeIdx).split("\n");
-    const targetLine = Math.max(0, linesBefore.length - 1);
-    const col = linesBefore[linesBefore.length - 1]?.length ?? 0;
-    const frag = localIriFragment(elementName);
-    let tag = "Class";
-    switch (elementType) {
-      case "ObjectProperty":
-      case "ObjectPropertyDeclaration":
-        tag = "ObjectProperty";
-        break;
-      case "DataProperty":
-      case "DataPropertyDeclaration":
-        tag = "DataProperty";
-        break;
-      case "Individual":
-      case "NamedIndividual":
-      case "IndividualDeclaration":
-        tag = "NamedIndividual";
-        break;
+    const session = createOwlXmlCstSession(docText);
+    try {
+      const root = session.rootNode;
+      const ontEl = root
+        ? (CstXmlAdapter.findElements(root, docText, (_n, tag) => tag.toLowerCase() === "ontology")[0] ?? null)
+        : null;
+      if (!ontEl) return [];
+      const frag = encodeXmlAttrValue(localIriFragment(elementName));
+      let tag = "Class";
+      switch (elementType) {
+        case "ObjectProperty":
+        case "ObjectPropertyDeclaration":
+          tag = "ObjectProperty";
+          break;
+        case "DataProperty":
+        case "DataPropertyDeclaration":
+          tag = "DataProperty";
+          break;
+        case "Individual":
+        case "NamedIndividual":
+        case "IndividualDeclaration":
+          tag = "NamedIndividual";
+          break;
+      }
+      const tx = new CstTransaction(session);
+      CstXmlAdapter.appendChild(tx, ontEl, `<Declaration><${tag} IRI="${frag}"/></Declaration>`);
+      return tx.commit().edits;
+    } finally {
+      session.dispose();
     }
-    return [
-      TextEdit.insert({ line: targetLine, character: col }, `  <Declaration><${tag} IRI="${frag}"/></Declaration>\n`),
-    ];
   }
 
   if (format === "ttl") {
@@ -383,13 +420,9 @@ export function computeOWL2ElementDelete(
 
   if (format === "owx") {
     if (!isOwlXmlOntology(docText)) return [];
-    const tags = ["Declaration", "SubClassOf", "EquivalentClasses", "DisjointClasses", "ClassAssertion"];
-    const collected: TextEdit[] = [];
-    for (const pat of namePatterns) {
-      const iriRe = new RegExp(`IRI=["']#?${pat}["']`);
-      collected.push(...removeXmlBlocksMatching(docText, tags, [iriRe]));
-    }
-    return deduplicateAndSort(collected);
+    const tags = new Set(["declaration", "subclassof", "equivalentclasses", "disjointclasses", "classassertion"]);
+    const cleanGroups = elementNames.map((n) => [n.trim().replace(/^:/, "")]);
+    return removeOwlXmlElementsMatching(docText, tags, cleanGroups);
   }
 
   if (format === "ofn") {
@@ -446,22 +479,29 @@ export function computeOWL2ConnectionInsert(
 
   if (format === "owx") {
     if (!isOwlXmlOntology(docText)) return [];
-    const closeIdx = docText.lastIndexOf("</Ontology>");
-    if (closeIdx === -1) return [];
-    const linesBefore = docText.slice(0, closeIdx).split("\n");
-    const targetLine = Math.max(0, linesBefore.length - 1);
-    const col = linesBefore[linesBefore.length - 1]?.length ?? 0;
-    const sFrag = localIriFragment(source);
-    const tFrag = localIriFragment(target);
-    let snippet = "";
-    if (edgeType === "equivalentTo") {
-      snippet = `  <EquivalentClasses><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></EquivalentClasses>\n`;
-    } else if (edgeType === "disjointWith") {
-      snippet = `  <DisjointClasses><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></DisjointClasses>\n`;
-    } else {
-      snippet = `  <SubClassOf><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></SubClassOf>\n`;
+    const session = createOwlXmlCstSession(docText);
+    try {
+      const root = session.rootNode;
+      const ontEl = root
+        ? (CstXmlAdapter.findElements(root, docText, (_n, tag) => tag.toLowerCase() === "ontology")[0] ?? null)
+        : null;
+      if (!ontEl) return [];
+      const sFrag = encodeXmlAttrValue(localIriFragment(source));
+      const tFrag = encodeXmlAttrValue(localIriFragment(target));
+      let snippet = "";
+      if (edgeType === "equivalentTo") {
+        snippet = `<EquivalentClasses><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></EquivalentClasses>`;
+      } else if (edgeType === "disjointWith") {
+        snippet = `<DisjointClasses><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></DisjointClasses>`;
+      } else {
+        snippet = `<SubClassOf><Class IRI="${sFrag}"/><Class IRI="${tFrag}"/></SubClassOf>`;
+      }
+      const tx = new CstTransaction(session);
+      CstXmlAdapter.appendChild(tx, ontEl, snippet);
+      return tx.commit().edits;
+    } finally {
+      session.dispose();
     }
-    return [TextEdit.insert({ line: targetLine, character: col }, snippet)];
   }
 
   if (format === "ttl") {
@@ -517,13 +557,9 @@ export function computeOWL2ConnectionDelete(
 
   if (format === "owx") {
     if (!isOwlXmlOntology(docText)) return [];
-    const srcIriRe = new RegExp(`IRI=["']#?${srcPat}["']`);
-    const tgtIriRe = new RegExp(`IRI=["']#?${tgtPat}["']`);
-    return removeXmlBlocksMatching(
-      docText,
-      ["SubClassOf", "EquivalentClasses", "DisjointClasses"],
-      [srcIriRe, tgtIriRe],
-    );
+    return removeOwlXmlElementsMatching(docText, new Set(["subclassof", "equivalentclasses", "disjointclasses"]), [
+      [source.trim().replace(/^:/, ""), target.trim().replace(/^:/, "")],
+    ]);
   }
 
   if (format === "ofn") {
@@ -568,15 +604,24 @@ export function computeOWL2NameEdit(docText: string, oldName: string, newName: s
 
   if (format === "owx") {
     if (!isOwlXmlOntology(docText)) return [];
-    const iriAttrRe = new RegExp(`(\\bIRI=["']#?)(${escapeRegex(cleanOld)})(["'])`, "g");
-    lines.forEach((line, i) => {
-      let m: RegExpExecArray | null;
-      while ((m = iriAttrRe.exec(line)) !== null) {
-        const startCol = m.index + (m[1]?.length ?? 0);
-        edits.push(TextEdit.replace(Range.create(i, startCol, i, startCol + cleanOld.length), cleanNew));
+    const session = createOwlXmlCstSession(docText);
+    try {
+      const root = session.rootNode;
+      if (!root) return [];
+      const tx = new CstTransaction(session);
+      for (const el of CstXmlAdapter.findElements(root, docText, () => true)) {
+        const iriAttr = CstXmlAdapter.getAttribute(el, "IRI", docText, false);
+        if (!iriAttr) continue;
+        if (iriAttr.value === cleanOld) {
+          CstXmlAdapter.setAttribute(tx, el, "IRI", cleanNew);
+        } else if (iriAttr.value === `#${cleanOld}`) {
+          CstXmlAdapter.setAttribute(tx, el, "IRI", `#${cleanNew}`);
+        }
       }
-    });
-    return deduplicateAndSort(edits);
+      return tx.commit().edits;
+    } finally {
+      session.dispose();
+    }
   }
 
   const pattern = new RegExp(`([:#<]|^|\\s)(${escapeRegex(cleanOld)})(?=[>\\s\\)]|$)`, "g");
@@ -591,4 +636,66 @@ export function computeOWL2NameEdit(docText: string, oldName: string, newName: s
   });
 
   return deduplicateAndSort(edits);
+}
+
+/**
+ * Plans OWL 2 diagram actions directly against a live {@link CstDocumentSession}
+ * (supporting both OWL/XML via `CstXmlAdapter` and Functional/Manchester syntax),
+ * coalescing all resulting edits atomically through {@link CstTransaction}.
+ */
+export function planOwl2EditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<{
+    type: string;
+    source?: string | undefined;
+    target?: string | undefined;
+    edgeType?: string | undefined;
+    oldSource?: string | undefined;
+    oldTarget?: string | undefined;
+    newSource?: string | undefined;
+    newTarget?: string | undefined;
+    names?: string[] | undefined;
+    oldName?: string | undefined;
+    newName?: string | undefined;
+    className?: string | undefined;
+    name?: string | undefined;
+  }>,
+): { edits: CstTextEdit[]; hasStructural: boolean } {
+  const docText = session.text;
+  const tx = new CstTransaction(session);
+  let hasStructural = false;
+
+  const pushEdits = (rawEdits: TextEdit[]) => {
+    for (const e of rawEdits) {
+      const startOff = session.positionToOffset(e.range.start);
+      const endOff = session.positionToOffset(e.range.end);
+      tx.replaceRange(startOff, endOff, e.newText);
+    }
+  };
+
+  for (const act of actions) {
+    if (act.type === "connect" && act.source && act.target) {
+      pushEdits(computeOWL2ConnectionInsert(docText, act.source, act.target, act.edgeType ?? "subClassOf"));
+      hasStructural = true;
+    } else if (act.type === "disconnect" && act.source && act.target) {
+      pushEdits(computeOWL2ConnectionDelete(docText, act.source, act.target));
+      hasStructural = true;
+    } else if (act.type === "reconnect" && act.oldSource && act.oldTarget && act.newSource && act.newTarget) {
+      pushEdits(computeOWL2ConnectionDelete(docText, act.oldSource, act.oldTarget));
+      pushEdits(computeOWL2ConnectionInsert(docText, act.newSource, act.newTarget, act.edgeType ?? "subClassOf"));
+      hasStructural = true;
+    } else if (act.type === "deleteComponents" && Array.isArray(act.names)) {
+      pushEdits(computeOWL2ElementDelete(docText, act.names));
+      hasStructural = true;
+    } else if (act.type === "updateName" && act.oldName && act.newName) {
+      pushEdits(computeOWL2NameEdit(docText, act.oldName, act.newName));
+      hasStructural = true;
+    } else if (act.type === "addComponent" && act.className) {
+      const elemName = act.name || `New${act.className.replace(/[^A-Za-z0-9_]/g, "") || "Class"}`;
+      pushEdits(computeOWL2ElementInsert(docText, act.className, elemName));
+      hasStructural = true;
+    }
+  }
+
+  return { edits: tx.commit().edits, hasStructural };
 }

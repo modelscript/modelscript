@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintStl } from "./lints/index.js";
 import { parseAsciiStl } from "./parser/ascii-parser.js";
 import { analyzeStlTopology, computeStlMassProperties } from "./solver/index.js";
@@ -105,19 +108,62 @@ const STL_KEYWORDS: ReadonlyArray<{ keyword: string; detail: string; doc: string
   },
 ];
 
+interface StlCstLine {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  tokens: CstNodeLike[];
+}
+
+interface StlCstIndex {
+  byRow: Map<number, StlCstLine>;
+  maxRow: number;
+}
+
+function buildStlCstIndex(content: string, cstTree?: { rootNode?: unknown } | null): StlCstIndex {
+  const byRow = new Map<number, StlCstLine>();
+  let maxRow = 0;
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("stl", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+  if (!rootNode) return { byRow, maxRow };
+
+  for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+    const lineText = cstLineText(content, tokens);
+    const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const startCol = first?.startPosition?.column ?? 0;
+    const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+    byRow.set(row, { row, text: lineText, startCol, endCol, tokens });
+    if (row > maxRow) maxRow = row;
+  }
+  return { byRow, maxRow };
+}
+
 /**
  * Validates ASCII STL source text and returns LSP diagnostics.
  */
-export function validateStl(content: string, _uri = "model.stl"): LspDiagnostic[] {
+export function validateStl(
+  content: string,
+  _uri = "model.stl",
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   const doc = parseAsciiStl(content);
   const diags = lintStl(doc);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildStlCstIndex(content, cstTree);
 
   return diags.map((d) => {
-    const lineIdx = Math.max(0, Math.min(lines.length - 1, (d.line || 1) - 1));
-    const lineText = lines[lineIdx] ?? "";
+    const lineIdx = Math.max(0, Math.min(cstIndex.maxRow, (d.line || 1) - 1));
+    const lineEntry = cstIndex.byRow.get(lineIdx);
     const startChar = Math.max(0, (d.column || 1) - 1);
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const endChar = Math.max(startChar + 1, lineEntry?.endCol ?? startChar + 1);
     const severity: 1 | 2 | 3 = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
 
     return {
@@ -136,16 +182,16 @@ export function validateStl(content: string, _uri = "model.stl"): LspDiagnostic[
 /**
  * Extracts hierarchical LSP document symbols for solids and facets in an ASCII STL document.
  */
-export function getStlDocumentSymbols(content: string): LspDocumentSymbol[] {
+export function getStlDocumentSymbols(content: string, cstTree?: { rootNode?: unknown } | null): LspDocumentSymbol[] {
   const doc = parseAsciiStl(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildStlCstIndex(content, cstTree);
   const symbols: LspDocumentSymbol[] = [];
 
   for (let sIdx = 0; sIdx < doc.solids.length; sIdx++) {
     const solid = doc.solids[sIdx]!;
     const startLine = Math.max(0, (solid.line ?? 1) - 1);
-    const endLine = Math.max(startLine, (solid.endLine ?? lines.length) - 1);
-    const endChar = (lines[endLine] ?? "").length;
+    const endLine = Math.max(startLine, (solid.endLine ?? cstIndex.maxRow + 1) - 1);
+    const endChar = cstIndex.byRow.get(endLine)?.endCol ?? 0;
     const solidRange: LspRange = {
       start: { line: startLine, character: 0 },
       end: { line: endLine, character: endChar },
@@ -153,10 +199,10 @@ export function getStlDocumentSymbols(content: string): LspDocumentSymbol[] {
 
     const children: LspDocumentSymbol[] = solid.facets.slice(0, 256).map((f, fIdx) => {
       const fLine = Math.max(0, (f.line ?? startLine + 1) - 1);
-      const fLen = (lines[fLine] ?? "").length;
+      const fEnd = cstIndex.byRow.get(fLine)?.endCol ?? 0;
       const fRange: LspRange = {
         start: { line: fLine, character: 0 },
-        end: { line: fLine, character: fLen },
+        end: { line: fLine, character: fEnd },
       };
       return {
         name: `facet #${fIdx}`,
@@ -174,7 +220,7 @@ export function getStlDocumentSymbols(content: string): LspDocumentSymbol[] {
       range: solidRange,
       selectionRange: {
         start: { line: startLine, character: 0 },
-        end: { line: startLine, character: (lines[startLine] ?? "").length },
+        end: { line: startLine, character: cstIndex.byRow.get(startLine)?.endCol ?? 0 },
       },
       children,
     });
@@ -186,13 +232,16 @@ export function getStlDocumentSymbols(content: string): LspDocumentSymbol[] {
 /**
  * Provides contextual Markdown hover documentation for STL keywords and solid mass properties.
  */
-export function getStlHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (lineText === undefined) return null;
+export function getStlHover(
+  content: string,
+  position: LspPosition,
+  cstTree?: { rootNode?: unknown } | null,
+): LspHover | null {
+  const cstIndex = buildStlCstIndex(content, cstTree);
+  const lineEntry = cstIndex.byRow.get(position.line);
+  if (!lineEntry) return null;
 
-  const trimmed = lineText.trim();
-  const lower = trimmed.toLowerCase();
+  const lower = lineEntry.text.trim().toLowerCase();
 
   if (lower.startsWith("solid ") || lower === "solid") {
     const doc = parseAsciiStl(content);
@@ -228,9 +277,24 @@ export function getStlHover(content: string, position: LspPosition): LspHover | 
 /**
  * Provides context-aware STL keyword & snippet completions.
  */
-export function getStlCompletions(content: string, position: LspPosition): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const linePrefix = (lines[position.line] ?? "").slice(0, position.character).trim().toLowerCase();
+export function getStlCompletions(
+  content: string,
+  position: LspPosition,
+  cstTree?: { rootNode?: unknown } | null,
+): LspCompletionItem[] {
+  const cstIndex = buildStlCstIndex(content, cstTree);
+  const lineEntry = cstIndex.byRow.get(position.line);
+  let linePrefix = "";
+  if (lineEntry) {
+    const prefixTokens = lineEntry.tokens
+      .filter((t) => (t.startPosition?.column ?? 0) < position.character)
+      .map((t) => {
+        const col = t.startPosition?.column ?? 0;
+        const text = t.text ?? "";
+        return text.slice(0, Math.max(0, position.character - col));
+      });
+    linePrefix = prefixTokens.join(" ").trim().toLowerCase();
+  }
 
   return STL_KEYWORDS.filter((k) => !linePrefix || k.keyword.startsWith(linePrefix)).map((k) => ({
     label: k.keyword,

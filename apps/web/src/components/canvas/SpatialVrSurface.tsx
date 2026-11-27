@@ -3,14 +3,14 @@
 import type { CanvasDocument, CanvasPeerPresence, SurfacePresentationMode } from "@modelscript/canvas";
 import type { DiagramEditAction } from "@modelscript/diagram/protocol";
 import type { GalleryComponentItem } from "@modelscript/editor/workbench/componentGalleryCatalog.js";
-import { EngineeringRotunda } from "@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js";
-import type { SpatialNodePose3D } from "@modelscript/editor/workbench/vr-rotunda/spatial-diagram-state.js";
+import { EngineeringRotunda } from "@modelscript/rotunda/EngineeringRotunda.js";
+import type { SpatialNodePose3D } from "@modelscript/rotunda/spatial-diagram-state.js";
 import type {
   RotundaAnimationControllerLike,
   RotundaEnvironmentId,
   RotundaModelEntry,
   RotundaScenarioPreset,
-} from "@modelscript/editor/workbench/vr-rotunda/types.js";
+} from "@modelscript/rotunda/types.js";
 import React from "react";
 
 export type { RotundaAnimationControllerLike, RotundaEnvironmentId, RotundaModelEntry, RotundaScenarioPreset };
@@ -48,7 +48,7 @@ export interface SpatialVrSurfaceProps {
 
 /**
  * Unified 3D Spatial & WebXR VR Editing Surface delegating directly to the
- * Engineering Rotunda workstation (`@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda`).
+ * Engineering Rotunda workstation (`@modelscript/rotunda/EngineeringRotunda`).
  * Preserves full backward compatibility for `.mscanvas` spatial boards, SSR markup,
  * JSDOM fallback Canvas2D painting, ray drag write-back, 3D CADPort-to-2D wiring,
  * and full 3D extruded schematic diagram authoring.

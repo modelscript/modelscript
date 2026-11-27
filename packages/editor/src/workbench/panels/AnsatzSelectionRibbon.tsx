@@ -28,8 +28,13 @@ export const AnsatzSelectionRibbon: React.FC<AnsatzSelectionRibbonProps> = React
   onDelete,
   onClose,
 }) {
-  const rawKind = selectedProperties?.classKind || selectedProperties?.className || "component";
-  const rawClassName = selectedProperties?.className || "";
+  const rawKind =
+    typeof selectedProperties?.classKind === "string"
+      ? selectedProperties.classKind
+      : typeof selectedProperties?.className === "string"
+        ? selectedProperties.className
+        : "component";
+  const rawClassName = typeof selectedProperties?.className === "string" ? selectedProperties.className : "";
   const domainInfo = getComponentDomain(rawClassName, rawKind);
   const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/i.test(navigator.platform);
 

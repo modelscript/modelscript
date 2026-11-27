@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { appendChildSplice, parseXmlSync, type Splice, type XmlElement } from "@modelscript/dsl/xml";
+import {
+  CstDocumentSession,
+  CstTransaction,
+  CstXmlAdapter,
+  encodeXmlAttrValue,
+  nodeEndOffset,
+  nodeStartOffset,
+  walkHealthyCst,
+} from "@modelscript/dsl/unparser";
+import type { XmlElement } from "@modelscript/dsl/xml";
+import { createPscadCstSession } from "./edit/edit-engine.js";
 
 export interface PscadDropTextEdit {
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
@@ -17,6 +27,8 @@ export interface PscadForeignDropInfo {
 
 export interface PscadDropBuildOptions {
   docText: string;
+  /** Optional live incremental CST session to avoid re-parsing `docText`. */
+  session?: CstDocumentSession | undefined;
   info: PscadForeignDropInfo;
   x: number;
   y: number;
@@ -30,122 +42,134 @@ export interface PscadDropBuildOptions {
   allocateUniqueNumericId: (xmlRoot: XmlElement | null, seed: number, batchState?: unknown) => number;
 }
 
-function escapeXmlAttr(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function findAllXmlElements(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement[] {
-  const out: XmlElement[] = [];
-  const walk = (el: XmlElement) => {
-    if (predicate(el)) out.push(el);
-    for (const c of el.children) walk(c);
-  };
-  if (root) walk(root);
-  return out;
-}
-
-function getXmlAttr(el: XmlElement, name: string): string | undefined {
-  return el.attributes.find((a) => a.name.toLowerCase() === name.toLowerCase())?.value;
-}
-
-function xmlSpliceToTextEdit(docText: string, splice: Splice): PscadDropTextEdit {
-  const toPos = (offset: number): { line: number; character: number } => {
-    const clamped = Math.max(0, Math.min(offset, docText.length));
-    let line = 0;
-    let lastNl = -1;
-    for (let i = 0; i < clamped; i++) {
-      if (docText.charCodeAt(i) === 10) {
-        line++;
-        lastNl = i;
-      }
+function collectUsedNumericIds(session: CstDocumentSession): Set<number> {
+  const used = new Set<number>();
+  walkHealthyCst(session.rootNode, (node) => {
+    const tag = CstXmlAdapter.getTagName(node, session.text);
+    if (!tag) return;
+    const idVal = CstXmlAdapter.getAttribute(node, "id", session.text)?.value;
+    if (idVal && /^\d+$/.test(idVal)) {
+      used.add(Number.parseInt(idVal, 10));
     }
-    return { line, character: clamped - (lastNl + 1) };
-  };
-  return {
-    range: { start: toPos(splice.start), end: toPos(splice.end) },
-    newText: splice.text,
-  };
+  });
+  return used;
 }
 
 /**
- * Generates PSCAD `<User classid="UserCmp">` instance XML edits when dropping
- * a foreign cross-language symbol onto a `.pscx`/`.pslx` schematic.
+ * Generates PSCAD `<User classid="UserCmp">` instance XML edits via {@link CstTransaction}
+ * and {@link CstXmlAdapter} when dropping a foreign cross-language symbol onto a `.pscx`/`.pslx` schematic.
  * Returns `null` when the drop targets a native PSCAD master or local user component.
  */
 export function buildPscadComponentDropEdits(opts: PscadDropBuildOptions): PscadDropTextEdit[] | null {
   const {
     docText,
+    session: providedSession,
     info,
     x,
     y,
     instanceName,
     section,
     hasNativeSchema,
-    schematicEndLine,
     batchState,
     sanitizeIdentifier,
     allocateUniqueIdentifier,
-    allocateUniqueNumericId,
   } = opts;
   if (hasNativeSchema) return null;
   if (info.sourceLanguage === "pscad") return null;
 
-  const xmlDoc = parseXmlSync(docText);
-  const defElements = findAllXmlElements(xmlDoc.root, (el) => el.name.toLowerCase() === "definition");
-  const existingDefs: Array<{ name: string; body: string }> = [];
-  for (const defEl of defElements) {
-    const defName = getXmlAttr(defEl, "name");
-    if (defName) {
-      existingDefs.push({ name: defName, body: docText.slice(defEl.openEnd, defEl.closeStart) });
+  const ownsSession = !providedSession;
+  const session = providedSession ?? createPscadCstSession(docText);
+
+  try {
+    const root = session.rootNode;
+    const defNodes = CstXmlAdapter.findElements(root, session.text, (_n, tag) => tag.toLowerCase() === "definition");
+    const existingDefs: Array<{ name: string; body: string }> = [];
+    for (const defNode of defNodes) {
+      const defName = CstXmlAdapter.getAttribute(defNode, "name", session.text)?.value;
+      if (defName) {
+        existingDefs.push({
+          name: defName,
+          body: session.text.slice(nodeStartOffset(defNode), nodeEndOffset(defNode)),
+        });
+      }
     }
+
+    const directNativeDef = existingDefs.find((d) => d.name === info.cleanName || d.name === info.shortName);
+    if (
+      directNativeDef &&
+      !directNativeDef.body.includes("@twin") &&
+      !info.explicitLanguage &&
+      info.sourceLanguage === "unknown"
+    ) {
+      return null;
+    }
+
+    if (info.sourceLanguage === "unknown" && !info.explicitLanguage && !info.cleanName.includes(".")) {
+      return null;
+    }
+
+    const defnRef = info.explicitLanguage ? info.cleanName.replace(/^[^:]+::/, "") : info.cleanName;
+    const baseInstName = info.shortName.charAt(0).toLowerCase() + info.shortName.slice(1);
+    const instName = instanceName
+      ? sanitizeIdentifier(instanceName, baseInstName)
+      : allocateUniqueIdentifier(docText, baseInstName, batchState);
+
+    const usedIds = collectUsedNumericIds(session);
+    const batch = batchState as { usedIds?: Set<number> } | undefined;
+    if (batch?.usedIds) {
+      for (const id of batch.usedIds) usedIds.add(id);
+    }
+    let nextId = Math.max(1000, docText.length % 90000);
+    while (usedIds.has(nextId)) nextId++;
+    batch?.usedIds?.add(nextId);
+
+    const sx = Math.round(x);
+    const sy = Math.round(y);
+    const eol = session.eol;
+    const paramLines = [
+      `            <param name="Name" value="${encodeXmlAttrValue(instName)}" />`,
+      ...info.params.map(
+        (p) =>
+          `            <param name="${encodeXmlAttrValue(p.name)}" value="${encodeXmlAttrValue(p.defaultValue)}" />`,
+      ),
+    ].join(eol);
+    const userXml =
+      `<User classid="UserCmp" defn="${encodeXmlAttrValue(defnRef)}" id="${nextId}" x="${sx}" y="${sy}" w="60" h="60" orient="0" disable="false">${eol}` +
+      `          <paramlist link="-1" name="" crc="0">${eol}` +
+      `${paramLines}${eol}` +
+      `          </paramlist>${eol}` +
+      `        </User>`;
+
+    // Locate target <schematic> element (matching section if given) via CST
+    let targetSchematic = null;
+    if (section) {
+      const secDef = defNodes.find((d) => CstXmlAdapter.getAttribute(d, "name", session.text)?.value === section);
+      if (secDef) {
+        targetSchematic =
+          CstXmlAdapter.getChildElements(secDef).find(
+            (c) => (CstXmlAdapter.getTagName(c, session.text) ?? "").toLowerCase() === "schematic",
+          ) ?? null;
+      }
+    }
+    if (!targetSchematic) {
+      targetSchematic =
+        CstXmlAdapter.findElements(root, session.text, (_n, tag) => tag.toLowerCase() === "schematic")[0] ?? null;
+    }
+
+    const tx = new CstTransaction(session);
+    if (targetSchematic) {
+      CstXmlAdapter.appendChild(tx, targetSchematic, userXml);
+    } else {
+      const rootEl = CstXmlAdapter.findElements(root, session.text, () => true)[0] ?? null;
+      if (rootEl) {
+        CstXmlAdapter.appendChild(tx, rootEl, userXml);
+      } else {
+        tx.insertAt(docText.length, `${docText.endsWith("\n") || docText.length === 0 ? "" : eol}${userXml}${eol}`);
+      }
+    }
+
+    return tx.commit().edits;
+  } finally {
+    if (ownsSession) session.dispose();
   }
-
-  const directNativeDef = existingDefs.find((d) => d.name === info.cleanName || d.name === info.shortName);
-  if (
-    directNativeDef &&
-    !directNativeDef.body.includes("@twin") &&
-    !info.explicitLanguage &&
-    info.sourceLanguage === "unknown"
-  ) {
-    return null;
-  }
-
-  if (info.sourceLanguage === "unknown" && !info.explicitLanguage && !info.cleanName.includes(".")) {
-    return null;
-  }
-
-  const edits: PscadDropTextEdit[] = [];
-  const defnRef = info.explicitLanguage ? info.cleanName.replace(/^[^:]+::/, "") : info.cleanName;
-
-  const baseInstName = info.shortName.charAt(0).toLowerCase() + info.shortName.slice(1);
-  const instName = instanceName
-    ? sanitizeIdentifier(instanceName, "cmp")
-    : allocateUniqueIdentifier(docText, baseInstName, batchState);
-  const instId = allocateUniqueNumericId(xmlDoc.root, 100100, batchState);
-
-  const paramEntries = info.params
-    .map((p) => `<param name="${escapeXmlAttr(p.name)}" value="${escapeXmlAttr(p.defaultValue)}" />`)
-    .join("");
-  const userXml =
-    `<User classid="UserCmp" id="${instId}" name="${escapeXmlAttr(defnRef)}" defn="${escapeXmlAttr(defnRef)}" ` +
-    `x="${Math.round(x)}" y="${Math.round(y)}" w="60" h="60" z="0" orient="0" link="-1" q="4" disable="false">` +
-    `<paramlist><param name="Name" value="${escapeXmlAttr(instName)}" />${paramEntries}</paramlist></User>`;
-
-  let targetSchematic: XmlElement | null = null;
-  if (section) {
-    const secDef = defElements.find((d) => getXmlAttr(d, "name") === section);
-    targetSchematic = secDef?.children.find((c) => c.name.toLowerCase() === "schematic") ?? null;
-  }
-  if (!targetSchematic) {
-    const schematics = findAllXmlElements(xmlDoc.root, (el) => el.name.toLowerCase() === "schematic");
-    targetSchematic = schematics[schematics.length - 1] ?? null;
-  }
-
-  if (targetSchematic) {
-    edits.push(xmlSpliceToTextEdit(docText, appendChildSplice(targetSchematic, userXml, docText)));
-  } else {
-    const pos = { line: schematicEndLine, character: 0 };
-    edits.push({ range: { start: pos, end: pos }, newText: `      ${userXml}\n` });
-  }
-  return edits;
 }

@@ -2,6 +2,32 @@
 
 import { findXmlNodes, parseMiniXml, unescapeXmlEntities } from "./xml-utils.js";
 
+import type { DiagramPortDirection, DiagramPortSignature } from "./port-compatibility.js";
+
+function buildPlcopenPortSig(dataType: string, direction: DiagramPortDirection): DiagramPortSignature {
+  const upper = dataType.trim().toUpperCase();
+  const canonicalType =
+    upper === "BOOL" || upper === "BOOLEAN"
+      ? "Boolean"
+      : upper === "REAL" || upper === "LREAL"
+        ? "Real"
+        : upper === "INT" ||
+            upper === "DINT" ||
+            upper === "SINT" ||
+            upper === "LINT" ||
+            upper === "UINT" ||
+            upper === "UDINT" ||
+            upper === "WORD" ||
+            upper === "DWORD"
+          ? "Integer"
+          : upper === "STRING" || upper === "WSTRING"
+            ? "String"
+            : upper || "Boolean";
+  return {
+    variables: [{ name: "value", type: canonicalType, flowKind: "signal", direction }],
+  };
+}
+
 export interface PlcopenDiagramPort {
   id: string;
   name: string;
@@ -9,6 +35,8 @@ export interface PlcopenDiagramPort {
   y: number;
   direction: "in" | "out";
   domain: string;
+  connectorType?: string | undefined;
+  portSignature?: DiagramPortSignature | undefined;
 }
 
 export interface PlcopenDiagramNode {
@@ -614,6 +642,8 @@ export function buildPlcopenDiagram(project: PlcProjectLike): PlcopenDiagramResu
           y: portY,
           direction: "out",
           domain: v.dataType.toLowerCase(),
+          connectorType: v.dataType.toUpperCase(),
+          portSignature: buildPlcopenPortSig(v.dataType, "out"),
         },
       ],
       iconSvg: null,
@@ -650,13 +680,16 @@ export function buildPlcopenDiagram(project: PlcProjectLike): PlcopenDiagramResu
     blk.inputs.forEach((inName, iIdx) => {
       const py = y + 40 + iIdx * pinStep;
       const pid = `${blk.id}.in.${inName}`;
+      const inDt = varTypeMap.get(inName) || "BOOL";
       ports.push({
         id: pid,
         name: inName,
         x: fbdX,
         y: py,
         direction: "in",
-        domain: (varTypeMap.get(inName) || "BOOL").toLowerCase(),
+        domain: inDt.toLowerCase(),
+        connectorType: inDt.toUpperCase(),
+        portSignature: buildPlcopenPortSig(inDt, "in"),
       });
 
       const src = varProducerPort.get(inName);
@@ -725,6 +758,8 @@ export function buildPlcopenDiagram(project: PlcProjectLike): PlcopenDiagramResu
         y: py,
         direction: "out",
         domain: dt.toLowerCase(),
+        connectorType: dt.toUpperCase(),
+        portSignature: buildPlcopenPortSig(dt, "out"),
       });
       // Register this block output as the latest producer for downstream FBD blocks and VAR_OUTPUTs
       varProducerPort.set(outName, { nodeId: blk.id, portId: pid, x: fbdX + fbdW, y: py, dataType: dt });
@@ -789,6 +824,8 @@ export function buildPlcopenDiagram(project: PlcProjectLike): PlcopenDiagramResu
           y: portY,
           direction: "in",
           domain: v.dataType.toLowerCase(),
+          connectorType: v.dataType.toUpperCase(),
+          portSignature: buildPlcopenPortSig(v.dataType, "in"),
         },
       ],
       iconSvg: null,

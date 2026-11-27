@@ -281,14 +281,11 @@ export function registerRtmEndpoints(context: LspContext): void {
       targetName?: string | undefined;
     }): Promise<{ ok: boolean; error?: string | undefined }> => {
       try {
-        if (typeof globalThis.runVerificationForUri === "function") {
-          const res = await globalThis.runVerificationForUri(params.targetUri);
-          if (params.targetName) {
-            suspectTracker.clearSuspect(params.targetName);
-          }
-          return (res as { ok: boolean; error?: string | undefined }) ?? { ok: true };
+        const res = await context.validationService.runVerificationForUri(params.targetUri);
+        if (params.targetName) {
+          suspectTracker.clearSuspect(params.targetName);
         }
-        return { ok: true };
+        return (res as { ok: boolean; error?: string | undefined }) ?? { ok: true };
       } catch (e: unknown) {
         return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }

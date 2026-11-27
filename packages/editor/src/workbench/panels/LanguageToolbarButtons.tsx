@@ -25,8 +25,10 @@ import {
   TriangleDownIcon,
   WorkflowIcon,
   ZapIcon,
+  type Icon,
 } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button, IconButton } from "@primer/react";
+import DOMPurify from "dompurify";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   dispatchEditorToolbarAction,
@@ -37,7 +39,7 @@ import {
   type EditorToolbarView,
 } from "../../host.js";
 
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
+const ICON_MAP: Record<string, Icon> = {
   play: PlayIcon,
   pulse: PulseIcon,
   flowchart: FlowchartIcon,
@@ -71,7 +73,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
  * Resolves a canonical icon token or VS Code codicon string (e.g. `"pulse"` or `"$(pulse)"`)
  * to a Primer Octicon component, falling back to `ZapIcon`.
  */
-export function resolveToolbarIcon(iconToken?: string): React.ComponentType<{ size?: number }> {
+export function resolveToolbarIcon(iconToken?: string): Icon {
   if (!iconToken) return ZapIcon;
   const normalized = iconToken
     .trim()
@@ -107,6 +109,13 @@ export interface LanguageToolbarButtonsProps {
 
 const OVERFLOW_TRIGGER_WIDTH = 76;
 const BUTTON_GAP = 2;
+
+function sanitizeInlineSvgInner(svgInner: string): string {
+  if (!svgInner) return "";
+  return DOMPurify.sanitize(`<svg viewBox="0 0 16 16">${svgInner}</svg>`, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+  }).replace(/^<svg[^>]*>|<\/svg>$/gi, "");
+}
 
 function estimateButtonWidth(btn: EditorLanguageToolbarButton): number {
   if (btn.shortLabel) {
@@ -318,7 +327,7 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
                   fill="none"
                   aria-hidden="true"
                   style={{ display: "block", flexShrink: 0, color: "var(--ms-brand, #0891b2)" }}
-                  dangerouslySetInnerHTML={{ __html: btn.iconSvg }}
+                  dangerouslySetInnerHTML={{ __html: sanitizeInlineSvgInner(btn.iconSvg) }}
                 />
               ) : (
                 <IconComp size={14} />

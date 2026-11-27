@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { type PolyglotContext, PolyglotEngine, registerDefaultInteropLibraries } from "@modelscript/runtime";
+import {
+  type DAEBuilder,
+  type PolyglotContext,
+  PolyglotEngine,
+  registerDefaultInteropLibraries,
+} from "@modelscript/runtime";
 import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { CadMetricsService } from "./services/cad-metrics-service.js";
@@ -11,6 +16,7 @@ import {
   type SharedCompilerFileSystem,
 } from "./services/document-manager.js";
 import { ParserService } from "./services/parser-service.js";
+import type { FlattenableClassInstanceLike } from "./services/server-lifecycle.js";
 import { ValidationService } from "./services/validation-service.js";
 import { WorkspaceManager } from "./services/workspace-manager.js";
 
@@ -61,6 +67,11 @@ export interface LspContext {
   polyglotEngine?: PolyglotEngine | undefined;
   /** Isolated per-session `PolyglotContext` overlay enforcing capability policies. */
   polyglotContext?: PolyglotContext | undefined;
+  /** Shared virtual filesystem for loaded standard libraries and workspace assets. */
+  sharedFs?: SharedCompilerFsLike | undefined;
+  /** Flattens a resolved Modelica class instance into a linear-memory `DAEBuilder` arena. */
+  flattenArenaFromInstance?:
+    ((classInstance: FlattenableClassInstanceLike, context?: unknown) => DAEBuilder) | undefined;
 
   /** Mutable server state shared across loosely coupled handlers and notifications. */
   state: {
@@ -68,10 +79,6 @@ export interface LspContext {
     activeValidationPromises: Map<string, Promise<void>>;
     /** Shared Modelica compiler context instance when initialized. */
     sharedContext: SharedCompilerContextLike | null;
-    /** Cache of resolved class/symbol definitions keyed by fully qualified name (FQN). */
-    fqnCache: Map<string, unknown>;
-    /** Secondary index mapping FQN prefixes or segments to cached symbol entries. */
-    fqnCacheIndex: Map<string, unknown>;
     /** Monotonically increasing edit revision counters per document URI for staleness checks. */
     documentRevisions: Map<string, number>;
     /** Per-document {@link LSPBridge} instances mapping symbol indices to LSP locations. */

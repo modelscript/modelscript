@@ -23,6 +23,7 @@
     "@modelscript/dsl": "workspace:*",
     "@modelscript/exchange": "workspace:*",
     "@modelscript/ide-client": "workspace:*",
+    "@modelscript/ide-packager": "workspace:*",
     "@modelscript/las": "workspace:*",
     "@modelscript/lsp": "workspace:*",
     "@modelscript/modelica": "workspace:*",

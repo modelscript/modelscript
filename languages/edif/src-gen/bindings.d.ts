@@ -1713,7 +1713,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CellTypeNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const View: {
@@ -1727,7 +1727,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ViewTypeNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const Interface: {

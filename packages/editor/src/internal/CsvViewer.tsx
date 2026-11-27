@@ -16,7 +16,6 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import DOMPurify from "dompurify";
 import Papa from "papaparse";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import styled from "styled-components";
 import { useEditorTheme as useTheme } from "../host";
 import Box from "./Box";
 import Spinner from "./Spinner";
@@ -77,277 +76,393 @@ export interface CsvViewerProps {
 import { buildClientTelemetrySvg } from "./csv-telemetry-chart.js";
 export { buildClientTelemetrySvg };
 
-const TableWrapper = styled.div<{ $isFullScreen?: boolean | undefined }>`
-  width: 100%;
-  height: ${(props) => (props.$isFullScreen ? "100%" : "440px")};
+const CSV_VIEWER_STYLES = `
+.ms-csv-mode-btn:hover {
+  color: var(--color-fg-default, #f1f5f9) !important;
+}
+.ms-csv-chart svg {
+  max-width: 100%;
   max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: ${(props) => (props.$isFullScreen ? "0" : "8px")};
-  overflow: hidden;
-  font-family: inherit;
-  position: relative;
-`;
-
-const Toolbar = styled.div`
-  min-height: 44px;
-  background: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 12px;
-  gap: 10px;
-  flex-wrap: wrap;
-`;
-
-const ModeToggleGroup = styled.div`
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 6px;
-  background: var(--color-canvas-default, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--color-border-default, #30363d);
-`;
-
-const ModeToggleButton = styled.button<{ $active: boolean }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  width: auto;
+  height: auto;
   border-radius: 4px;
-  border: none;
-  font-size: 11px;
-  font-weight: ${(p) => (p.$active ? 600 : 500)};
-  font-family: var(--font-mono, monospace);
-  cursor: pointer;
-  background: ${(p) => (p.$active ? "var(--color-neutral-muted, rgba(127, 127, 127, 0.15))" : "transparent")};
-  color: ${(p) => (p.$active ? "var(--color-fg-default, #f1f5f9)" : "var(--color-fg-muted, #8b949e)")};
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-
-  &:hover {
-    color: var(--color-fg-default, #f1f5f9);
-  }
-`;
-
-const ChartContainer = styled.div<{ $isFullScreen?: boolean | undefined; $isDark?: boolean | undefined }>`
-  flex: 1;
-  width: 100%;
-  height: ${(props) => (props.$isFullScreen ? "100%" : "calc(100% - 44px)")};
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  background: var(--color-canvas-default, #0d1117);
-  overflow: hidden;
-  padding: 8px 12px;
-
-  svg {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    border-radius: 4px;
-    box-shadow: none;
-  }
-`;
-
-const SwitchToTablePill = styled.button`
-  position: absolute;
-  bottom: 14px;
-  right: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  background: var(--color-canvas-default, #0d1117);
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: 20px;
-  color: var(--color-fg-default, #e6edf3);
-  font-size: 11.5px;
-  font-weight: 500;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  transition: all 0.15s ease;
-  z-index: 5;
-
-  &:hover {
-    background: var(--color-canvas-subtle, #161b22);
-    border-color: var(--color-border-default, #30363d);
-    transform: translateY(-1px);
-  }
-`;
-
-const StatsDrawer = styled.div`
-  background: var(--color-canvas-subtle, #161b22);
-  border-bottom: 1px solid var(--color-border-default, #30363d);
-  padding: 10px 14px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px;
-  max-height: 150px;
-  overflow-y: auto;
-  font-size: 11.5px;
-`;
-
-const StatCard = styled.div`
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  padding: 6px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-`;
-
-const TypePill = styled.span<{ $type?: string | undefined }>`
-  display: inline-block;
-  font-size: 9.5px;
-  font-family: var(--font-mono, monospace);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-weight: 600;
-  text-transform: uppercase;
-
-  ${(props) => {
-    switch (props.$type?.toLowerCase()) {
-      case "number":
-        return "background: rgba(6, 182, 212, 0.15); color: #22d3ee; border: 1px solid rgba(6, 182, 212, 0.3);";
-      case "boolean":
-        return "background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);";
-      default:
-        return "background: rgba(255, 255, 255, 0.06); color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1);";
-    }
-  }}
-`;
-
-const TableContainer = styled.div`
-  flex: 1;
-  overflow: auto;
-`;
-
-const StyledTable = styled.table`
+  box-shadow: none;
+}
+.ms-csv-switch-pill:hover {
+  background: var(--color-canvas-subtle, #161b22) !important;
+  border-color: var(--color-border-default, #30363d) !important;
+  transform: translateY(-1px);
+}
+.ms-csv-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12.5px;
   text-align: left;
   font-variant-numeric: tabular-nums;
-
-  th {
-    position: sticky;
-    top: 0;
-    background: var(--color-canvas-subtle, #161b22);
-    border-bottom: 2px solid var(--color-border-default, #30363d);
-    padding: 8px 12px;
-    font-weight: 600;
-    color: var(--color-text-primary, #e6edf3);
-    cursor: pointer;
-    user-select: none;
-    white-space: nowrap;
-    z-index: 2;
-
-    &:first-child {
-      left: 0;
-      z-index: 3;
-      border-right: 1px solid var(--color-border-subtle, #21262d);
-    }
-
-    &:hover {
-      background: rgba(255, 255, 255, 0.05);
-    }
-  }
-
-  td {
-    padding: 7px 12px;
-    border-bottom: 1px solid var(--color-border-subtle, #21262d);
-    color: var(--color-text-secondary, #8b949e);
-    white-space: nowrap;
-    max-width: 300px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-
-    &:first-child {
-      position: sticky;
-      left: 0;
-      z-index: 1;
-      background: var(--color-canvas-default, #0d1117);
-      color: var(--color-text-primary, #e6edf3);
-      font-weight: 500;
-      border-right: 1px solid var(--color-border-subtle, #21262d);
-    }
-  }
-
-  tr:hover td {
-    background: rgba(255, 255, 255, 0.02);
-    color: var(--color-text-primary, #e6edf3);
-
-    &:first-child {
-      background: var(--color-canvas-subtle, #161b22);
-    }
-  }
-`;
-
-const CellInput = styled.input`
-  width: 100%;
-  min-width: 72px;
-  padding: 2px 6px;
-  margin: -3px -6px;
-  font-size: 12.5px;
-  font-family: inherit;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-primary, #e6edf3);
-  background: var(--color-canvas-default, #0d1117);
-  border: 1.5px solid var(--ms-brand, #0891b2);
-  border-radius: 4px;
-  outline: none;
-  box-sizing: border-box;
-`;
-
-const RowActionBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--color-text-muted, #8b949e);
-  cursor: pointer;
-  opacity: 0.55;
-  transition:
-    opacity 0.12s ease,
-    color 0.12s ease,
-    background-color 0.12s ease;
-
-  &:hover {
-    opacity: 1;
-    color: var(--color-danger-fg, #f85149);
-    background: rgba(248, 81, 73, 0.12);
-  }
-`;
-
-const PaginationBar = styled.div`
-  height: 36px;
-  min-height: 36px;
+}
+.ms-csv-table th {
+  position: sticky;
+  top: 0;
   background: var(--color-canvas-subtle, #161b22);
-  border-top: 1px solid var(--color-border-default, #30363d);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
-  font-size: 11.5px;
-  color: var(--color-text-muted, #8b949e);
-  gap: 8px;
+  border-bottom: 2px solid var(--color-border-default, #30363d);
+  padding: 8px 12px;
+  font-weight: 600;
+  color: var(--color-text-primary, #e6edf3);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+.ms-csv-table th:first-child {
+  left: 0;
+  z-index: 3;
+  border-right: 1px solid var(--color-border-subtle, #21262d);
+}
+.ms-csv-table th:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.ms-csv-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--color-border-subtle, #21262d);
+  color: var(--color-text-secondary, #8b949e);
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ms-csv-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-canvas-default, #0d1117);
+  color: var(--color-text-primary, #e6edf3);
+  font-weight: 500;
+  border-right: 1px solid var(--color-border-subtle, #21262d);
+}
+.ms-csv-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--color-text-primary, #e6edf3);
+}
+.ms-csv-table tr:hover td:first-child {
+  background: var(--color-canvas-subtle, #161b22);
+}
+.ms-csv-row-action-btn:hover {
+  opacity: 1 !important;
+  color: var(--color-danger-fg, #f85149) !important;
+  background: rgba(248, 81, 73, 0.12) !important;
+}
 `;
+
+interface TableWrapperProps extends React.HTMLAttributes<HTMLDivElement> {
+  $isFullScreen?: boolean | undefined;
+}
+
+const TableWrapper: React.FC<TableWrapperProps> = ({ $isFullScreen, style, children, ...rest }) => (
+  <div
+    style={{
+      width: "100%",
+      height: $isFullScreen ? "100%" : "440px",
+      maxHeight: "100%",
+      display: "flex",
+      flexDirection: "column",
+      background: "var(--color-canvas-default, #0d1117)",
+      border: "1px solid var(--color-border-default, #30363d)",
+      borderRadius: $isFullScreen ? "0" : "8px",
+      overflow: "hidden",
+      fontFamily: "inherit",
+      position: "relative",
+      ...style,
+    }}
+    {...rest}
+  >
+    <style>{CSV_VIEWER_STYLES}</style>
+    {children}
+  </div>
+);
+
+const Toolbar: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      minHeight: "44px",
+      background: "var(--color-canvas-subtle, #161b22)",
+      borderBottom: "1px solid var(--color-border-default, #30363d)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "6px 12px",
+      gap: "10px",
+      flexWrap: "wrap",
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+const ModeToggleGroup: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "2px",
+      padding: "2px",
+      borderRadius: "6px",
+      background: "var(--color-canvas-default, rgba(255, 255, 255, 0.04))",
+      border: "1px solid var(--color-border-default, #30363d)",
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+interface ModeToggleButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  $active: boolean;
+}
+
+const ModeToggleButton: React.FC<ModeToggleButtonProps> = ({ $active, className, style, ...rest }) => (
+  <button
+    className={className ? `ms-csv-mode-btn ${className}` : "ms-csv-mode-btn"}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "4px",
+      padding: "3px 8px",
+      borderRadius: "4px",
+      border: "none",
+      fontSize: "11px",
+      fontWeight: $active ? 600 : 500,
+      fontFamily: "var(--font-mono, monospace)",
+      cursor: "pointer",
+      background: $active ? "var(--color-neutral-muted, rgba(127, 127, 127, 0.15))" : "transparent",
+      color: $active ? "var(--color-fg-default, #f1f5f9)" : "var(--color-fg-muted, #8b949e)",
+      transition: "background 0.12s ease, color 0.12s ease",
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+interface ChartContainerProps extends React.HTMLAttributes<HTMLDivElement> {
+  $isFullScreen?: boolean | undefined;
+  $isDark?: boolean | undefined;
+}
+
+const ChartContainer: React.FC<ChartContainerProps> = ({
+  $isFullScreen,
+  $isDark: _isDark,
+  className,
+  style,
+  ...rest
+}) => (
+  <div
+    className={className ? `ms-csv-chart ${className}` : "ms-csv-chart"}
+    style={{
+      flex: 1,
+      width: "100%",
+      height: $isFullScreen ? "100%" : "calc(100% - 44px)",
+      minHeight: 0,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      position: "relative",
+      background: "var(--color-canvas-default, #0d1117)",
+      overflow: "hidden",
+      padding: "8px 12px",
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+const SwitchToTablePill: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ className, style, ...rest }) => (
+  <button
+    className={className ? `ms-csv-switch-pill ${className}` : "ms-csv-switch-pill"}
+    style={{
+      position: "absolute",
+      bottom: "14px",
+      right: "14px",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "6px",
+      padding: "5px 12px",
+      background: "var(--color-canvas-default, #0d1117)",
+      border: "1px solid var(--color-border-default, #30363d)",
+      borderRadius: "20px",
+      color: "var(--color-fg-default, #e6edf3)",
+      fontSize: "11.5px",
+      fontWeight: 500,
+      cursor: "pointer",
+      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.08)",
+      transition: "all 0.15s ease",
+      zIndex: 5,
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+const StatsDrawer: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      background: "var(--color-canvas-subtle, #161b22)",
+      borderBottom: "1px solid var(--color-border-default, #30363d)",
+      padding: "10px 14px",
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+      gap: "8px",
+      maxHeight: "150px",
+      overflowY: "auto",
+      fontSize: "11.5px",
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+const StatCard: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      background: "rgba(255, 255, 255, 0.03)",
+      border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08))",
+      borderRadius: "6px",
+      padding: "6px 8px",
+      display: "flex",
+      flexDirection: "column",
+      gap: "3px",
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+interface TypePillProps extends React.HTMLAttributes<HTMLSpanElement> {
+  $type?: string | undefined;
+}
+
+const TypePill: React.FC<TypePillProps> = ({ $type, style, ...rest }) => {
+  let colorStyle: React.CSSProperties;
+  switch ($type?.toLowerCase()) {
+    case "number":
+      colorStyle = {
+        background: "rgba(6, 182, 212, 0.15)",
+        color: "#22d3ee",
+        border: "1px solid rgba(6, 182, 212, 0.3)",
+      };
+      break;
+    case "boolean":
+      colorStyle = {
+        background: "rgba(168, 85, 247, 0.15)",
+        color: "#c084fc",
+        border: "1px solid rgba(168, 85, 247, 0.3)",
+      };
+      break;
+    default:
+      colorStyle = {
+        background: "rgba(255, 255, 255, 0.06)",
+        color: "#94a3b8",
+        border: "1px solid rgba(255, 255, 255, 0.1)",
+      };
+      break;
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        fontSize: "9.5px",
+        fontFamily: "var(--font-mono, monospace)",
+        padding: "1px 4px",
+        borderRadius: "3px",
+        fontWeight: 600,
+        textTransform: "uppercase",
+        ...colorStyle,
+        ...style,
+      }}
+      {...rest}
+    />
+  );
+};
+
+const TableContainer = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(function TableContainer(
+  { style, ...rest },
+  ref,
+) {
+  return <div ref={ref} style={{ flex: 1, overflow: "auto", ...style }} {...rest} />;
+});
+
+const StyledTable: React.FC<React.TableHTMLAttributes<HTMLTableElement>> = ({ className, ...rest }) => (
+  <table className={className ? `ms-csv-table ${className}` : "ms-csv-table"} {...rest} />
+);
+
+const CellInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function CellInput(
+  { style, ...rest },
+  ref,
+) {
+  return (
+    <input
+      ref={ref}
+      style={{
+        width: "100%",
+        minWidth: "72px",
+        padding: "2px 6px",
+        margin: "-3px -6px",
+        fontSize: "12.5px",
+        fontFamily: "inherit",
+        fontVariantNumeric: "tabular-nums",
+        color: "var(--color-text-primary, #e6edf3)",
+        background: "var(--color-canvas-default, #0d1117)",
+        border: "1.5px solid var(--ms-brand, #0891b2)",
+        borderRadius: "4px",
+        outline: "none",
+        boxSizing: "border-box",
+        ...style,
+      }}
+      {...rest}
+    />
+  );
+});
+
+const RowActionBtn: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ className, style, ...rest }) => (
+  <button
+    className={className ? `ms-csv-row-action-btn ${className}` : "ms-csv-row-action-btn"}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "20px",
+      height: "20px",
+      padding: 0,
+      border: "none",
+      borderRadius: "4px",
+      background: "transparent",
+      color: "var(--color-text-muted, #8b949e)",
+      cursor: "pointer",
+      opacity: 0.55,
+      transition: "opacity 0.12s ease, color 0.12s ease, background-color 0.12s ease",
+      ...style,
+    }}
+    {...rest}
+  />
+);
+
+const PaginationBar: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      height: "36px",
+      minHeight: "36px",
+      background: "var(--color-canvas-subtle, #161b22)",
+      borderTop: "1px solid var(--color-border-default, #30363d)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "0 12px",
+      fontSize: "11.5px",
+      color: "var(--color-text-muted, #8b949e)",
+      gap: "8px",
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
 export const CsvViewer: React.FC<CsvViewerProps> = ({
   viewConfig,
@@ -434,6 +549,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
         controller.abort();
       };
     }
+    return undefined;
   }, [viewConfig?.svg, resolvedThumbUrl]);
 
   // Table controls
@@ -535,11 +651,12 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
     setLoading(false);
     setParsedMeta(null);
     setCsvData([]);
+    return undefined;
   }, [viewConfig, parseCsvText]);
 
   useEffect(() => {
     if (!loading && typeof window !== "undefined") {
-      (window as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
+      (window as Window & { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
     }
   }, [loading, csvData]);
 
@@ -774,7 +891,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
     const themed = adaptSvgMarkupForTheme(rawActiveSvg, isDark);
     return typeof DOMPurify.sanitize === "function"
       ? DOMPurify.sanitize(themed, { USE_PROFILES: { svg: true, svgFilters: true } })
-      : themed;
+      : "";
   }, [rawActiveSvg, isDark]);
 
   const hasChart = Boolean(displaySvg || resolvedThumbUrl);
@@ -942,7 +1059,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
                   }}
                   icon={XCircleFillIcon}
                   aria-label="Clear filter"
-                  sx={{ color: "fg.subtle" }}
+                  style={{ color: "var(--fgColor-muted)" }}
                 />
               ) : undefined
             }
@@ -962,7 +1079,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
               }
             }}
             aria-label="Filter rows"
-            sx={{ width: "100%" }}
+            style={{ width: "100%" }}
           />
         </Box>
 
@@ -1052,22 +1169,18 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
           {isEditable && activeMode === "table" && (
             <>
               <Button size="small" disabled={!canUndo} onClick={handleUndo} title="Undo grid edit (Ctrl/Cmd+Z)">
-                <Text fontSize="11px">Undo</Text>
+                <Text style={{ fontSize: "11px" }}>Undo</Text>
               </Button>
               <Button size="small" disabled={!canRedo} onClick={handleRedo} title="Redo grid edit (Ctrl/Cmd+Shift+Z)">
-                <Text fontSize="11px">Redo</Text>
+                <Text style={{ fontSize: "11px" }}>Redo</Text>
               </Button>
               <Button size="small" onClick={handleAddRow} title="Insert a new row">
                 <PlusIcon size={12} />
-                <Text fontSize="11px" ml={1}>
-                  Row
-                </Text>
+                <Text style={{ fontSize: "11px", marginLeft: 4 }}>Row</Text>
               </Button>
               <Button size="small" onClick={handleAddColumn} title="Insert a new column">
                 <PlusIcon size={12} />
-                <Text fontSize="11px" ml={1}>
-                  Col
-                </Text>
+                <Text style={{ fontSize: "11px", marginLeft: 4 }}>Col</Text>
               </Button>
             </>
           )}
@@ -1085,9 +1198,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
               title="Toggle column summary statistics (min, max, average)"
             >
               <GraphIcon size={13} />
-              <Text fontSize="11px" ml={1}>
-                Stats
-              </Text>
+              <Text style={{ fontSize: "11px", marginLeft: 4 }}>Stats</Text>
             </Button>
           )}
 
@@ -1121,7 +1232,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
               onClick={handleDownloadCsv}
               title="Download CSV file"
               aria-label="Download CSV file"
-              sx={{ px: 2 }}
+              style={{ paddingLeft: 8, paddingRight: 8 }}
             >
               <DownloadIcon size={13} />
             </Button>
@@ -1547,7 +1658,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
                   <Button size="small" disabled={currentPage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
                     Previous
                   </Button>
-                  <Text fontSize="11px" mx={1}>
+                  <Text style={{ fontSize: "11px", marginLeft: 4, marginRight: 4 }}>
                     Page {currentPage} of {totalPages}
                   </Text>
                   <Button

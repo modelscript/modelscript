@@ -157,8 +157,13 @@ async function doLoadPrebakedMslIcons(
           const res = await fetch(url);
           if (res.ok) {
             const buf = await res.arrayBuffer();
-            const decompressed = gunzipSync(new Uint8Array(buf));
-            const text = strFromU8(decompressed);
+            const bytes = new Uint8Array(buf);
+            if (bytes.length === 0) continue;
+            // When served with Content-Encoding: gzip, fetch() has already decompressed the body.
+            const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+            const jsonBytes = isGzip ? gunzipSync(bytes) : bytes;
+            const text = strFromU8(jsonBytes);
+            if (!text.trimStart().startsWith("{")) continue;
             const icons = JSON.parse(text) as Record<string, string>;
             let count = 0;
             for (const [name, svg] of Object.entries(icons)) {

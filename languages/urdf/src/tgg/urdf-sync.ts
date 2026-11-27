@@ -4,14 +4,14 @@
  * @modelscript/urdf — Bidirectional TGG Round-Trip Synchronizer.
  *
  * Executes declarative TGG rules via `PolyglotTransformer` (`evaluateRuleForward` /
- * `evaluateRuleBackward`), `parseModelicaCst`, and `@modelscript/dsl` lossless XML CST
- * splicing (`xml.parseXml`, `setAttributeSplice`, `appendChildSplice`, `applySplices`)
- * to round-trip ROS URDF <-> Modelica.Mechanics.MultiBody while preserving shadow
- * complements (joint limits, off-diagonal inertia, visual/collision meshes, comments).
+ * `evaluateRuleBackward`), `parseModelicaCst`, and `@modelscript/dsl/unparser` lossless XML CST
+ * transactions (`CstDocumentSession`, `CstTransaction`, `CstXmlAdapter`) to round-trip
+ * ROS URDF <-> Modelica.Mechanics.MultiBody while preserving shadow complements (joint limits,
+ * off-diagonal inertia, visual/collision meshes, comments).
  */
 
-import { xml } from "@modelscript/dsl";
-import type { Splice, XmlElement } from "@modelscript/dsl/xml";
+import { CstDocumentSession, CstTransaction, CstXmlAdapter } from "@modelscript/dsl/unparser";
+import { getXmlWasmParser } from "@modelscript/dsl/xml";
 import { PolyglotTransformer, parseModelicaCst } from "@modelscript/runtime";
 import { parseUrdf } from "../parser/urdf-parser.js";
 import { urdfToModelica } from "../projections/modelica.js";
@@ -40,13 +40,6 @@ export interface UrdfSyncResult {
   changes: UrdfSyncChange[];
   conflicts: ReturnType<PolyglotTransformer["getConflicts"]>;
   transformer: PolyglotTransformer;
-}
-
-function findXmlElements(el: XmlElement | null | undefined, tagName: string, out: XmlElement[] = []): XmlElement[] {
-  if (!el) return out;
-  if (el.name.toLowerCase() === tagName.toLowerCase()) out.push(el);
-  for (const c of el.children) findXmlElements(c, tagName, out);
-  return out;
 }
 
 function parseVector3Literal(raw: string | undefined): [number, number, number] | null {
@@ -523,109 +516,125 @@ export function synchronizeModelicaToUrdf(
 }
 
 /**
- * Applies surgical XML CST splices (`@modelscript/dsl/xml`) to the original URDF XML,
+ * Applies surgical XML CST transactions (`@modelscript/dsl/unparser`) to the original URDF XML,
  * preserving XML comments, off-diagonal inertia attributes (`ixy`, `ixz`, `iyz`),
  * `<limit>`, `<visual>`, `<collision>`, and attribute formatting.
  */
 function patchUrdfXmlViaCst(originalXml: string, robot: UrdfRobot): string {
-  const xmlDoc = xml.parseXml(originalXml);
-  if (!xmlDoc.root) {
-    return originalXml;
+  let parser: unknown = null;
+  try {
+    parser = getXmlWasmParser();
+  } catch {
+    parser = null;
   }
+  const session = new CstDocumentSession({
+    uri: "file:///robot.urdf",
+    text: originalXml,
+    parser: parser as never,
+    xmlFallback: true,
+  });
+  try {
+    const root = session.rootNode;
+    if (!root) return originalXml;
 
-  const splices: Splice[] = [];
-  const robotEl = xmlDoc.root.name.toLowerCase() === "robot" ? xmlDoc.root : findXmlElements(xmlDoc.root, "robot")[0];
-  const linkEls = findXmlElements(xmlDoc.root, "link");
-  const jointEls = findXmlElements(xmlDoc.root, "joint");
+    const tx = new CstTransaction(session);
+    const robotEl = CstXmlAdapter.findElements(root, originalXml, (_n, t) => t.toLowerCase() === "robot")[0] ?? null;
+    const linkEls = CstXmlAdapter.findElements(root, originalXml, (_n, t) => t.toLowerCase() === "link");
+    const jointEls = CstXmlAdapter.findElements(root, originalXml, (_n, t) => t.toLowerCase() === "joint");
 
-  let linkIdx = 0;
-  for (const link of robot.links.values()) {
-    const linkEl =
-      linkEls.find((el) => el.attributes.find((a) => a.name === "name")?.value === link.name) ?? linkEls[linkIdx];
-    linkIdx++;
+    let linkIdx = 0;
+    for (const link of robot.links.values()) {
+      const linkEl =
+        linkEls.find((el) => CstXmlAdapter.getAttribute(el, "name", originalXml, false)?.value === link.name) ??
+        linkEls[linkIdx];
+      linkIdx++;
 
-    if (linkEl && link.inertial) {
-      const nameAttr = linkEl.attributes.find((a) => a.name === "name");
-      if (nameAttr && nameAttr.value !== link.name) {
-        splices.push(xml.setAttributeSplice(linkEl, "name", link.name, originalXml));
-      }
-
-      const massEl = findXmlElements(linkEl, "mass")[0];
-      const inertiaEl = findXmlElements(linkEl, "inertia")[0];
-      const isCompact =
-        link.inertial.ixx === link.inertial.iyy &&
-        link.inertial.iyy === link.inertial.izz &&
-        Number.isInteger(link.inertial.mass);
-      const massStr = isCompact ? fmtMass(link.inertial.mass) : String(link.inertial.mass);
-
-      if (massEl) {
-        const curMass = massEl.attributes.find((a) => a.name === "value")?.value;
-        if (curMass !== massStr && Number(curMass) !== link.inertial.mass) {
-          splices.push(xml.setAttributeSplice(massEl, "value", massStr, originalXml));
+      if (linkEl && link.inertial) {
+        const nameAttr = CstXmlAdapter.getAttribute(linkEl, "name", originalXml, false);
+        if (nameAttr && nameAttr.value !== link.name) {
+          CstXmlAdapter.setAttribute(tx, linkEl, "name", link.name);
         }
-      }
-      if (inertiaEl) {
-        const updateAttrIfChanged = (attrName: string, numVal: number) => {
-          const cur = inertiaEl.attributes.find((a) => a.name === attrName)?.value;
-          if (cur === undefined || Number(cur) !== numVal) {
-            splices.push(xml.setAttributeSplice(inertiaEl, attrName, String(numVal), originalXml));
+
+        const massEl = CstXmlAdapter.findElements(linkEl, originalXml, (_n, t) => t.toLowerCase() === "mass")[0];
+        const inertiaEl = CstXmlAdapter.findElements(linkEl, originalXml, (_n, t) => t.toLowerCase() === "inertia")[0];
+        const isCompact =
+          link.inertial.ixx === link.inertial.iyy &&
+          link.inertial.iyy === link.inertial.izz &&
+          Number.isInteger(link.inertial.mass);
+        const massStr = isCompact ? fmtMass(link.inertial.mass) : String(link.inertial.mass);
+
+        if (massEl) {
+          const curMass = CstXmlAdapter.getAttribute(massEl, "value", originalXml, false)?.value;
+          if (curMass !== massStr && Number(curMass) !== link.inertial.mass) {
+            CstXmlAdapter.setAttribute(tx, massEl, "value", massStr);
           }
-        };
-        updateAttrIfChanged("ixx", link.inertial.ixx);
-        updateAttrIfChanged("iyy", link.inertial.iyy);
-        updateAttrIfChanged("izz", link.inertial.izz);
-      }
-    } else if (robotEl && !robotEl.selfClosing && link.inertial) {
-      const i = link.inertial;
-      const newLinkXml = `<link name="${link.name}">\n    <inertial><mass value="${fmtMass(i.mass)}"/><inertia ixx="${i.ixx}" ixy="${i.ixy}" ixz="${i.ixz}" iyy="${i.iyy}" iyz="${i.iyz}" izz="${i.izz}"/></inertial>\n  </link>`;
-      splices.push(xml.appendChildSplice(robotEl, newLinkXml, originalXml));
-    }
-  }
-
-  let jointIdx = 0;
-  for (const joint of robot.joints.values()) {
-    const jointEl =
-      jointEls.find((el) => el.attributes.find((a) => a.name === "name")?.value === joint.name) ?? jointEls[jointIdx];
-    jointIdx++;
-
-    if (jointEl) {
-      const nameAttr = jointEl.attributes.find((a) => a.name === "name");
-      if (nameAttr && nameAttr.value !== joint.name) {
-        splices.push(xml.setAttributeSplice(jointEl, "name", joint.name, originalXml));
-      }
-      const typeAttr = jointEl.attributes.find((a) => a.name === "type");
-      if (
-        typeAttr &&
-        typeAttr.value !== joint.type &&
-        !(typeAttr.value === "continuous" && joint.type === "revolute")
-      ) {
-        splices.push(xml.setAttributeSplice(jointEl, "type", joint.type, originalXml));
-      }
-      const parentEl = findXmlElements(jointEl, "parent")[0];
-      if (parentEl && parentEl.attributes.find((a) => a.name === "link")?.value !== joint.parentLink) {
-        splices.push(xml.setAttributeSplice(parentEl, "link", joint.parentLink, originalXml));
-      }
-      const childEl = findXmlElements(jointEl, "child")[0];
-      if (childEl && childEl.attributes.find((a) => a.name === "link")?.value !== joint.childLink) {
-        splices.push(xml.setAttributeSplice(childEl, "link", joint.childLink, originalXml));
-      }
-      const axisEl = findXmlElements(jointEl, "axis")[0];
-      const newXyz = `${joint.axis.x} ${joint.axis.y} ${joint.axis.z}`;
-      if (axisEl && axisEl.attributes.find((a) => a.name === "xyz")?.value !== newXyz) {
-        splices.push(xml.setAttributeSplice(axisEl, "xyz", newXyz, originalXml));
-      }
-      if (joint.origin) {
-        const originEl = findXmlElements(jointEl, "origin")[0];
-        const origXyz = `${joint.origin.xyz.x} ${joint.origin.xyz.y} ${joint.origin.xyz.z}`;
-        if (originEl && originEl.attributes.find((a) => a.name === "xyz")?.value !== origXyz) {
-          splices.push(xml.setAttributeSplice(originEl, "xyz", origXyz, originalXml));
         }
+        if (inertiaEl) {
+          const updateAttrIfChanged = (attrName: string, numVal: number) => {
+            const cur = CstXmlAdapter.getAttribute(inertiaEl, attrName, originalXml, false)?.value;
+            if (cur === undefined || Number(cur) !== numVal) {
+              CstXmlAdapter.setAttribute(tx, inertiaEl, attrName, String(numVal));
+            }
+          };
+          updateAttrIfChanged("ixx", link.inertial.ixx);
+          updateAttrIfChanged("iyy", link.inertial.iyy);
+          updateAttrIfChanged("izz", link.inertial.izz);
+        }
+      } else if (robotEl && link.inertial) {
+        const i = link.inertial;
+        const newLinkXml = `<link name="${link.name}">\n    <inertial><mass value="${fmtMass(i.mass)}"/><inertia ixx="${i.ixx}" ixy="${i.ixy}" ixz="${i.ixz}" iyy="${i.iyy}" iyz="${i.iyz}" izz="${i.izz}"/></inertial>\n  </link>`;
+        CstXmlAdapter.appendChild(tx, robotEl, newLinkXml);
       }
-    } else if (robotEl && !robotEl.selfClosing) {
-      const newJointXml = `<joint name="${joint.name}" type="${joint.type}">\n    <parent link="${joint.parentLink}"/>\n    <child link="${joint.childLink}"/>\n    <axis xyz="${joint.axis.x} ${joint.axis.y} ${joint.axis.z}"/>\n  </joint>`;
-      splices.push(xml.appendChildSplice(robotEl, newJointXml, originalXml));
     }
-  }
 
-  return xml.applySplices(originalXml, splices);
+    let jointIdx = 0;
+    for (const joint of robot.joints.values()) {
+      const jointEl =
+        jointEls.find((el) => CstXmlAdapter.getAttribute(el, "name", originalXml, false)?.value === joint.name) ??
+        jointEls[jointIdx];
+      jointIdx++;
+
+      if (jointEl) {
+        const nameAttr = CstXmlAdapter.getAttribute(jointEl, "name", originalXml, false);
+        if (nameAttr && nameAttr.value !== joint.name) {
+          CstXmlAdapter.setAttribute(tx, jointEl, "name", joint.name);
+        }
+        const typeAttr = CstXmlAdapter.getAttribute(jointEl, "type", originalXml, false);
+        if (
+          typeAttr &&
+          typeAttr.value !== joint.type &&
+          !(typeAttr.value === "continuous" && joint.type === "revolute")
+        ) {
+          CstXmlAdapter.setAttribute(tx, jointEl, "type", joint.type);
+        }
+        const parentEl = CstXmlAdapter.findElements(jointEl, originalXml, (_n, t) => t.toLowerCase() === "parent")[0];
+        if (parentEl && CstXmlAdapter.getAttribute(parentEl, "link", originalXml, false)?.value !== joint.parentLink) {
+          CstXmlAdapter.setAttribute(tx, parentEl, "link", joint.parentLink);
+        }
+        const childEl = CstXmlAdapter.findElements(jointEl, originalXml, (_n, t) => t.toLowerCase() === "child")[0];
+        if (childEl && CstXmlAdapter.getAttribute(childEl, "link", originalXml, false)?.value !== joint.childLink) {
+          CstXmlAdapter.setAttribute(tx, childEl, "link", joint.childLink);
+        }
+        const axisEl = CstXmlAdapter.findElements(jointEl, originalXml, (_n, t) => t.toLowerCase() === "axis")[0];
+        const newXyz = `${joint.axis.x} ${joint.axis.y} ${joint.axis.z}`;
+        if (axisEl && CstXmlAdapter.getAttribute(axisEl, "xyz", originalXml, false)?.value !== newXyz) {
+          CstXmlAdapter.setAttribute(tx, axisEl, "xyz", newXyz);
+        }
+        if (joint.origin) {
+          const originEl = CstXmlAdapter.findElements(jointEl, originalXml, (_n, t) => t.toLowerCase() === "origin")[0];
+          const origXyz = `${joint.origin.xyz.x} ${joint.origin.xyz.y} ${joint.origin.xyz.z}`;
+          if (originEl && CstXmlAdapter.getAttribute(originEl, "xyz", originalXml, false)?.value !== origXyz) {
+            CstXmlAdapter.setAttribute(tx, originEl, "xyz", origXyz);
+          }
+        }
+      } else if (robotEl) {
+        const newJointXml = `<joint name="${joint.name}" type="${joint.type}">\n    <parent link="${joint.parentLink}"/>\n    <child link="${joint.childLink}"/>\n    <axis xyz="${joint.axis.x} ${joint.axis.y} ${joint.axis.z}"/>\n  </joint>`;
+        CstXmlAdapter.appendChild(tx, robotEl, newJointXml);
+      }
+    }
+
+    return tx.commit().applyToString(originalXml);
+  } finally {
+    session.dispose();
+  }
 }

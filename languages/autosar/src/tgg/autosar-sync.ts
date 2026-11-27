@@ -4,14 +4,15 @@
  * @modelscript/autosar — Bidirectional TGG Round-Trip Synchronizer.
  *
  * Executes declarative TGG rules via `PolyglotTransformer` (`evaluateRuleForward` /
- * `evaluateRuleBackward`), `parseSysml2Cst`, and `@modelscript/dsl` lossless XML CST
- * splicing (`xml.parseXml`, `setElementTextSplice`, `appendChildSplice`, `removeElementSplice`,
- * `applySplices`) to round-trip AUTOSAR ARXML <-> SysML v2 while preserving unmapped XML
- * elements (`<REQUIRED-INTERFACE-TREF>`, `<EVENTS>`, `<SYMBOL>`, comments).
+ * `evaluateRuleBackward`), `parseSysml2Cst`, and `@modelscript/dsl/unparser` lossless XML CST
+ * transactions (`CstDocumentSession`, `CstTransaction`, `CstXmlAdapter`) to round-trip AUTOSAR
+ * ARXML <-> SysML v2 while preserving unmapped XML elements (`<REQUIRED-INTERFACE-TREF>`,
+ * `<EVENTS>`, `<SYMBOL>`, comments).
  */
 
-import { xml } from "@modelscript/dsl";
-import type { Splice, XmlElement } from "@modelscript/dsl/xml";
+import { CstDocumentSession, CstTransaction, CstXmlAdapter } from "@modelscript/dsl/unparser";
+import type { SyntaxNode } from "@modelscript/dsl/utils";
+import { getXmlWasmParser } from "@modelscript/dsl/xml";
 import { PolyglotTransformer, parseSysml2Cst } from "@modelscript/runtime";
 import { parseArxml } from "../parser/arxml-parser.js";
 import { autosarToSysml } from "../projections/sysml.js";
@@ -41,23 +42,12 @@ const SWC_TAG_NAMES = new Set([
   "ECU-ABSTRACTION-SW-COMPONENT-TYPE",
 ]);
 
-function findSwcElements(el: XmlElement | null, out: XmlElement[] = []): XmlElement[] {
-  if (!el) return out;
-  if (SWC_TAG_NAMES.has(el.name.toUpperCase())) out.push(el);
-  for (const c of el.children) findSwcElements(c, out);
-  return out;
-}
-
-function findDirectChild(el: XmlElement | undefined, tagName: string): XmlElement | undefined {
+function findDirectChild(el: SyntaxNode | undefined, tagName: string, source: string): SyntaxNode | undefined {
   if (!el) return undefined;
-  return el.children.find((c: XmlElement) => c.name.toUpperCase() === tagName.toUpperCase());
-}
-
-function findXmlElements(el: XmlElement | null | undefined, tagName: string, out: XmlElement[] = []): XmlElement[] {
-  if (!el) return out;
-  if (el.name.toUpperCase() === tagName.toUpperCase()) out.push(el);
-  for (const c of el.children) findXmlElements(c, tagName, out);
-  return out;
+  const upper = tagName.toUpperCase();
+  return CstXmlAdapter.getChildElements(el).find(
+    (c) => (CstXmlAdapter.getTagName(c, source) ?? "").toUpperCase() === upper,
+  );
 }
 
 /**
@@ -176,199 +166,237 @@ export function synchronizeSysmlToAutosar(
   const changes: AutosarSyncChange[] = [];
   const origSwcs = Array.from(originalModel.components.values());
 
-  const xmlDoc = xml.parseXml(originalArxml);
-  const swcXmlElements = findSwcElements(xmlDoc.root);
-  const splices: Splice[] = [];
+  let xmlParser: unknown = null;
+  try {
+    xmlParser = getXmlWasmParser();
+  } catch {
+    xmlParser = null;
+  }
+  const session = new CstDocumentSession({
+    uri: "file:///autosar.arxml",
+    text: originalArxml,
+    parser: xmlParser as never,
+    xmlFallback: true,
+  });
 
-  for (let idx = 0; idx < sysmlCst.partDefs.length; idx++) {
-    const partDef = sysmlCst.partDefs[idx]!;
-    const origSwc = originalModel.components.get(partDef.name) ?? origSwcs[idx];
-    const swcKey = origSwc?.shortName ?? partDef.name;
-    const complement = transformer.getComplement(swcKey) ?? transformer.getComplement(`pos:swc:${idx}`) ?? {};
-    const swcKind =
-      (complement["kind"] as SwComponentKind | undefined) ?? origSwc?.kind ?? "APPLICATION-SW-COMPONENT-TYPE";
+  try {
+    const root = session.rootNode;
+    const swcXmlElements = root
+      ? CstXmlAdapter.findElements(root, originalArxml, (_n, t) => SWC_TAG_NAMES.has(t.toUpperCase()))
+      : [];
+    const tx = new CstTransaction(session);
 
-    const swcBack = transformer.evaluateRuleBackward(
-      {
-        kind: "PartDefinition",
-        name: partDef.name,
-        stereotype: swcKind,
-        properties: { name: partDef.name, stereotype: swcKind },
-      },
-      "autosar",
-      {
-        strategy,
-        threadId: swcKey,
-        fallbackThreadId: `pos:swc:${idx}`,
-      },
-    );
+    for (let idx = 0; idx < sysmlCst.partDefs.length; idx++) {
+      const partDef = sysmlCst.partDefs[idx]!;
+      const origSwc = originalModel.components.get(partDef.name) ?? origSwcs[idx];
+      const swcKey = origSwc?.shortName ?? partDef.name;
+      const complement = transformer.getComplement(swcKey) ?? transformer.getComplement(`pos:swc:${idx}`) ?? {};
+      const swcKind =
+        (complement["kind"] as SwComponentKind | undefined) ?? origSwc?.kind ?? "APPLICATION-SW-COMPONENT-TYPE";
 
-    const resolvedSwcName = String(swcBack?.sourceNode["properties"]?.["shortName"] ?? partDef.name);
-    if (origSwc && origSwc.shortName !== partDef.name) {
-      changes.push({
-        target: "swc",
-        elementId: origSwc.shortName,
-        reconciledVal: resolvedSwcName,
-        strategy: strategy === "physics-simplex" ? "target-wins" : strategy,
-      });
-    }
+      const swcBack = transformer.evaluateRuleBackward(
+        {
+          kind: "PartDefinition",
+          name: partDef.name,
+          stereotype: swcKind,
+          properties: { name: partDef.name, stereotype: swcKind },
+        },
+        "autosar",
+        {
+          strategy,
+          threadId: swcKey,
+          fallbackThreadId: `pos:swc:${idx}`,
+        },
+      );
 
-    const swcEl =
-      swcXmlElements.find((el) => findDirectChild(el, "SHORT-NAME")?.text === (origSwc?.shortName ?? partDef.name)) ??
-      swcXmlElements[idx];
-
-    if (swcEl) {
-      const shortNameEl = findDirectChild(swcEl, "SHORT-NAME");
-      if (shortNameEl && !shortNameEl.selfClosing && shortNameEl.text !== resolvedSwcName) {
-        splices.push(xml.setElementTextSplice(shortNameEl, resolvedSwcName));
+      const resolvedSwcName = String(swcBack?.sourceNode["properties"]?.["shortName"] ?? partDef.name);
+      if (origSwc && origSwc.shortName !== partDef.name) {
+        changes.push({
+          target: "swc",
+          elementId: origSwc.shortName,
+          reconciledVal: resolvedSwcName,
+          strategy: strategy === "physics-simplex" ? "target-wins" : strategy,
+        });
       }
 
-      // Synchronize ports via declarative TGG rules (#2 R-Port, #3 P-Port, #6 ClientServerPort) and XML CST splices
-      const portsContainer = findDirectChild(swcEl, "PORTS");
-      const existingPortEls = portsContainer
-        ? portsContainer.children.filter(
-            (c: XmlElement) =>
-              c.name.toUpperCase() === "R-PORT-PROTOTYPE" || c.name.toUpperCase() === "P-PORT-PROTOTYPE",
-          )
-        : [];
-      const matchedPortEls = new Set<XmlElement>();
+      const swcEl =
+        swcXmlElements.find((el) => {
+          const sn = findDirectChild(el, "SHORT-NAME", originalArxml);
+          return sn ? CstXmlAdapter.getElementText(sn, originalArxml) === (origSwc?.shortName ?? partDef.name) : false;
+        }) ?? swcXmlElements[idx];
 
-      for (const pNode of partDef.ports) {
-        const dir: "required" | "provided" = pNode.direction === "out" ? "provided" : "required";
-        const portTypeName = pNode.typeName;
-        const isClientServer = Boolean(pNode.isConjugated && portTypeName);
-        const portBack = transformer.evaluateRuleBackward(
-          isClientServer
-            ? {
-                kind: "ConjugatedPortUsage",
-                name: pNode.name,
-                portType: portTypeName,
-                isConjugated: true,
-                direction: "in",
-                properties: {
+      if (swcEl) {
+        const shortNameEl = findDirectChild(swcEl, "SHORT-NAME", originalArxml);
+        if (
+          shortNameEl &&
+          !CstXmlAdapter.isSelfClosing(shortNameEl, originalArxml) &&
+          CstXmlAdapter.getElementText(shortNameEl, originalArxml) !== resolvedSwcName
+        ) {
+          CstXmlAdapter.setElementText(tx, shortNameEl, resolvedSwcName);
+        }
+
+        // Synchronize ports via declarative TGG rules (#2 R-Port, #3 P-Port, #6 ClientServerPort) and CST transactions
+        const portsContainer = findDirectChild(swcEl, "PORTS", originalArxml);
+        const existingPortEls = portsContainer
+          ? CstXmlAdapter.getChildElements(portsContainer).filter((c) => {
+              const t = (CstXmlAdapter.getTagName(c, originalArxml) ?? "").toUpperCase();
+              return t === "R-PORT-PROTOTYPE" || t === "P-PORT-PROTOTYPE";
+            })
+          : [];
+        const matchedPortEls = new Set<SyntaxNode>();
+
+        for (const pNode of partDef.ports) {
+          const dir: "required" | "provided" = pNode.direction === "out" ? "provided" : "required";
+          const portTypeName = pNode.typeName;
+          const isClientServer = Boolean(pNode.isConjugated && portTypeName);
+          const portBack = transformer.evaluateRuleBackward(
+            isClientServer
+              ? {
+                  kind: "ConjugatedPortUsage",
                   name: pNode.name,
                   portType: portTypeName,
                   isConjugated: true,
                   direction: "in",
-                },
-              }
-            : {
-                kind: "PortUsage",
-                name: pNode.name,
-                direction: pNode.direction === "out" ? "out" : "in",
-                properties: {
+                  properties: {
+                    name: pNode.name,
+                    portType: portTypeName,
+                    isConjugated: true,
+                    direction: "in",
+                  },
+                }
+              : {
+                  kind: "PortUsage",
                   name: pNode.name,
                   direction: pNode.direction === "out" ? "out" : "in",
+                  properties: {
+                    name: pNode.name,
+                    direction: pNode.direction === "out" ? "out" : "in",
+                  },
                 },
-              },
-          "autosar",
-          {
-            strategy,
-            threadId: `${swcKey}.${pNode.name}`,
-          },
-        );
-        const resolvedPortName = String(portBack?.sourceNode["properties"]?.["shortName"] ?? pNode.name);
+            "autosar",
+            {
+              strategy,
+              threadId: `${swcKey}.${pNode.name}`,
+            },
+          );
+          const resolvedPortName = String(portBack?.sourceNode["properties"]?.["shortName"] ?? pNode.name);
 
-        if (!origSwc?.ports.has(resolvedPortName)) {
-          changes.push({
-            target: "port",
-            elementId: `${resolvedSwcName}.${resolvedPortName}`,
-            reconciledVal: `${dir}:${resolvedPortName}`,
-            strategy: strategy === "physics-simplex" ? "target-wins" : strategy,
+          if (!origSwc?.ports.has(resolvedPortName)) {
+            changes.push({
+              target: "port",
+              elementId: `${resolvedSwcName}.${resolvedPortName}`,
+              reconciledVal: `${dir}:${resolvedPortName}`,
+              strategy: strategy === "physics-simplex" ? "target-wins" : strategy,
+            });
+          }
+
+          const existingEl = existingPortEls.find((el) => {
+            const sn = findDirectChild(el, "SHORT-NAME", originalArxml);
+            return sn ? CstXmlAdapter.getElementText(sn, originalArxml) === resolvedPortName : false;
           });
-        }
-
-        const existingEl = existingPortEls.find(
-          (el: XmlElement) => findDirectChild(el, "SHORT-NAME")?.text === resolvedPortName,
-        );
-        if (existingEl) {
-          matchedPortEls.add(existingEl);
-        } else if (portsContainer && !portsContainer.selfClosing) {
-          const tag = dir === "required" ? "R-PORT-PROTOTYPE" : "P-PORT-PROTOTYPE";
-          const csTref = isClientServer
-            ? `\n      <REQUIRED-INTERFACE-TREF DEST="CLIENT-SERVER-INTERFACE">/Interfaces/${portTypeName}</REQUIRED-INTERFACE-TREF>`
-            : "";
-          const newPortXml = `<${tag}>\n      <SHORT-NAME>${resolvedPortName}</SHORT-NAME>${csTref}\n    </${tag}>`;
-          splices.push(xml.appendChildSplice(portsContainer, newPortXml, originalArxml));
-        }
-      }
-
-      for (const oldEl of existingPortEls) {
-        if (!matchedPortEls.has(oldEl)) {
-          splices.push(xml.removeElementSplice(oldEl, originalArxml));
-        }
-      }
-
-      // Synchronize runnables via declarative TGG rule (#4 RunnableEntity) and XML CST splices
-      const runnablesContainer = findXmlElements(swcEl, "RUNNABLES")[0];
-      const existingRunnableEls = runnablesContainer
-        ? runnablesContainer.children.filter((c: XmlElement) => c.name.toUpperCase() === "RUNNABLE-ENTITY")
-        : [];
-      const matchedRunnableEls = new Set<XmlElement>();
-      const actionNames = new Set(partDef.actions.map((a) => a.name));
-
-      for (let actIdx = 0; actIdx < partDef.actions.length; actIdx++) {
-        const actNode = partDef.actions[actIdx]!;
-        const runBack = transformer.evaluateRuleBackward(
-          {
-            kind: "ActionUsage",
-            name: actNode.name,
-            properties: { name: actNode.name },
-          },
-          "autosar",
-          {
-            strategy,
-            threadId: `${swcKey}.${actNode.name}`,
-          },
-        );
-        const resolvedRunnableName = String(runBack?.sourceNode["properties"]?.["shortName"] ?? actNode.name);
-
-        if (!origSwc?.internalBehavior?.runnables.has(resolvedRunnableName)) {
-          changes.push({
-            target: "runnable",
-            elementId: `${resolvedSwcName}.${resolvedRunnableName}`,
-            reconciledVal: resolvedRunnableName,
-            strategy,
-          });
-        }
-
-        let existingRunEl = existingRunnableEls.find(
-          (el: XmlElement) => findDirectChild(el, "SHORT-NAME")?.text === resolvedRunnableName,
-        );
-        if (!existingRunEl && actIdx < existingRunnableEls.length) {
-          const candidate = existingRunnableEls[actIdx]!;
-          const candidateName = findDirectChild(candidate, "SHORT-NAME")?.text ?? "";
-          if (!matchedRunnableEls.has(candidate) && !actionNames.has(candidateName)) {
-            existingRunEl = candidate;
+          if (existingEl) {
+            matchedPortEls.add(existingEl);
+          } else if (portsContainer) {
+            const tag = dir === "required" ? "R-PORT-PROTOTYPE" : "P-PORT-PROTOTYPE";
+            const csTref = isClientServer
+              ? `\n      <REQUIRED-INTERFACE-TREF DEST="CLIENT-SERVER-INTERFACE">/Interfaces/${portTypeName}</REQUIRED-INTERFACE-TREF>`
+              : "";
+            const newPortXml = `<${tag}>\n      <SHORT-NAME>${resolvedPortName}</SHORT-NAME>${csTref}\n    </${tag}>`;
+            CstXmlAdapter.appendChild(tx, portsContainer, newPortXml);
           }
         }
 
-        if (existingRunEl) {
-          matchedRunnableEls.add(existingRunEl);
-          const runShortNameEl = findDirectChild(existingRunEl, "SHORT-NAME");
-          if (runShortNameEl && !runShortNameEl.selfClosing && runShortNameEl.text !== resolvedRunnableName) {
-            splices.push(xml.setElementTextSplice(runShortNameEl, resolvedRunnableName));
+        for (const oldEl of existingPortEls) {
+          if (!matchedPortEls.has(oldEl)) {
+            CstXmlAdapter.deleteElement(tx, oldEl);
           }
-        } else if (runnablesContainer && !runnablesContainer.selfClosing) {
-          const newRunXml = `<RUNNABLE-ENTITY>\n          <SHORT-NAME>${resolvedRunnableName}</SHORT-NAME>\n        </RUNNABLE-ENTITY>`;
-          splices.push(xml.appendChildSplice(runnablesContainer, newRunXml, originalArxml));
         }
-      }
 
-      for (const oldRunEl of existingRunnableEls) {
-        if (!matchedRunnableEls.has(oldRunEl)) {
-          splices.push(xml.removeElementSplice(oldRunEl, originalArxml));
+        // Synchronize runnables via declarative TGG rule (#4 RunnableEntity) and CST transactions
+        const runnablesContainer = CstXmlAdapter.findElements(
+          swcEl,
+          originalArxml,
+          (_n, t) => t.toUpperCase() === "RUNNABLES",
+        )[0];
+        const existingRunnableEls = runnablesContainer
+          ? CstXmlAdapter.getChildElements(runnablesContainer).filter(
+              (c) => (CstXmlAdapter.getTagName(c, originalArxml) ?? "").toUpperCase() === "RUNNABLE-ENTITY",
+            )
+          : [];
+        const matchedRunnableEls = new Set<SyntaxNode>();
+        const actionNames = new Set(partDef.actions.map((a) => a.name));
+
+        for (let actIdx = 0; actIdx < partDef.actions.length; actIdx++) {
+          const actNode = partDef.actions[actIdx]!;
+          const runBack = transformer.evaluateRuleBackward(
+            {
+              kind: "ActionUsage",
+              name: actNode.name,
+              properties: { name: actNode.name },
+            },
+            "autosar",
+            {
+              strategy,
+              threadId: `${swcKey}.${actNode.name}`,
+            },
+          );
+          const resolvedRunnableName = String(runBack?.sourceNode["properties"]?.["shortName"] ?? actNode.name);
+
+          if (!origSwc?.internalBehavior?.runnables.has(resolvedRunnableName)) {
+            changes.push({
+              target: "runnable",
+              elementId: `${resolvedSwcName}.${resolvedRunnableName}`,
+              reconciledVal: resolvedRunnableName,
+              strategy,
+            });
+          }
+
+          let existingRunEl = existingRunnableEls.find((el) => {
+            const sn = findDirectChild(el, "SHORT-NAME", originalArxml);
+            return sn ? CstXmlAdapter.getElementText(sn, originalArxml) === resolvedRunnableName : false;
+          });
+          if (!existingRunEl && actIdx < existingRunnableEls.length) {
+            const candidate = existingRunnableEls[actIdx]!;
+            const candSn = findDirectChild(candidate, "SHORT-NAME", originalArxml);
+            const candidateName = candSn ? CstXmlAdapter.getElementText(candSn, originalArxml) : "";
+            if (!matchedRunnableEls.has(candidate) && !actionNames.has(candidateName)) {
+              existingRunEl = candidate;
+            }
+          }
+
+          if (existingRunEl) {
+            matchedRunnableEls.add(existingRunEl);
+            const runShortNameEl = findDirectChild(existingRunEl, "SHORT-NAME", originalArxml);
+            if (
+              runShortNameEl &&
+              !CstXmlAdapter.isSelfClosing(runShortNameEl, originalArxml) &&
+              CstXmlAdapter.getElementText(runShortNameEl, originalArxml) !== resolvedRunnableName
+            ) {
+              CstXmlAdapter.setElementText(tx, runShortNameEl, resolvedRunnableName);
+            }
+          } else if (runnablesContainer) {
+            const newRunXml = `<RUNNABLE-ENTITY>\n          <SHORT-NAME>${resolvedRunnableName}</SHORT-NAME>\n        </RUNNABLE-ENTITY>`;
+            CstXmlAdapter.appendChild(tx, runnablesContainer, newRunXml);
+          }
+        }
+
+        for (const oldRunEl of existingRunnableEls) {
+          if (!matchedRunnableEls.has(oldRunEl)) {
+            CstXmlAdapter.deleteElement(tx, oldRunEl);
+          }
         }
       }
     }
+
+    const updatedText = tx.commit().applyToString(originalArxml);
+
+    return {
+      updatedText,
+      changes,
+      conflicts: transformer.getConflicts(),
+      transformer,
+    };
+  } finally {
+    session.dispose();
   }
-
-  const updatedText = xml.applySplices(originalArxml, splices);
-
-  return {
-    updatedText,
-    changes,
-    conflicts: transformer.getConflicts(),
-    transformer,
-  };
 }

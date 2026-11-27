@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import {
   WMO_TABLE_B_ENTRIES,
   WMO_TABLE_D_ENTRIES,
@@ -33,6 +36,54 @@ export interface BufrLspCompletionItem {
   insertText?: string;
 }
 
+interface BufrCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface BufrCstLineIndex {
+  byRow: Map<number, BufrCstLineEntry>;
+  lineCount: number;
+}
+
+function buildBufrCstLineIndex(source: string): BufrCstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("bufr", import.meta.url, createWasmParserSync).parse(source)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, BufrCstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(source, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row > maxRow) maxRow = row;
+    }
+    const rootEndRow = (rootNode as { endPosition?: { row?: number } }).endPosition?.row ?? 0;
+    return { byRow, lineCount: Math.max(maxRow, rootEndRow) + 1 };
+  }
+
+  const rawLines = source.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  return { byRow, lineCount: Math.max(1, rawLines.length) };
+}
+
 /**
  * Validates BUFR source text and returns LSP-compatible diagnostics.
  */
@@ -45,7 +96,7 @@ export function validateBufr(source: string): BufrDiagnostic[] {
  */
 export function getBufrDocumentSymbols(source: string): BufrLspDocumentSymbol[] {
   const msg = parseBufrText(source);
-  const totalLines = source.split(/\r?\n/).length;
+  const totalLines = buildBufrCstLineIndex(source).lineCount;
 
   const children: BufrLspDocumentSymbol[] = [];
 
@@ -115,9 +166,10 @@ export function getBufrDocumentSymbols(source: string): BufrLspDocumentSymbol[] 
  * Provides hover documentation for F-X-Y descriptors, BUFR sections, and keywords at a 1-based line/column.
  */
 export function getBufrHover(source: string, line: number, column: number): BufrLspHover | null {
-  const lines = source.split(/\r?\n/);
-  const textLine = lines[line - 1];
-  if (!textLine) return null;
+  const cstIndex = buildBufrCstLineIndex(source);
+  const entry = cstIndex.byRow.get(line - 1);
+  if (!entry) return null;
+  const textLine = " ".repeat(entry.startCol) + entry.text;
 
   const colIdx = Math.max(0, Math.min(textLine.length - 1, column - 1));
   // Expand token around cursor (digits, hyphens, letters, underscores)

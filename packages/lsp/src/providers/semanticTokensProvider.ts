@@ -14,6 +14,65 @@ import type { CstNodeLike, CstParserLike, CstTreeLike } from "../utils/ast-utils
 
 const DEFAULT_TYPE_KEYWORDS = ["Real", "Integer", "Boolean", "String", "Natural"];
 
+const IDENT_NODE_TYPES = new Set([
+  "IDENT",
+  "identifier",
+  "IDENTIFIER",
+  "Identifier",
+  "DeckIdentifier",
+  "IniIdentifier",
+  "QUALIFIED_IDENT",
+  "Name",
+  "ID",
+]);
+
+const STRING_NODE_TYPES = new Set([
+  "STRING",
+  "string_literal",
+  "description_string",
+  "StringLiteral",
+  "DeckString",
+  "IniString",
+  "QuotedString",
+  "LiteralString",
+]);
+
+const NUMBER_NODE_TYPES = new Set([
+  "UNSIGNED_INTEGER",
+  "UNSIGNED_REAL",
+  "unsigned_integer",
+  "unsigned_real",
+  "NUMBER",
+  "NumberLiteral",
+  "DeckNumber",
+  "IniNumber",
+  "IntegerLiteral",
+  "Number",
+  "SignedNumber",
+  "INTEGER",
+  "REAL",
+  "LiteralInteger",
+  "LiteralReal",
+]);
+
+const BOOLEAN_NODE_TYPES = new Set(["BOOLEAN", "BooleanLiteral", "LiteralBoolean"]);
+
+const COMMENT_NODE_TYPES = new Set([
+  "comment",
+  "line_comment",
+  "block_comment",
+  "COMMENT",
+  "Comment",
+  "CommentLine",
+  "IniComment",
+  "LineComment",
+  "BlockComment",
+  "CommentCard",
+  "LINE_COMMENT",
+  "BLOCK_COMMENT",
+  "REGULAR_COMMENT",
+]);
+
 const tokenTypes = [
   "keyword",
   "type",
@@ -408,33 +467,54 @@ export function registerSemanticTokensProvider(
 
       const isModelica = textDocument.languageId === "modelica" || cleanUri.toLowerCase().endsWith(".mo");
 
-      // Try WASM-compiled semantic tokens (lsp_semanticTokens_full) for polyglot languages
+      // Try WASM-compiled semantic tokens (lsp_semanticTokens_full) generated from @modelscript/dsl
+      // `semanticToken(...)` grammar metadata. Layout is [byteStart, byteLen, localTypeId, localModMask].
       if (!isModelica) {
         try {
-          const rootPtr = typeof tree.rootNode.getPtr === "function" ? tree.rootNode.getPtr() : undefined;
-          const runtime = tree.runtime ?? tree.rootNode.runtime;
+          const rootNodeAny = tree.rootNode as CstNodeLike & { getPtr?: () => number; ptr?: number };
+          const rootPtr =
+            typeof rootNodeAny.getPtr === "function" ? rootNodeAny.getPtr() : (rootNodeAny.ptr ?? undefined);
+          const wasmFacade =
+            pluginForTokens?.facade ??
+            (tree as CstTreeLike & { facade?: { getSemanticTokens?: (r: number, s?: string) => Uint32Array } }).facade;
           const wasmTokens: Uint32Array | undefined =
-            typeof tree.getSemanticTokens === "function"
-              ? tree.getSemanticTokens()
-              : rootPtr && typeof runtime?.getSemanticTokens === "function"
-                ? runtime.getSemanticTokens(rootPtr, text)
-                : undefined;
-          if (wasmTokens && wasmTokens.length >= 5) {
-            let curLine = 0;
-            let curChar = 0;
-            for (let i = 0; i + 4 < wasmTokens.length; i += 5) {
-              const dLine = wasmTokens[i]!;
-              const dChar = wasmTokens[i + 1]!;
-              const len = wasmTokens[i + 2]!;
-              const tType = wasmTokens[i + 3]!;
-              const tMod = wasmTokens[i + 4]!;
-              curLine += dLine;
-              curChar = dLine === 0 ? curChar + dChar : dChar;
-              if (len > 0) {
-                builder.push(curLine, curChar, len, tType, tMod);
+            rootPtr && typeof wasmFacade?.getSemanticTokens === "function"
+              ? (wasmFacade.getSemanticTokens(rootPtr, text) ?? undefined)
+              : undefined;
+          if (wasmTokens && wasmTokens.length >= 4) {
+            const localLegend = pluginForTokens?.semanticLegend;
+            const lineIndex = new LineIndex(text);
+            const wasmCollector = new TokenCollector();
+            for (let i = 0; i + 3 < wasmTokens.length; i += 4) {
+              const startOff = wasmTokens[i]!;
+              const len = wasmTokens[i + 1]!;
+              const localTypeId = wasmTokens[i + 2]!;
+              const localModMask = wasmTokens[i + 3]!;
+              if (len <= 0) continue;
+              const typeName = localLegend?.tokenTypes?.[localTypeId] ?? tokenTypes[localTypeId];
+              if (!typeName) continue;
+              let remappedMod = 0;
+              if (localModMask !== 0 && localLegend?.tokenModifiers?.length) {
+                for (let bit = 0; bit < localLegend.tokenModifiers.length; bit++) {
+                  if ((localModMask & (1 << bit)) !== 0) {
+                    const globalModIdx = tokenModifiers.indexOf(localLegend.tokenModifiers[bit]!);
+                    if (globalModIdx >= 0) remappedMod |= 1 << globalModIdx;
+                  }
+                }
+              } else {
+                remappedMod = localModMask;
               }
+              wasmCollector.pushOffsetSpan(text, lineIndex, startOff, startOff + len, typeName, remappedMod);
             }
-            return cacheResult(builder.build());
+            // Emit inter-leaf trivia/gap comments (// and /* */) skipped by extras so
+            // grammars don't need custom TS semantic-tokens.ts just for comments.
+            if (tree.rootNode && typeof (tree.rootNode as CstNodeLike).startIndex === "number") {
+              collectCstGapComments(tree.rootNode, text, lineIndex, wasmCollector, (src, gs, ge, li, col) => {
+                emitGapBlockComments(src, gs, ge, li, col);
+                emitGapLineComments(["//", "#"], src, gs, ge, li, col);
+              });
+            }
+            return cacheResult(wasmCollector.flushTo(builder));
           }
         } catch {
           // Fall back to CST traversal below
@@ -450,7 +530,7 @@ export function registerSemanticTokensProvider(
         let tokenType: string | null = null;
         let modifier = 0;
 
-        if (node.type === "IDENT" || node.type === "identifier" || node.type === "IDENTIFIER") {
+        if (IDENT_NODE_TYPES.has(node.type)) {
           const parent = node.parent;
           let p = parent;
           while (p && (p.type === "Name" || p.type === "name" || p.type === "component_reference")) {
@@ -533,24 +613,13 @@ export function registerSemanticTokensProvider(
           } else {
             tokenType = "variable";
           }
-        } else if (node.type === "STRING" || node.type === "string_literal" || node.type === "description_string") {
+        } else if (STRING_NODE_TYPES.has(node.type)) {
           tokenType = "string";
-        } else if (
-          node.type === "UNSIGNED_INTEGER" ||
-          node.type === "UNSIGNED_REAL" ||
-          node.type === "unsigned_integer" ||
-          node.type === "unsigned_real" ||
-          node.type === "NUMBER"
-        ) {
+        } else if (NUMBER_NODE_TYPES.has(node.type)) {
           tokenType = "number";
-        } else if (node.type === "BOOLEAN") {
+        } else if (BOOLEAN_NODE_TYPES.has(node.type)) {
           tokenType = "keyword";
-        } else if (
-          node.type === "comment" ||
-          node.type === "line_comment" ||
-          node.type === "block_comment" ||
-          node.type === "COMMENT"
-        ) {
+        } else if (COMMENT_NODE_TYPES.has(node.type)) {
           tokenType = "comment";
         } else if (["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "==", "<>", "!="].includes(node.type)) {
           tokenType = "operator";
@@ -571,11 +640,11 @@ export function registerSemanticTokensProvider(
         if (tokenType !== null) {
           collector.pushNode(node, tokenType, modifier);
           if (
-            node.type === "IDENTIFIER" ||
-            node.type === "NUMBER" ||
-            node.type === "STRING" ||
-            node.type === "BOOLEAN" ||
-            node.type === "COMMENT"
+            IDENT_NODE_TYPES.has(node.type) ||
+            NUMBER_NODE_TYPES.has(node.type) ||
+            STRING_NODE_TYPES.has(node.type) ||
+            BOOLEAN_NODE_TYPES.has(node.type) ||
+            COMMENT_NODE_TYPES.has(node.type)
           ) {
             return;
           }

@@ -14,7 +14,7 @@ import {
   enterXrSession,
   getSharedXrStore,
   detectSandboxedIframe as sharedDetectSandboxedIframe,
-} from "@modelscript/editor/workbench/vr-rotunda/xr-session.js";
+} from "@modelscript/rotunda/xr-session.js";
 import { XR } from "@react-three/xr";
 import React, { useCallback, useEffect, useState } from "react";
 

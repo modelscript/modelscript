@@ -95,6 +95,9 @@ import { getTrnsysDocumentSymbols, getTrnsysHover, trnsysLanguage, validateTrnsy
 import { getUsgsDemDocumentSymbols, getUsgsDemHover, usgsDemLanguage, validateUsgsDem } from "@modelscript/usgs-dem";
 import { getVerilogDocumentSymbols, getVerilogHover, validateVerilog, verilogLanguage } from "@modelscript/verilog";
 import { getVhdlDocumentSymbols, getVhdlHover, validateVhdl, vhdlLanguage } from "@modelscript/vhdl";
+import type { WorkspaceManager } from "../services/workspace-manager.js";
+import type { LanguageDefLike } from "./LanguageRegistry.js";
+import { registerStandardPlugin } from "./standard-plugin.js";
 
 export interface HeritagePluginSpec {
   id: string;
@@ -112,9 +115,12 @@ export interface HeritagePluginSpec {
 }
 
 /**
- * Registers all 44 heritage 1960s–1980s Beta engineering language plugins with the LSP server.
+ * Registers all 63 heritage 1960s–1980s Beta engineering language and data-format plugins with the LSP server.
  */
-export function registerHeritageLanguagePlugins(register: (spec: HeritagePluginSpec) => void): void {
+export function registerHeritageLanguagePlugins(
+  register: (spec: HeritagePluginSpec) => void = registerStandardPlugin,
+  workspaceManager?: WorkspaceManager,
+): void {
   const plugins: HeritagePluginSpec[] = [
     {
       id: "acsl",
@@ -724,7 +730,15 @@ export function registerHeritageLanguagePlugins(register: (spec: HeritagePluginS
     },
   ];
 
+  const registerLanguageDef =
+    workspaceManager?.unifiedWorkspace && typeof workspaceManager.unifiedWorkspace.registerLanguageDef === "function"
+      ? workspaceManager.unifiedWorkspace.registerLanguageDef.bind(workspaceManager.unifiedWorkspace)
+      : undefined;
+
   for (const plugin of plugins) {
     register(plugin);
+    if (registerLanguageDef && plugin.languageDef) {
+      registerLanguageDef(plugin.id, plugin.languageDef as LanguageDefLike);
+    }
   }
 }

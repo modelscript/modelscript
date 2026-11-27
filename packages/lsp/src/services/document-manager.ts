@@ -4,7 +4,7 @@ import type { CSTTree } from "@modelscript/runtime";
 import { TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { PositionIndex } from "../lsp-bridge.js";
-import type { CstTreeLike, XmlFallbackTree } from "../utils/ast-utils.js";
+import type { CstNodeLike, CstTreeLike, XmlFallbackTree } from "../utils/ast-utils.js";
 import type { SyntaxNode as CstSyntaxNode, Tree as CstTree } from "../utils/cst-facade.js";
 import type { LineIndex } from "../utils/line-index.js";
 
@@ -39,49 +39,92 @@ export interface MinimalFallbackTree {
   __xmlErrors?: unknown[];
 }
 
+/** Normalized parse tree union stored in `DocumentTreeMap` and `LazyTreeMap`. */
+export type StoredCstTree = CachedCstTree | CstTreeLike | XmlFallbackTree | null;
+
+/** Accepted input tree union when writing into `DocumentTreeMap` or `LazyTreeMap`. */
+export type StoredCstTreeInput = StoredCstTree | MinimalFallbackTree;
+
+function isNormalizedTree(
+  tree: Exclude<StoredCstTreeInput, null>,
+): tree is CachedCstTree | CstTreeLike | XmlFallbackTree {
+  return "rootNode" in tree && tree.rootNode != null && typeof (tree.rootNode as { type?: unknown }).type === "string";
+}
+
+function normalizeStoredTree(tree: StoredCstTreeInput, fallbackText: string): StoredCstTree {
+  if (!tree) return null;
+  if (isNormalizedTree(tree)) return tree;
+  const raw = tree.rootNode;
+  const text = raw?.text ?? fallbackText;
+  const normalizedRoot: CstNodeLike & { data?: unknown } = {
+    type: raw?.type ?? "document",
+    text,
+    startIndex: 0,
+    endIndex: text.length,
+    children: [],
+    ...(raw && "data" in raw && raw.data !== undefined ? { data: raw.data } : {}),
+  };
+  return {
+    rootNode: normalizedRoot,
+    ...(tree.rootPtr !== undefined ? { rootPtr: tree.rootPtr } : {}),
+    ...(tree.facade !== undefined ? { facade: tree.facade } : {}),
+    ...(tree.delete !== undefined ? { delete: tree.delete } : {}),
+  };
+}
+
 /** Cached parse tree entry stored per document URI. */
 export interface DocumentTreeEntry {
   text: string;
-  tree: CachedCstTree;
+  tree: StoredCstTree;
   classCache?: Map<string, unknown> | undefined;
   lineIndex?: LineIndex | undefined;
   tokens?: CstSyntaxNode[] | undefined;
+  positionIndex?: PositionIndex | undefined;
+  positionIndexVersion?: number | undefined;
+  positionIndexText?: string | undefined;
 }
 
 /** Input entry accepted by `DocumentTreeMap.set`. */
 export interface DocumentTreeInputEntry {
   text: string;
-  tree: CachedCstTree | CstTreeLike | XmlFallbackTree | MinimalFallbackTree | null;
+  tree: StoredCstTreeInput;
   classCache?: Map<string, unknown> | undefined;
   lineIndex?: LineIndex | undefined;
   tokens?: CstSyntaxNode[] | undefined;
+  positionIndex?: PositionIndex | undefined;
+  positionIndexVersion?: number | undefined;
+  positionIndexText?: string | undefined;
 }
 
-/** Map subclass allowing full `CachedCstTree` reads while accepting minimal fallback trees on write. */
+/** Map subclass storing normalized document CST entries (full WASM trees, CstTreeLike fallbacks, or null). */
 export class DocumentTreeMap extends Map<string, DocumentTreeEntry> {
   override set(key: string, value: DocumentTreeInputEntry): this {
-    return super.set(key, value as DocumentTreeEntry);
+    return super.set(key, { ...value, tree: normalizeStoredTree(value.tree, value.text) });
   }
 }
 
 /** Lazily cached library tree entry stored per document URI. */
 export interface LazyTreeEntry {
   text: string;
-  tree: CachedCstTree | CstTreeLike | XmlFallbackTree;
+  tree: StoredCstTree;
   classCache?: Map<string, unknown> | undefined;
+  positionIndex?: PositionIndex | undefined;
+  positionIndexText?: string | undefined;
 }
 
 /** Input entry accepted by `LazyTreeMap.set`. */
 export interface LazyTreeInputEntry {
   text: string;
-  tree: CachedCstTree | CstTreeLike | XmlFallbackTree | MinimalFallbackTree | null;
+  tree: StoredCstTreeInput;
   classCache?: Map<string, unknown> | undefined;
+  positionIndex?: PositionIndex | undefined;
+  positionIndexText?: string | undefined;
 }
 
 /** Map subclass for lazily parsed library trees. */
 export class LazyTreeMap extends Map<string, LazyTreeEntry> {
   override set(key: string, value: LazyTreeInputEntry): this {
-    return super.set(key, value as LazyTreeEntry);
+    return super.set(key, { ...value, tree: normalizeStoredTree(value.tree, value.text) });
   }
 }
 
@@ -99,7 +142,7 @@ export interface SharedCompilerFileSystem {
 /** Shared compiler context exposed by `ParserService` and `DocumentManager`. */
 export interface SharedCompilerContext {
   fs: SharedCompilerFileSystem;
-  parse(ext: string, input: string, ...rest: unknown[]): CachedCstTree;
+  parse(ext: string, input: string, ...rest: unknown[]): CachedCstTree | null;
   flattenArena?(name: string, classId?: number, uri?: string, options?: Record<string, unknown>): unknown;
   queryEngine?: unknown;
   workspaceIndex?: unknown;
@@ -157,8 +200,12 @@ export class DocumentManager {
     return null;
   }
 
+  /** Fallback cached `PositionIndex` entries for open documents that do not yet have a `DocumentTreeEntry`. */
+  private openDocPositionIndices = new Map<string, { version: number; index: PositionIndex }>();
+
   /**
-   * Retrieves the line offset index for a document if available.
+   * Retrieves the line offset index for a document if available, reusing a cached `PositionIndex`
+   * when the document version or cached tree text has not changed.
    *
    * @param uri - The document URI to look up.
    * @returns The line index instance, or `null` if unavailable.
@@ -166,11 +213,49 @@ export class DocumentManager {
   public getLineIndexForDoc(uri: string): PositionIndex | null {
     const doc = this.documents.get(uri);
     if (doc) {
-      return new PositionIndex(doc.getText());
+      const treeEntry = this.documentTrees.get(uri);
+      if (treeEntry) {
+        if (treeEntry.positionIndex && treeEntry.positionIndexVersion === doc.version) {
+          return treeEntry.positionIndex;
+        }
+        const text = doc.getText();
+        if (treeEntry.positionIndex && treeEntry.positionIndexText === text) {
+          treeEntry.positionIndexVersion = doc.version;
+          return treeEntry.positionIndex;
+        }
+        const index = new PositionIndex(text);
+        treeEntry.positionIndex = index;
+        treeEntry.positionIndexVersion = doc.version;
+        treeEntry.positionIndexText = text;
+        this.openDocPositionIndices.delete(uri);
+        return index;
+      }
+
+      const cached = this.openDocPositionIndices.get(uri);
+      if (cached && cached.version === doc.version) {
+        return cached.index;
+      }
+      const index = new PositionIndex(doc.getText());
+      if (!this.openDocPositionIndices.has(uri) && this.openDocPositionIndices.size >= 200) {
+        const oldest = this.openDocPositionIndices.keys().next().value;
+        if (oldest !== undefined) {
+          this.openDocPositionIndices.delete(oldest);
+        }
+      }
+      this.openDocPositionIndices.set(uri, { version: doc.version, index });
+      return index;
     }
+
+    this.openDocPositionIndices.delete(uri);
     const treeEntry = this.documentTrees.get(uri) ?? this.lazyLibTrees.get(uri);
     if (treeEntry?.text) {
-      return new PositionIndex(treeEntry.text);
+      if (treeEntry.positionIndex && treeEntry.positionIndexText === treeEntry.text) {
+        return treeEntry.positionIndex;
+      }
+      const index = new PositionIndex(treeEntry.text);
+      treeEntry.positionIndex = index;
+      treeEntry.positionIndexText = treeEntry.text;
+      return index;
     }
     return null;
   }

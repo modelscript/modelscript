@@ -826,7 +826,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
       } else if (lower.endsWith(".fmu")) {
         try {
           const parsed = parseRaw(code);
-          const defaultBus = parsed.generators[0]?.i ?? parsed.buses[0]?.i ?? 1;
+          const defaultBus = parsed.generators[0]?.i ?? parsed.buses.values().next().value?.i ?? 1;
           const bytes = new Uint8Array(await file.arrayBuffer());
           const linked = await loadFmuForPsse(bytes, {});
           const busNumber = linked.instance.busNumber !== 1 ? linked.instance.busNumber : defaultBus;
@@ -846,13 +846,13 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
       } else if (lower.endsWith(".dll") || lower.endsWith(".so") || lower.endsWith(".dylib")) {
         try {
           const parsed = parseRaw(code);
-          const defaultBus = parsed.generators[0]?.i ?? parsed.buses[0]?.i ?? 1;
+          const defaultBus = parsed.generators[0]?.i ?? parsed.buses.values().next().value?.i ?? 1;
           const bytes = new Uint8Array(await file.arrayBuffer());
           const dyrCase = dyrText ? parseDyr(dyrText) : null;
           const usrmdlRec = dyrCase?.records.find((r) => r.model.toUpperCase() === "USRMDL" || r.ibus === defaultBus);
           const { instance, exports } = linkUsrDllToDynamicInstance(bytes, {
             busNumber: usrmdlRec?.ibus ?? defaultBus,
-            ...(usrmdlRec?.params ? { con: usrmdlRec.params } : {}),
+            ...(usrmdlRec?.con ? { con: usrmdlRec.con } : {}),
           });
           setFmuEntries((prev) => [
             ...prev,
@@ -1600,7 +1600,7 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
                 Target Bus:
                 <input
                   type="number"
-                  placeholder={String(buses[0]?.busNum ?? 1)}
+                  placeholder={buses[0]?.id ?? "1"}
                   value={qvTargetBus}
                   onChange={(e) => setQvTargetBus(e.target.value)}
                   style={{ ...numInputStyle, width: 72 }}
@@ -1636,7 +1636,9 @@ export const PowerGridInspector: React.FC<PowerGridInspectorProps> = ({
                 }
                 if (activeReport === "accc") {
                   const accc = analyzeN1Contingencies(c);
-                  return (accc as unknown as { reportText?: string }).reportText ?? JSON.stringify(accc, null, 2);
+                  return "reportText" in accc && typeof accc.reportText === "string"
+                    ? accc.reportText
+                    : JSON.stringify(accc, null, 2);
                 }
                 if (activeReport === "qv") {
                   const busId = Number(qvTargetBus) || (c.buses.keys().next().value ?? 1);

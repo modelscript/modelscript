@@ -2,7 +2,7 @@
 
 import type { SyntaxNode } from "@modelscript/dsl";
 import type { SymbolEntry, SymbolId } from "@modelscript/runtime";
-import { type BridgeContext, getGlobalLspBridgeEnv } from "./bridge-context.js";
+import type { BridgeContext } from "./bridge-context.js";
 import { findAncestorOrSelfByType, getNodeStartOffset } from "./cst-helpers.js";
 import {
   collapseWs,
@@ -48,18 +48,17 @@ export function getEntryFullSourceText(ctx: BridgeContext, entry: SymbolEntry): 
   }
 
   if (uri) {
-    const globalEnv = getGlobalLspBridgeEnv();
-    const otherBridge = ctx.env?.documentLSPBridges?.get(uri) ?? globalEnv.documentLSPBridges?.get(uri);
+    const otherBridge = ctx.env?.documentLSPBridges?.get(uri);
     const otherBridgeText = otherBridge?.positions?.getSourceText?.();
     if (typeof otherBridgeText === "string" && otherBridgeText.length > 0) {
       return otherBridgeText;
     }
-    const openDocText = ctx.env?.documents?.get(uri)?.getText?.() ?? globalEnv.documents?.get(uri)?.getText?.();
+    const openDocText = ctx.env?.documents?.get(uri)?.getText?.();
     if (typeof openDocText === "string" && openDocText.length > 0) {
       return openDocText;
     }
     const fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
-    const sharedFs = ctx.env?.sharedFs ?? globalEnv.sharedFs;
+    const sharedFs = ctx.env?.sharedFs;
     const sharedText =
       sharedFs?.readFile?.(uri) ??
       sharedFs?.read?.(fsPath) ??
@@ -98,11 +97,6 @@ export function getEntryCstNode(ctx: BridgeContext, entry?: SymbolEntry | null):
     cstNode?(id: SymbolId): SyntaxNode | null | undefined;
     toQueryDB?(): { cstNode?(id: SymbolId): SyntaxNode | null | undefined } | null;
   };
-  type BridgeGlobals = {
-    documentLSPBridges?: Map<string, { engine?: unknown }>;
-    documents?: Map<string, { tree?: { rootNode?: SyntaxNode } }>;
-  };
-  const globals = globalThis as unknown as BridgeGlobals;
   try {
     const eng = ctx.engine as unknown as EngineCstAccess | undefined;
     if (eng && typeof eng.cstNode === "function") {
@@ -116,14 +110,14 @@ export function getEntryCstNode(ctx: BridgeContext, entry?: SymbolEntry | null):
     }
     const uri = entry.resourceId || ctx.documentUri;
     if (uri) {
-      const otherBridge = ctx.env?.documentLSPBridges?.get(uri) ?? globals.documentLSPBridges?.get(uri);
+      const otherBridge = ctx.env?.documentLSPBridges?.get(uri);
       const otherEng = (otherBridge as unknown as { engine?: unknown } | undefined)?.engine as
         EngineCstAccess | undefined;
       if (otherEng && typeof otherEng.cstNode === "function") {
         const node = otherEng.cstNode(entry.id);
         if (node && typeof node.type === "string") return node;
       }
-      const doc = ctx.env?.documents?.get(uri) ?? globals.documents?.get(uri);
+      const doc = ctx.env?.documents?.get(uri);
       const root = (doc as { tree?: { rootNode?: SyntaxNode } } | undefined)?.tree?.rootNode;
       if (root && typeof root.descendantForIndex === "function" && entry.startOffset !== undefined) {
         const node = root.descendantForIndex(entry.startOffset, entry.endOffset ?? entry.startOffset);
@@ -144,11 +138,6 @@ export function getRootCstNode(ctx: BridgeContext, resourceUri?: string): Syntax
     tree?: { rootNode?: SyntaxNode };
     toQueryDB?(): { tree?: { rootNode?: SyntaxNode } } | null;
   };
-  type BridgeGlobals = {
-    documentLSPBridges?: Map<string, { engine?: unknown }>;
-    documents?: Map<string, { tree?: { rootNode?: SyntaxNode } }>;
-  };
-  const globals = globalThis as unknown as BridgeGlobals;
   try {
     const eng = ctx.engine as unknown as EngineRootAccess | undefined;
     if (!resourceUri || resourceUri === ctx.documentUri) {
@@ -159,14 +148,14 @@ export function getRootCstNode(ctx: BridgeContext, resourceUri?: string): Syntax
     }
     const uri = resourceUri || ctx.documentUri;
     if (uri) {
-      const otherBridge = ctx.env?.documentLSPBridges?.get(uri) ?? globals.documentLSPBridges?.get(uri);
+      const otherBridge = ctx.env?.documentLSPBridges?.get(uri);
       const otherEng = (otherBridge as unknown as { engine?: unknown } | undefined)?.engine as
         EngineRootAccess | undefined;
       const otherRoot = otherEng?.tree?.rootNode ?? otherEng?.toQueryDB?.()?.tree?.rootNode;
       if (otherRoot && typeof otherRoot.descendantForIndex === "function") {
         return otherRoot;
       }
-      const doc = ctx.env?.documents?.get(uri) ?? globals.documents?.get(uri);
+      const doc = ctx.env?.documents?.get(uri);
       const docRoot = (doc as { tree?: { rootNode?: SyntaxNode } } | undefined)?.tree?.rootNode;
       if (docRoot && typeof docRoot.descendantForIndex === "function") {
         return docRoot;

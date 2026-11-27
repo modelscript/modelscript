@@ -54,16 +54,6 @@ const canFrameRows = document.getElementById("can-frame-rows");
 
 const errorContainer = document.getElementById("error-container")!;
 
-function escapeHtmlCosim(unsafe: string): string {
-  if (!unsafe) return "";
-  return String(unsafe)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 // ── State ──
 
 let isLocalMode = true; // Default to local mode
@@ -212,6 +202,7 @@ interface CouplingInfo {
 
 window.addEventListener("message", (event) => {
   const msg = event.data;
+  if (!msg || typeof msg !== "object" || typeof msg.type !== "string") return;
 
   switch (msg.type) {
     case "healthUpdate":
@@ -300,71 +291,158 @@ function updateHealth(h: HealthMsg): void {
 
 // ── Session rendering ──
 
+function createActionButton(
+  label: string,
+  action: "start" | "stop" | "delete" | "addParticipant" | "livePlot",
+  sessionId: string,
+  options?: { className?: string; style?: string; title?: string },
+): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.textContent = label;
+  btn.dataset.action = action;
+  btn.dataset.id = sessionId;
+  if (options?.className) btn.className = options.className;
+  if (options?.style) btn.style.cssText = options.style;
+  if (options?.title) btn.title = options.title;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    switch (action) {
+      case "start":
+        vscode.postMessage({ type: "startSession", sessionId });
+        break;
+      case "stop":
+        vscode.postMessage({ type: "stopSession", sessionId });
+        break;
+      case "delete":
+        vscode.postMessage({ type: "deleteSession", sessionId });
+        break;
+      case "addParticipant":
+        toggleAddPicker(sessionId);
+        break;
+      case "livePlot":
+        vscode.postMessage({ type: "openLivePlot", sessionId });
+        break;
+    }
+  });
+  return btn;
+}
+
 function renderSessions(sessions: SessionInfo[]): void {
   if (sessions.length === 0) {
-    sessionsList.innerHTML =
-      '<div class="empty-state">No active sessions<br><span style="font-size:11px;opacity:0.7">Click ⚡ Quick Start to begin</span></div>';
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.appendChild(document.createTextNode("No active sessions"));
+    empty.appendChild(document.createElement("br"));
+    const hint = document.createElement("span");
+    hint.style.fontSize = "11px";
+    hint.style.opacity = "0.7";
+    hint.textContent = "Click ⚡ Quick Start to begin";
+    empty.appendChild(hint);
+    sessionsList.replaceChildren(empty);
     return;
   }
 
-  sessionsList.innerHTML = sessions
-    .map((s) => {
-      const id = escapeHtmlCosim(s.sessionId ?? s.id);
-      const safeState = escapeHtmlCosim(s.state);
-      const stateClass =
-        s.state === "running" ? "running" : s.state === "completed" ? "completed" : s.state === "error";
-      const algoBadge = s.masterAlgorithm
-        ? `<span class="badge" style="font-size:9px;opacity:0.85;background:var(--vscode-badge-background);color:var(--vscode-badge-foreground)" title="Algorithm">${escapeHtmlCosim(s.masterAlgorithm)}</span>`
-        : "";
-      return `
-      <div class="session-card" data-session-id="${id}">
-        <div class="session-header">
-          <span class="badge ${stateClass}">${safeState}</span>
-          ${algoBadge}
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${id}">${id.slice(0, 12)}…</span>
-          <button data-action="delete" data-id="${id}" class="secondary" style="padding:1px 4px;font-size:10px" title="Delete session">✕</button>
-        </div>
-        <div class="participant-area" id="participants-${id}"></div>
-        <div class="coupling-area" id="couplings-${id}"></div>
-        ${s.state === "running" ? `<div class="progress-container" id="progress-${id}"><div class="progress-track"><div class="progress-fill" style="width:0%"></div></div><span class="progress-text">Starting…</span></div>` : ""}
-        <div class="session-actions">
-          ${s.state === "created" ? `<button data-action="addParticipant" data-id="${id}" class="secondary">+ Add Participant</button>` : ""}
-          ${s.state === "created" ? `<button data-action="start" data-id="${id}">▶ Start</button>` : ""}
-          ${s.state === "running" ? `<button data-action="stop" data-id="${id}">⏹ Stop</button>` : ""}
-          ${s.state === "running" ? `<button data-action="livePlot" data-id="${id}" class="secondary">📈 Live Plot</button>` : ""}
-        </div>
-        <div class="add-picker-container" id="picker-${id}" style="display:none"></div>
-      </div>`;
-    })
-    .join("");
+  const fragment = document.createDocumentFragment();
+  for (const s of sessions) {
+    const id = String(s.sessionId ?? s.id);
+    const stateClass =
+      s.state === "running"
+        ? "running"
+        : s.state === "completed"
+          ? "completed"
+          : s.state === "error"
+            ? "error"
+            : "created";
 
-  // Bind session action buttons
-  sessionsList.querySelectorAll("button[data-action]").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const action = btn.getAttribute("data-action");
-      const id = btn.getAttribute("data-id");
-      if (!action || !id) return;
+    const card = document.createElement("div");
+    card.className = "session-card";
+    card.dataset.sessionId = id;
 
-      switch (action) {
-        case "start":
-          vscode.postMessage({ type: "startSession", sessionId: id });
-          break;
-        case "stop":
-          vscode.postMessage({ type: "stopSession", sessionId: id });
-          break;
-        case "delete":
-          vscode.postMessage({ type: "deleteSession", sessionId: id });
-          break;
-        case "addParticipant":
-          toggleAddPicker(id);
-          break;
-        case "livePlot":
-          vscode.postMessage({ type: "openLivePlot", sessionId: id });
-          break;
-      }
-    });
-  });
+    const header = document.createElement("div");
+    header.className = "session-header";
+
+    const stateBadge = document.createElement("span");
+    stateBadge.className = `badge ${stateClass}`;
+    stateBadge.textContent = s.state;
+    header.appendChild(stateBadge);
+
+    if (s.masterAlgorithm) {
+      const algoBadge = document.createElement("span");
+      algoBadge.className = "badge";
+      algoBadge.style.cssText =
+        "font-size:9px;opacity:0.85;background:var(--vscode-badge-background);color:var(--vscode-badge-foreground)";
+      algoBadge.title = "Algorithm";
+      algoBadge.textContent = s.masterAlgorithm;
+      header.appendChild(algoBadge);
+    }
+
+    const idSpan = document.createElement("span");
+    idSpan.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    idSpan.title = id;
+    idSpan.textContent = `${id.slice(0, 12)}…`;
+    header.appendChild(idSpan);
+
+    header.appendChild(
+      createActionButton("✕", "delete", id, {
+        className: "secondary",
+        style: "padding:1px 4px;font-size:10px",
+        title: "Delete session",
+      }),
+    );
+    card.appendChild(header);
+
+    const participantArea = document.createElement("div");
+    participantArea.className = "participant-area";
+    participantArea.id = `participants-${id}`;
+    card.appendChild(participantArea);
+
+    const couplingArea = document.createElement("div");
+    couplingArea.className = "coupling-area";
+    couplingArea.id = `couplings-${id}`;
+    card.appendChild(couplingArea);
+
+    if (s.state === "running") {
+      const progressContainer = document.createElement("div");
+      progressContainer.className = "progress-container";
+      progressContainer.id = `progress-${id}`;
+
+      const progressTrack = document.createElement("div");
+      progressTrack.className = "progress-track";
+
+      const progressFill = document.createElement("div");
+      progressFill.className = "progress-fill";
+      progressFill.style.width = "0%";
+      progressTrack.appendChild(progressFill);
+
+      const progressText = document.createElement("span");
+      progressText.className = "progress-text";
+      progressText.textContent = "Starting…";
+
+      progressContainer.append(progressTrack, progressText);
+      card.appendChild(progressContainer);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "session-actions";
+    if (s.state === "created") {
+      actions.appendChild(createActionButton("+ Add Participant", "addParticipant", id, { className: "secondary" }));
+      actions.appendChild(createActionButton("▶ Start", "start", id));
+    } else if (s.state === "running") {
+      actions.appendChild(createActionButton("⏹ Stop", "stop", id));
+      actions.appendChild(createActionButton("📈 Live Plot", "livePlot", id, { className: "secondary" }));
+    }
+    card.appendChild(actions);
+
+    const pickerContainer = document.createElement("div");
+    pickerContainer.className = "add-picker-container";
+    pickerContainer.id = `picker-${id}`;
+    pickerContainer.style.display = "none";
+    card.appendChild(pickerContainer);
+
+    fragment.appendChild(card);
+  }
+
+  sessionsList.replaceChildren(fragment);
 
   // Fetch participants for each session
   for (const s of sessions) {
@@ -374,6 +452,50 @@ function renderSessions(sessions: SessionInfo[]): void {
 }
 
 // ── Add Participant Picker ──
+
+interface PickerOptionSpec {
+  action: "cosim" | "model" | "fmu" | "ssp" | "wrapper";
+  icon: string;
+  label: string;
+  desc: string;
+  recommended?: boolean;
+  dividerBefore?: boolean;
+}
+
+const PICKER_OPTIONS: readonly PickerOptionSpec[] = [
+  {
+    action: "cosim",
+    icon: "🔗",
+    label: "From Modelica Wrapper",
+    desc: "Import participants & couplings from the open .mo file with connect() equations",
+    recommended: true,
+  },
+  {
+    action: "model",
+    icon: "📄",
+    label: "From Open .mo File",
+    desc: "Add the active Modelica model as a single participant",
+  },
+  {
+    action: "fmu",
+    icon: "📦",
+    label: "From FMU File",
+    desc: "Browse for a .fmu or modelDescription.xml file",
+  },
+  {
+    action: "ssp",
+    icon: "🧩",
+    label: "From SSP File",
+    desc: "Browse for a .ssp archive file",
+  },
+  {
+    action: "wrapper",
+    icon: "🔧",
+    label: "Generate Wrapper",
+    desc: "Create a Modelica wrapper from current participants",
+    dividerBefore: true,
+  },
+];
 
 function toggleAddPicker(sessionId: string): void {
   const container = document.getElementById(`picker-${sessionId}`);
@@ -385,77 +507,68 @@ function toggleAddPicker(sessionId: string): void {
   }
 
   container.style.display = "";
-  const safeId = escapeHtmlCosim(sessionId);
-  container.innerHTML = `
-    <div class="add-picker">
-      <div class="add-picker-option" data-picker-action="cosim" data-session="${safeId}">
-        <span class="icon">🔗</span>
-        <div>
-          <span class="label">From Modelica Wrapper</span>
-          <span class="recommended">Recommended</span>
-          <div class="desc">Import participants &amp; couplings from the open .mo file with connect() equations</div>
-        </div>
-      </div>
-      <div class="add-picker-option" data-picker-action="model" data-session="${safeId}">
-        <span class="icon">📄</span>
-        <div>
-          <span class="label">From Open .mo File</span>
-          <div class="desc">Add the active Modelica model as a single participant</div>
-        </div>
-      </div>
-      <div class="add-picker-option" data-picker-action="fmu" data-session="${safeId}">
-        <span class="icon">📦</span>
-        <div>
-          <span class="label">From FMU File</span>
-          <div class="desc">Browse for a .fmu or modelDescription.xml file</div>
-        </div>
-      </div>
-      <div class="add-picker-option" data-picker-action="ssp" data-session="${safeId}">
-        <span class="icon">🧩</span>
-        <div>
-          <span class="label">From SSP File</span>
-          <div class="desc">Browse for a .ssp archive file</div>
-        </div>
-      </div>
-      <div class="add-picker-divider"></div>
-      <div class="add-picker-option" data-picker-action="wrapper" data-session="${safeId}">
-        <span class="icon">🔧</span>
-        <div>
-          <span class="label">Generate Wrapper</span>
-          <div class="desc">Create a Modelica wrapper from current participants</div>
-        </div>
-      </div>
-    </div>
-  `;
+  const picker = document.createElement("div");
+  picker.className = "add-picker";
 
-  // Bind picker options
-  container.querySelectorAll(".add-picker-option").forEach((option) => {
+  for (const spec of PICKER_OPTIONS) {
+    if (spec.dividerBefore) {
+      const divider = document.createElement("div");
+      divider.className = "add-picker-divider";
+      picker.appendChild(divider);
+    }
+
+    const option = document.createElement("div");
+    option.className = "add-picker-option";
+    option.dataset.pickerAction = spec.action;
+    option.dataset.session = sessionId;
+
+    const iconEl = document.createElement("span");
+    iconEl.className = "icon";
+    iconEl.textContent = spec.icon;
+
+    const body = document.createElement("div");
+    const labelEl = document.createElement("span");
+    labelEl.className = "label";
+    labelEl.textContent = spec.label;
+    body.appendChild(labelEl);
+
+    if (spec.recommended) {
+      const recEl = document.createElement("span");
+      recEl.className = "recommended";
+      recEl.textContent = "Recommended";
+      body.appendChild(recEl);
+    }
+
+    const descEl = document.createElement("div");
+    descEl.className = "desc";
+    descEl.textContent = spec.desc;
+    body.appendChild(descEl);
+
+    option.append(iconEl, body);
     option.addEventListener("click", () => {
-      const pickerAction = option.getAttribute("data-picker-action");
-      const session = option.getAttribute("data-session");
-      if (!pickerAction || !session) return;
-
-      switch (pickerAction) {
+      switch (spec.action) {
         case "cosim":
-          vscode.postMessage({ type: "publishCosimModel", sessionId: session });
+          vscode.postMessage({ type: "publishCosimModel", sessionId });
           break;
         case "model":
-          vscode.postMessage({ type: "publishModel", sessionId: session });
+          vscode.postMessage({ type: "publishModel", sessionId });
           break;
         case "fmu":
-          vscode.postMessage({ type: "publishFmu", sessionId: session });
+          vscode.postMessage({ type: "publishFmu", sessionId });
           break;
         case "ssp":
-          vscode.postMessage({ type: "publishSsp", sessionId: session });
+          vscode.postMessage({ type: "publishSsp", sessionId });
           break;
         case "wrapper":
-          vscode.postMessage({ type: "createCosimWrapper", sessionId: session });
+          vscode.postMessage({ type: "createCosimWrapper", sessionId });
           break;
       }
-
       container.style.display = "none";
     });
-  });
+    picker.appendChild(option);
+  }
+
+  container.replaceChildren(picker);
 }
 
 // ── Participant rendering ──
@@ -465,19 +578,38 @@ function renderParticipants(sessionId: string, participants: ParticipantInfo[]):
   if (!container) return;
 
   if (participants.length === 0) {
-    container.innerHTML =
-      '<div class="session-meta" style="margin-top:4px;text-align:center;opacity:0.7">No participants yet</div>';
+    const empty = document.createElement("div");
+    empty.className = "session-meta";
+    empty.style.cssText = "margin-top:4px;text-align:center;opacity:0.7";
+    empty.textContent = "No participants yet";
+    container.replaceChildren(empty);
     return;
   }
 
-  container.innerHTML = participants
-    .map(
-      (p) => `
-    <div class="session-meta" style="margin-top:2px">
-      ${p.type === "fmu" ? "📦" : p.type === "ssp" ? "🧩" : "📄"} <strong>${escapeHtmlCosim(p.modelName)}</strong> <span style="opacity:0.6">(${escapeHtmlCosim(p.type)}${p.variables ? `, ${Number(p.variables)} vars` : ""})</span>
-    </div>`,
-    )
-    .join("");
+  const fragment = document.createDocumentFragment();
+  for (const p of participants) {
+    const row = document.createElement("div");
+    row.className = "session-meta";
+    row.style.marginTop = "2px";
+
+    const icon = p.type === "fmu" ? "📦" : p.type === "ssp" ? "🧩" : "📄";
+    row.appendChild(document.createTextNode(`${icon} `));
+
+    const nameEl = document.createElement("strong");
+    nameEl.textContent = p.modelName;
+    row.appendChild(nameEl);
+
+    row.appendChild(document.createTextNode(" "));
+
+    const metaEl = document.createElement("span");
+    metaEl.style.opacity = "0.6";
+    const varSuffix = p.variables ? `, ${Number(p.variables)} vars` : "";
+    metaEl.textContent = `(${p.type}${varSuffix})`;
+    row.appendChild(metaEl);
+
+    fragment.appendChild(row);
+  }
+  container.replaceChildren(fragment);
 }
 
 // ── Coupling rendering ──
@@ -487,25 +619,38 @@ function renderCouplings(sessionId: string, couplings: CouplingInfo[]): void {
   if (!container) return;
 
   if (couplings.length === 0) {
-    container.innerHTML = "";
+    container.replaceChildren();
     return;
   }
 
-  container.innerHTML = `
-    <div class="coupling-list">
-      <div class="session-meta" style="margin-top:4px;font-weight:500;opacity:1">Couplings</div>
-      ${couplings
-        .map(
-          (c) => `
-        <div class="coupling-item">
-          <span>${escapeHtmlCosim(abbreviateId(c.from.participantId))}.${escapeHtmlCosim(c.from.variableName)}</span>
-          <span class="coupling-arrow">──→</span>
-          <span>${escapeHtmlCosim(abbreviateId(c.to.participantId))}.${escapeHtmlCosim(c.to.variableName)}</span>
-        </div>`,
-        )
-        .join("")}
-    </div>
-  `;
+  const list = document.createElement("div");
+  list.className = "coupling-list";
+
+  const heading = document.createElement("div");
+  heading.className = "session-meta";
+  heading.style.cssText = "margin-top:4px;font-weight:500;opacity:1";
+  heading.textContent = "Couplings";
+  list.appendChild(heading);
+
+  for (const c of couplings) {
+    const item = document.createElement("div");
+    item.className = "coupling-item";
+
+    const fromSpan = document.createElement("span");
+    fromSpan.textContent = `${abbreviateId(c.from.participantId)}.${c.from.variableName}`;
+
+    const arrowSpan = document.createElement("span");
+    arrowSpan.className = "coupling-arrow";
+    arrowSpan.textContent = "──→";
+
+    const toSpan = document.createElement("span");
+    toSpan.textContent = `${abbreviateId(c.to.participantId)}.${c.to.variableName}`;
+
+    item.append(fromSpan, arrowSpan, toSpan);
+    list.appendChild(item);
+  }
+
+  container.replaceChildren(list);
 }
 
 /** Shorten a participant ID for display. */
@@ -522,9 +667,10 @@ function renderProgress(sessionId: string, currentTime: number, startTime: numbe
   const container = document.getElementById(`progress-${sessionId}`);
   if (!container) return;
 
-  const pct = Math.min(100, Math.max(0, ((currentTime - startTime) / (stopTime - startTime)) * 100));
-  const fill = container.querySelector(".progress-fill") as HTMLElement;
-  const text = container.querySelector(".progress-text") as HTMLElement;
+  const span = stopTime - startTime;
+  const pct = span > 0 ? Math.min(100, Math.max(0, ((currentTime - startTime) / span) * 100)) : 0;
+  const fill = container.querySelector(".progress-fill") as HTMLElement | null;
+  const text = container.querySelector(".progress-text") as HTMLElement | null;
 
   if (fill) fill.style.width = `${pct.toFixed(1)}%`;
   if (text) text.textContent = `t=${currentTime.toFixed(2)}s / ${stopTime}s (${pct.toFixed(0)}%)`;
@@ -574,6 +720,7 @@ interface NavigatorWithSerial {
 }
 
 let activeSerialPort: WebSerialPort | null = null;
+let activeSerialReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
 async function connectWebSerial(): Promise<void> {
   const nav = navigator as unknown as NavigatorWithSerial;
@@ -608,6 +755,14 @@ async function connectWebSerial(): Promise<void> {
 }
 
 async function disconnectWebSerial(): Promise<void> {
+  if (activeSerialReader) {
+    try {
+      await activeSerialReader.cancel();
+    } catch {
+      // Best-effort reader cancel
+    }
+    activeSerialReader = null;
+  }
   if (activeSerialPort) {
     try {
       await activeSerialPort.close();
@@ -629,6 +784,7 @@ async function disconnectWebSerial(): Promise<void> {
 async function readSerialStream(port: WebSerialPort): Promise<void> {
   while (port.readable && activeSerialPort === port) {
     const reader = port.readable.getReader();
+    activeSerialReader = reader;
     try {
       const decoder = new TextDecoder();
       let lineBuffer = "";
@@ -649,6 +805,9 @@ async function readSerialStream(port: WebSerialPort): Promise<void> {
       console.warn("Serial read loop terminated:", err instanceof Error ? err.message : String(err));
       break;
     } finally {
+      if (activeSerialReader === reader) {
+        activeSerialReader = null;
+      }
       try {
         reader.releaseLock();
       } catch {
@@ -706,26 +865,46 @@ function processIncomingSerialLine(line: string): void {
 function renderCanMonitor(): void {
   if (!canFrameRows) return;
   if (canRingBuffer.length === 0) {
-    canFrameRows.innerHTML =
-      '<tr><td colspan="5" style="text-align: center; opacity: 0.5; padding: 12px 0;">No traffic on bus</td></tr>';
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    td.style.cssText = "text-align: center; opacity: 0.5; padding: 12px 0;";
+    td.textContent = "No traffic on bus";
+    tr.appendChild(td);
+    canFrameRows.replaceChildren(tr);
     return;
   }
-  const rows = canRingBuffer
-    .slice(-20)
-    .reverse()
-    .map((entry) => {
-      const dirClass = entry.dir === "RX" ? "can-dir-rx" : "can-dir-tx";
-      return `
-      <tr style="border-bottom: 1px solid var(--vscode-widget-border);">
-        <td style="padding: 2px 4px;" class="${dirClass}">${entry.dir}</td>
-        <td style="padding: 2px 4px; font-weight: 600;">${escapeHtmlCosim(entry.id)}</td>
-        <td style="padding: 2px 4px;">${entry.dlc}</td>
-        <td style="padding: 2px 4px; font-family: monospace;">${escapeHtmlCosim(entry.payload)}</td>
-        <td style="padding: 2px 4px; opacity: 0.9;">${escapeHtmlCosim(entry.signals)}</td>
-      </tr>
-    `;
-    });
-  canFrameRows.innerHTML = rows.join("");
+
+  const fragment = document.createDocumentFragment();
+  for (const entry of canRingBuffer.slice(-20).reverse()) {
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid var(--vscode-widget-border)";
+
+    const tdDir = document.createElement("td");
+    tdDir.style.padding = "2px 4px";
+    tdDir.className = entry.dir === "RX" ? "can-dir-rx" : "can-dir-tx";
+    tdDir.textContent = entry.dir;
+
+    const tdId = document.createElement("td");
+    tdId.style.cssText = "padding: 2px 4px; font-weight: 600;";
+    tdId.textContent = entry.id;
+
+    const tdDlc = document.createElement("td");
+    tdDlc.style.padding = "2px 4px";
+    tdDlc.textContent = String(entry.dlc);
+
+    const tdPayload = document.createElement("td");
+    tdPayload.style.cssText = "padding: 2px 4px; font-family: monospace;";
+    tdPayload.textContent = entry.payload;
+
+    const tdSignals = document.createElement("td");
+    tdSignals.style.cssText = "padding: 2px 4px; opacity: 0.9;";
+    tdSignals.textContent = entry.signals;
+
+    tr.append(tdDir, tdId, tdDlc, tdPayload, tdSignals);
+    fragment.appendChild(tr);
+  }
+  canFrameRows.replaceChildren(fragment);
 }
 
 btnConnectHardware?.addEventListener("click", () => {

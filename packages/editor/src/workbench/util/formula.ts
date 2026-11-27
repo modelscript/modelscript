@@ -189,6 +189,10 @@ class Parser {
     this.currentToken = this.tokenizer.nextToken();
   }
 
+  private peekType(): TokenType {
+    return this.currentToken.type;
+  }
+
   private eat(type: TokenType, val?: string): Token {
     const tok = this.currentToken;
     if (tok.type !== type || (val !== undefined && tok.value !== val)) {
@@ -361,9 +365,9 @@ class Parser {
       if (this.currentToken.type === "LPAREN") {
         this.eat("LPAREN");
         const args: number[] = [];
-        if (this.currentToken.type !== "RPAREN") {
+        if (this.peekType() !== "RPAREN") {
           args.push(Number(this.parseConditional()));
-          while (this.currentToken.type === "COMMA") {
+          while (this.peekType() === "COMMA") {
             this.eat("COMMA");
             args.push(Number(this.parseConditional()));
           }

@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { SymbolEntry, SymbolId } from "@modelscript/runtime";
-import {
-  type BridgeContext,
-  findEntryAtOffset,
-  findScopeAtOffset,
-  getExportedChildren,
-  getGlobalLspBridgeEnv,
-} from "./bridge-context.js";
+import { type BridgeContext, findEntryAtOffset, findScopeAtOffset, getExportedChildren } from "./bridge-context.js";
 import { extractQualifiedPrefixAtOffset, extractWordSpanAtOffset } from "./cst-helpers.js";
 import { PositionIndex } from "./position-index.js";
 import { collectCrossDomainCounterpartIds, findRefs, resolveName, resolveRef } from "./resolution.js";
@@ -29,18 +23,13 @@ export function computeDefinition(ctx: BridgeContext, byteOffset: number, source
   let text: string | undefined = sourceText ?? ctx.positions.getSourceText();
 
   if (target.resourceId && target.resourceId !== ctx.documentUri) {
-    const globalEnv = getGlobalLspBridgeEnv();
-    const otherBridge =
-      ctx.env?.documentLSPBridges?.get(target.resourceId) ?? globalEnv.documentLSPBridges?.get(target.resourceId);
+    const otherBridge = ctx.env?.documentLSPBridges?.get(target.resourceId);
     if (otherBridge?.positions) {
       targetPositions = otherBridge.positions;
       text = targetPositions.getSourceText();
     } else {
       const otherDocText =
-        ctx.env?.documents?.get(target.resourceId)?.getText?.() ??
-        globalEnv.documents?.get(target.resourceId)?.getText?.() ??
-        ctx.env?.sharedFs?.readFile?.(target.resourceId) ??
-        globalEnv.sharedFs?.readFile?.(target.resourceId);
+        ctx.env?.documents?.get(target.resourceId)?.getText?.() ?? ctx.env?.sharedFs?.readFile?.(target.resourceId);
       if (typeof otherDocText === "string") {
         targetPositions = new PositionIndex(otherDocText);
         text = otherDocText;

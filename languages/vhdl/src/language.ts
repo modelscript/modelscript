@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
 import { registerBuiltInVhdlLibrarySync } from "./catalog/library-package-adapter.js";
 import { VhdlErrorCode } from "./errors.js";
 import { vhdlIndexing } from "./indexing.js";
@@ -18,6 +18,30 @@ export const vhdlLanguage = language({
   indexing: vhdlIndexing,
   lsp: {
     fileExtensions: [".vhd", ".vhdl"],
+    folding: [
+      "EntityDeclaration",
+      "ArchitectureBody",
+      "PackageDeclaration",
+      "PackageBody",
+      "ComponentDecl",
+      "ProcessStmt",
+      "IfStmt",
+      "CaseStmt",
+      "ForLoopStmt",
+      { rule: "Comment", kind: "comment", defaultCollapsed: true },
+    ],
+    outline: [
+      "EntityDeclaration",
+      "ArchitectureBody",
+      "PackageDeclaration",
+      "PackageBody",
+      "ComponentDecl",
+      "SignalDecl",
+      "ConstantDecl",
+      "TypeDecl",
+      "ProcessStmt",
+      "ComponentInst",
+    ],
   },
   errorCodes: VhdlErrorCode,
 
@@ -37,7 +61,13 @@ export const vhdlLanguage = language({
         ),
       ),
 
-    LibraryClause: ($) => seq("library", field("name", $["Identifier"]!), repeat(seq(",", $["Identifier"]!)), ";"),
+    LibraryClause: ($) =>
+      seq(
+        "library",
+        semanticToken("namespace", field("name", $["Identifier"]!)),
+        repeat(seq(",", semanticToken("namespace", $["Identifier"]!))),
+        ";",
+      ),
 
     UseClause: ($) => seq("use", field("item", $["SelectedName"]!), repeat(seq(",", $["SelectedName"]!)), ";"),
 
@@ -46,13 +76,13 @@ export const vhdlLanguage = language({
     EntityDeclaration: ($) =>
       seq(
         "entity",
-        field("name", $["Identifier"]!),
+        semanticToken("class", field("name", $["Identifier"]!), ["declaration"]),
         "is",
         optional($["GenericClause"]!),
         optional($["PortClause"]!),
         "end",
         optional("entity"),
-        optional(field("endName", $["Identifier"]!)),
+        optional(semanticToken("class", field("endName", $["Identifier"]!))),
         ";",
       ),
 
@@ -61,8 +91,8 @@ export const vhdlLanguage = language({
     GenericDecl: ($) =>
       seq(
         optional("constant"),
-        field("name", $["Identifier"]!),
-        repeat(seq(",", $["Identifier"]!)),
+        semanticToken("parameter", field("name", $["Identifier"]!), ["declaration", "readonly"]),
+        repeat(seq(",", semanticToken("parameter", $["Identifier"]!, ["declaration", "readonly"]))),
         ":",
         field("type", $["TypeIndication"]!),
         optional(seq(":=", field("default", $["Expression"]!))),
@@ -73,8 +103,8 @@ export const vhdlLanguage = language({
     PortDecl: ($) =>
       seq(
         optional("signal"),
-        field("name", $["Identifier"]!),
-        repeat(seq(",", $["Identifier"]!)),
+        semanticToken("parameter", field("name", $["Identifier"]!), ["declaration"]),
+        repeat(seq(",", semanticToken("parameter", $["Identifier"]!, ["declaration"]))),
         ":",
         optional(field("mode", choice("in", "out", "inout", "buffer", "linkage"))),
         field("type", $["TypeIndication"]!),
@@ -83,7 +113,7 @@ export const vhdlLanguage = language({
 
     TypeIndication: ($) =>
       seq(
-        field("base", $["Identifier"]!),
+        semanticToken("type", field("base", $["Identifier"]!)),
         optional(choice(seq("(", $["RangeSpec"]!, ")"), seq("range", $["RangeSpec"]!))),
       ),
 
@@ -97,28 +127,28 @@ export const vhdlLanguage = language({
     ArchitectureBody: ($) =>
       seq(
         "architecture",
-        field("name", $["Identifier"]!),
+        semanticToken("class", field("name", $["Identifier"]!), ["declaration"]),
         "of",
-        field("entity", $["Identifier"]!),
+        semanticToken("class", field("entity", $["Identifier"]!)),
         "is",
         repeat($["ArchDeclItem"]!),
         "begin",
         repeat($["ConcurrentStmt"]!),
         "end",
         optional("architecture"),
-        optional(field("endName", $["Identifier"]!)),
+        optional(semanticToken("class", field("endName", $["Identifier"]!))),
         ";",
       ),
 
     PackageDeclaration: ($) =>
       seq(
         "package",
-        field("name", $["Identifier"]!),
+        semanticToken("namespace", field("name", $["Identifier"]!), ["declaration"]),
         "is",
         repeat($["ArchDeclItem"]!),
         "end",
         optional("package"),
-        optional(field("endName", $["Identifier"]!)),
+        optional(semanticToken("namespace", field("endName", $["Identifier"]!))),
         ";",
       ),
 
@@ -126,12 +156,12 @@ export const vhdlLanguage = language({
       seq(
         "package",
         "body",
-        field("name", $["Identifier"]!),
+        semanticToken("namespace", field("name", $["Identifier"]!), ["declaration"]),
         "is",
         repeat($["ArchDeclItem"]!),
         "end",
         optional(seq("package", "body")),
-        optional(field("endName", $["Identifier"]!)),
+        optional(semanticToken("namespace", field("endName", $["Identifier"]!))),
         ";",
       ),
 
@@ -141,8 +171,8 @@ export const vhdlLanguage = language({
     SignalDecl: ($) =>
       seq(
         "signal",
-        field("name", $["Identifier"]!),
-        repeat(seq(",", $["Identifier"]!)),
+        semanticToken("parameter", field("name", $["Identifier"]!), ["declaration"]),
+        repeat(seq(",", semanticToken("parameter", $["Identifier"]!, ["declaration"]))),
         ":",
         field("type", $["TypeIndication"]!),
         optional(seq(":=", field("init", $["Expression"]!))),
@@ -152,8 +182,8 @@ export const vhdlLanguage = language({
     VariableDecl: ($) =>
       seq(
         "variable",
-        field("name", $["Identifier"]!),
-        repeat(seq(",", $["Identifier"]!)),
+        semanticToken("variable", field("name", $["Identifier"]!), ["declaration"]),
+        repeat(seq(",", semanticToken("variable", $["Identifier"]!, ["declaration"]))),
         ":",
         field("type", $["TypeIndication"]!),
         optional(seq(":=", field("init", $["Expression"]!))),
@@ -163,8 +193,8 @@ export const vhdlLanguage = language({
     ConstantDecl: ($) =>
       seq(
         "constant",
-        field("name", $["Identifier"]!),
-        repeat(seq(",", $["Identifier"]!)),
+        semanticToken("variable", field("name", $["Identifier"]!), ["declaration", "readonly"]),
+        repeat(seq(",", semanticToken("variable", $["Identifier"]!, ["declaration", "readonly"]))),
         ":",
         field("type", $["TypeIndication"]!),
         ":=",
@@ -175,22 +205,30 @@ export const vhdlLanguage = language({
     TypeDecl: ($) =>
       seq(
         choice("type", "subtype"),
-        field("name", $["Identifier"]!),
+        semanticToken("type", field("name", $["Identifier"]!), ["declaration"]),
         "is",
-        choice(seq("(", $["Identifier"]!, repeat(seq(",", $["Identifier"]!)), ")"), $["TypeIndication"]!),
+        choice(
+          seq(
+            "(",
+            semanticToken("enumMember", $["Identifier"]!, ["declaration"]),
+            repeat(seq(",", semanticToken("enumMember", $["Identifier"]!, ["declaration"]))),
+            ")",
+          ),
+          $["TypeIndication"]!,
+        ),
         ";",
       ),
 
     ComponentDecl: ($) =>
       seq(
         "component",
-        field("name", $["Identifier"]!),
+        semanticToken("class", field("name", $["Identifier"]!), ["declaration"]),
         optional("is"),
         optional($["GenericClause"]!),
         optional($["PortClause"]!),
         "end",
         "component",
-        optional($["Identifier"]!),
+        optional(semanticToken("class", $["Identifier"]!)),
         ";",
       ),
 
@@ -199,7 +237,7 @@ export const vhdlLanguage = language({
 
     ProcessStmt: ($) =>
       seq(
-        optional(seq(field("label", $["Identifier"]!), ":")),
+        optional(seq(semanticToken("function", field("label", $["Identifier"]!), ["declaration"]), ":")),
         "process",
         optional(seq("(", $["Identifier"]!, repeat(seq(",", $["Identifier"]!)), ")")),
         optional("is"),
@@ -208,7 +246,7 @@ export const vhdlLanguage = language({
         repeat($["SeqStmt"]!),
         "end",
         "process",
-        optional($["Identifier"]!),
+        optional(semanticToken("function", $["Identifier"]!)),
         ";",
       ),
 
@@ -237,10 +275,10 @@ export const vhdlLanguage = language({
 
     ComponentInst: ($) =>
       seq(
-        field("label", $["Identifier"]!),
+        semanticToken("variable", field("label", $["Identifier"]!), ["declaration"]),
         ":",
         optional("component"),
-        field("component", $["Identifier"]!),
+        semanticToken("type", field("component", $["Identifier"]!)),
         optional($["GenericMapAspect"]!),
         optional($["PortMapAspect"]!),
         ";",
@@ -252,7 +290,7 @@ export const vhdlLanguage = language({
 
     AssocElement: ($) =>
       choice(
-        seq(field("formal", $["Identifier"]!), "=>", field("actual", $["Expression"]!)),
+        seq(semanticToken("property", field("formal", $["Identifier"]!)), "=>", field("actual", $["Expression"]!)),
         field("actual", $["Expression"]!),
       ),
 
@@ -305,7 +343,7 @@ export const vhdlLanguage = language({
     ForLoopStmt: ($) =>
       seq(
         "for",
-        field("iterator", $["Identifier"]!),
+        semanticToken("variable", field("iterator", $["Identifier"]!), ["declaration"]),
         "in",
         $["RangeSpec"]!,
         "loop",
@@ -346,10 +384,10 @@ export const vhdlLanguage = language({
       ),
 
     Identifier: () => /[A-Za-z_][A-Za-z0-9_]*/,
-    NumberLiteral: () => /\d+(?:\.\d+)?/,
-    CharLiteral: () => /'[^']'/,
-    BitStringLiteral: () => /[BbOoXx]?"[^"]*"/,
-    Comment: () => /--[^\n]*/,
+    NumberLiteral: () => semanticToken("number", /\d+(?:\.\d+)?/),
+    CharLiteral: () => semanticToken("string", /'[^']'/),
+    BitStringLiteral: () => semanticToken("string", /[BbOoXx]?"[^"]*"/),
+    Comment: () => semanticToken("comment", /--[^\n]*/),
   },
 });
 

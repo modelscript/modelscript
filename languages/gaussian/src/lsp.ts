@@ -8,6 +8,9 @@
  *  - Code completion (`getGaussianCompletions`)
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { GAUSSIAN_MODEL_SPECS, lookupGaussianModelSchema } from "./catalog/index.js";
 import { lookupElement } from "./elements.js";
 import { lintGaussian } from "./lints/index.js";
@@ -106,12 +109,68 @@ const ROUTE_KEYWORD_DOCS: Record<string, string> = {
   geom: "Specifies the source or handling of molecular geometry (e.g. `geom=checkpoint`, `geom=connectivity`).",
 };
 
-function makeLineRange(lines: string[], line1Based: number): LspRange {
-  const zeroLine = Math.max(0, Math.min(lines.length - 1, line1Based - 1));
-  const text = lines[zeroLine] ?? "";
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface GaussianCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildGaussianCstIndex(content: string): GaussianCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("gaussian", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
+function makeLineRange(cstIndex: GaussianCstIndex, line1Based: number): LspRange {
+  const zeroLine = Math.max(0, line1Based - 1);
+  const entry = cstIndex.byRow.get(zeroLine);
+  const startChar = entry?.startCol ?? 0;
+  const endChar = Math.max(startChar + 1, entry?.endCol ?? 1);
   return {
-    start: { line: zeroLine, character: 0 },
-    end: { line: zeroLine, character: Math.max(1, text.length) },
+    start: { line: zeroLine, character: startChar },
+    end: { line: zeroLine, character: endChar },
   };
 }
 
@@ -121,13 +180,13 @@ function makeLineRange(lines: string[], line1Based: number): LspRange {
 export function validateGaussian(content: string, _uri: string = "molecule.gjf"): LspDiagnostic[] {
   const doc = parseGaussianInput(content);
   const diags = lintGaussian(doc);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildGaussianCstIndex(content);
 
   return diags.map((d) => {
-    const lineIdx = Math.max(0, Math.min(lines.length - 1, d.line - 1));
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = Math.max(0, d.column - 1);
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const lineIdx = Math.max(0, d.line - 1);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column > 1 ? d.column - 1 : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -146,14 +205,14 @@ export function validateGaussian(content: string, _uri: string = "molecule.gjf")
  */
 export function getGaussianDocumentSymbols(content: string): LspDocumentSymbol[] {
   const doc = parseGaussianInput(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildGaussianCstIndex(content);
   const symbols: LspDocumentSymbol[] = [];
 
   for (const job of doc.jobs) {
     const children: LspDocumentSymbol[] = [];
 
     for (const cmd of job.link0) {
-      const r = makeLineRange(lines, cmd.line);
+      const r = makeLineRange(cstIndex, cmd.line);
       children.push({
         name: `%${cmd.directive}`,
         detail: cmd.value,
@@ -164,7 +223,7 @@ export function getGaussianDocumentSymbols(content: string): LspDocumentSymbol[]
     }
 
     if (job.route) {
-      const r = makeLineRange(lines, job.route.line);
+      const r = makeLineRange(cstIndex, job.route.line);
       const level =
         job.route.method && job.route.basisSet ? `${job.route.method}/${job.route.basisSet}` : job.route.raw;
       children.push({
@@ -177,7 +236,7 @@ export function getGaussianDocumentSymbols(content: string): LspDocumentSymbol[]
     }
 
     for (const atom of job.atoms) {
-      const r = makeLineRange(lines, atom.line);
+      const r = makeLineRange(cstIndex, atom.line);
       children.push({
         name: `${atom.element}${atom.index}`,
         detail: atom.kind === "zmatrix" ? "Z-Matrix" : "Cartesian",
@@ -188,7 +247,7 @@ export function getGaussianDocumentSymbols(content: string): LspDocumentSymbol[]
     }
 
     for (const v of job.variableEntries) {
-      const r = makeLineRange(lines, v.line);
+      const r = makeLineRange(cstIndex, v.line);
       children.push({
         name: v.name,
         detail: `${v.value}`,
@@ -204,12 +263,17 @@ export function getGaussianDocumentSymbols(content: string): LspDocumentSymbol[]
       job.atoms[job.atoms.length - 1]?.line ??
       job.chargeMultLine ??
       firstLine;
+    const lastZeroLine = Math.max(0, lastLine - 1);
+    const lastEntry = cstIndex.byRow.get(lastZeroLine);
 
     const jobRange: LspRange = {
-      start: { line: Math.max(0, firstLine - 1), character: 0 },
+      start: {
+        line: Math.max(0, firstLine - 1),
+        character: cstIndex.byRow.get(Math.max(0, firstLine - 1))?.startCol ?? 0,
+      },
       end: {
-        line: Math.max(0, Math.min(lines.length - 1, lastLine - 1)),
-        character: Math.max(1, (lines[Math.max(0, lastLine - 1)] ?? "").length),
+        line: lastZeroLine,
+        character: Math.max(1, lastEntry?.endCol ?? 1),
       },
     };
 
@@ -221,7 +285,7 @@ export function getGaussianDocumentSymbols(content: string): LspDocumentSymbol[]
           : undefined,
       kind: LspSymbolKind.Package,
       range: jobRange,
-      selectionRange: makeLineRange(lines, firstLine),
+      selectionRange: makeLineRange(cstIndex, firstLine),
       children,
     });
   }
@@ -245,16 +309,17 @@ function getTokenAtPosition(lineText: string, character: number): { token: strin
  * methods/basis sets, route keywords, elements, and Z-matrix variables.
  */
 export function getGaussianHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (!lineText) return null;
+  const cstIndex = buildGaussianCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
 
-  const tok = getTokenAtPosition(lineText, position.character);
+  const relChar = position.character - entry.startCol;
+  const tok = getTokenAtPosition(entry.text, relChar);
   if (!tok) return null;
 
   const range: LspRange = {
-    start: { line: position.line, character: tok.start },
-    end: { line: position.line, character: tok.end },
+    start: { line: position.line, character: entry.startCol + tok.start },
+    end: { line: position.line, character: entry.startCol + tok.end },
   };
 
   // 1. Link0 directive (%chk, %mem, %nprocshared, etc.)
@@ -348,8 +413,9 @@ export function getGaussianHover(content: string, position: LspPosition): LspHov
  * Provides contextual code completions for Link0 directives, methods, basis sets, and route keywords.
  */
 export function getGaussianCompletions(content: string, position: LspPosition): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const lineText = (lines[position.line] ?? "").slice(0, position.character);
+  const cstIndex = buildGaussianCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  const lineText = entry ? entry.text.slice(0, Math.max(0, position.character - entry.startCol)) : "";
   const trimmed = lineText.trimStart();
 
   // Link0 completions

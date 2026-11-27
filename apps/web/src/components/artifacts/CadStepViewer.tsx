@@ -5,9 +5,9 @@ import {
   inferSubsystemsFromPartNames,
   resolvePartPresentation,
   type AssemblyVisibilityState,
-} from "@modelscript/editor/workbench/cad-viewer/assembly-visibility";
-import { AssemblyInspectorPanel } from "@modelscript/editor/workbench/cad-viewer/AssemblyInspectorPanel";
-import type { CadComponent } from "@modelscript/editor/workbench/cad-viewer/CadViewer";
+} from "@modelscript/cad-viewer/assembly-visibility";
+import { AssemblyInspectorPanel } from "@modelscript/cad-viewer/AssemblyInspectorPanel";
+import type { CadComponent } from "@modelscript/cad-viewer/CadViewer";
 import {
   CadEdgeOverlay,
   ensureGeometryBrushedUvs,
@@ -16,7 +16,7 @@ import {
   resolveHeroAlloyConfig,
   SplitSectionGeometryPasses,
   StencilSectionCapQuad,
-} from "@modelscript/editor/workbench/cad-viewer/HeroCadMaterials";
+} from "@modelscript/cad-viewer/HeroCadMaterials";
 import { getCadComponents } from "@modelscript/editor/workbench/util/lsp-bridge";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";

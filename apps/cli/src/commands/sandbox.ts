@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { bundleExtension, type ExtensionGeneratedFile } from "@modelscript/dsl";
+import { bundleExtension, type ExtensionGeneratedFile } from "@modelscript/ide-packager";
 import { exec, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";

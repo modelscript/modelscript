@@ -43,7 +43,6 @@ export * from "./physics-safety-bridge.js";
 export * from "./reasoner-bridge.js";
 export * from "./safety-analyzer.js";
 export * from "./seasonal-sweep.js";
-export * from "./semantic-tokens.js";
 export * from "./smt-bridge.js";
 export * from "./sota-lints.js";
 export * from "./state-machine-verifier.js";

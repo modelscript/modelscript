@@ -19,8 +19,24 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
-import * as fs from "node:fs";
-import * as path from "node:path";
+
+/**
+ * Pluggable filesystem abstraction for DAP simulation loading so
+ * `WasmSimulationStepper` and `SimulationDebugSession` work in both browser
+ * (`vscode.workspace.fs` / `memfs://`) and desktop/standalone Node hosts
+ * without static `node:fs` or `node:path` imports.
+ */
+export interface DapFileSystem {
+  readFile(uriOrPath: string): Promise<string> | string;
+  basename(p: string): string;
+}
+
+/** Pure-JS basename helper (no `node:path` dependency). */
+export function defaultBasename(p: string): string {
+  const stripped = p.replace(/[\\/]+$/, "");
+  const idx = Math.max(stripped.lastIndexOf("/"), stripped.lastIndexOf("\\"));
+  return idx >= 0 ? stripped.slice(idx + 1) : stripped;
+}
 
 export interface DebugVariableEntry {
   name: string;
@@ -210,34 +226,49 @@ export class WasmSimulationStepper {
   private stateDerivativeExprs = new Map<string, number>();
   private algebraicExprs = new Map<string, number>();
   private sourceText?: string | undefined;
+  private readonly fsAdapter?: DapFileSystem | undefined;
+  private readonly rawProgram?: string | undefined;
+  private pendingSourcePromise?: Promise<string | undefined> | undefined;
 
-  public constructor(program?: string, dt = 0.01) {
+  public constructor(program?: string, dt = 0.01, fsAdapter?: DapFileSystem) {
     this.dt = dt;
     this.arena = new DAEBuilder();
+    this.fsAdapter = fsAdapter;
+    this.rawProgram = program?.trim();
 
     const resolvedPath = this.resolveProgramFilePath(program);
     this.programPath = resolvedPath;
 
-    if (resolvedPath && fs.existsSync(resolvedPath) && resolvedPath.endsWith(".mo")) {
-      try {
-        const src = fs.readFileSync(resolvedPath, "utf8");
-        this.sourceText = src;
-        if (this.tryFlattenWithModelicaContextSync(src, resolvedPath) || this.lowerModelicaSourceToArena(src)) {
-          this.loadedFromSource = true;
-          this.extractSystemFromArena();
-          this.evaluateCurrentDerivativesAndAlgebraics();
-          return;
-        }
-      } catch {
-        // Fall through to default arena
-      }
-    } else if (program && /\bmodel\s+[A-Za-z_]/.test(program) && /\bequation\b/.test(program)) {
+    if (program && /\bmodel\s+[A-Za-z_]/.test(program) && /\bequation\b/.test(program)) {
       this.sourceText = program;
       if (this.lowerModelicaSourceToArena(program)) {
         this.loadedFromSource = true;
         this.extractSystemFromArena();
         this.evaluateCurrentDerivativesAndAlgebraics();
         return;
+      }
+    } else if (resolvedPath && resolvedPath.endsWith(".mo") && this.fsAdapter) {
+      try {
+        const readTarget = this.rawProgram ?? resolvedPath;
+        const maybeSrc = this.fsAdapter.readFile(readTarget);
+        if (typeof maybeSrc === "string") {
+          if (maybeSrc.length > 0) {
+            this.sourceText = maybeSrc;
+            if (
+              this.tryFlattenWithModelicaContextSync(maybeSrc, resolvedPath) ||
+              this.lowerModelicaSourceToArena(maybeSrc)
+            ) {
+              this.loadedFromSource = true;
+              this.extractSystemFromArena();
+              this.evaluateCurrentDerivativesAndAlgebraics();
+              return;
+            }
+          }
+        } else if (maybeSrc && typeof (maybeSrc as Promise<string>).then === "function") {
+          this.pendingSourcePromise = Promise.resolve(maybeSrc).catch(() => undefined);
+        }
+      } catch {
+        // Fall through to default arena until init() runs
       }
     }
 
@@ -247,39 +278,88 @@ export class WasmSimulationStepper {
   }
 
   /**
-   * Asynchronously initializes the full `@modelscript/modelica` WASM GLR parser and
-   * `Context.flattenArena` pipeline when `program` points to an existing `.mo` file on disk.
+   * Asynchronously loads the target `.mo` source via the injected `DapFileSystem`
+   * (or a lazy `node:fs` fallback in standalone Node) and initializes the full
+   * `@modelscript/modelica` WASM GLR parser and `Context.flattenArena` pipeline.
    */
   public async init(): Promise<void> {
-    if (!this.programPath || !this.sourceText) return;
+    if (!this.programPath) return;
+
+    let lazyNodeFs:
+      { existsSync: (p: string) => boolean; readFileSync: (p: string, enc: "utf8") => string } | undefined;
+
+    if (!this.sourceText && this.programPath.endsWith(".mo")) {
+      let src: string | undefined;
+      if (this.pendingSourcePromise) {
+        const pending = this.pendingSourcePromise;
+        this.pendingSourcePromise = undefined;
+        src = await pending;
+      } else if (this.fsAdapter) {
+        try {
+          src = await this.fsAdapter.readFile(this.rawProgram ?? this.programPath);
+        } catch {
+          src = undefined;
+        }
+      } else {
+        try {
+          const nodeFs = await import("node:fs");
+          lazyNodeFs = nodeFs;
+          if (nodeFs.existsSync(this.programPath)) {
+            src = nodeFs.readFileSync(this.programPath, "utf8");
+          }
+        } catch {
+          // Browser environment without node:fs
+        }
+      }
+
+      if (src && src.length > 0) {
+        this.sourceText = src;
+        if (this.lowerModelicaSourceToArena(src)) {
+          this.loadedFromSource = true;
+          this.time = 0;
+          this.stepCount = 0;
+          this.extractSystemFromArena();
+          this.evaluateCurrentDerivativesAndAlgebraics();
+        }
+      }
+    }
+
+    if (!this.sourceText) return;
     try {
-      const { createRequire } = await import("node:module");
-      const req = createRequire(import.meta.url);
       const globalRec = globalThis as Record<string, unknown>;
       let parser = globalRec["modelicaParser"];
       if (!parser) {
-        let wasmPath: string | undefined;
         try {
-          wasmPath = req.resolve("@modelscript/modelica/parser.wasm");
-        } catch {
+          const { createRequire } = await import("node:module");
+          const req = createRequire(import.meta.url);
+          let wasmPath: string | undefined;
           try {
-            wasmPath = req.resolve("@modelscript/modelica/dist/parser.wasm");
+            wasmPath = req.resolve("@modelscript/modelica/parser.wasm");
           } catch {
-            const candidate = path.resolve(process.cwd(), "languages/modelica/dist/parser.wasm");
-            if (fs.existsSync(candidate)) wasmPath = candidate;
+            try {
+              wasmPath = req.resolve("@modelscript/modelica/dist/parser.wasm");
+            } catch {
+              const nodeFs = lazyNodeFs ?? (await import("node:fs"));
+              lazyNodeFs = nodeFs;
+              const nodePath = await import("node:path");
+              const candidate = nodePath.resolve(process.cwd(), "languages/modelica/dist/parser.wasm");
+              if (nodeFs.existsSync(candidate)) wasmPath = candidate;
+            }
           }
-        }
-        if (wasmPath) {
-          const { createWasmParser } = await import("@modelscript/dsl/bindings");
-          const loaded = await createWasmParser(wasmPath);
-          parser = loaded.parser;
-          globalRec["modelicaParser"] = parser;
+          if (wasmPath) {
+            const { createWasmParser } = await import("@modelscript/dsl/bindings");
+            const loaded = await createWasmParser(wasmPath);
+            parser = loaded.parser;
+            globalRec["modelicaParser"] = parser;
+          }
+        } catch {
+          // Browser or bundled environment without node:module/node:fs
         }
       }
       if (parser) {
         const { Context } = await import("@modelscript/modelica");
         Context.registerParser(".mo", parser as unknown as Parameters<(typeof Context)["registerParser"]>[1]);
-        if (this.tryFlattenWithModelicaContextSync(this.sourceText, this.programPath, Context)) {
+        if (this.tryFlattenWithModelicaContextSync(this.sourceText, this.programPath, Context, lazyNodeFs)) {
           this.loadedFromSource = true;
           this.time = 0;
           this.stepCount = 0;
@@ -301,7 +381,12 @@ export class WasmSimulationStepper {
     return p;
   }
 
-  private tryFlattenWithModelicaContextSync(source: string, filePath: string, ContextCtor?: unknown): boolean {
+  private tryFlattenWithModelicaContextSync(
+    source: string,
+    filePath: string,
+    ContextCtor?: unknown,
+    syncNodeFs?: { existsSync: (p: string) => boolean; readFileSync: (p: string, enc: "utf8") => string },
+  ): boolean {
     try {
       const globalRec = globalThis as Record<string, unknown>;
       const parser = globalRec["modelicaParser"];
@@ -323,8 +408,9 @@ export class WasmSimulationStepper {
       Ctor.registerParser(".mo", parser);
       const memFiles = new Map<string, string>([[filePath, source]]);
       const memFs = {
-        readFile: (p: string) => memFiles.get(p) ?? (fs.existsSync(p) ? fs.readFileSync(p, "utf8") : ""),
-        exists: (p: string) => memFiles.has(p) || fs.existsSync(p),
+        readFile: (p: string) =>
+          memFiles.get(p) ?? (syncNodeFs?.existsSync(p) ? syncNodeFs.readFileSync(p, "utf8") : ""),
+        exists: (p: string) => memFiles.has(p) || Boolean(syncNodeFs?.existsSync(p)),
         readDir: () => [] as string[],
         isDir: () => false,
       };
@@ -356,7 +442,10 @@ export class WasmSimulationStepper {
     const varIds = new Map<string, number>();
 
     const parts = clean.split(/\bequation\b/);
-    const declSection = parts[0] ?? clean;
+    const declSection = (parts[0] ?? clean).replace(
+      /^\s*(?:(?:partial|encapsulated)\s+)*(?:model|class|block)\s+[A-Za-z_][A-Za-z0-9_]*(?:\s+"[^"]*")?/,
+      "",
+    );
     const eqSectionRaw = parts.slice(1).join("\n");
     const eqSection = eqSectionRaw.split(/\b(?:algorithm|end\s+[A-Za-z_][A-Za-z0-9_]*)\b/)[0] ?? "";
 

@@ -60,7 +60,7 @@ export function normalizeSvgForIcon(svgStr: string): string {
   // Node.js test environment fallback: lazy load jsdom if DOMParser is not globally available
   if (!DOMParserCtor) {
     try {
-      const g = globalThis as unknown as {
+      const g = globalThis as typeof globalThis & {
         jsdom?: { JSDOM: new (html: string) => { window: Window & typeof globalThis } };
         require?: (id: string) => { JSDOM: new (html: string) => { window: Window & typeof globalThis } };
       };

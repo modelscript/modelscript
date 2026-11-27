@@ -1018,10 +1018,54 @@ export function buildPscadDiagram(
           },
         },
         items: [
-          { id: busInId, group: "busIn" },
-          { id: busOutId, group: "busOut" },
-          { id: busMidId, group: "busMid" },
-          { id: busPortId, group: "busIn" },
+          {
+            id: busInId,
+            group: "busIn",
+            domain: "power",
+            connectorType: "PscadElectricalTerminal",
+            portSignature: {
+              variables: [
+                { name: "v", type: "Real", flowKind: "potential", direction: "inout" },
+                { name: "i", type: "Real", flowKind: "flow", direction: "inout" },
+              ],
+            },
+          },
+          {
+            id: busOutId,
+            group: "busOut",
+            domain: "power",
+            connectorType: "PscadElectricalTerminal",
+            portSignature: {
+              variables: [
+                { name: "v", type: "Real", flowKind: "potential", direction: "inout" },
+                { name: "i", type: "Real", flowKind: "flow", direction: "inout" },
+              ],
+            },
+          },
+          {
+            id: busMidId,
+            group: "busMid",
+            domain: "power",
+            connectorType: "PscadElectricalTerminal",
+            portSignature: {
+              variables: [
+                { name: "v", type: "Real", flowKind: "potential", direction: "inout" },
+                { name: "i", type: "Real", flowKind: "flow", direction: "inout" },
+              ],
+            },
+          },
+          {
+            id: busPortId,
+            group: "busIn",
+            domain: "power",
+            connectorType: "PscadElectricalTerminal",
+            portSignature: {
+              variables: [
+                { name: "v", type: "Real", flowKind: "potential", direction: "inout" },
+                { name: "i", type: "Real", flowKind: "flow", direction: "inout" },
+              ],
+            },
+          },
         ],
       },
       properties: busProps,
@@ -1753,10 +1797,35 @@ export function buildPscadDiagram(
 
         const isSignalPort =
           p.kind === "signal" || p.name === "in" || p.name === "out" || p.name === "in1" || p.name === "in2";
+        const signalDir =
+          p.name === "out" || group === "out"
+            ? ("out" as const)
+            : p.name.startsWith("in") || group === "in"
+              ? ("in" as const)
+              : ("inout" as const);
         const showPortText = isSubModule && p.name.length > 0;
         portItems.push({
           id: portId,
           group,
+          domain: isSignalPort ? "signal" : "power",
+          direction: isSignalPort ? signalDir : "inout",
+          connectorType: isSignalPort
+            ? signalDir === "out"
+              ? "RealOutput"
+              : signalDir === "in"
+                ? "RealInput"
+                : "RealSignal"
+            : "PscadElectricalTerminal",
+          portSignature: isSignalPort
+            ? {
+                variables: [{ name: "value", type: "Real", flowKind: "signal", direction: signalDir }],
+              }
+            : {
+                variables: [
+                  { name: "v", type: "Real", flowKind: "potential", direction: "inout" },
+                  { name: "i", type: "Real", flowKind: "flow", direction: "inout" },
+                ],
+              },
           ...(hasExactPos ? { args: { x: Math.round(width / 2 + lx), y: Math.round(height / 2 + ly) } } : {}),
           attrs: {
             circle: isSignalPort

@@ -6,7 +6,10 @@
 
 import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import {
+  cstLineText,
+  groupAllCstTokensByLine,
   LspSymbolKind,
+  type CstNodeLike,
   type LspDiagnostic,
   type LspDocumentSymbol,
   type LspHover,
@@ -14,7 +17,7 @@ import {
   type LspRange,
 } from "@modelscript/runtime";
 import { buildKenoCadAssembly } from "./cad/keno-geometry.js";
-import { SCALE_NUCLIDE_DATA, SCALE_STANDARD_COMPOSITIONS, normalizeNuclideId } from "./catalog/scale-std-schemas.js";
+import { normalizeNuclideId, SCALE_NUCLIDE_DATA, SCALE_STANDARD_COMPOSITIONS } from "./catalog/scale-std-schemas.js";
 import { lowerScaleToDae } from "./dae/scale-to-dae.js";
 import { lintScale } from "./lints/index.js";
 import { parseScale } from "./parser/scale-parser.js";
@@ -84,20 +87,85 @@ export function validateScale(text: string): LspDiagnostic[] {
   }
 }
 
+interface ScaleCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface ScaleCstIndex {
+  byRow: Map<number, ScaleCstLine>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildScaleCstIndex(text: string): ScaleCstIndex {
+  const byRow = new Map<number, ScaleCstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode = (getScaleWasmParser().parse(text)?.rootNode as CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(text, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = text.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  return { byRow, lastRow, lastEndCol };
+}
+
 export function getScaleDocumentSymbols(text: string): LspDocumentSymbol[] {
   const deck = parseScale(text);
-  const lineCount = text.split(/\r?\n/).length;
+  const cstIndex = buildScaleCstIndex(text);
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: lineCount, character: 0 },
+    end: { line: cstIndex.lastRow + 1, character: 0 },
+  };
+  const mkRange = (r?: { startLine: number; endLine: number }): LspRange => {
+    const startLine = r ? Math.max(0, r.startLine - 1) : 0;
+    const endLine = r ? Math.max(0, r.endLine - 1) : startLine;
+    const startEntry = cstIndex.byRow.get(startLine);
+    const endEntry = cstIndex.byRow.get(endLine);
+    return {
+      start: { line: startLine, character: startEntry?.startCol ?? 0 },
+      end: { line: endLine, character: endEntry?.endCol ?? Math.max(1, startEntry?.endCol ?? 1) },
+    };
   };
 
   const children: LspDocumentSymbol[] = [];
 
   for (const comp of deck.compositions) {
-    const startLine = comp.range ? Math.max(0, comp.range.startLine - 1) : 0;
-    const endLine = comp.range ? Math.max(0, comp.range.endLine - 1) : startLine;
-    const r: LspRange = { start: { line: startLine, character: 0 }, end: { line: endLine, character: 40 } };
+    const r = mkRange(comp.range);
     children.push({
       name: `Mix ${comp.mixtureId}: ${comp.materialName.toUpperCase()}`,
       detail: [
@@ -114,9 +182,7 @@ export function getScaleDocumentSymbols(text: string): LspDocumentSymbol[] {
   }
 
   for (const unit of deck.units.values()) {
-    const startLine = unit.range ? Math.max(0, unit.range.startLine - 1) : 0;
-    const endLine = unit.range ? Math.max(0, unit.range.endLine - 1) : startLine;
-    const r: LspRange = { start: { line: startLine, character: 0 }, end: { line: endLine, character: 40 } };
+    const r = mkRange(unit.range);
     children.push({
       name: unit.isGlobal ? `Global Unit ${unit.id}` : `Unit ${unit.id}`,
       detail: `${unit.bodies.length} bodies, ${unit.media.length} media regions`,
@@ -127,9 +193,7 @@ export function getScaleDocumentSymbols(text: string): LspDocumentSymbol[] {
   }
 
   for (const arr of deck.arrays.values()) {
-    const startLine = arr.range ? Math.max(0, arr.range.startLine - 1) : 0;
-    const endLine = arr.range ? Math.max(0, arr.range.endLine - 1) : startLine;
-    const r: LspRange = { start: { line: startLine, character: 0 }, end: { line: endLine, character: 40 } };
+    const r = mkRange(arr.range);
     children.push({
       name: `Array ${arr.id}`,
       detail: `${arr.nux}x${arr.nuy}x${arr.nuz} lattice (${arr.fill.length} entries)`,
@@ -140,9 +204,7 @@ export function getScaleDocumentSymbols(text: string): LspDocumentSymbol[] {
   }
 
   for (const oc of deck.origenCases) {
-    const startLine = oc.range ? Math.max(0, oc.range.startLine - 1) : 0;
-    const endLine = oc.range ? Math.max(0, oc.range.endLine - 1) : startLine;
-    const r: LspRange = { start: { line: startLine, character: 0 }, end: { line: endLine, character: 40 } };
+    const r = mkRange(oc.range);
     children.push({
       name: `ORIGEN Case ${oc.id}`,
       detail: `${oc.nuclides.length} nuclides, ${oc.time?.values.length ?? 0} time steps`,
@@ -165,8 +227,8 @@ export function getScaleDocumentSymbols(text: string): LspDocumentSymbol[] {
 }
 
 export function getScaleHover(text: string, position: LspPosition): LspHover | null {
-  const lines = text.split(/\r?\n/);
-  const lineText = lines[position.line] ?? "";
+  const cstIndex = buildScaleCstIndex(text);
+  const lineText = cstIndex.byRow.get(position.line)?.colLine ?? "";
   const deck = parseScale(text);
 
   // Hover on sequence directive (must be at start of line)

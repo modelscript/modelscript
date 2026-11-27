@@ -6,6 +6,7 @@ import {
   language,
   repeat,
   repeat1,
+  semanticToken,
   seq,
   type QueryDB,
   type SymbolEntry,
@@ -99,6 +100,12 @@ export const psseLanguage = language({
   },
   lsp: {
     fileExtensions: [".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".idv", ".sav", ".out"],
+    folding: [
+      "DyrRecord",
+      { rule: "BangComment", kind: "comment", defaultCollapsed: true },
+      { rule: "DoubleSlashComment", kind: "comment", defaultCollapsed: true },
+    ],
+    outline: ["SourceFile", "DyrRecord", "RawMetadataLine"],
     icons: {
       light: "./assets/psse/icon-light.png",
       dark: "./assets/psse/icon-dark.png",
@@ -580,7 +587,7 @@ export const psseLanguage = language({
 
     // Multi-format GLR entry points (dispatched via Parser.parseFormat(source, "raw" | "dyr" | "seq" | "con" | "idv"))
     RawFile: ($) => repeat(choice($["RawMetadataLine"]!, $["RawComment"]!, $["RawFieldToken"]!)),
-    RawMetadataLine: ($) => $["BangComment"]!,
+    RawMetadataLine: ($) => semanticToken("macro", $["BangComment"]!),
     RawComment: ($) => choice($["SlashTerminator"]!, $["DoubleSlashComment"]!),
     RawFieldToken: ($) => choice($["Number"]!, $["QuotedString"]!, $["Identifier"]!, ",", $["SymbolPunct"]!),
 
@@ -614,13 +621,13 @@ export const psseLanguage = language({
         $["SymbolPunct"]!,
       ),
 
-    SlashTerminator: () => /\/[^\r\n]*/,
-    BangComment: () => /@![^\r\n]*/,
-    DoubleSlashComment: () => /\/\/[^\r\n]*/,
-    Number: () => /[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?/,
-    QuotedString: () => /'(?:''|[^'])*'|"(?:""|[^"])*"/,
-    Identifier: () => /[A-Za-z_][A-Za-z0-9_@!.-]*/,
-    SymbolPunct: () => /[:;()[\]=+*<>~#%&$^|\\?-]+/,
+    SlashTerminator: () => semanticToken("comment", /\/[^\r\n]*/),
+    BangComment: () => semanticToken("comment", /@![^\r\n]*/),
+    DoubleSlashComment: () => semanticToken("comment", /\/\/[^\r\n]*/),
+    Number: () => semanticToken("number", /[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eEdD][-+]?[0-9]+)?/),
+    QuotedString: () => semanticToken("string", /'(?:''|[^'])*'|"(?:""|[^"])*"/),
+    Identifier: () => semanticToken("variable", /[A-Za-z_][A-Za-z0-9_@!.-]*/),
+    SymbolPunct: () => semanticToken("operator", /[:;()[\]=+*<>~#%&$^|\\?-]+/),
   },
 });
 

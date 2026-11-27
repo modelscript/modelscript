@@ -5,6 +5,9 @@
  * diagnostics, documentSymbols, hover, and completions.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { SLAM_BLOCK_SPECS, lookupSlamModelSchema } from "./catalog/index.js";
 import { lintSlam } from "./lints/index.js";
 import { parseSlamDeck } from "./parser/slam-parser.js";
@@ -208,13 +211,33 @@ const CONTROL_DOCS: Record<string, string> = {
   FIN: "### `FIN`\nTerminates the SLAM II input deck.",
 };
 
-function wordAtPosition(line: string, character: number): string {
-  const idx = Math.max(0, Math.min(character, line.length));
-  let start = idx;
-  while (start > 0 && /[A-Za-z0-9_]/.test(line[start - 1]!)) start--;
-  let end = idx;
-  while (end < line.length && /[A-Za-z0-9_]/.test(line[end]!)) end++;
-  return line.slice(start, end);
+function cstTokenAtPosition(content: string, position: LspPosition, cstTree?: { rootNode?: unknown } | null): string {
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("slam", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+  if (!rootNode) return "";
+
+  const grouped = groupAllCstTokensByLine(rootNode as CstNodeLike);
+  const lineEntry = grouped.find((g) => g.row === position.line);
+  if (!lineEntry) return "";
+
+  for (const tok of lineEntry.tokens) {
+    const t = tok as CstNodeLike & { endPosition?: { column: number } };
+    const text = (t.text ?? "").trim();
+    if (!text) continue;
+    const start = t.startPosition?.column ?? 0;
+    const end = t.endPosition?.column ?? start + text.length;
+    if (position.character >= start && position.character <= end) {
+      return text;
+    }
+  }
+  return "";
 }
 
 /**
@@ -224,11 +247,10 @@ export function getSlamHover(
   content: string,
   position: LspPosition,
   _uri: string = "model.slam",
+  cstTree?: { rootNode?: unknown } | null,
 ): LspHover | undefined {
   try {
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
-    const word = wordAtPosition(line, position.character).toUpperCase();
+    const word = cstTokenAtPosition(content, position, cstTree).toUpperCase();
     if (!word) return undefined;
 
     if (CONTROL_DOCS[word]) {

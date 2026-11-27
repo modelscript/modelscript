@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { DiagramPortSignature } from "./port-compatibility.js";
+
 /**
  * @modelscript/diagram — NASA ROCETS Liquid Rocket Propulsion P&ID Schematic & Flow Diagram Builder.
  *
@@ -10,17 +12,7 @@
  */
 
 export type RocetsPropellantKind =
-  | "LOX"
-  | "LH2"
-  | "LCH4"
-  | "RP1"
-  | "GH2"
-  | "GOX"
-  | "COMBUSTION_GAS"
-  | "HOT_GAS"
-  | "HELIUM"
-  | "NITROGEN"
-  | string;
+  "LOX" | "LH2" | "LCH4" | "RP1" | "GH2" | "GOX" | "COMBUSTION_GAS" | "HOT_GAS" | "HELIUM" | "NITROGEN" | string;
 
 export interface RocetsPortLike {
   name: string;
@@ -280,14 +272,42 @@ export function buildRocetsDiagram(model: RocetsEngineModelLike): RocetsDiagramG
   for (const comp of components) {
     const pt = coords.get(comp.id) ?? { x: 100, y: 100 };
     const style = getRocetsModuleStyle(comp.type, true);
-    const portItems: { id: string; group: string; attrs?: Record<string, unknown> }[] = [];
+    const portItems: {
+      id: string;
+      group: string;
+      direction?: string | undefined;
+      domain?: string | undefined;
+      connectorType?: string | undefined;
+      portSignature?: DiagramPortSignature | undefined;
+      attrs?: Record<string, unknown>;
+    }[] = [];
 
     if (comp.ports) {
       for (const [pName, port] of Object.entries(comp.ports)) {
         const isOut = port.direction === "out";
+        const dir = isOut ? "out" : "in";
+        const isShaft = /shaft|torque|power|rpm|speed/i.test(pName);
+        const domain = isShaft ? "mechanical" : "fluid";
         portItems.push({
           id: pName,
-          group: isOut ? "out" : "in",
+          group: dir,
+          direction: dir,
+          domain,
+          connectorType: isShaft ? "RocetsShaftPort" : "RocetsFluidPort",
+          portSignature: isShaft
+            ? {
+                variables: [
+                  { name: "omega", type: "Real", flowKind: "potential", direction: "inout" },
+                  { name: "tau", type: "Real", flowKind: "flow", direction: dir },
+                ],
+              }
+            : {
+                variables: [
+                  { name: "p", type: "Real", flowKind: "potential", direction: "inout" },
+                  { name: "m_flow", type: "Real", flowKind: "flow", direction: dir },
+                  { name: "T", type: "Real", flowKind: "stream", direction: "inout" },
+                ],
+              },
           attrs: {
             text: { text: pName, fill: "#94a3b8", fontSize: 9 },
           },

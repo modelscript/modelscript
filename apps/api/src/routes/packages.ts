@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import zlib from "node:zlib";
 import semver from "semver";
 
 import {
@@ -2049,6 +2050,15 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         "Cache-Control",
         req.query["hash"] ? "public, max-age=31536000, immutable" : "public, max-age=86400, must-revalidate",
       );
+      const acceptEncoding = String(req.headers["accept-encoding"] || "");
+      if (!req.headers["range"] && /\bgzip\b/i.test(acceptEncoding)) {
+        res.setHeader("Content-Encoding", "gzip");
+        res.setHeader("Vary", "Accept-Encoding");
+        fs.createReadStream(path.resolve(msidxPath))
+          .pipe(zlib.createGzip({ level: 1 }))
+          .pipe(res);
+        return;
+      }
       res.sendFile(path.resolve(msidxPath));
     },
   );
@@ -2780,6 +2790,7 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
         "default-src 'none'; style-src 'unsafe-inline'; img-src data: 'self'; sandbox",
       );
       res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       res.sendFile(resolved);
     },
   );

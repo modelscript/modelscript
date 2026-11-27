@@ -8,6 +8,9 @@
  *  - `getArinc429Completions`
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { ARINC429_STANDARD_LABELS, lookupStandardArinc429Label } from "./catalog/arinc429-std-schemas.js";
 import { lintArinc429 } from "./lints/index.js";
 import { decodeArinc429Word } from "./parser/codec.js";
@@ -68,19 +71,75 @@ export interface LspCompletionItem {
   insertText?: string | undefined;
 }
 
+interface Arinc429CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface Arinc429CstLineIndex {
+  byRow: Map<number, Arinc429CstLineEntry>;
+  lastRow: number;
+  lastCol: number;
+}
+
+function buildArinc429CstLineIndex(content: string): Arinc429CstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("arinc429", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, Arinc429CstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    let maxCol = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row >= maxRow) {
+        maxRow = row;
+        maxCol = endCol;
+      }
+    }
+    const rootEnd = (rootNode as { endPosition?: { row?: number; column?: number } }).endPosition;
+    const lastRow = Math.max(maxRow, rootEnd?.row ?? 0);
+    const lastCol = lastRow === maxRow ? maxCol : (rootEnd?.column ?? 0);
+    return { byRow, lastRow, lastCol };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  const lastRow = Math.max(0, rawLines.length - 1);
+  return { byRow, lastRow, lastCol: (rawLines[lastRow] ?? "").length };
+}
+
 /**
  * Validates an ARINC 429 bus schema / trace document and returns LSP diagnostics.
  */
 export function validateArinc429(content: string, _uri: string = "bus.a429"): LspDiagnostic[] {
   const doc = parseArinc429(content);
   const diags = lintArinc429(doc);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildArinc429CstLineIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
+    const entry = cstIndex.byRow.get(lineIdx);
     const startChar = Math.max(0, d.column - 1);
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -99,16 +158,16 @@ export function validateArinc429(content: string, _uri: string = "bus.a429"): Ls
  */
 export function getArinc429DocumentSymbols(content: string): LspDocumentSymbol[] {
   const doc = parseArinc429(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildArinc429CstLineIndex(content);
 
   const children: LspDocumentSymbol[] = [];
 
   for (const label of doc.labels) {
     const lineIdx = Math.max(0, (label.line ?? 1) - 1);
-    const lineLen = (lines[lineIdx] ?? "").length;
+    const entry = cstIndex.byRow.get(lineIdx);
     const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: Math.max(1, lineLen) },
+      start: { line: lineIdx, character: entry?.startCol ?? 0 },
+      end: { line: lineIdx, character: Math.max((entry?.startCol ?? 0) + 1, entry?.endCol ?? 1) },
     };
     children.push({
       name: `LABEL ${label.labelOctal} ${label.name}`,
@@ -122,10 +181,10 @@ export function getArinc429DocumentSymbols(content: string): LspDocumentSymbol[]
   for (let i = 0; i < doc.frames.length; i++) {
     const frame = doc.frames[i]!;
     const lineIdx = Math.max(0, (frame.line ?? 1) - 1);
-    const lineLen = (lines[lineIdx] ?? "").length;
+    const entry = cstIndex.byRow.get(lineIdx);
     const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: Math.max(1, lineLen) },
+      start: { line: lineIdx, character: entry?.startCol ?? 0 },
+      end: { line: lineIdx, character: Math.max((entry?.startCol ?? 0) + 1, entry?.endCol ?? 1) },
     };
     const decoded = decodeArinc429Word(frame.rawWord);
     children.push({
@@ -139,8 +198,9 @@ export function getArinc429DocumentSymbols(content: string): LspDocumentSymbol[]
 
   const fullRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: Math.max(1, (lines[lines.length - 1] ?? "").length) },
+    end: { line: cstIndex.lastRow, character: Math.max(1, cstIndex.lastCol) },
   };
+  const firstEnd = cstIndex.byRow.get(0)?.endCol ?? 1;
 
   return [
     {
@@ -150,7 +210,7 @@ export function getArinc429DocumentSymbols(content: string): LspDocumentSymbol[]
       range: fullRange,
       selectionRange: {
         start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.max(1, (lines[0] ?? "").length) },
+        end: { line: 0, character: Math.max(1, firstEnd) },
       },
       children,
     },
@@ -161,9 +221,10 @@ export function getArinc429DocumentSymbols(content: string): LspDocumentSymbol[]
  * Provides rich Markdown hover info for 32-bit hex words, octal labels, and ARINC 429 keywords.
  */
 export function getArinc429Hover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildArinc429CstLineIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = " ".repeat(entry.startCol) + entry.text;
 
   // Extract token under cursor
   let start = position.character;

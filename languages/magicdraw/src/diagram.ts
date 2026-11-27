@@ -13,6 +13,7 @@
  * Preserves MagicDraw `mdOwnedViews` coordinates when present, falling back to automatic layout.
  */
 
+import type { DiagramPortSignature } from "@modelscript/diagram/protocol";
 import type { DiagramConfig } from "@modelscript/dsl";
 import { loadDiagramView, parseMagicDraw } from "./parser/index.js";
 import type {
@@ -35,6 +36,8 @@ export interface MagicDrawDiagramPort {
   name: string;
   isConjugated: boolean;
   typeName?: string | undefined;
+  connectorType?: string | undefined;
+  portSignature?: DiagramPortSignature | undefined;
   side: "left" | "right" | "top" | "bottom";
 }
 
@@ -424,6 +427,7 @@ export function buildMagicDrawDiagram(
             name: pt.name,
             isConjugated: pt.isConjugated,
             typeName: pt.typeRef?.resolvedName,
+            connectorType: pt.typeRef?.resolvedName,
             side: i % 2 === 0 ? "left" : "right",
           })),
           x: saved?.x ?? 60 + (idx % 3) * 260,
@@ -490,6 +494,7 @@ export function buildMagicDrawDiagram(
               name: pt.name,
               isConjugated: pt.isConjugated,
               typeName: pt.typeRef?.resolvedName,
+              connectorType: pt.typeRef?.resolvedName,
               side: i % 2 === 0 ? "left" : "right",
             })),
         x: saved?.x ?? 40 + (idx % 3) * 300,

@@ -8,6 +8,9 @@
  * - `getIucrCifCompletions`
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintIucrCif } from "./lints/index.js";
 import { extractCrystalStructure, parseIucrCif } from "./parser/cif-parser.js";
 import { solveCrystalStructure } from "./solver/index.js";
@@ -162,18 +165,83 @@ const CIF_TAG_DOCS: Record<string, { detail: string; doc: string; snippet?: stri
   },
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  endIndex: number;
+}
+
+interface IucrCifCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  entries: CstLineEntry[];
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildIucrCifCstIndex(content: string): IucrCifCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  const entries: CstLineEntry[] = [];
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("iucr-cif", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const endIndex = last?.endIndex ?? 0;
+      const entry: CstLineEntry = { row, text: lineText, startCol, endCol, endIndex };
+      byRow.set(row, entry);
+      entries.push(entry);
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    let offset = 0;
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (trimmed) {
+        const startCol = Math.max(0, raw.search(/\S/));
+        const endCol = startCol + trimmed.length;
+        const entry: CstLineEntry = { row: i, text: trimmed, startCol, endCol, endIndex: offset + endCol };
+        byRow.set(i, entry);
+        entries.push(entry);
+        lastRow = i;
+        lastEndCol = endCol;
+      }
+      offset += raw.length + 1;
+    }
+  }
+  return { byRow, entries, lastRow, lastEndCol };
+}
+
 /**
  * Validates an IUCr CIF / STAR 1.1 document and returns LSP diagnostics.
  */
 export function validateIucrCif(content: string, _uri = "crystal.cif"): LspDiagnostic[] {
   const diags = lintIucrCif(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildIucrCifCstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = Math.max(0, d.column - 1);
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column > 1 ? d.column - 1 : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
     const severity: 1 | 2 | 3 = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
 
     return {
@@ -194,30 +262,35 @@ export function validateIucrCif(content: string, _uri = "crystal.cif"): LspDiagn
  */
 export function getIucrCifDocumentSymbols(content: string): LspDocumentSymbol[] {
   const doc = parseIucrCif(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildIucrCifCstIndex(content);
   const result: LspDocumentSymbol[] = [];
 
   for (const block of doc.blocks) {
     const startLine = Math.max(0, block.line - 1);
-    const endLine = Math.min(
-      lines.length - 1,
-      Math.max(startLine, content.slice(0, block.endOffset).split(/\r?\n/).length - 1),
-    );
+    let endLine = startLine;
+    for (const e of cstIndex.entries) {
+      if (e.row >= startLine && (e.endIndex <= block.endOffset || e.endIndex === 0)) {
+        endLine = e.row;
+      }
+    }
+    const startEntry = cstIndex.byRow.get(startLine);
+    const endEntry = cstIndex.byRow.get(endLine);
     const range: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: (lines[endLine] ?? "").length },
+      start: { line: startLine, character: startEntry?.startCol ?? 0 },
+      end: { line: endLine, character: endEntry?.endCol ?? 0 },
     };
     const selRange: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: startLine, character: (lines[startLine] ?? "").length },
+      start: { line: startLine, character: startEntry?.startCol ?? 0 },
+      end: { line: startLine, character: startEntry?.endCol ?? 0 },
     };
 
     const children: LspDocumentSymbol[] = [];
     for (const entry of block.tagEntries) {
       const l = Math.max(0, entry.line - 1);
+      const lineEntry = cstIndex.byRow.get(l);
       const r: LspRange = {
         start: { line: l, character: Math.max(0, entry.column - 1) },
-        end: { line: l, character: (lines[l] ?? "").length },
+        end: { line: l, character: lineEntry?.endCol ?? Math.max(0, entry.column - 1) + entry.tag.length },
       };
       children.push({
         name: entry.tag,
@@ -231,9 +304,10 @@ export function getIucrCifDocumentSymbols(content: string): LspDocumentSymbol[] 
     for (let idx = 0; idx < block.loops.length; idx++) {
       const loop = block.loops[idx]!;
       const l = Math.max(0, loop.line - 1);
+      const lineEntry = cstIndex.byRow.get(l);
       const r: LspRange = {
         start: { line: l, character: Math.max(0, loop.column - 1) },
-        end: { line: l, character: (lines[l] ?? "").length },
+        end: { line: l, character: lineEntry?.endCol ?? Math.max(0, loop.column - 1) + 5 },
       };
       children.push({
         name: `loop_ (${loop.tags[0] ?? `table_${idx + 1}`})`,
@@ -261,21 +335,25 @@ export function getIucrCifDocumentSymbols(content: string): LspDocumentSymbol[] 
  * Returns Markdown hover information for a CIF tag or `data_` block at the given LSP position.
  */
 export function getIucrCifHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (!lineText) return null;
+  const cstIndex = buildIucrCifCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+
+  const lineText = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > lineText.length) return null;
 
   // Find token surrounding position.character
-  let start = position.character;
-  let end = position.character;
+  let start = relChar;
+  let end = relChar;
   while (start > 0 && !/\s/.test(lineText[start - 1]!)) start--;
   while (end < lineText.length && !/\s/.test(lineText[end]!)) end++;
   const token = lineText.slice(start, end).trim();
   if (!token) return null;
 
   const hoverRange: LspRange = {
-    start: { line: position.line, character: start },
-    end: { line: position.line, character: end },
+    start: { line: position.line, character: entry.startCol + start },
+    end: { line: position.line, character: entry.startCol + end },
   };
 
   if (token.toLowerCase().startsWith("data_")) {
@@ -332,9 +410,9 @@ export function getIucrCifHover(content: string, position: LspPosition): LspHove
  * Returns CIF 1.1 dictionary tag & keyword completions at the given LSP position.
  */
 export function getIucrCifCompletions(content: string, position: LspPosition): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line] ?? "";
-  const prefixSlice = lineText.slice(0, position.character);
+  const cstIndex = buildIucrCifCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  const prefixSlice = entry ? entry.text.slice(0, Math.max(0, position.character - entry.startCol)) : "";
   const wordMatch = /([^\s]*)$/.exec(prefixSlice);
   const prefix = (wordMatch?.[1] ?? "").toLowerCase();
 

@@ -7,6 +7,9 @@
  * backed by the cleanroom `@modelscript/csmp-std-lib` block catalog.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getCsmpSchemasFromLibraries, lookupCsmpBlockSchema } from "./catalog/library-package-adapter.js";
 import { lintCsmp, VALID_CSMP_METHODS } from "./lints/index.js";
 import { parseCsmpDeck } from "./parser/deck-parser.js";
@@ -103,18 +106,76 @@ const CSMP_KEYWORDS: Array<{ keyword: string; detail: string; doc: string }> = [
   { keyword: "STOP", detail: "End of job", doc: "Terminates the CSMP job." },
 ];
 
-function lineRange(lineNum: number, lineText: string): LspRange {
+interface CsmpCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface CsmpCstLineIndex {
+  byRow: Map<number, CsmpCstLineEntry>;
+  lastRow: number;
+  lastCol: number;
+}
+
+function buildCsmpCstLineIndex(content: string): CsmpCstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("csmp", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, CsmpCstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    let maxCol = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row >= maxRow) {
+        maxRow = row;
+        maxCol = endCol;
+      }
+    }
+    const rootEnd = (rootNode as { endPosition?: { row?: number; column?: number } }).endPosition;
+    const lastRow = Math.max(maxRow, rootEnd?.row ?? 0);
+    const lastCol = lastRow === maxRow ? maxCol : (rootEnd?.column ?? 0);
+    return { byRow, lastRow, lastCol };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  const lastRow = Math.max(0, rawLines.length - 1);
+  return { byRow, lastRow, lastCol: (rawLines[lastRow] ?? "").length };
+}
+
+function lineRange(lineNum: number, cstIndex: CsmpCstLineIndex): LspRange {
   const zeroLine = Math.max(0, lineNum - 1);
+  const entry = cstIndex.byRow.get(zeroLine);
   return {
-    start: { line: zeroLine, character: 0 },
-    end: { line: zeroLine, character: Math.max(1, lineText.length) },
+    start: { line: zeroLine, character: entry?.startCol ?? 0 },
+    end: { line: zeroLine, character: Math.max((entry?.startCol ?? 0) + 1, entry?.endCol ?? 1) },
   };
 }
 
 function wordAtPosition(content: string, position: LspPosition): { word: string; range: LspRange } | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (lineText === undefined) return null;
+  const cstIndex = buildCsmpCstLineIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const lineText = " ".repeat(entry.startCol) + entry.text;
 
   const isIdent = (ch: string): boolean => /[A-Za-z0-9_]/.test(ch);
   let start = Math.min(position.character, lineText.length);
@@ -138,13 +199,13 @@ function wordAtPosition(content: string, position: LspPosition): { word: string;
 export function validateCsmp(content: string, _uri: string = "model.csmp"): LspDiagnostic[] {
   const program = parseCsmpDeck(content);
   const diags = lintCsmp(program);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildCsmpCstLineIndex(content);
 
   return diags.map((d) => {
     const zeroLine = Math.max(0, d.line - 1);
-    const lt = lines[zeroLine] ?? "";
+    const lineEnd = cstIndex.byRow.get(zeroLine)?.endCol ?? 0;
     const startChar = Math.max(0, d.column - 1);
-    const endChar = Math.max(startChar + 1, lt.length);
+    const endChar = Math.max(startChar + 1, lineEnd);
 
     return {
       range: {
@@ -164,11 +225,11 @@ export function validateCsmp(content: string, _uri: string = "model.csmp"): LspD
  */
 export function getCsmpDocumentSymbols(content: string, _uri: string = "model.csmp"): LspDocumentSymbol[] {
   const program = parseCsmpDeck(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildCsmpCstLineIndex(content);
   const children: LspDocumentSymbol[] = [];
 
   for (const [name, decl] of program.parameters) {
-    const r = lineRange(decl.span.line, lines[decl.span.line - 1] ?? "");
+    const r = lineRange(decl.span.line, cstIndex);
     children.push({
       name,
       detail: `PARAM = ${decl.value}`,
@@ -179,7 +240,7 @@ export function getCsmpDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const [name, decl] of program.constants) {
-    const r = lineRange(decl.span.line, lines[decl.span.line - 1] ?? "");
+    const r = lineRange(decl.span.line, cstIndex);
     children.push({
       name,
       detail: `CONST = ${decl.value}`,
@@ -190,7 +251,7 @@ export function getCsmpDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const [name, decl] of program.incons) {
-    const r = lineRange(decl.span.line, lines[decl.span.line - 1] ?? "");
+    const r = lineRange(decl.span.line, cstIndex);
     children.push({
       name,
       detail: `INCON = ${decl.value}`,
@@ -201,7 +262,7 @@ export function getCsmpDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const [name, tbl] of program.functionTables) {
-    const r = lineRange(tbl.span.line, lines[tbl.span.line - 1] ?? "");
+    const r = lineRange(tbl.span.line, cstIndex);
     children.push({
       name,
       detail: `FUNCTION (${tbl.points.length} pts)`,
@@ -212,7 +273,7 @@ export function getCsmpDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const [name, macro] of program.macros) {
-    const r = lineRange(macro.span.line, lines[macro.span.line - 1] ?? "");
+    const r = lineRange(macro.span.line, cstIndex);
     children.push({
       name,
       detail: `MACRO (${macro.inputs.join(", ")}) -> (${macro.outputs.join(", ")})`,
@@ -223,7 +284,7 @@ export function getCsmpDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const stmt of program.dynamicStatements) {
-    const r = lineRange(stmt.span.line, lines[stmt.span.line - 1] ?? "");
+    const r = lineRange(stmt.span.line, cstIndex);
     const isState = stmt.expr.kind === "call" && stmt.expr.callee === "INTGRL";
     children.push({
       name: stmt.target,
@@ -236,8 +297,9 @@ export function getCsmpDocumentSymbols(content: string, _uri: string = "model.cs
 
   const fullRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: lines[lines.length - 1]?.length ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastCol },
   };
+  const firstEnd = cstIndex.byRow.get(0)?.endCol ?? 1;
 
   return [
     {
@@ -247,7 +309,7 @@ export function getCsmpDocumentSymbols(content: string, _uri: string = "model.cs
       range: fullRange,
       selectionRange: {
         start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.max(1, lines[0]?.length ?? 1) },
+        end: { line: 0, character: Math.max(1, firstEnd) },
       },
       children,
     },

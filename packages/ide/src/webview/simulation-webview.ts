@@ -8,8 +8,6 @@
 // 1. Batch mode: static data from a completed simulation
 // 2. Live mode: streaming data from MQTT broker via WebSocket
 
-import { generateParquetBuffer } from "@modelscript/editor/internal/binary-export.js";
-import type { SimulationResultsProps } from "@modelscript/editor/workbench/SimulationResults.js";
 import {
   CanvasPlotController,
   simulationToDataset,
@@ -17,163 +15,68 @@ import {
   type IndexedDataset,
   type TrackConfig,
 } from "@modelscript/simulate/charts";
-import { lttbDecimate } from "../utils/lttb.js";
 import {
   mountSimulationReactPanels,
   type MountedSimulationReactPanels,
   type WaterComplianceReport,
 } from "./simulation-results-webview.js";
-
-interface SimulationData {
-  t: number[];
-  y: number[][];
-  states: string[];
-  variableMetadata?: Record<string, { unit?: string | undefined; description?: string | undefined }> | undefined;
-  sweepResults?: { value: number; y: number[][] }[];
-  comtrade?: { cfg: string; dat: string };
-  pscadOut?: { inf: string; out: { suffix: string; content: string }[] };
-  pscadPsout?: Uint8Array | string;
-  complianceReport?: unknown;
-  waterCompliance?: WaterComplianceReport;
-  pscadExports?: SimulationResultsProps["pscadExports"];
-  projectName?: string;
-}
-
-/** Per-variable statistics from Monte Carlo analysis */
-interface MCVariableStats {
-  mean: number[];
-  stddev: number[];
-  ciLo: number[];
-  ciHi: number[];
-  percentiles: Record<string, number[]>;
-}
-
-interface MonteCarloData {
-  t: number[];
-  statistics: Record<string, MCVariableStats>;
-  numSamples: number;
-  convergence: { coeffOfVariation: number; effectiveSampleSize: number };
-}
-
-const COLORS = [
-  "#0969da",
-  "#2da44e",
-  "#bf3989",
-  "#db6d28",
-  "#8250df",
-  "#218bff",
-  "#a371f7",
-  "#3fb950",
-  "#e34c26",
-  "#f0883e",
-  "#56d364",
-  "#79c0ff",
-  "#d2a8ff",
-  "#ffa657",
-];
+import {
+  buildHoverTooltipHtml,
+  drawBatchOverlayChart,
+  drawLiveChart,
+} from "./simulation/simulation-canvas-renderer.js";
+import {
+  copySimulationTsvToClipboard,
+  exportCanvasPng,
+  exportSimulationComtrade,
+  exportSimulationCsv,
+  exportSimulationJson,
+  exportSimulationParquet,
+  exportSimulationPscadOut,
+  exportSimulationPscadPsout,
+} from "./simulation/simulation-export-utils.js";
+import {
+  buildLiveSubscriptionTopic,
+  buildMqttConnectPacket,
+  buildMqttSubscribePacket,
+  decodeMqttPacket,
+  parseLiveDataTopic,
+} from "./simulation/simulation-mqtt-protocol.js";
+import { calculateDefaultPlotBounds, lttbDecimate } from "./simulation/simulation-signal-utils.js";
+import {
+  applySolverPresetDom,
+  buildVariableTreeDom,
+  filterParametersDom,
+  filterVariablesDom,
+  populateAnalysisSelectorsDom,
+  populateXAxisSelectorDom,
+  renderParametersDom,
+  renderRunChipsDom,
+  renderStatsDrawerDom,
+  syncSolverFromExperimentDom,
+} from "./simulation/simulation-toolbar-dom.js";
+import {
+  getReachabilityProfileForVar as lookupReachabilityProfile,
+  type LiveBuffer,
+  type MonteCarloData,
+  type PinnedRun,
+  type ReachabilityData,
+  type SimulationData,
+  type VariableReachabilityProfile,
+  type VerificationLimit,
+} from "./simulation/simulation-types.js";
 
 let currentData: SimulationData | null = null;
 let currentMCData: MonteCarloData | null = null;
-
-interface FlowpipeEnvelope {
-  name: string;
-  kind: "zonotope" | "interval" | "octagon" | "affine";
-  color: string;
-  fillColor?: string;
-  borderDash?: number[];
-  lineWidth?: number;
-  lo: number[];
-  hi: number[];
-  peakVal?: number;
-  breachTime?: number;
-  isViolation?: boolean;
-}
-
-interface VariableReachabilityProfile {
-  variable: string;
-  nominalTrajectory: number[];
-  envelopes: FlowpipeEnvelope[];
-  requirementLimit?: number;
-  requirementDirection?: "max" | "min";
-  requirementLabel?: string;
-  isCertifiedSafe: boolean;
-  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[];
-  yRange?: [number, number];
-}
-
-interface ReachabilityData {
-  t: number[];
-  variable: string;
-  nominalTrajectory: number[];
-  envelopes: FlowpipeEnvelope[];
-  requirementLimit: number;
-  requirementLabel: string;
-  isCertifiedSafe: boolean;
-  statusBadges?: { text: string; kind: "pass" | "warn" | "fail" }[];
-  yRange?: [number, number];
-  variables?: Record<string, VariableReachabilityProfile>;
-  states?: string[];
-  y?: number[][];
-  parameters?: {
-    name: string;
-    description?: string;
-    defaultValue: number;
-    type: string;
-    unit?: string;
-    min?: number;
-    max?: number;
-  }[];
-  experiment?: {
-    startTime?: number;
-    stopTime?: number;
-    interval?: number;
-    tolerance?: number;
-  };
-  telemetry?: { executionTimeMs: number; stepCount: number };
-  modelName?: string;
-  summary?: string;
-}
-
 let currentReachabilityData: ReachabilityData | null = null;
 
 function getReachabilityProfileForVar(varName: string): VariableReachabilityProfile | undefined {
-  if (!currentReachabilityData) return undefined;
-  if (currentReachabilityData.variables && currentReachabilityData.variables[varName]) {
-    return currentReachabilityData.variables[varName];
-  }
-  if (currentReachabilityData.variable === varName) {
-    return {
-      variable: currentReachabilityData.variable,
-      nominalTrajectory: currentReachabilityData.nominalTrajectory,
-      envelopes: currentReachabilityData.envelopes,
-      requirementLimit: currentReachabilityData.requirementLimit,
-      requirementDirection: "max",
-      requirementLabel: currentReachabilityData.requirementLabel,
-      isCertifiedSafe: currentReachabilityData.isCertifiedSafe,
-      statusBadges: currentReachabilityData.statusBadges,
-      yRange: currentReachabilityData.yRange,
-    };
-  }
-  return undefined;
+  return lookupReachabilityProfile(currentReachabilityData, varName);
 }
 
 let isDark = true;
 const hiddenVars = new Set<string>();
 const seenVars = new Set<string>();
-
-/** Verification limit line overlay */
-interface VerificationLimit {
-  /** The variable name this limit applies to (e.g., "T") */
-  variable: string;
-  /** The y-value of the horizontal limit line */
-  value: number;
-  /** Human-readable label (e.g., "max: 85.0 °C") */
-  label: string;
-  /** Whether the constraint was violated */
-  violated: boolean;
-  /** Direction of the limit ("max" or "min") */
-  direction?: "max" | "min";
-}
 let currentLimits: VerificationLimit[] = [];
 
 // ── Live mode state ──
@@ -181,15 +84,6 @@ let isLiveMode = false;
 let livePaused = false;
 let liveWs: WebSocket | null = null;
 const RING_BUFFER_SIZE = 500;
-
-/** Ring buffer per variable for live mode */
-interface LiveBuffer {
-  times: number[];
-  values: Map<string, number[]>; // variable name → value ring buffer
-  head: number; // next write position
-  count: number; // current count (up to RING_BUFFER_SIZE)
-  variableNames: string[];
-}
 
 let liveBuffer: LiveBuffer | null = null;
 let animFrameId: number | null = null;
@@ -251,7 +145,7 @@ let latestWaterCompliance: WaterComplianceReport | undefined = undefined;
 let cursorA: number | null = null;
 let cursorB: number | null = null;
 let draggingCursor: "A" | "B" | null = null;
-let pinnedRuns: { id: number; name: string; visible: boolean; data: SimulationData }[] = [];
+let pinnedRuns: PinnedRun[] = [];
 let pinnedRunSeq = 0;
 
 let viewMode: ChartViewMode = "overlay";
@@ -325,28 +219,7 @@ function syncCanvasPlotConfig(): void {
 }
 
 function populateAnalysisSelectors(states: string[]): void {
-  const fillSelect = (sel: HTMLSelectElement | null, items: string[], fallbackIdx: number, includeEmpty = false) => {
-    if (!sel) return;
-    const prev = sel.value;
-    sel.innerHTML = includeEmpty ? '<option value="">None</option>' : "";
-    for (const s of items) {
-      const opt = document.createElement("option");
-      opt.value = s;
-      opt.textContent = s;
-      sel.appendChild(opt);
-    }
-    if (prev && items.includes(prev)) {
-      sel.value = prev;
-    } else if (!includeEmpty && items.length > 0) {
-      sel.value = items[Math.min(fallbackIdx, items.length - 1)]!;
-    } else if (includeEmpty) {
-      sel.value = "";
-    }
-  };
-  fillSelect(selectCpX, states, 0);
-  fillSelect(selectCpY, states, 1);
-  fillSelect(selectCpColor, states, 2, true);
-  fillSelect(selectHistVar, states, 0);
+  populateAnalysisSelectorsDom({ selectCpX, selectCpY, selectCpColor, selectHistVar }, states);
 }
 
 function setViewMode(mode: ChartViewMode): void {
@@ -396,16 +269,6 @@ simViewTabsEl?.addEventListener("click", (e) => {
     if (viewMode !== "overlay") redrawChart();
   });
 });
-
-function escapeHtmlSim(unsafe: string): string {
-  if (!unsafe) return "";
-  return unsafe
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
 
 const vscodeApi = (window as typeof window & { acquireVsCodeApi?: () => { postMessage: (msg: unknown) => void } })
   .acquireVsCodeApi
@@ -534,147 +397,17 @@ function getPlotMargin(): { top: number; right: number; bottom: number; left: nu
 }
 
 function calculateDefaultBounds(): { tMin: number; tMax: number; yMin: number; yMax: number } | null {
-  if (isLiveMode && liveBuffer && liveBuffer.count > 0) {
-    const times = liveBuffer.times;
-    const tMin = times[0];
-    const tMax = times[times.length - 1];
-    let yMin = Infinity;
-    let yMax = -Infinity;
-    for (const [name, vals] of liveBuffer.values) {
-      if (hiddenVars.has(name)) continue;
-      for (const v of vals) {
-        if (isFinite(v)) {
-          if (v < yMin) yMin = v;
-          if (v > yMax) yMax = v;
-        }
-      }
-    }
-    if (!isFinite(yMin) || !isFinite(yMax)) {
-      yMin = 0;
-      yMax = 1;
-    }
-    if (yMin === yMax) {
-      yMin -= 1;
-      yMax += 1;
-    }
-    const yPad = (yMax - yMin) * 0.05;
-    return { tMin, tMax, yMin: yMin - yPad, yMax: yMax + yPad };
-  } else if (!isLiveMode && currentData && currentData.t.length > 0) {
-    const { t, y, states, sweepResults } = currentData;
-    let tMin = t[0];
-    let tMax = t[t.length - 1];
-
-    const xVarIdx = selectedXVar !== "__time__" ? states.indexOf(selectedXVar) : -1;
-    if (xVarIdx >= 0) {
-      tMin = Infinity;
-      tMax = -Infinity;
-      for (let i = 0; i < t.length; i++) {
-        const xv = y[i]?.[xVarIdx];
-        if (xv !== undefined && isFinite(xv)) {
-          if (xv < tMin) tMin = xv;
-          if (xv > tMax) tMax = xv;
-        }
-      }
-      if (!isFinite(tMin) || !isFinite(tMax)) {
-        tMin = 0;
-        tMax = 1;
-      }
-      if (tMin === tMax) {
-        tMin -= 1;
-        tMax += 1;
-      }
-      const xPad = (tMax - tMin) * 0.05;
-      tMin -= xPad;
-      tMax += xPad;
-    }
-
-    if (isNormalized) {
-      return { tMin, tMax, yMin: -0.05, yMax: 1.05 };
-    }
-
-    let yMin = Infinity;
-    let yMax = -Infinity;
-    for (let vi = 0; vi < states.length; vi++) {
-      if (hiddenVars.has(states[vi])) continue;
-      for (let i = 0; i < t.length; i++) {
-        if (sweepResults) {
-          for (const sweepResult of sweepResults) {
-            const v = sweepResult.y[i]?.[vi];
-            if (v !== undefined && isFinite(v)) {
-              if (v < yMin) yMin = v;
-              if (v > yMax) yMax = v;
-            }
-          }
-        } else {
-          const v = y[i]?.[vi];
-          if (v !== undefined && isFinite(v)) {
-            if (v < yMin) yMin = v;
-            if (v > yMax) yMax = v;
-          }
-        }
-      }
-    }
-    // Include Reachability flowpipe extents and limits in bounds
-    if (currentReachabilityData) {
-      const visibleStates = states.filter((s) => !hiddenVars.has(s));
-      if (visibleStates.length === 1) {
-        const singleProfile = getReachabilityProfileForVar(visibleStates[0]);
-        if (singleProfile?.yRange && selectedXVar === "__time__") {
-          return {
-            tMin,
-            tMax,
-            yMin: singleProfile.yRange[0],
-            yMax: singleProfile.yRange[1],
-          };
-        }
-      }
-      for (const state of visibleStates) {
-        const profile = getReachabilityProfileForVar(state);
-        if (!profile) continue;
-        for (const env of profile.envelopes) {
-          for (const v of env.lo) {
-            if (isFinite(v) && v < yMin) yMin = v;
-          }
-          for (const v of env.hi) {
-            if (isFinite(v) && v > yMax) yMax = v;
-          }
-        }
-        if (profile.requirementLimit !== undefined && isFinite(profile.requirementLimit)) {
-          if (profile.requirementLimit < yMin) yMin = profile.requirementLimit;
-          if (profile.requirementLimit > yMax) yMax = profile.requirementLimit;
-        }
-      }
-    }
-    // Include MC fan-chart extents in bounds
-    if (currentMCData) {
-      for (const state of states) {
-        if (hiddenVars.has(state)) continue;
-        const stats = currentMCData.statistics[state];
-        if (!stats) continue;
-        const loArr = stats.percentiles.p5 || stats.ciLo;
-        const hiArr = stats.percentiles.p95 || stats.ciHi;
-        if (loArr)
-          for (const v of loArr) {
-            if (isFinite(v) && v < yMin) yMin = v;
-          }
-        if (hiArr)
-          for (const v of hiArr) {
-            if (isFinite(v) && v > yMax) yMax = v;
-          }
-      }
-    }
-    if (!isFinite(yMin) || !isFinite(yMax)) {
-      yMin = 0;
-      yMax = 1;
-    }
-    if (yMin === yMax) {
-      yMin -= 1;
-      yMax += 1;
-    }
-    const yPad = (yMax - yMin) * 0.05;
-    return { tMin, tMax, yMin: yMin - yPad, yMax: yMax + yPad };
-  }
-  return null;
+  return calculateDefaultPlotBounds({
+    isLiveMode,
+    liveBuffer,
+    currentData,
+    hiddenVars,
+    selectedXVar,
+    isNormalized,
+    hasReachabilityData: currentReachabilityData !== null,
+    getReachabilityProfileForVar,
+    currentMCData,
+  });
 }
 
 // ── Toolbar buttons ──
@@ -714,258 +447,36 @@ btn3dAnimation?.addEventListener("click", () => {
   }
 });
 
-function exportCsv() {
-  if (!currentData || currentData.t.length === 0) return;
-  const { t, y, states } = currentData;
-  const visibleIndices: number[] = [];
-  for (let vi = 0; vi < states.length; vi++) {
-    if (!hiddenVars.has(states[vi])) visibleIndices.push(vi);
-  }
-  const headers = ["time", ...visibleIndices.map((vi) => states[vi])];
-  const rows: string[] = [headers.join(",")];
-  for (let i = 0; i < t.length; i++) {
-    const rowVals = [t[i].toString()];
-    for (const vi of visibleIndices) {
-      const val = y[i]?.[vi];
-      rowVals.push(val !== undefined && isFinite(val) ? val.toString() : "");
-    }
-    rows.push(rowVals.join(","));
-  }
-  const csvContent = rows.join("\n");
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `simulation_data_${Date.now()}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function exportPng() {
-  if (!currentData || currentData.t.length === 0) return;
-  const exportCanvas = document.createElement("canvas");
-  exportCanvas.width = canvas.width;
-  exportCanvas.height = canvas.height;
-  const expCtx = exportCanvas.getContext("2d");
-  if (!expCtx) return;
-  expCtx.fillStyle = isDark ? "#1e1e1e" : "#ffffff";
-  expCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-  expCtx.drawImage(canvas, 0, 0);
-
-  const dataUrl = exportCanvas.toDataURL("image/png");
-  const a = document.createElement("a");
-  a.href = dataUrl;
-  a.download = `simulation_chart_${Date.now()}.png`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
-async function copyCsvToClipboard(btn: HTMLElement) {
-  if (!currentData || currentData.t.length === 0) return;
-  const { t, y, states } = currentData;
-  const visibleIndices: number[] = [];
-  for (let vi = 0; vi < states.length; vi++) {
-    if (!hiddenVars.has(states[vi])) visibleIndices.push(vi);
-  }
-  const headers = ["time", ...visibleIndices.map((vi) => states[vi])];
-  const rows: string[] = [headers.join("\t")];
-  for (let i = 0; i < t.length; i++) {
-    const rowVals = [t[i].toString()];
-    for (const vi of visibleIndices) {
-      const val = y[i]?.[vi];
-      rowVals.push(val !== undefined && isFinite(val) ? val.toString() : "");
-    }
-    rows.push(rowVals.join("\t"));
-  }
-  const tsvContent = rows.join("\n");
-  try {
-    await navigator.clipboard.writeText(tsvContent);
-    const orig = btn.textContent;
-    btn.textContent = "✓ Copied!";
-    setTimeout(() => {
-      btn.textContent = orig;
-    }, 1500);
-  } catch (err) {
-    console.error("Failed to copy data:", err);
-  }
-}
-
-function downloadTextFile(filename: string, content: string, mime: string = "text/plain") {
-  const blob = new Blob([content], { type: `${mime};charset=utf-8;` });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function exportComtrade() {
-  if (!currentData?.comtrade) return;
-  const baseName = currentData.projectName || "simulation";
-  downloadTextFile(`${baseName}.cfg`, currentData.comtrade.cfg);
-  setTimeout(() => {
-    downloadTextFile(`${baseName}.dat`, currentData!.comtrade!.dat);
-  }, 100);
-}
-
-function exportPscadOut() {
-  if (!currentData?.pscadOut) return;
-  const baseName = currentData.projectName || "simulation";
-  downloadTextFile(`${baseName}.inf`, currentData.pscadOut.inf);
-  currentData.pscadOut.out.forEach((outFile, idx) => {
-    setTimeout(
-      () => {
-        downloadTextFile(`${baseName}${outFile.suffix}`, outFile.content);
-      },
-      (idx + 1) * 100,
-    );
-  });
-}
-
-function exportPscadPsout() {
-  if (!currentData?.pscadPsout) return;
-  const baseName = currentData.projectName || "simulation";
-  let bytes: Uint8Array;
-  if (typeof currentData.pscadPsout === "string") {
-    const binary = atob(currentData.pscadPsout);
-    bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  } else if (currentData.pscadPsout instanceof Uint8Array) {
-    bytes = currentData.pscadPsout;
-  } else {
-    bytes = new Uint8Array(Object.values(currentData.pscadPsout));
-  }
-  if (vscodeApi) {
-    vscodeApi.postMessage({
-      type: "exportFile",
-      filename: `${baseName}.psout`,
-      content: bytesToBase64(bytes),
-      encoding: "base64",
-      mimeType: "application/octet-stream",
-    });
-    return;
-  }
-  const blob = new Blob([bytes as unknown as BlobPart], { type: "application/octet-stream" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${baseName}.psout`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
-  }
-  return btoa(binary);
-}
-
-function buildVisibleRecords(): { columns: string[]; records: Record<string, number | string>[] } | null {
-  if (!currentData || currentData.t.length === 0) return null;
-  const { t, y, states } = currentData;
-  const visibleIndices: number[] = [];
-  for (let vi = 0; vi < states.length; vi++) {
-    if (!hiddenVars.has(states[vi])) visibleIndices.push(vi);
-  }
-  const indices = visibleIndices.length > 0 ? visibleIndices : states.map((_, idx) => idx);
-  const columns = ["time", ...indices.map((vi) => states[vi])];
-  const records: Record<string, number | string>[] = new Array(t.length);
-  for (let i = 0; i < t.length; i++) {
-    const row: Record<string, number | string> = { time: t[i] };
-    for (const vi of indices) {
-      const val = y[i]?.[vi];
-      row[states[vi]] = val !== undefined && isFinite(val) ? val : 0;
-    }
-    records[i] = row;
-  }
-  return { columns, records };
-}
-
-function exportJson() {
-  const built = buildVisibleRecords();
-  if (!built) return;
-  const filename = `${currentData?.projectName || "simulation_data"}_${Date.now()}.json`;
-  const jsonContent = JSON.stringify(built.records, null, 2);
-  if (vscodeApi) {
-    vscodeApi.postMessage({
-      type: "exportFile",
-      filename,
-      content: jsonContent,
-      encoding: "utf8",
-      mimeType: "application/json",
-    });
-    return;
-  }
-  downloadTextFile(filename, jsonContent, "application/json");
-}
-
-function exportParquet() {
-  const built = buildVisibleRecords();
-  if (!built) return;
-  const filename = `${currentData?.projectName || "simulation_data"}_${Date.now()}.parquet`;
-  const parquetBytes = generateParquetBuffer(built.records, built.columns);
-  if (vscodeApi) {
-    vscodeApi.postMessage({
-      type: "exportFile",
-      filename,
-      content: bytesToBase64(parquetBytes),
-      encoding: "base64",
-      mimeType: "application/vnd.apache.parquet",
-    });
-    return;
-  }
-  const blob = new Blob([parquetBytes as unknown as BlobPart], { type: "application/vnd.apache.parquet" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
 btnExportCsv?.addEventListener("click", () => {
-  exportCsv();
+  exportSimulationCsv(currentData, hiddenVars);
 });
 
 btnExportJson?.addEventListener("click", () => {
-  exportJson();
+  exportSimulationJson(currentData, hiddenVars, vscodeApi);
 });
 
 btnExportParquet?.addEventListener("click", () => {
-  exportParquet();
+  exportSimulationParquet(currentData, hiddenVars, vscodeApi);
 });
 
 btnExportComtrade?.addEventListener("click", () => {
-  exportComtrade();
+  exportSimulationComtrade(currentData);
 });
 
 btnExportOut?.addEventListener("click", () => {
-  exportPscadOut();
+  exportSimulationPscadOut(currentData);
 });
 
 btnExportPsout?.addEventListener("click", () => {
-  exportPscadPsout();
+  exportSimulationPscadPsout(currentData, vscodeApi);
 });
 
 btnExportPng?.addEventListener("click", () => {
-  exportPng();
+  exportCanvasPng(currentData, canvas, isDark);
 });
 
 btnCopyCsv?.addEventListener("click", () => {
-  if (btnCopyCsv) copyCsvToClipboard(btnCopyCsv);
+  if (btnCopyCsv) void copySimulationTsvToClipboard(currentData, hiddenVars, btnCopyCsv);
 });
 
 // Export dropdown menu
@@ -1014,7 +525,6 @@ btnToggleCursors?.addEventListener("click", () => {
 });
 
 const runsBarEl = document.getElementById("runs-bar");
-const RUN_ACCENT_COLORS = ["#38bdf8", "#f59e0b", "#ec4899", "#10b981", "#a855f7", "#06b6d4"];
 
 function redrawChart() {
   if (isLiveMode) drawLive();
@@ -1022,201 +532,30 @@ function redrawChart() {
 }
 
 function renderRunChips() {
-  if (!runsBarEl) return;
-  runsBarEl.textContent = "";
-  runsBarEl.classList.toggle("has-runs", pinnedRuns.length > 0);
-  for (const run of pinnedRuns) {
-    const chip = document.createElement("span");
-    chip.className = "run-chip" + (run.visible ? "" : " off");
-    const runColor = RUN_ACCENT_COLORS[(run.id - 1) % RUN_ACCENT_COLORS.length];
-    chip.style.setProperty("--run-color", runColor);
-    chip.title = (run.visible ? "Click to hide this run" : "Click to show this run") + " (double-click name to rename)";
-
-    const dot = document.createElement("span");
-    dot.className = "run-dot";
-    chip.appendChild(dot);
-
-    const label = document.createElement("span");
-    label.textContent = run.name;
-    label.addEventListener("dblclick", (e) => {
-      e.stopPropagation();
-      const input = document.createElement("input");
-      input.type = "text";
-      input.className = "run-rename";
-      input.value = run.name;
-      let done = false;
-      const finish = (commit: boolean) => {
-        if (done) return;
-        done = true;
-        if (commit && input.value.trim()) run.name = input.value.trim();
-        renderRunChips();
-      };
-      input.addEventListener("click", (ev) => ev.stopPropagation());
-      input.addEventListener("keydown", (ev) => {
-        ev.stopPropagation();
-        if (ev.key === "Enter") finish(true);
-        else if (ev.key === "Escape") finish(false);
-      });
-      input.addEventListener("blur", () => finish(true));
-      label.replaceWith(input);
-      input.focus();
-      input.select();
-    });
-    chip.appendChild(label);
-
-    const close = document.createElement("button");
-    close.className = "run-close";
-    close.title = "Remove run";
-    close.textContent = "✕";
-    close.addEventListener("click", (e) => {
-      e.stopPropagation();
-      pinnedRuns = pinnedRuns.filter((r) => r.id !== run.id);
+  renderRunChipsDom({
+    runsBarEl,
+    pinnedRuns,
+    onRemoveRun: (runId) => {
+      pinnedRuns = pinnedRuns.filter((r) => r.id !== runId);
       renderRunChips();
       redrawChart();
-    });
-    chip.appendChild(close);
-
-    chip.addEventListener("click", () => {
-      run.visible = !run.visible;
-      chip.classList.toggle("off", !run.visible);
-      chip.title = run.visible ? "Click to hide this run (double-click name to rename)" : "Click to show this run";
+    },
+    onChange: () => {
       redrawChart();
-    });
-    runsBarEl.appendChild(chip);
-  }
-}
-
-function computeLocalSignalStats(
-  t: number[],
-  vals: number[],
-  baselineVals?: number[],
-): {
-  min: number;
-  max: number;
-  peakToPeak: number;
-  mean: number;
-  rms: number;
-  finalVal: number;
-  settlingTime: number | null;
-  baselineDeltaMean?: number;
-  baselineRmse?: number;
-} {
-  const n = Math.min(t.length, vals.length);
-  let min = Infinity;
-  let max = -Infinity;
-  let sum = 0;
-  let sumSq = 0;
-  let valid = 0;
-  let finalVal = 0;
-  for (let i = 0; i < n; i++) {
-    const v = vals[i];
-    if (!Number.isFinite(v)) continue;
-    if (v < min) min = v;
-    if (v > max) max = v;
-    sum += v;
-    sumSq += v * v;
-    valid++;
-    finalVal = v;
-  }
-  if (valid === 0) {
-    return { min: 0, max: 0, peakToPeak: 0, mean: 0, rms: 0, finalVal: 0, settlingTime: null };
-  }
-  const peakToPeak = max - min;
-  const mean = sum / valid;
-  const rms = Math.sqrt(sumSq / valid);
-  let settlingTime: number | null = null;
-  if (n >= 2) {
-    const band = Math.max(0.02 * Math.abs(finalVal), 0.02 * peakToPeak, 1e-9);
-    let lastOutside = -1;
-    for (let i = n - 1; i >= 0; i--) {
-      if (Number.isFinite(vals[i]) && Math.abs(vals[i] - finalVal) > band) {
-        lastOutside = i;
-        break;
-      }
-    }
-    if (lastOutside === -1) settlingTime = t[0] ?? 0;
-    else if (lastOutside + 1 < n) settlingTime = t[lastOutside + 1] ?? null;
-  }
-  let baselineDeltaMean: number | undefined;
-  let baselineRmse: number | undefined;
-  if (baselineVals && baselineVals.length > 0) {
-    const bn = Math.min(n, baselineVals.length);
-    let deltaSum = 0;
-    let sqSum = 0;
-    let cnt = 0;
-    for (let i = 0; i < bn; i++) {
-      const v = vals[i];
-      const bv = baselineVals[i];
-      if (Number.isFinite(v) && Number.isFinite(bv)) {
-        const d = v - bv;
-        deltaSum += d;
-        sqSum += d * d;
-        cnt++;
-      }
-    }
-    if (cnt > 0) {
-      baselineDeltaMean = deltaSum / cnt;
-      baselineRmse = Math.sqrt(sqSum / cnt);
-    }
-  }
-  return { min, max, peakToPeak, mean, rms, finalVal, settlingTime, baselineDeltaMean, baselineRmse };
+    },
+  });
 }
 
 function renderStatsDrawer() {
-  if (!statsDrawerEl) return;
-  statsDrawerEl.classList.toggle("visible", showStatsDrawer);
-  btnToggleStats?.classList.toggle("active", showStatsDrawer);
-  if (!showStatsDrawer || !currentData || currentData.t.length === 0) {
-    statsDrawerEl.innerHTML = "";
-    return;
-  }
-  const { t, y, states } = currentData;
-  const activeBaseline = isComparingBaseline ? pinnedRuns.find((r) => r.visible) : undefined;
-  const visibleVars = states.map((name, vi) => ({ name, vi })).filter((entry) => !hiddenVars.has(entry.name));
-
-  if (visibleVars.length === 0) {
-    statsDrawerEl.innerHTML = `<div style="color:var(--vscode-descriptionForeground,#888)">Select one or more variables to view signal statistics.</div>`;
-    return;
-  }
-
-  const rowsHtml = visibleVars
-    .map(({ name, vi }) => {
-      const col = new Array<number>(t.length);
-      for (let i = 0; i < t.length; i++) col[i] = y[i]?.[vi] ?? NaN;
-      let baseCol: number[] | undefined;
-      if (activeBaseline) {
-        const bVi = activeBaseline.data.states.indexOf(name);
-        if (bVi >= 0) {
-          baseCol = activeBaseline.data.y.map((r) => r[bVi] ?? NaN);
-        }
-      }
-      const s = computeLocalSignalStats(t, col, baseCol);
-      const color = COLORS[vi % COLORS.length];
-      const settleTxt = s.settlingTime !== null ? `${formatTick(s.settlingTime)}s` : "—";
-      const baseCell = activeBaseline
-        ? `<td>${s.baselineDeltaMean !== undefined ? formatTick(s.baselineDeltaMean) : "—"}</td><td>${s.baselineRmse !== undefined ? formatTick(s.baselineRmse) : "—"}</td>`
-        : "";
-      return `<tr>
-        <td><span class="stats-dot" style="background:${color}"></span>${escapeHtmlSim(name)}</td>
-        <td>${formatTick(s.min)}</td>
-        <td>${formatTick(s.max)}</td>
-        <td>${formatTick(s.peakToPeak)}</td>
-        <td>${formatTick(s.mean)}</td>
-        <td>${formatTick(s.rms)}</td>
-        <td>${formatTick(s.finalVal)}</td>
-        <td>${settleTxt}</td>
-        ${baseCell}
-      </tr>`;
-    })
-    .join("");
-
-  statsDrawerEl.innerHTML = `<table>
-    <thead><tr>
-      <th>Variable</th><th>Min</th><th>Max</th><th>Pk-Pk</th><th>Mean</th><th>RMS</th><th>Final</th><th>Settling (2%)</th>
-      ${activeBaseline ? `<th>Δ Mean (${escapeHtmlSim(activeBaseline.name)})</th><th>RMSE</th>` : ""}
-    </tr></thead>
-    <tbody>${rowsHtml}</tbody>
-  </table>`;
+  renderStatsDrawerDom({
+    statsDrawerEl,
+    btnToggleStats,
+    showStatsDrawer,
+    currentData,
+    isComparingBaseline,
+    pinnedRuns,
+    hiddenVars,
+  });
 }
 
 function syncReactPanels() {
@@ -1389,23 +728,8 @@ window.addEventListener("message", (event) => {
     syncReactPanels();
 
     // Populate X-Axis selector for Phase Portrait
-    if (selectXAxis && msg.data.states) {
-      const currentVal = selectXAxis.value;
-      selectXAxis.innerHTML = '<option value="__time__">Time (s)</option>';
-      msg.data.states.forEach((s: string) => {
-        const opt = document.createElement("option");
-        opt.value = s;
-        opt.textContent = s;
-        selectXAxis.appendChild(opt);
-      });
-      if (msg.data.states.includes(currentVal)) {
-        selectXAxis.value = currentVal;
-      } else {
-        selectXAxis.value = "__time__";
-      }
-      selectedXVar = selectXAxis.value;
-    }
     if (msg.data.states) {
+      selectedXVar = populateXAxisSelectorDom(selectXAxis, msg.data.states);
       populateAnalysisSelectors(msg.data.states);
     }
     cachedDatasetSource = null;
@@ -1438,174 +762,15 @@ window.addEventListener("message", (event) => {
 
     // Fill in Parameters with rich sliders, reset, and sweep controls
     if (msg.data.parameters && msg.data.parameters.length > 0) {
-      paramsSection.style.display = "flex";
-      parametersView.innerHTML = "";
-      currentParameters = {};
-      defaultParameters.clear();
-
-      msg.data.parameters.forEach(
-        (p: {
-          name: string;
-          description?: string;
-          defaultValue: number;
-          type: string;
-          unit?: string;
-          min?: number;
-          max?: number;
-        }) => {
-          defaultParameters.set(p.name, p.defaultValue);
-          const item = document.createElement("div");
-          item.className = "param-item";
-          item.setAttribute("data-param-name", p.name);
-
-          // Header
-          const header = document.createElement("div");
-          header.className = "param-item-header";
-
-          const label = document.createElement("div");
-          label.className = "param-label";
-          label.title = p.description || `${p.name} (default: ${p.defaultValue}${p.unit ? " " + p.unit : ""})`;
-
-          const dot = document.createElement("span");
-          dot.className = "param-dot";
-          dot.style.display = "none";
-
-          const nameSpan = document.createElement("span");
-          nameSpan.textContent = p.name + (p.unit ? ` [${p.unit}]` : "");
-
-          label.appendChild(dot);
-          label.appendChild(nameSpan);
-
-          const actions = document.createElement("div");
-          actions.className = "param-actions";
-
-          const resetBtn = document.createElement("button");
-          resetBtn.className = "param-action-btn";
-          resetBtn.textContent = "↺";
-          resetBtn.title = `Reset ${p.name} to default (${p.defaultValue})`;
-
-          const sweepBtn = document.createElement("button");
-          sweepBtn.className = "param-action-btn";
-          sweepBtn.textContent = "⚡";
-          sweepBtn.title = `Configure parametric sweep for ${p.name}`;
-
-          actions.appendChild(resetBtn);
-          actions.appendChild(sweepBtn);
-          header.appendChild(label);
-          header.appendChild(actions);
-
-          // Controls (Slider + Number Input)
-          const controls = document.createElement("div");
-          controls.className = "param-controls";
-
-          const input = document.createElement("input");
-          input.type = "number";
-          input.step = "any";
-          input.className = "param-input";
-          input.value = typeof p.defaultValue === "number" ? p.defaultValue.toString() : "";
-
-          // Calculate slider bounds
-          let sMin = p.min !== undefined ? p.min : p.defaultValue !== 0 ? Math.min(0, p.defaultValue * 0.5) : -10;
-          let sMax =
-            p.max !== undefined
-              ? p.max
-              : p.defaultValue !== 0
-                ? Math.max(p.defaultValue * 2, Math.abs(p.defaultValue) * 2)
-                : 10;
-          if (sMin === sMax) {
-            sMin -= 1;
-            sMax += 1;
-          }
-
-          const slider = document.createElement("input");
-          slider.type = "range";
-          slider.className = "param-slider";
-          slider.min = sMin.toString();
-          slider.max = sMax.toString();
-          slider.step = ((sMax - sMin) / 100).toString();
-          slider.value = p.defaultValue.toString();
-
-          controls.appendChild(slider);
-          controls.appendChild(input);
-
-          // Sweep Drawer
-          const sweepPanel = document.createElement("div");
-          sweepPanel.className = "param-sweep-panel";
-          sweepPanel.style.display = "none";
-
-          const defVal = typeof p.defaultValue === "number" ? p.defaultValue : 1;
-          const swStart = defVal * 0.8;
-          const swEnd = defVal * 1.2;
-
-          sweepPanel.innerHTML = `
-            <div class="param-sweep-row">
-              <label>Min</label>
-              <input type="number" class="sweep-start" step="any" value="${swStart.toFixed(2)}">
-              <label>Max</label>
-              <input type="number" class="sweep-end" step="any" value="${swEnd.toFixed(2)}">
-            </div>
-            <div class="param-sweep-row">
-              <label>Steps</label>
-              <input type="number" class="sweep-steps" step="1" min="2" max="50" value="5">
-              <button class="btn-run-sweep">Run Sweep</button>
-            </div>
-          `;
-
-          const updateModifiedState = () => {
-            const currentVal = parseFloat(input.value);
-            const isMod = !isNaN(currentVal) && currentVal !== p.defaultValue;
-            dot.style.display = isMod ? "inline-block" : "none";
-            updateParamModifiedBadge();
-          };
-
-          slider.addEventListener("input", () => {
-            input.value = slider.value;
-            updateModifiedState();
-          });
-
-          input.addEventListener("input", () => {
-            const val = parseFloat(input.value);
-            if (!isNaN(val)) {
-              if (val < parseFloat(slider.min)) slider.min = (val * 0.8).toString();
-              if (val > parseFloat(slider.max)) slider.max = (val * 1.2).toString();
-              slider.value = input.value;
-            }
-            updateModifiedState();
-          });
-
-          resetBtn.addEventListener("click", () => {
-            input.value = p.defaultValue.toString();
-            slider.value = p.defaultValue.toString();
-            updateModifiedState();
-          });
-
-          sweepBtn.addEventListener("click", () => {
-            const isHidden = sweepPanel.style.display === "none";
-            sweepPanel.style.display = isHidden ? "flex" : "none";
-            sweepBtn.style.color = isHidden ? "var(--vscode-button-background, #0e639c)" : "";
-          });
-
-          sweepPanel.querySelector(".btn-run-sweep")?.addEventListener("click", () => {
-            const startVal = parseFloat((sweepPanel.querySelector(".sweep-start") as HTMLInputElement).value);
-            const endVal = parseFloat((sweepPanel.querySelector(".sweep-end") as HTMLInputElement).value);
-            const stepsVal = parseInt((sweepPanel.querySelector(".sweep-steps") as HTMLInputElement).value, 10) || 5;
-
-            triggerSimulation({
-              parameterName: p.name,
-              start: isNaN(startVal) ? defVal * 0.8 : startVal,
-              end: isNaN(endVal) ? defVal * 1.2 : endVal,
-              steps: stepsVal,
-            });
-          });
-
-          item.appendChild(header);
-          item.appendChild(controls);
-          item.appendChild(sweepPanel);
-          parametersView.appendChild(item);
-          currentParameters[p.name] = input;
-        },
-      );
-      updateParamModifiedBadge();
+      currentParameters = renderParametersDom({
+        parameters: msg.data.parameters,
+        paramsSection,
+        parametersView,
+        defaultParameters,
+        includeSweep: true,
+        onModifiedChange: updateParamModifiedBadge,
+        onRunSweep: (sweepConfig) => triggerSimulation(sweepConfig),
+      });
     } else {
       paramsSection.style.display = "none";
     }
@@ -1620,34 +785,7 @@ window.addEventListener("message", (event) => {
     if (stRtol && !stRtol.value) stRtol.value = (exp.tolerance ?? 1e-4).toString();
     if (stAtol && !stAtol.value) stAtol.value = "1e-6";
 
-    if (stSolver) {
-      const solverLower = (exp.solver || "").toLowerCase();
-      if (solverLower.includes("dommel") || solverLower.includes("emt") || solverLower.includes("companion")) {
-        stSolver.value = "dommel";
-        if (stPreset) stPreset.value = "emt";
-      } else if (solverLower.includes("cvode") || solverLower.includes("bdf")) {
-        stSolver.value = "cvode";
-        if (stPreset) stPreset.value = "stiff";
-      } else if (solverLower.includes("rodas")) {
-        stSolver.value = "rodas4p";
-        if (stPreset) stPreset.value = "stiff";
-      } else if (solverLower.includes("tsit")) {
-        stSolver.value = "tsit5";
-        if (stPreset) stPreset.value = "standard";
-      } else if (solverLower.includes("rk4")) {
-        stSolver.value = "rk4";
-        if (stPreset) stPreset.value = "fast";
-      } else if (solverLower.includes("euler")) {
-        stSolver.value = "euler";
-        if (stPreset) stPreset.value = "custom";
-      } else if (solverLower.includes("webgpu")) {
-        stSolver.value = "webgpu";
-        if (stPreset) stPreset.value = "custom";
-      } else {
-        stSolver.value = "dopri5";
-        if (stPreset) stPreset.value = "standard";
-      }
-    }
+    syncSolverFromExperimentDom(stSolver, stPreset, exp.solver);
 
     // Update telemetry display if available
     btnSimulate?.classList.remove("loading");
@@ -1755,135 +893,18 @@ window.addEventListener("message", (event) => {
     customBounds = null;
 
     // Populate X-Axis selector for Phase Portrait
-    if (selectXAxis) {
-      const currentVal = selectXAxis.value;
-      selectXAxis.innerHTML = '<option value="__time__">Time (s)</option>';
-      states.forEach((s: string) => {
-        const opt = document.createElement("option");
-        opt.value = s;
-        opt.textContent = s;
-        selectXAxis.appendChild(opt);
-      });
-      if (states.includes(currentVal)) {
-        selectXAxis.value = currentVal;
-      } else {
-        selectXAxis.value = "__time__";
-      }
-      selectedXVar = selectXAxis.value;
-    }
+    selectedXVar = populateXAxisSelectorDom(selectXAxis, states);
 
     // Populate Parameters if included in reachability payload
     if (reach.parameters) {
-      if (reach.parameters.length > 0) {
-        paramsSection.style.display = "flex";
-        parametersView.innerHTML = "";
-        currentParameters = {};
-        defaultParameters.clear();
-
-        reach.parameters.forEach((p) => {
-          defaultParameters.set(p.name, p.defaultValue);
-          const item = document.createElement("div");
-          item.className = "param-item";
-          item.setAttribute("data-param-name", p.name);
-
-          const header = document.createElement("div");
-          header.className = "param-item-header";
-
-          const label = document.createElement("div");
-          label.className = "param-label";
-          label.title = p.description || `${p.name} (default: ${p.defaultValue}${p.unit ? " " + p.unit : ""})`;
-
-          const dot = document.createElement("span");
-          dot.className = "param-dot";
-          dot.style.display = "none";
-
-          const nameSpan = document.createElement("span");
-          nameSpan.textContent = p.name + (p.unit ? ` [${p.unit}]` : "");
-
-          label.appendChild(dot);
-          label.appendChild(nameSpan);
-
-          const actions = document.createElement("div");
-          actions.className = "param-actions";
-
-          const resetBtn = document.createElement("button");
-          resetBtn.className = "param-action-btn";
-          resetBtn.textContent = "↺";
-          resetBtn.title = `Reset ${p.name} to default (${p.defaultValue})`;
-
-          actions.appendChild(resetBtn);
-          header.appendChild(label);
-          header.appendChild(actions);
-
-          const controls = document.createElement("div");
-          controls.className = "param-controls";
-
-          const input = document.createElement("input");
-          input.type = "number";
-          input.step = "any";
-          input.className = "param-input";
-          input.value = typeof p.defaultValue === "number" ? p.defaultValue.toString() : "";
-
-          let sMin = p.min !== undefined ? p.min : p.defaultValue !== 0 ? Math.min(0, p.defaultValue * 0.5) : -10;
-          let sMax =
-            p.max !== undefined
-              ? p.max
-              : p.defaultValue !== 0
-                ? Math.max(p.defaultValue * 2, Math.abs(p.defaultValue) * 2)
-                : 10;
-          if (sMin === sMax) {
-            sMin -= 1;
-            sMax += 1;
-          }
-
-          const slider = document.createElement("input");
-          slider.type = "range";
-          slider.className = "param-slider";
-          slider.min = sMin.toString();
-          slider.max = sMax.toString();
-          slider.step = ((sMax - sMin) / 100).toString();
-          slider.value = p.defaultValue.toString();
-
-          controls.appendChild(slider);
-          controls.appendChild(input);
-
-          const updateModifiedState = () => {
-            const currentVal = parseFloat(input.value);
-            const isMod = !isNaN(currentVal) && currentVal !== p.defaultValue;
-            dot.style.display = isMod ? "inline-block" : "none";
-            updateParamModifiedBadge();
-          };
-
-          slider.addEventListener("input", () => {
-            input.value = slider.value;
-            updateModifiedState();
-          });
-
-          input.addEventListener("input", () => {
-            const val = parseFloat(input.value);
-            if (!isNaN(val)) {
-              if (val < parseFloat(slider.min)) slider.min = (val * 0.8).toString();
-              if (val > parseFloat(slider.max)) slider.max = (val * 1.2).toString();
-              slider.value = input.value;
-            }
-            updateModifiedState();
-          });
-
-          resetBtn.addEventListener("click", () => {
-            input.value = p.defaultValue.toString();
-            slider.value = p.defaultValue.toString();
-            updateModifiedState();
-          });
-
-          item.appendChild(header);
-          item.appendChild(controls);
-          parametersView.appendChild(item);
-          currentParameters[p.name] = input;
-        });
-        updateParamModifiedBadge();
-      } else {
-        paramsSection.style.display = "none";
-      }
+      currentParameters = renderParametersDom({
+        parameters: reach.parameters,
+        paramsSection,
+        parametersView,
+        defaultParameters,
+        includeSweep: false,
+        onModifiedChange: updateParamModifiedBadge,
+      });
     }
 
     // Populate Experiment Settings if included
@@ -2053,108 +1074,26 @@ function updateVarCountBadge() {
 }
 
 function filterVariables(query: string) {
-  const q = query.trim().toLowerCase();
-  if (btnClearVarSearch) {
-    btnClearVarSearch.style.display = q ? "block" : "none";
-  }
-
-  const nodes = treeViewEl.querySelectorAll("li.tree-node");
-  if (!q) {
-    nodes.forEach((n) => {
-      (n as HTMLElement).style.display = "";
-    });
-    return;
-  }
-
-  nodes.forEach((n) => {
-    const item = n.querySelector(":scope > .tree-item");
-    const label = item?.querySelector(".tree-label")?.textContent?.toLowerCase() || "";
-    const title = (item?.querySelector(".tree-label") as HTMLElement)?.title?.toLowerCase() || "";
-    const isMatch = label.includes(q) || title.includes(q);
-
-    if (!n.querySelector("ul.tree-children")) {
-      (n as HTMLElement).style.display = isMatch ? "" : "none";
-    }
-  });
-
-  nodes.forEach((n) => {
-    const childrenUl = n.querySelector(":scope > ul.tree-children");
-    if (childrenUl) {
-      const visibleChildren = childrenUl.querySelectorAll("li.tree-node:not([style*='display: none'])");
-      if (visibleChildren.length > 0) {
-        (n as HTMLElement).style.display = "";
-        childrenUl.classList.add("expanded");
-        n.querySelector(":scope > .tree-item > .tree-caret")?.classList.add("expanded");
-      } else {
-        (n as HTMLElement).style.display = "none";
-      }
-    }
-  });
+  filterVariablesDom(treeViewEl, btnClearVarSearch, query);
 }
 
 function filterParameters(query: string) {
-  const q = query.trim().toLowerCase();
-  if (btnClearParamSearch) {
-    btnClearParamSearch.style.display = q ? "block" : "none";
-  }
-  const items = parametersView.querySelectorAll(".param-item");
-  items.forEach((item) => {
-    const name = item.getAttribute("data-param-name")?.toLowerCase() || "";
-    const label = item.querySelector(".param-label")?.textContent?.toLowerCase() || "";
-    if (!q || name.includes(q) || label.includes(q)) {
-      item.classList.remove("hidden");
-    } else {
-      item.classList.add("hidden");
-    }
-  });
+  filterParametersDom(parametersView, btnClearParamSearch, query);
 }
 
 // Preset handler
 stPreset?.addEventListener("change", () => {
-  const preset = stPreset.value;
-  const start = parseFloat(tStartInput.value) || 0;
-  const stop = parseFloat(tStopInput.value) || 10;
-  const span = Math.max(0.001, stop - start);
-
-  if (preset === "standard") {
-    if (stSolver) stSolver.value = "dopri5";
-    intervalInput.value = (span / 500).toString();
-    toleranceInput.value = "1e-4";
-    if (stRtol) stRtol.value = "1e-4";
-    if (stAtol) stAtol.value = "1e-6";
-    if (stSteadyState) stSteadyState.checked = false;
-  } else if (preset === "fast") {
-    if (stSolver) stSolver.value = "rk4";
-    intervalInput.value = (span / 250).toString();
-    toleranceInput.value = "1e-3";
-    if (stRtol) stRtol.value = "1e-3";
-    if (stAtol) stAtol.value = "1e-4";
-    if (stSteadyState) stSteadyState.checked = false;
-  } else if (preset === "high-accuracy") {
-    if (stSolver) stSolver.value = "dopri5";
-    intervalInput.value = (span / 2000).toString();
-    toleranceInput.value = "1e-7";
-    if (stRtol) stRtol.value = "1e-7";
-    if (stAtol) stAtol.value = "1e-8";
-    if (stSteadyState) stSteadyState.checked = false;
-  } else if (preset === "stiff") {
-    if (stSolver) stSolver.value = "cvode";
-    intervalInput.value = (span / 500).toString();
-    toleranceInput.value = "1e-5";
-    if (stRtol) stRtol.value = "1e-5";
-    if (stAtol) stAtol.value = "1e-7";
-    if (stSteadyState) stSteadyState.checked = false;
-  } else if (preset === "emt") {
-    if (stSolver) stSolver.value = "dommel";
-    intervalInput.value = "0.00005";
-    toleranceInput.value = "1e-4";
-    if (stRtol) stRtol.value = "1e-4";
-    if (stAtol) stAtol.value = "1e-6";
-    if (stSteadyState) stSteadyState.checked = false;
-  } else if (preset === "steady-state") {
-    if (stSolver) stSolver.value = "dopri5";
-    if (stSteadyState) stSteadyState.checked = true;
-  }
+  applySolverPresetDom({
+    preset: stPreset.value,
+    tStartInput,
+    tStopInput,
+    intervalInput,
+    toleranceInput,
+    stSolver,
+    stRtol,
+    stAtol,
+    stSteadyState,
+  });
 });
 
 // Solver change listener: sync preset when user manually selects a solver
@@ -2629,156 +1568,43 @@ function connectMqttWs(wsUrl: string, sessionId?: string, participantId?: string
 // We implement just enough MQTT 3.1.1 protocol to CONNECT, SUBSCRIBE, and receive PUBLISH
 
 function sendMqttConnect(ws: WebSocket): void {
-  const clientId = `vscode-sim-${Math.random().toString(36).slice(2, 8)}`;
-  const clientIdBytes = new TextEncoder().encode(clientId);
-
-  // CONNECT packet
-  const protocolName = new TextEncoder().encode("MQTT");
-  const remainingLength =
-    2 +
-    protocolName.length + // protocol name (length-prefixed)
-    1 + // protocol level (4 = 3.1.1)
-    1 + // connect flags
-    2 + // keep alive
-    2 +
-    clientIdBytes.length; // client ID (length-prefixed)
-
-  const buf = new Uint8Array(2 + remainingLength);
-  let pos = 0;
-
-  // Fixed header: CONNECT (0x10)
-  buf[pos++] = 0x10;
-  buf[pos++] = remainingLength;
-
-  // Protocol name
-  buf[pos++] = 0;
-  buf[pos++] = protocolName.length;
-  buf.set(protocolName, pos);
-  pos += protocolName.length;
-
-  // Protocol level: 4 (MQTT 3.1.1)
-  buf[pos++] = 4;
-
-  // Connect flags: Clean Session
-  buf[pos++] = 0x02;
-
-  // Keep alive: 60 seconds
-  buf[pos++] = 0;
-  buf[pos++] = 60;
-
-  // Client ID
-  buf[pos++] = (clientIdBytes.length >> 8) & 0xff;
-  buf[pos++] = clientIdBytes.length & 0xff;
-  buf.set(clientIdBytes, pos);
-
-  ws.send(buf.buffer);
+  ws.send(buildMqttConnectPacket());
 }
 
 function sendMqttSubscribe(ws: WebSocket, topic: string): void {
-  const topicBytes = new TextEncoder().encode(topic);
-  const remainingLength = 2 + 2 + topicBytes.length + 1; // packet ID + topic + QoS
-
-  const buf = new Uint8Array(2 + remainingLength);
-  let pos = 0;
-
-  // Fixed header: SUBSCRIBE (0x82)
-  buf[pos++] = 0x82;
-  buf[pos++] = remainingLength;
-
-  // Packet Identifier
-  buf[pos++] = 0;
-  buf[pos++] = 1;
-
-  // Topic filter
-  buf[pos++] = (topicBytes.length >> 8) & 0xff;
-  buf[pos++] = topicBytes.length & 0xff;
-  buf.set(topicBytes, pos);
-  pos += topicBytes.length;
-
-  // QoS: 0
-  buf[pos] = 0;
-
-  ws.send(buf.buffer);
+  ws.send(buildMqttSubscribePacket(topic));
 }
 
 function handleMqttPacket(data: ArrayBuffer, sessionId?: string, participantId?: string): void {
-  const view = new Uint8Array(data);
-  if (view.length === 0) return;
+  const packet = decodeMqttPacket(data);
+  if (!packet) return;
 
-  const packetType = (view[0] >> 4) & 0x0f;
-
-  switch (packetType) {
-    case 2: {
-      // CONNACK
+  switch (packet.type) {
+    case "connack": {
       setLiveStatus("connected", "Connected");
-
-      // Subscribe to variable data topics
       if (liveWs) {
-        if (sessionId && participantId) {
-          // Subscribe to a specific participant
-          sendMqttSubscribe(liveWs, `modelscript/site/+/area/+/line/${sessionId}/cell/${participantId}/data/#`);
-        } else if (sessionId) {
-          // Subscribe to all participants in a session
-          sendMqttSubscribe(liveWs, `modelscript/site/+/area/+/line/${sessionId}/cell/+/data/#`);
-        } else {
-          // Subscribe to all data topics
-          sendMqttSubscribe(liveWs, "modelscript/site/+/area/+/line/+/cell/+/data/#");
-        }
+        sendMqttSubscribe(liveWs, buildLiveSubscriptionTopic(sessionId, participantId));
       }
-
-      // Start the animation loop
       startLiveLoop();
       break;
     }
-
-    case 3: {
-      // PUBLISH
-      const buf = view;
-      let pos = 1;
-
-      // Decode remaining length
-      let remaining = 0;
-      let multiplier = 1;
-      let byte: number;
-      do {
-        byte = buf[pos++];
-        remaining += (byte & 0x7f) * multiplier;
-        multiplier *= 128;
-      } while (byte & 0x80);
-
-      // Topic length
-      const topicLen = (buf[pos] << 8) | buf[pos + 1];
-      pos += 2;
-
-      // Topic
-      const topicBytes = buf.slice(pos, pos + topicLen);
-      const topic = new TextDecoder().decode(topicBytes);
-      pos += topicLen;
-
-      // Payload
-      const payloadBytes = buf.slice(pos, pos + remaining - 2 - topicLen);
-      const payload = new TextDecoder().decode(payloadBytes);
-
-      handleLiveData(topic, payload);
+    case "publish": {
+      handleLiveData(packet.topic, packet.payload);
       break;
     }
-
-    case 13: {
-      // PINGRESP — send PINGREQ periodically
+    case "pingresp":
+    case "other":
       break;
-    }
   }
 }
 
 function handleLiveData(topic: string, payload: string): void {
   if (!liveBuffer) return;
 
-  // Parse topic: .../cell/{participantId}/data/{variableName}
-  const dataMatch = topic.match(/\/cell\/([^/]+)\/data\/(.+)$/);
-  if (!dataMatch?.[1] || !dataMatch[2]) return;
+  const parsed = parseLiveDataTopic(topic);
+  if (!parsed) return;
 
-  const participantId = dataMatch[1];
-  const variableName = dataMatch[2];
+  const { participantId, variableName } = parsed;
 
   if (variableName === "_batch") {
     // Batched update — JSON object of { variable: value }
@@ -2867,366 +1693,48 @@ function stopLiveLoop(): void {
 
 // ── Tree View ──
 
-interface TreeNode {
-  name: string;
-  fullName: string;
-  children: Map<string, TreeNode>;
-  isVariable: boolean;
-  colorIndex?: number;
-}
-
 function buildTreeView(variables: string[]): void {
-  const root: TreeNode = { name: "", fullName: "", children: new Map(), isVariable: false };
-
-  variables.forEach((variable, i) => {
-    const isDer = variable.startsWith("der(") && variable.endsWith(")");
-    const innerVar = isDer ? variable.slice(4, -1) : variable;
-    const originalParts = innerVar.split(".");
-
-    let current = root;
-    let prefix = "";
-
-    for (let j = 0; j < originalParts.length; j++) {
-      const isLeaf = j === originalParts.length - 1;
-      const basePart = originalParts[j];
-
-      const part = isLeaf && isDer ? `der(${basePart})` : basePart;
-      prefix = prefix ? `${prefix}.${basePart}` : basePart;
-      const fullName = isLeaf ? variable : prefix;
-
-      if (!current.children.has(part)) {
-        current.children.set(part, {
-          name: part,
-          fullName: fullName,
-          children: new Map(),
-          isVariable: isLeaf,
-          colorIndex: isLeaf ? i : undefined,
-        });
+  buildVariableTreeDom({
+    treeViewEl,
+    variables,
+    currentData,
+    hiddenVars,
+    customRightVars,
+    onToggleVisibility: () => {
+      updateVarCountBadge();
+      customBounds = null;
+      redrawChart();
+    },
+    onEnableDualY: () => {
+      if (!isDualY && checkboxDualY) {
+        checkboxDualY.checked = true;
+        isDualY = true;
+        if (checkboxNormalize) {
+          checkboxNormalize.checked = false;
+          isNormalized = false;
+        }
       }
-      current = current.children.get(part) as TreeNode;
-    }
+    },
+    onAxisChanged: () => {
+      customBounds = null;
+      draw();
+    },
   });
-
-  treeViewEl.innerHTML = "";
-
-  function renderNode(node: TreeNode, parentEl: HTMLElement) {
-    const li = document.createElement("li");
-    li.className = "tree-node";
-
-    const item = document.createElement("div");
-    item.className = "tree-item";
-
-    const hasChildren = node.children.size > 0;
-    const caret = document.createElement("span");
-    caret.className = "tree-caret " + (hasChildren ? "expanded" : "empty");
-    item.appendChild(caret);
-
-    if (node.isVariable) {
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.className = "tree-checkbox";
-      checkbox.checked = !hiddenVars.has(node.fullName);
-
-      const swatch = document.createElement("div");
-      swatch.style.width = "10px";
-      swatch.style.height = "10px";
-      swatch.style.borderRadius = "2px";
-      swatch.style.marginRight = "6px";
-      if (node.colorIndex !== undefined) {
-        swatch.style.background = COLORS[node.colorIndex % COLORS.length];
-      }
-
-      item.appendChild(checkbox);
-      item.appendChild(swatch);
-
-      checkbox.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (checkbox.checked) {
-          hiddenVars.delete(node.fullName);
-        } else {
-          hiddenVars.add(node.fullName);
-        }
-        updateVarCountBadge();
-        customBounds = null;
-        if (isLiveMode) drawLive();
-        else draw();
-      });
-
-      // Clicking the row toggles the checkbox
-      item.addEventListener("click", (e) => {
-        if ((e.target as HTMLElement).tagName !== "INPUT") {
-          checkbox.click();
-        }
-      });
-    }
-
-    const label = document.createElement("span");
-    label.className = "tree-label";
-    const varMeta = node.isVariable ? currentData?.variableMetadata?.[node.fullName] : undefined;
-    label.textContent = varMeta?.unit ? `${node.name} [${varMeta.unit}]` : node.name;
-    label.title = varMeta?.description
-      ? `${node.fullName}${varMeta.unit ? ` [${varMeta.unit}]` : ""} — ${varMeta.description}`
-      : node.fullName;
-    item.appendChild(label);
-
-    if (node.isVariable && currentData) {
-      const actions = document.createElement("div");
-      actions.className = "tree-item-actions";
-
-      // Show final value pill if available
-      const vi = currentData.states.indexOf(node.fullName);
-      if (vi >= 0 && currentData.y.length > 0) {
-        const lastVal = currentData.y[currentData.y.length - 1]?.[vi];
-        if (lastVal !== undefined && isFinite(lastVal)) {
-          const stat = document.createElement("span");
-          stat.className = "var-stat-pill";
-          stat.textContent =
-            Math.abs(lastVal) >= 1000 || (Math.abs(lastVal) < 0.01 && lastVal !== 0)
-              ? lastVal.toExponential(2)
-              : lastVal.toFixed(2);
-          actions.appendChild(stat);
-        }
-      }
-
-      // Axis routing pill (L / R)
-      const axisPill = document.createElement("span");
-      axisPill.className = "axis-pill" + (customRightVars.has(node.fullName) ? " right" : "");
-      axisPill.textContent = customRightVars.has(node.fullName) ? "R" : "L";
-      axisPill.title = "Toggle Primary (Left) or Secondary (Right) Y-Axis";
-      axisPill.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (customRightVars.has(node.fullName)) {
-          customRightVars.delete(node.fullName);
-          axisPill.className = "axis-pill";
-          axisPill.textContent = "L";
-        } else {
-          customRightVars.add(node.fullName);
-          axisPill.className = "axis-pill right";
-          axisPill.textContent = "R";
-          if (!isDualY && checkboxDualY) {
-            checkboxDualY.checked = true;
-            isDualY = true;
-            if (checkboxNormalize) {
-              checkboxNormalize.checked = false;
-              isNormalized = false;
-            }
-          }
-        }
-        customBounds = null;
-        draw();
-      });
-      actions.appendChild(axisPill);
-      item.appendChild(actions);
-    }
-
-    li.appendChild(item);
-
-    if (hasChildren) {
-      const childrenUl = document.createElement("ul");
-      childrenUl.className = "tree-children expanded";
-
-      item.addEventListener("click", (e) => {
-        if (node.isVariable && (e.target as HTMLElement).tagName === "INPUT") return;
-        const isExpanded = childrenUl.classList.contains("expanded");
-        if (isExpanded) {
-          childrenUl.classList.remove("expanded");
-          caret.classList.remove("expanded");
-        } else {
-          childrenUl.classList.add("expanded");
-          caret.classList.add("expanded");
-        }
-      });
-
-      const childNodes = Array.from(node.children.values()).sort((a, b) => {
-        if (a.children.size > 0 && b.children.size === 0) return -1;
-        if (a.children.size === 0 && b.children.size > 0) return 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      for (const child of childNodes) {
-        renderNode(child, childrenUl);
-      }
-      li.appendChild(childrenUl);
-    }
-
-    parentEl.appendChild(li);
-  }
-
-  const sortedRoots = Array.from(root.children.values()).sort((a, b) => {
-    if (a.children.size > 0 && b.children.size === 0) return -1;
-    if (a.children.size === 0 && b.children.size > 0) return 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  for (const child of sortedRoots) {
-    renderNode(child, treeViewEl);
-  }
 }
 
 // ── Live drawing ──
 
 function drawLive(): void {
-  if (!liveBuffer || liveBuffer.count === 0) return;
-
-  const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const w = rect.width;
-  const h = rect.height;
-
-  const fgColor = isDark ? "#ccc" : "#333";
-  const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-  const axisColor = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)";
-
-  const margin = { top: 16, right: 24, bottom: 40, left: 64 };
-  const plotW = w - margin.left - margin.right;
-  const plotH = h - margin.top - margin.bottom;
-
-  if (plotW <= 0 || plotH <= 0) return;
-
-  const times = liveBuffer.times;
-  const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
-  const { tMin, tMax, yMin, yMax } = bounds;
-
-  const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin || 1)) * plotW;
-  const yScale = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
-
-  ctx.clearRect(0, 0, w, h);
-
-  // Grid
-  ctx.strokeStyle = gridColor;
-  ctx.lineWidth = 1;
-  const xTicks = niceTicksFor(tMin, tMax, 8);
-  const yTicks = niceTicksFor(yMin, yMax, 6);
-
-  ctx.beginPath();
-  for (const xt of xTicks) {
-    const x = xScale(xt);
-    ctx.moveTo(x, margin.top);
-    ctx.lineTo(x, margin.top + plotH);
-  }
-  for (const yt of yTicks) {
-    const yy = yScale(yt);
-    ctx.moveTo(margin.left, yy);
-    ctx.lineTo(margin.left + plotW, yy);
-  }
-  ctx.stroke();
-
-  // Axes
-  ctx.strokeStyle = axisColor;
-  ctx.beginPath();
-  ctx.moveTo(margin.left, margin.top);
-  ctx.lineTo(margin.left, margin.top + plotH);
-  ctx.lineTo(margin.left + plotW, margin.top + plotH);
-  ctx.stroke();
-
-  // Labels
-  ctx.fillStyle = fgColor;
-  ctx.font = "11px var(--vscode-editor-font-family, monospace)";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  for (const xt of xTicks) ctx.fillText(formatTick(xt), xScale(xt), margin.top + plotH + 6);
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  for (const yt of yTicks) ctx.fillText(formatTick(yt), margin.left - 6, yScale(yt));
-
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.font = "12px var(--vscode-font-family, sans-serif)";
-  ctx.fillText("Time (s)", margin.left + plotW / 2, margin.top + plotH + 24);
-
-  // Clip
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(margin.left, margin.top, plotW, plotH);
-  ctx.clip();
-
-  // Draw lines
-  let vi = 0;
-  for (const [name, vals] of liveBuffer.values) {
-    if (hiddenVars.has(name)) {
-      vi++;
-      continue;
-    }
-
-    ctx.strokeStyle = COLORS[vi % COLORS.length];
-    ctx.lineWidth = 1.5;
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-
-    const pts: { x: number; y: number }[] = [];
-    for (let i = 0; i < vals.length; i++) {
-      const val = vals[i];
-      if (!isFinite(val)) continue;
-      pts.push({ x: xScale(times[i]), y: yScale(val) });
-    }
-
-    if (currentInterpolation === "smooth") {
-      drawSmoothSpline(ctx, pts);
-    } else {
-      let prevPy = 0;
-      let started = false;
-      for (const pt of pts) {
-        if (!started) {
-          ctx.moveTo(pt.x, pt.y);
-          started = true;
-        } else {
-          if (currentInterpolation === "step-after") {
-            ctx.lineTo(pt.x, prevPy);
-          }
-          ctx.lineTo(pt.x, pt.y);
-        }
-        prevPy = pt.y;
-      }
-    }
-    ctx.stroke();
-    vi++;
-  }
-
-  ctx.restore();
-}
-
-// ── Helpers ──
-
-/** Convert a hex color like "#0969da" to "rgba(9, 105, 218, alpha)" */
-function hexToRgba(hex: string, alpha: number): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function drawSmoothSpline(ctx: CanvasRenderingContext2D, pts: { x: number; y: number }[]) {
-  if (pts.length === 0) return;
-  ctx.moveTo(pts[0].x, pts[0].y);
-  if (pts.length === 1) return;
-
-  const tension = 0.25;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-
-    if (Math.abs(p2.x - p1.x) < 0.1) {
-      ctx.lineTo(p2.x, p2.y);
-      continue;
-    }
-
-    let p0 = i > 0 ? pts[i - 1] : p1;
-    if (Math.abs(p1.x - p0.x) < 0.1) p0 = p1;
-
-    let p3 = i < pts.length - 2 ? pts[i + 2] : p2;
-    if (Math.abs(p3.x - p2.x) < 0.1) p3 = p2;
-
-    const t1x = (p2.x - p0.x) * tension;
-    const t1y = (p2.y - p0.y) * tension;
-    const t2x = (p3.x - p1.x) * tension;
-    const t2y = (p3.y - p1.y) * tension;
-
-    ctx.bezierCurveTo(p1.x + t1x / 3, p1.y + t1y / 3, p2.x - t2x / 3, p2.y - t2y / 3, p2.x, p2.y);
-  }
+  drawLiveChart({
+    canvas,
+    ctx,
+    liveBuffer,
+    isDark,
+    hiddenVars,
+    customBounds,
+    defaultBounds: calculateDefaultBounds(),
+    interpolation: currentInterpolation,
+  });
 }
 
 // ── Batch mode drawing ──
@@ -3250,823 +1758,32 @@ function draw() {
     return;
   }
 
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-  const w = rect.width;
-  const h = rect.height;
-
-  // Colors
-  const fgColor = isDark ? "#ccc" : "#333";
-  const gridColor = isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-  const axisColor = isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)";
-
-  // Margins
-  const margin = getPlotMargin();
-  const plotW = w - margin.left - margin.right;
-  const plotH = h - margin.top - margin.bottom;
-
-  if (plotW <= 0 || plotH <= 0) return;
-
-  // Data ranges
-  const { t, y, states } = currentData;
-  const isDualActive = isDualY && !isNormalized;
-  const activeVars = states.filter((s) => !hiddenVars.has(s));
-  const leftVars: string[] = [];
-  const rightVars: string[] = [];
-  if (isDualActive) {
-    if (customRightVars.size > 0) {
-      for (const s of activeVars) {
-        if (customRightVars.has(s)) rightVars.push(s);
-        else leftVars.push(s);
-      }
-      if (leftVars.length === 0 && rightVars.length > 0) {
-        leftVars.push(rightVars.shift()!);
-      }
-    } else if (activeVars.length >= 2) {
-      leftVars.push(activeVars[0]);
-      for (let i = 1; i < activeVars.length; i++) {
-        rightVars.push(activeVars[i]);
-      }
-    } else {
-      leftVars.push(...activeVars);
-    }
-  } else {
-    leftVars.push(...activeVars);
-  }
-
-  const bounds = customBounds || calculateDefaultBounds() || { tMin: 0, tMax: 1, yMin: 0, yMax: 1 };
-  const { tMin, tMax, yMin, yMax } = bounds;
-
-  let yMinLeft = yMin;
-  let yMaxLeft = yMax;
-  let yMinRight = yMin;
-  let yMaxRight = yMax;
-
-  if (isDualActive && rightVars.length > 0) {
-    let rMin = Infinity;
-    let rMax = -Infinity;
-    let lMin = Infinity;
-    let lMax = -Infinity;
-    for (let i = 0; i < t.length; i++) {
-      for (const rv of rightVars) {
-        const vi = states.indexOf(rv);
-        const val = y[i]?.[vi];
-        if (val !== undefined && isFinite(val)) {
-          if (val < rMin) rMin = val;
-          if (val > rMax) rMax = val;
-        }
-      }
-      for (const lv of leftVars) {
-        const vi = states.indexOf(lv);
-        const val = y[i]?.[vi];
-        if (val !== undefined && isFinite(val)) {
-          if (val < lMin) lMin = val;
-          if (val > lMax) lMax = val;
-        }
-      }
-    }
-    if (isFinite(lMin) && isFinite(lMax)) {
-      if (lMin === lMax) {
-        lMin -= 1;
-        lMax += 1;
-      }
-      const pad = (lMax - lMin) * 0.05;
-      yMinLeft = lMin - pad;
-      yMaxLeft = lMax + pad;
-    }
-    if (isFinite(rMin) && isFinite(rMax)) {
-      if (rMin === rMax) {
-        rMin -= 1;
-        rMax += 1;
-      }
-      const pad = (rMax - rMin) * 0.05;
-      yMinRight = rMin - pad;
-      yMaxRight = rMax + pad;
-    }
-  }
-
-  // Precompute normalization min/max per variable
-  const varMinMax: { min: number; max: number }[] = [];
-  if (isNormalized) {
-    for (let vi = 0; vi < states.length; vi++) {
-      let vMin = Infinity;
-      let vMax = -Infinity;
-      for (let i = 0; i < t.length; i++) {
-        const val = y[i]?.[vi];
-        if (val !== undefined && isFinite(val)) {
-          if (val < vMin) vMin = val;
-          if (val > vMax) vMax = val;
-        }
-      }
-      if (!isFinite(vMin) || !isFinite(vMax)) {
-        vMin = 0;
-        vMax = 1;
-      }
-      if (vMin === vMax) {
-        vMin -= 1;
-        vMax += 1;
-      }
-      varMinMax.push({ min: vMin, max: vMax });
-    }
-  }
-
-  // Coordinate transforms
-  const xVarIdx = selectedXVar !== "__time__" ? states.indexOf(selectedXVar) : -1;
-  const xScale = (v: number) => margin.left + ((v - tMin) / (tMax - tMin || 1)) * plotW;
-  const yScaleLeft = (v: number) => margin.top + plotH - ((v - yMinLeft) / (yMaxLeft - yMinLeft || 1)) * plotH;
-  const yScaleRight = (v: number) => margin.top + plotH - ((v - yMinRight) / (yMaxRight - yMinRight || 1)) * plotH;
-  const yScaleNorm = (v: number) => margin.top + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH;
-
-  const getPtX = (i: number) => {
-    if (xVarIdx >= 0) {
-      const xv = y[i]?.[xVarIdx];
-      return xScale(xv !== undefined && isFinite(xv) ? xv : 0);
-    }
-    return xScale(t[i]);
-  };
-
-  const getPtY = (vi: number, val: number) => {
-    if (isNormalized) {
-      const mm = varMinMax[vi];
-      const norm = mm ? (val - mm.min) / (mm.max - mm.min || 1) : 0;
-      return yScaleNorm(norm);
-    }
-    if (isDualActive && rightVars.includes(states[vi])) {
-      return yScaleRight(val);
-    }
-    return yScaleLeft(val);
-  };
-
-  // Clear
-  ctx.clearRect(0, 0, w, h);
-
-  const xTicks = niceTicksFor(tMin, tMax, 8);
-  const yTicks = isNormalized ? [0, 0.25, 0.5, 0.75, 1.0] : niceTicksFor(yMinLeft, yMaxLeft, 6);
-
-  // Standard Grid lines
-  ctx.strokeStyle = gridColor;
-  ctx.lineWidth = 1;
-
-  ctx.beginPath();
-  for (const xt of xTicks) {
-    const x = xScale(xt);
-    ctx.moveTo(x, margin.top);
-    ctx.lineTo(x, margin.top + plotH);
-  }
-  for (const yt of yTicks) {
-    const yy = isNormalized ? yScaleNorm(yt) : yScaleLeft(yt);
-    ctx.moveTo(margin.left, yy);
-    ctx.lineTo(margin.left + plotW, yy);
-  }
-  ctx.stroke();
-
-  // Main Axes (Left and Bottom)
-  ctx.strokeStyle = axisColor;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(margin.left, margin.top);
-  ctx.lineTo(margin.left, margin.top + plotH);
-  ctx.lineTo(margin.left + plotW, margin.top + plotH);
-  ctx.stroke();
-
-  // Tick labels (Bottom X)
-  ctx.fillStyle = fgColor;
-  ctx.font = "11px var(--vscode-editor-font-family, monospace)";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  for (const xt of xTicks) {
-    ctx.fillText(formatTick(xt), xScale(xt), margin.top + plotH + 6);
-  }
-
-  // Tick labels (Left Y)
-  const leftColor =
-    isDualActive && leftVars.length === 1 ? COLORS[states.indexOf(leftVars[0]) % COLORS.length] : fgColor;
-  ctx.fillStyle = leftColor;
-  ctx.textAlign = "right";
-  ctx.textBaseline = "middle";
-  for (const yt of yTicks) {
-    const yy = isNormalized ? yScaleNorm(yt) : yScaleLeft(yt);
-    const label = isNormalized ? `${Math.round(yt * 100)}%` : formatTick(yt);
-    ctx.fillText(label, margin.left - 6, yy);
-  }
-
-  // Right Y Axis (Dual Mode)
-  if (isDualActive && rightVars.length > 0) {
-    const yTicksRight = niceTicksFor(yMinRight, yMaxRight, 6);
-    const rightColor = rightVars.length === 1 ? COLORS[states.indexOf(rightVars[0]) % COLORS.length] : fgColor;
-
-    ctx.strokeStyle = rightColor;
-    ctx.beginPath();
-    ctx.moveTo(margin.left + plotW, margin.top);
-    ctx.lineTo(margin.left + plotW, margin.top + plotH);
-    for (const yt of yTicksRight) {
-      const yy = yScaleRight(yt);
-      ctx.moveTo(margin.left + plotW, yy);
-      ctx.lineTo(margin.left + plotW + 4, yy);
-    }
-    ctx.stroke();
-
-    ctx.fillStyle = rightColor;
-    ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    for (const yt of yTicksRight) {
-      ctx.fillText(formatTick(yt), margin.left + plotW + 7, yScaleRight(yt));
-    }
-
-    if (rightVars.length === 1) {
-      ctx.save();
-      ctx.translate(margin.left + plotW + 50, margin.top + plotH / 2);
-      ctx.rotate(Math.PI / 2);
-      ctx.font = "11px var(--vscode-font-family, sans-serif)";
-      ctx.textAlign = "center";
-      ctx.fillText(rightVars[0], 0, 0);
-      ctx.restore();
-    }
-  }
-
-  // Left Y axis label
-  ctx.fillStyle = leftColor;
-  ctx.save();
-  ctx.translate(14, margin.top + plotH / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.font = "11px var(--vscode-font-family, sans-serif)";
-  ctx.textAlign = "center";
-  if (isNormalized) {
-    ctx.fillText("Normalized (0–100%)", 0, 0);
-  } else if (isDualActive && leftVars.length === 1) {
-    ctx.fillText(leftVars[0], 0, 0);
-  }
-  ctx.restore();
-
-  // X axis label
-  ctx.fillStyle = fgColor;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.font = "12px var(--vscode-font-family, sans-serif)";
-  ctx.fillText(xVarIdx >= 0 ? states[xVarIdx] : "Time (s)", margin.left + plotW / 2, margin.top + plotH + 24);
-
-  // Clip to plot area
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(margin.left, margin.top, plotW, plotH);
-  ctx.clip();
-
-  // ── Multi-Domain Reachability Flowpipe Bands ──
-  if (currentReachabilityData && currentReachabilityData.t.length > 0 && selectedXVar === "__time__") {
-    const reachT = currentReachabilityData.t;
-    const reachVarsToDraw = activeVars.length > 0 ? activeVars : [currentReachabilityData.variable];
-
-    for (const vName of reachVarsToDraw) {
-      const profile = getReachabilityProfileForVar(vName);
-      if (!profile || profile.envelopes.length === 0) continue;
-      const vi = Math.max(0, states.indexOf(vName));
-
-      const sortedEnvelopes = [...profile.envelopes].sort((a, b) => {
-        const order: Record<string, number> = { interval: 0, octagon: 1, affine: 2, zonotope: 3 };
-        return (order[a.kind] ?? 0) - (order[b.kind] ?? 0);
-      });
-
-      for (const env of sortedEnvelopes) {
-        const fill = env.fillColor || (isDark ? "rgba(34, 197, 94, 0.2)" : "rgba(34, 197, 94, 0.15)");
-        ctx.fillStyle = fill;
-        ctx.beginPath();
-
-        let started = false;
-        for (let i = 0; i < reachT.length; i++) {
-          const hi = env.hi[i];
-          if (hi === undefined || !isFinite(hi)) continue;
-          const x = xScale(reachT[i]);
-          const y = getPtY(vi, hi);
-          if (!started) {
-            ctx.moveTo(x, y);
-            started = true;
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        for (let i = reachT.length - 1; i >= 0; i--) {
-          const lo = env.lo[i];
-          if (lo === undefined || !isFinite(lo)) continue;
-          ctx.lineTo(xScale(reachT[i]), getPtY(vi, lo));
-        }
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.strokeStyle = env.color;
-        ctx.lineWidth = env.lineWidth ?? 1.2;
-        if (env.borderDash) ctx.setLineDash(env.borderDash);
-        else ctx.setLineDash([]);
-
-        ctx.beginPath();
-        started = false;
-        for (let i = 0; i < reachT.length; i++) {
-          const hi = env.hi[i];
-          if (hi === undefined || !isFinite(hi)) continue;
-          const x = xScale(reachT[i]);
-          const y = getPtY(vi, hi);
-          if (!started) {
-            ctx.moveTo(x, y);
-            started = true;
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        ctx.stroke();
-
-        ctx.beginPath();
-        started = false;
-        for (let i = 0; i < reachT.length; i++) {
-          const lo = env.lo[i];
-          if (lo === undefined || !isFinite(lo)) continue;
-          const x = xScale(reachT[i]);
-          const y = getPtY(vi, lo);
-          if (!started) {
-            ctx.moveTo(x, y);
-            started = true;
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    }
-
-    const zeroY = yScaleLeft(0.0);
-    if (zeroY >= margin.top && zeroY <= margin.top + plotH) {
-      ctx.strokeStyle = isDark ? "rgba(255, 255, 255, 0.25)" : "rgba(0, 0, 0, 0.25)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(margin.left, zeroY);
-      ctx.lineTo(margin.left + plotW, zeroY);
-      ctx.stroke();
-    }
-  }
-
-  // ── Fan-chart bands (Monte Carlo percentile shading) ──
-  if (currentMCData && currentMCData.t.length > 0) {
-    const mcT = currentMCData.t;
-    for (let vi = 0; vi < states.length; vi++) {
-      if (hiddenVars.has(states[vi])) continue;
-      const stats = currentMCData.statistics[states[vi]];
-      if (!stats) continue;
-
-      const color = COLORS[vi % COLORS.length];
-
-      // Draw bands from widest (lightest) to narrowest (darkest)
-      const bands: { lo: number[]; hi: number[]; alpha: number }[] = [];
-
-      // Band 1: p5 to p95 (lightest)
-      if (stats.percentiles.p5 && stats.percentiles.p95) {
-        bands.push({ lo: stats.percentiles.p5, hi: stats.percentiles.p95, alpha: 0.1 });
-      }
-      // Band 2: p25 to p75
-      if (stats.percentiles.p25 && stats.percentiles.p75) {
-        bands.push({ lo: stats.percentiles.p25, hi: stats.percentiles.p75, alpha: 0.18 });
-      }
-      // Band 3: confidence interval (darkest shading)
-      if (stats.ciLo && stats.ciHi) {
-        bands.push({ lo: stats.ciLo, hi: stats.ciHi, alpha: 0.28 });
-      }
-
-      for (const band of bands) {
-        ctx.fillStyle = hexToRgba(color, band.alpha);
-        ctx.beginPath();
-        // Upper boundary (left to right)
-        let started = false;
-        for (let i = 0; i < mcT.length; i++) {
-          const hi = band.hi[i];
-          if (hi === undefined || !isFinite(hi)) continue;
-          const x = xScale(mcT[i]);
-          const y = getPtY(vi, hi);
-          if (!started) {
-            ctx.moveTo(x, y);
-            started = true;
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        // Lower boundary (right to left)
-        for (let i = mcT.length - 1; i >= 0; i--) {
-          const lo = band.lo[i];
-          if (lo === undefined || !isFinite(lo)) continue;
-          ctx.lineTo(xScale(mcT[i]), getPtY(vi, lo));
-        }
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-  }
-
-  // ── Pinned Run Baselines (Ghost Curves) ──
-  const GHOST_DASHES: number[][] = [
-    [4, 4],
-    [8, 3],
-    [2, 3],
-    [10, 3, 2, 3],
-  ];
-  for (let ri = 0; ri < pinnedRuns.length; ri++) {
-    const pinnedRun = pinnedRuns[ri].data;
-    if (!pinnedRuns[ri].visible || pinnedRun.t.length === 0) continue;
-    ctx.save();
-    ctx.setLineDash(GHOST_DASHES[ri % GHOST_DASHES.length]);
-    ctx.lineWidth = 1.2;
-    ctx.globalAlpha = 0.45;
-
-    for (let vi = 0; vi < pinnedRun.states.length; vi++) {
-      const sName = pinnedRun.states[vi];
-      if (hiddenVars.has(sName)) continue;
-      const curIdx = states.indexOf(sName);
-      const color = COLORS[(curIdx >= 0 ? curIdx : vi) % COLORS.length];
-      ctx.strokeStyle = color;
-      ctx.beginPath();
-
-      const pts: { x: number; y: number }[] = [];
-      for (let i = 0; i < pinnedRun.t.length; i++) {
-        const val = pinnedRun.y[i]?.[vi];
-        if (val === undefined || !isFinite(val)) continue;
-        const ptX = xVarIdx >= 0 ? xScale(pinnedRun.y[i]?.[xVarIdx] ?? 0) : xScale(pinnedRun.t[i]);
-        const ptY = getPtY(curIdx >= 0 ? curIdx : vi, val);
-        pts.push({ x: ptX, y: ptY });
-      }
-
-      const drawPts = pts.length > 2000 ? lttbDecimate(pts, 1500) : pts;
-      if (currentInterpolation === "smooth") {
-        drawSmoothSpline(ctx, drawPts);
-      } else {
-        let started = false;
-        for (const pt of drawPts) {
-          if (!started) {
-            ctx.moveTo(pt.x, pt.y);
-            started = true;
-          } else {
-            ctx.lineTo(pt.x, pt.y);
-          }
-        }
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  // Draw lines
-  const { sweepResults } = currentData;
-  const sweepCount = sweepResults ? sweepResults.length : 1;
-  for (let vi = 0; vi < states.length; vi++) {
-    if (hiddenVars.has(states[vi])) continue;
-
-    for (let si = 0; si < sweepCount; si++) {
-      ctx.strokeStyle = COLORS[(vi * sweepCount + si) % COLORS.length];
-      ctx.lineWidth = currentMCData ? 2.0 : 1.5;
-      ctx.lineJoin = "round";
-      ctx.beginPath();
-
-      const pts: { x: number; y: number }[] = [];
-      for (let i = 0; i < t.length; i++) {
-        const val = sweepResults ? sweepResults[si].y[i]?.[vi] : y[i]?.[vi];
-        if (val === undefined || !isFinite(val)) continue;
-        pts.push({ x: getPtX(i), y: getPtY(vi, val) });
-      }
-
-      const drawPts = pts.length > 2000 ? lttbDecimate(pts, 1500) : pts;
-
-      if (currentInterpolation === "smooth") {
-        drawSmoothSpline(ctx, drawPts);
-      } else {
-        let prevPy = 0;
-        let started = false;
-        for (const pt of drawPts) {
-          if (!started) {
-            ctx.moveTo(pt.x, pt.y);
-            started = true;
-          } else {
-            if (currentInterpolation === "step-after") {
-              ctx.lineTo(pt.x, prevPy);
-            }
-            ctx.lineTo(pt.x, pt.y);
-          }
-          prevPy = pt.y;
-        }
-      }
-      ctx.stroke();
-
-      if (xVarIdx >= 0 && pts.length > 0) {
-        // Start marker (green dot)
-        ctx.fillStyle = "#3fb950";
-        ctx.beginPath();
-        ctx.arc(pts[0].x, pts[0].y, 4, 0, Math.PI * 2);
-        ctx.fill();
-
-        // End marker (red square)
-        const lastPt = pts[pts.length - 1];
-        ctx.fillStyle = "#f85149";
-        ctx.fillRect(lastPt.x - 3, lastPt.y - 3, 6, 6);
-      }
-    }
-  }
-
-  ctx.restore();
-
-  // ── Verification limit lines ──
-  const effectiveLimits: VerificationLimit[] = [...currentLimits];
-  if (currentReachabilityData) {
-    const reachVarsForLimits = activeVars.length > 0 ? activeVars : [currentReachabilityData.variable];
-    for (const vName of reachVarsForLimits) {
-      const profile = getReachabilityProfileForVar(vName);
-      if (profile && profile.requirementLimit !== undefined && isFinite(profile.requirementLimit)) {
-        const exists = effectiveLimits.some(
-          (l) => l.variable === vName && Math.abs(l.value - profile.requirementLimit!) < 1e-9,
-        );
-        if (!exists) {
-          effectiveLimits.push({
-            variable: vName,
-            value: profile.requirementLimit,
-            label: profile.requirementLabel || `Limit (${vName}): ${profile.requirementLimit}`,
-            violated: !profile.isCertifiedSafe,
-            direction: profile.requirementDirection ?? "max",
-          });
-        }
-      }
-    }
-  }
-
-  if (effectiveLimits.length > 0) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(margin.left, margin.top, plotW, plotH);
-    ctx.clip();
-
-    for (const limit of effectiveLimits) {
-      const limitVi = states.indexOf(limit.variable);
-      if (limitVi >= 0 && hiddenVars.has(limit.variable)) continue;
-      const ly = limitVi >= 0 ? getPtY(limitVi, limit.value) : yScaleLeft(limit.value);
-      // Only draw if the line is within the visible plot area
-      if (ly >= margin.top && ly <= margin.top + plotH) {
-        // Dashed red/green line
-        ctx.strokeStyle = limit.violated ? "#f14c4c" : "#3fb950";
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([6, 4]);
-        ctx.beginPath();
-        ctx.moveTo(margin.left, ly);
-        ctx.lineTo(margin.left + plotW, ly);
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        // Shaded violation region (above for max constraints, below for min constraints)
-        if (limit.violated) {
-          ctx.fillStyle = isDark ? "rgba(241, 76, 76, 0.06)" : "rgba(241, 76, 76, 0.08)";
-          if (limit.direction === "min") {
-            ctx.fillRect(margin.left, ly, plotW, margin.top + plotH - ly);
-          } else {
-            ctx.fillRect(margin.left, margin.top, plotW, ly - margin.top);
-          }
-        }
-
-        // Label at the right edge
-        ctx.font = "bold 11px var(--vscode-editor-font-family, monospace)";
-        ctx.fillStyle = limit.violated ? "#f14c4c" : "#3fb950";
-        ctx.textAlign = "right";
-        ctx.textBaseline = limit.direction === "min" ? "top" : "bottom";
-        ctx.fillText(limit.label, margin.left + plotW - 4, limit.direction === "min" ? ly + 3 : ly - 3);
-      }
-    }
-
-    ctx.restore();
-  }
-
-  // Draw Reachability Status Callouts
-  if (currentReachabilityData) {
-    const badgesToDraw: { text: string; kind: "pass" | "warn" | "fail" }[] = [];
-    const reachVarsForBadges = activeVars.length > 0 ? activeVars : [currentReachabilityData.variable];
-    for (const vName of reachVarsForBadges) {
-      const profile = getReachabilityProfileForVar(vName);
-      if (profile?.statusBadges) {
-        for (const b of profile.statusBadges) {
-          badgesToDraw.push(b);
-        }
-      }
-    }
-    if (badgesToDraw.length === 0 && currentReachabilityData.statusBadges) {
-      badgesToDraw.push(...currentReachabilityData.statusBadges);
-    }
-
-    let badgeY = margin.top + 16;
-    for (const badge of badgesToDraw.slice(0, 6)) {
-      ctx.save();
-      ctx.font = "bold 11px var(--vscode-editor-font-family, monospace)";
-      const textWidth = ctx.measureText(badge.text).width;
-      const padX = 8;
-      const badgeX = margin.left + 16;
-
-      ctx.fillStyle =
-        badge.kind === "pass"
-          ? "rgba(34, 197, 94, 0.18)"
-          : badge.kind === "warn"
-            ? "rgba(245, 158, 11, 0.18)"
-            : "rgba(239, 68, 68, 0.18)";
-      ctx.strokeStyle = badge.kind === "pass" ? "#22c55e" : badge.kind === "warn" ? "#f59e0b" : "#ef4444";
-      ctx.lineWidth = 1;
-
-      ctx.beginPath();
-      if (typeof ctx.roundRect === "function") {
-        ctx.roundRect(badgeX, badgeY - 12, textWidth + padX * 2, 22, 4);
-      } else {
-        ctx.rect(badgeX, badgeY - 12, textWidth + padX * 2, 22);
-      }
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = badge.kind === "pass" ? "#22c55e" : badge.kind === "warn" ? "#f59e0b" : "#ef4444";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-      ctx.fillText(badge.text, badgeX + padX, badgeY - 1);
-      ctx.restore();
-
-      badgeY += 28;
-    }
-  }
-
-  // Draw hover tracer
-  if (hoverIndex !== null && hoverIndex < t.length) {
-    const hx = getPtX(hoverIndex);
-
-    // Vertical line
-    ctx.strokeStyle = axisColor;
-    ctx.setLineDash([4, 4]);
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(hx, margin.top);
-    ctx.lineTo(hx, margin.top + plotH);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Circles
-    for (let vi = 0; vi < states.length; vi++) {
-      if (hiddenVars.has(states[vi])) continue;
-      const val = y[hoverIndex]?.[vi];
-      if (val === undefined || !isFinite(val)) continue;
-
-      const hy = getPtY(vi, val);
-      if (hy >= margin.top && hy <= margin.top + plotH) {
-        ctx.fillStyle = isDark ? "#2d2d2d" : "#ffffff";
-        ctx.strokeStyle = COLORS[vi % COLORS.length];
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(hx, hy, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-    }
-  }
-
-  // ── Measurement Cursors (A & B) and HUD Calculation ──
-  if (cursorsEnabled && cursorA !== null && cursorB !== null) {
-    const xPosA = xScale(cursorA);
-    const xPosB = xScale(cursorB);
-
-    ctx.save();
-    // 1. Shaded region between Cursor A and Cursor B
-    const leftX = Math.max(margin.left, Math.min(xPosA, xPosB));
-    const rightX = Math.min(margin.left + plotW, Math.max(xPosA, xPosB));
-    if (rightX > leftX) {
-      ctx.fillStyle = isDark ? "rgba(56, 189, 248, 0.08)" : "rgba(14, 165, 233, 0.09)";
-      ctx.fillRect(leftX, margin.top, rightX - leftX, plotH);
-    }
-
-    // 2. Cursor A (Cyan #38bdf8)
-    if (xPosA >= margin.left && xPosA <= margin.left + plotW) {
-      ctx.strokeStyle = "#38bdf8";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(xPosA, margin.top);
-      ctx.lineTo(xPosA, margin.top + plotH);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Badge A at top
-      ctx.fillStyle = "#38bdf8";
-      ctx.fillRect(xPosA - 10, margin.top, 20, 16);
-      ctx.fillStyle = "#0f172a";
-      ctx.font = "bold 10px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("A", xPosA, margin.top + 8);
-    }
-
-    // 3. Cursor B (Amber #f59e0b)
-    if (xPosB >= margin.left && xPosB <= margin.left + plotW) {
-      ctx.strokeStyle = "#f59e0b";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(xPosB, margin.top);
-      ctx.lineTo(xPosB, margin.top + plotH);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Badge B at top
-      ctx.fillStyle = "#f59e0b";
-      ctx.fillRect(xPosB - 10, margin.top, 20, 16);
-      ctx.fillStyle = "#0f172a";
-      ctx.font = "bold 10px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("B", xPosB, margin.top + 8);
-    }
-
-    // 4. Horizontal delta span arrow/line between cursors
-    if (Math.abs(xPosB - xPosA) > 28) {
-      const spanY = margin.top + plotH - 18;
-      ctx.strokeStyle = isDark ? "rgba(255, 255, 255, 0.45)" : "rgba(0, 0, 0, 0.45)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(xPosA, spanY);
-      ctx.lineTo(xPosB, spanY);
-      ctx.stroke();
-      // Arrow ticks
-      ctx.beginPath();
-      ctx.moveTo(xPosA, spanY - 3);
-      ctx.lineTo(xPosA, spanY + 3);
-      ctx.moveTo(xPosB, spanY - 3);
-      ctx.lineTo(xPosB, spanY + 3);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    // 5. Compute HUD values and update #cursor-hud
-    if (cursorHudEl) {
-      const dt = Math.abs(cursorB - cursorA);
-      const freq = dt > 1e-9 ? 1 / dt : 0;
-
-      // Find nearest indices in currentData
-      const xVarIdx = selectedXVar !== "__time__" ? states.indexOf(selectedXVar) : -1;
-      let idxA = 0;
-      let minDA = Infinity;
-      let idxB = 0;
-      let minDB = Infinity;
-
-      for (let i = 0; i < t.length; i++) {
-        const xVal = xVarIdx >= 0 ? (y[i]?.[xVarIdx] ?? 0) : t[i];
-        const dA = Math.abs(xVal - cursorA);
-        if (dA < minDA) {
-          minDA = dA;
-          idxA = i;
-        }
-        const dB = Math.abs(xVal - cursorB);
-        if (dB < minDB) {
-          minDB = dB;
-          idxB = i;
-        }
-      }
-
-      // Primary visible variable
-      const primaryVar = activeVars.length > 0 ? activeVars[0] : states[0] || "";
-      const primaryVi = states.indexOf(primaryVar);
-      const valA = primaryVi >= 0 ? y[idxA]?.[primaryVi] : undefined;
-      const valB = primaryVi >= 0 ? y[idxB]?.[primaryVi] : undefined;
-      const dy = valA !== undefined && valB !== undefined ? valB - valA : 0;
-      const slope = dt > 1e-9 ? dy / dt : 0;
-      const xLabel = xVarIdx >= 0 ? states[xVarIdx] : "t";
-
-      cursorHudEl.innerHTML = `
-        <div class="hud-metric">
-          <span class="hud-label">Δ${escapeHtmlSim(xLabel)}</span>
-          <span class="hud-value">${formatTick(dt)}${xVarIdx < 0 ? "s" : ""}</span>
-        </div>
-        ${
-          xVarIdx < 0
-            ? `
-        <div class="hud-metric">
-          <span class="hud-label">Freq (1/Δt)</span>
-          <span class="hud-value">${formatTick(freq)} Hz</span>
-        </div>`
-            : ""
-        }
-        <div class="hud-metric">
-          <span class="hud-label">${escapeHtmlSim(primaryVar)}(A)</span>
-          <span class="hud-value" style="color:#38bdf8;">${valA !== undefined ? formatTick(valA) : "N/A"}</span>
-        </div>
-        <div class="hud-metric">
-          <span class="hud-label">${escapeHtmlSim(primaryVar)}(B)</span>
-          <span class="hud-value" style="color:#f59e0b;">${valB !== undefined ? formatTick(valB) : "N/A"}</span>
-        </div>
-        <div class="hud-metric">
-          <span class="hud-label">Δ${escapeHtmlSim(primaryVar)}</span>
-          <span class="hud-value">${formatTick(dy)}</span>
-        </div>
-        <div class="hud-metric">
-          <span class="hud-label">Slope (Δy/Δx)</span>
-          <span class="hud-value">${formatTick(slope)}</span>
-        </div>
-      `;
-      cursorHudEl.classList.add("visible");
-    }
-  } else {
-    if (cursorHudEl) {
-      cursorHudEl.classList.remove("visible");
-    }
-  }
+  drawBatchOverlayChart({
+    ctx,
+    width: rect.width,
+    height: rect.height,
+    dpr,
+    currentData,
+    currentMCData,
+    currentReachabilityData,
+    currentLimits,
+    pinnedRuns,
+    hiddenVars,
+    customRightVars,
+    isDark,
+    isNormalized,
+    isDualY,
+    selectedXVar,
+    interpolation: currentInterpolation,
+    margin: getPlotMargin(),
+    customBounds,
+    defaultBounds: calculateDefaultBounds(),
+    hoverIndex,
+    cursorsEnabled,
+    cursorA,
+    cursorB,
+    cursorHudEl,
+  });
 }
 
 // Tooltip on mousemove
@@ -4112,59 +1829,16 @@ canvas.addEventListener("mousemove", (e) => {
     }
   }
 
-  let html = "";
-  if (xVarIdx >= 0) {
-    const curXVal = y[closest]?.[xVarIdx];
-    html = `<div style="margin-bottom:4px;font-weight:600">t = ${t[closest].toFixed(4)}s &nbsp;|&nbsp; ${escapeHtmlSim(states[xVarIdx])} = ${curXVal !== undefined ? curXVal.toFixed(4) : "N/A"}</div>`;
-  } else {
-    html = `<div style="margin-bottom:4px;font-weight:600">t = ${t[closest].toFixed(4)}s</div>`;
-  }
-
-  const { sweepResults } = currentData;
-  const sweepCount = sweepResults ? sweepResults.length : 1;
-  const isDualActive = isDualY && !isNormalized;
-  const activeVars = states.filter((s) => !hiddenVars.has(s));
-  const rightVars = isDualActive
-    ? customRightVars.size > 0
-      ? activeVars.filter((s) => customRightVars.has(s))
-      : activeVars.length >= 2
-        ? activeVars.slice(1)
-        : []
-    : [];
-
-  for (let vi = 0; vi < states.length; vi++) {
-    if (hiddenVars.has(states[vi])) continue;
-
-    for (let si = 0; si < sweepCount; si++) {
-      const val = sweepResults ? sweepResults[si].y[closest]?.[vi] : y[closest]?.[vi];
-      const color = COLORS[(vi * sweepCount + si) % COLORS.length];
-      const baseName = escapeHtmlSim(states[vi]);
-      const safeName = sweepResults ? `${baseName} (${escapeHtmlSim(String(sweepResults[si].value))})` : baseName;
-
-      let axisBadge = "";
-      if (isDualActive) {
-        axisBadge = rightVars.includes(states[vi])
-          ? ' <span style="opacity:0.6;font-size:10px;">[Right]</span>'
-          : ' <span style="opacity:0.6;font-size:10px;">[Left]</span>';
-      }
-
-      html += `<div><span style="color:${color}">●</span> ${safeName}${axisBadge}: ${val !== undefined ? val.toFixed(6) : "N/A"}`;
-
-      // Add MC uncertainty info
-      if (currentMCData && !sweepResults) {
-        const stats = currentMCData.statistics[states[vi]];
-        if (stats && stats.stddev[closest] !== undefined) {
-          const sd = stats.stddev[closest];
-          const ciLo = stats.ciLo[closest];
-          const ciHi = stats.ciHi[closest];
-          html += `<br><span style="opacity:0.7;font-size:11px;margin-left:16px">σ=${sd.toFixed(4)} CI=[${ciLo.toFixed(4)}, ${ciHi.toFixed(4)}]</span>`;
-        }
-      }
-      html += `</div>`;
-    }
-  }
-
-  tooltipEl.innerHTML = html;
+  tooltipEl.innerHTML = buildHoverTooltipHtml({
+    currentData,
+    currentMCData,
+    closest,
+    selectedXVar,
+    isDualY,
+    isNormalized,
+    hiddenVars,
+    customRightVars,
+  });
   tooltipEl.style.display = "block";
 
   // Position tooltip
@@ -4190,38 +1864,6 @@ canvas.addEventListener("mouseleave", () => {
     draw();
   }
 });
-
-// Utility: nice tick values
-function niceTicksFor(min: number, max: number, targetCount: number): number[] {
-  const range = max - min;
-  if (range <= 0) return [min];
-  const rawStep = range / targetCount;
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const normalized = rawStep / mag;
-
-  let niceStep: number;
-  if (normalized <= 1.5) niceStep = 1;
-  else if (normalized <= 3) niceStep = 2;
-  else if (normalized <= 7) niceStep = 5;
-  else niceStep = 10;
-  niceStep *= mag;
-
-  const ticks: number[] = [];
-  const start = Math.ceil(min / niceStep) * niceStep;
-  for (let v = start; v <= max + niceStep * 0.01; v += niceStep) {
-    ticks.push(v);
-  }
-  return ticks;
-}
-
-function formatTick(v: number): string {
-  if (Math.abs(v) < 1e-10) return "0";
-  if (Math.abs(v) >= 1000 || (Math.abs(v) < 0.01 && v !== 0)) {
-    return v.toExponential(1);
-  }
-  // Remove trailing zeros
-  return parseFloat(v.toPrecision(4)).toString();
-}
 
 if (vscodeApi) {
   vscodeApi.postMessage({ type: "ready" });

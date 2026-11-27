@@ -474,7 +474,8 @@ export function lintOwl2Document(
 
   const getExpressionChildNodes = (node: GenericSyntaxNode): GenericSyntaxNode[] => {
     return getNodeChildren(node).filter((c) => {
-      const t = c.type.replace(/^"|"$/g, "");
+      const raw = c.type;
+      const t = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
       return (
         t !== "(" &&
         t !== ")" &&
@@ -1075,7 +1076,7 @@ export function lintOwl2Document(
       case "SymmetricObjectPropertyAxiom":
       case "AsymmetricObjectPropertyAxiom":
       case "TransitiveObjectPropertyAxiom": {
-        const construct = t.replace(/Axiom$/, "");
+        const construct = t.endsWith("Axiom") ? t.slice(0, -5) : t;
         const iriNodes = getDirectIriNodes(node);
         if (iriNodes[0]) checkObjectPropertyRole(iriNodes[0], construct);
         break;
@@ -1089,7 +1090,7 @@ export function lintOwl2Document(
 
       case "ObjectPropertyAssertionAxiom":
       case "NegativeObjectPropertyAssertionAxiom": {
-        const construct = t.replace(/Axiom$/, "");
+        const construct = t.endsWith("Axiom") ? t.slice(0, -5) : t;
         const iriNodes = getDirectIriNodes(node);
         if (iriNodes[0]) checkObjectPropertyRole(iriNodes[0], construct);
         if (iriNodes[1]) {
@@ -1105,7 +1106,7 @@ export function lintOwl2Document(
 
       case "DataPropertyAssertionAxiom":
       case "NegativeDataPropertyAssertionAxiom": {
-        const construct = t.replace(/Axiom$/, "");
+        const construct = t.endsWith("Axiom") ? t.slice(0, -5) : t;
         const iriNodes = getDirectIriNodes(node);
         let propIri = "";
         if (iriNodes[0]) {

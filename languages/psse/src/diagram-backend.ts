@@ -15,6 +15,7 @@ import {
   type PropertyTabConfig,
   type DiagramTextEdit as TextEdit,
 } from "@modelscript/diagram/protocol";
+import { CstSessionCache } from "@modelscript/dsl/unparser";
 import { globalLibraryRegistry } from "@modelscript/runtime";
 
 function getUnifiedIndexFromDeps(backends: DiagramBackendHost): unknown {
@@ -81,6 +82,7 @@ function buildPropertyResponse(
  * First-class bidirectional LSP `DiagramBackend` for PSS/E `.raw` / `.dyr` models.
  */
 export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramBackend {
+  const sessionCache = new CstSessionCache(16);
   const resolveCrossLanguageComponentDrop = (
     ...args: unknown[]
   ): { sourceLanguage?: string; className?: string } | null =>
@@ -644,7 +646,169 @@ export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramB
         deletePsseDiagramComponents,
         connectPsseDiagramBuses,
         disconnectPsseDiagramBuses,
+        createPsseCstSession,
+        planPsseOptimisticEditsOnSession,
+        planPsseStructuralEditsOnSession,
       } = await import("@modelscript/psse");
+
+      const isFastCstOnly =
+        params.actions.length > 0 &&
+        params.actions.every((a) => {
+          const t = (a as { type: string }).type;
+          return (
+            t === "move" ||
+            t === "resize" ||
+            t === "rotate" ||
+            t === "toggleDisable" ||
+            t === "moveEdge" ||
+            t === "updateParameter" ||
+            t === "updateProperty" ||
+            t === "updateName"
+          );
+        });
+
+      // Fast surgical CST transaction path for optimistic/property/move/rotate/edge edits (zero whole-file diffing)
+      if (isFastCstOnly) {
+        const fastChanges = new Map<string, Record<string, unknown>>();
+        const fastEdges: Array<{ key: string; ptsStr: string }> = [];
+        for (const act of params.actions) {
+          if (act.type === "updateProperty" && act.key === "vertices" && Array.isArray(act.value)) {
+            const ptsStr = (act.value as Array<{ x: number; y: number }>)
+              .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y))
+              .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+              .join(";");
+            if (ptsStr.length > 0) fastEdges.push({ key: act.name, ptsStr });
+          } else if (act.type === "updateProperty") {
+            const bag = fastChanges.get(act.name) ?? {};
+            bag[act.key] = act.value;
+            fastChanges.set(act.name, bag);
+          } else if (act.type === "updateParameter") {
+            const bag = fastChanges.get(act.name) ?? {};
+            bag[act.parameter] = act.value;
+            fastChanges.set(act.name, bag);
+          } else if (act.type === "updateName") {
+            const bag = fastChanges.get(act.oldName) ?? {};
+            bag["name"] = act.newName;
+            fastChanges.set(act.oldName, bag);
+          } else if (act.type === "moveEdge") {
+            for (const edge of act.edges) {
+              const srcBus = edge.source.split(".")[0] ?? edge.source;
+              const tgtBus = edge.target.split(".")[0] ?? edge.target;
+              const pts = edge.points.length > 2 ? edge.points.slice(1, -1) : edge.points;
+              const ptsStr = pts
+                .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+                .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+                .join(";");
+              if (ptsStr.length > 0) fastEdges.push({ key: edge.id || `${srcBus}__${tgtBus}`, ptsStr });
+            }
+          } else if (act.type === "move") {
+            for (const item of act.items) {
+              if (item.connectedOnly) continue;
+              const name = item.id || item.name;
+              let defaultW = 156;
+              let defaultH = 40;
+              if (name.startsWith("gen_")) {
+                defaultW = 48;
+                defaultH = 48;
+              } else if (name.startsWith("load_")) {
+                defaultW = 84;
+                defaultH = 30;
+              } else if (name.startsWith("shunt_") || name.startsWith("swshunt_")) {
+                defaultW = 64;
+                defaultH = 30;
+              }
+              const cx = Math.round(item.x + (item.width ?? defaultW) / 2);
+              const cy = Math.round(item.y + (item.height ?? defaultH) / 2);
+              const bag = fastChanges.get(name) ?? {};
+              bag["x"] = cx;
+              bag["y"] = cy;
+              fastChanges.set(name, bag);
+            }
+          } else if (act.type === "resize") {
+            const item = (
+              act as { item?: { id?: string; name: string; x: number; y: number; width?: number; height?: number } }
+            ).item;
+            if (item) {
+              const name = item.id || item.name;
+              const cx = Math.round(item.x + (item.width ?? 156) / 2);
+              const cy = Math.round(item.y + (item.height ?? 40) / 2);
+              const bag = fastChanges.get(name) ?? {};
+              bag["x"] = cx;
+              bag["y"] = cy;
+              fastChanges.set(name, bag);
+            }
+          } else if (act.type === "rotate") {
+            const item = (act as { item?: { id?: string; name: string; rotation?: number } }).item;
+            if (item) {
+              const name = item.id || item.name;
+              const deg = ((Math.round(item.rotation ?? 0) % 360) + 360) % 360;
+              const orient = deg === 90 || deg === 270 ? 90 : 0;
+              const bag = fastChanges.get(name) ?? {};
+              bag["orientation"] = orient;
+              fastChanges.set(name, bag);
+            }
+          } else if ((act as { type: string }).type === "toggleDisable") {
+            const td = act as unknown as { name: string; disabled?: boolean };
+            const bag = fastChanges.get(td.name) ?? {};
+            const inService = td.disabled ? 0 : 1;
+            if (td.name.startsWith("bus_")) {
+              bag["ide"] = td.disabled ? 4 : 1;
+            } else {
+              bag["stat"] = inService;
+              bag["status"] = inService;
+              bag["st"] = inService;
+            }
+            fastChanges.set(td.name, bag);
+          }
+        }
+
+        const session = sessionCache.getOrUpdate(params.uri, initialText, () =>
+          createPsseCstSession(initialText, params.uri),
+        );
+        try {
+          const cstEdits = planPsseOptimisticEditsOnSession(session, fastChanges, fastEdges);
+          if (cstEdits !== null) {
+            const hasRename = params.actions.some((a) => a.type === "updateName");
+            return {
+              seq: params.seq,
+              edits: cstEdits,
+              renderHint: cstEdits.length > 0 && hasRename ? "immediate" : "none",
+            };
+          }
+        } catch {
+          // Fall through to general path below
+        }
+      }
+
+      const isStructuralCstOnly =
+        params.actions.length > 0 &&
+        params.actions.every((a) => {
+          const t = (a as { type: string }).type;
+          return t === "deleteComponents" || t === "connect" || t === "disconnect" || t === "reconnect";
+        });
+
+      // Fast surgical CST transaction path for structural edits (delete/connect/disconnect/reconnect)
+      if (isStructuralCstOnly) {
+        const session = sessionCache.getOrUpdate(params.uri, initialText, () =>
+          createPsseCstSession(initialText, params.uri),
+        );
+        try {
+          const cstEdits = planPsseStructuralEditsOnSession(
+            session,
+            params.actions as Parameters<typeof planPsseStructuralEditsOnSession>[1],
+          );
+          if (cstEdits !== null) {
+            return {
+              seq: params.seq,
+              edits: cstEdits,
+              renderHint: cstEdits.length > 0 ? "immediate" : "none",
+            };
+          }
+        } catch {
+          // Fall through to general path below
+        }
+      }
+
       let workingText = initialText;
 
       const batchedChanges = new Map<string, Record<string, unknown>>();

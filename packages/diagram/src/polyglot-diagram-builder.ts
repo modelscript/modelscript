@@ -1,9 +1,201 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { InteractiveBinding } from "./interactive.js";
+import type { DiagramPortDirection, DiagramPortSignature, DiagramPortVariable } from "./port-compatibility.js";
 import { computeStemLines, type PortSide } from "./port-router.js";
 import type { CoordinateSystem } from "./protocol.js";
 import { computeSolderDots, solderDotToDiagramNode } from "./solder-dots.js";
+
+const POLYGLOT_PRIMITIVE_SIGNAL_TYPES = new Map<string, string>([
+  ["real", "Real"],
+  ["float", "Real"],
+  ["double", "Real"],
+  ["integer", "Integer"],
+  ["int", "Integer"],
+  ["natural", "Integer"],
+  ["positive", "Integer"],
+  ["boolean", "Boolean"],
+  ["bool", "Boolean"],
+  ["string", "String"],
+  ["bit", "Bit"],
+  ["std_logic", "Bit"],
+  ["std_ulogic", "Bit"],
+  ["logic", "Bit"],
+  ["wire", "Bit"],
+  ["reg", "Bit"],
+  ["std_logic_vector", "BitVector"],
+  ["std_ulogic_vector", "BitVector"],
+  ["bit_vector", "BitVector"],
+  ["unsigned", "BitVector"],
+  ["signed", "BitVector"],
+]);
+
+function normalizePolyglotDir(raw: string | undefined, flip: boolean): DiagramPortDirection {
+  const d = (raw ?? "").trim().toLowerCase();
+  let dir: DiagramPortDirection = "inout";
+  if (d === "in" || d === "input") dir = "in";
+  else if (d === "out" || d === "output") dir = "out";
+  if (flip && dir !== "inout") return dir === "in" ? "out" : "in";
+  return dir;
+}
+
+function parsePolyglotTypeAndDims(rawType: string): { baseType: string; dims?: string[] | undefined } {
+  const trimmed = rawType.trim();
+  // VHDL range: std_logic_vector(7 downto 0) or (0 to 7)
+  const vhdlRange = trimmed.match(/^([A-Za-z_][\w.:]*)\s*\(\s*(\d+)\s+(?:downto|to)\s+(\d+)\s*\)$/i);
+  if (vhdlRange?.[1] && vhdlRange[2] && vhdlRange[3]) {
+    const width = Math.abs(Number(vhdlRange[2]) - Number(vhdlRange[3])) + 1;
+    return { baseType: vhdlRange[1], dims: [String(width)] };
+  }
+  // Verilog range: logic[15:0] or wire [7:0]
+  const verilogRange = trimmed.match(/^([A-Za-z_][\w.:]*)\s*\[\s*(\d+)\s*:\s*(\d+)\s*\]$/);
+  if (verilogRange?.[1] && verilogRange[2] && verilogRange[3]) {
+    const width = Math.abs(Number(verilogRange[2]) - Number(verilogRange[3])) + 1;
+    return { baseType: verilogRange[1], dims: [String(width)] };
+  }
+  // Standard array dims: Real[3] or Integer[2, 3]
+  const arrMatch = trimmed.match(/^([A-Za-z_][\w.:]*)\s*\[\s*([^\]]+)\s*\]$/);
+  if (arrMatch?.[1] && arrMatch[2]) {
+    const dims = arrMatch[2]
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return { baseType: arrMatch[1], ...(dims.length > 0 ? { dims } : {}) };
+  }
+  return { baseType: trimmed };
+}
+
+export function buildPolyglotPortCompatibilityMeta<TId extends string | number = string | number>(
+  portSym: {
+    id: TId;
+    name?: string | undefined;
+    ruleName: string;
+    metadata?: Record<string, unknown> | undefined;
+    attributes?: Record<string, unknown> | undefined;
+  },
+  index: {
+    symbols: Map<
+      TId,
+      {
+        id: TId;
+        name?: string | undefined;
+        ruleName: string;
+        metadata?: Record<string, unknown> | undefined;
+        attributes?: Record<string, unknown> | undefined;
+      }
+    >;
+    childrenOf: Map<TId | null, TId[]>;
+    byName?: Map<string, TId[]> | undefined;
+  },
+  isConjugated: boolean,
+  directionStr?: string,
+): { connectorType?: string | undefined; portSignature?: DiagramPortSignature | undefined } {
+  const meta = portSym.metadata ?? {};
+  const attrs = portSym.attributes ?? {};
+  const rawFromMeta =
+    (typeof meta["typeSpecifier"] === "string" && meta["typeSpecifier"]) ||
+    (typeof meta["type_specifier"] === "string" && meta["type_specifier"]) ||
+    (typeof meta["type"] === "string" && meta["type"]) ||
+    (typeof attrs["typeSpecifier"] === "string" && attrs["typeSpecifier"]) ||
+    (typeof attrs["type"] === "string" && attrs["type"]) ||
+    undefined;
+
+  let rawType = rawFromMeta;
+  if (!rawType) {
+    const kids = index.childrenOf.get(portSym.id) ?? [];
+    for (const kidId of kids) {
+      const kid = index.symbols.get(kidId);
+      if (
+        kid?.name &&
+        (kid.ruleName === "ConjugatedPortTyping" ||
+          kid.ruleName === "OwnedFeatureTyping" ||
+          kid.ruleName === "FeatureTyping" ||
+          kid.ruleName === "type_specifier")
+      ) {
+        rawType = kid.name;
+        break;
+      }
+    }
+  }
+
+  const connectorType = rawType ? rawType.trim().replace(/^~\s*/, "") : undefined;
+  if (!connectorType) {
+    return {};
+  }
+
+  const { baseType, dims } = parsePolyglotTypeAndDims(connectorType);
+  const leafLower = (baseType.split(/[.:/]+/).pop() ?? baseType).toLowerCase();
+  const rawPrimType = POLYGLOT_PRIMITIVE_SIGNAL_TYPES.get(leafLower);
+  const primType = dims && rawPrimType === "Bit" ? "BitVector" : rawPrimType;
+  if (primType) {
+    const dir = normalizePolyglotDir(directionStr, isConjugated);
+    return {
+      connectorType,
+      portSignature: {
+        ...(dims ? { dims } : {}),
+        variables: [
+          {
+            name: "value",
+            type: primType,
+            flowKind: "signal",
+            direction: dir,
+            ...(dims ? { dims } : {}),
+          },
+        ],
+      },
+    };
+  }
+
+  // Try resolving a structured port definition (e.g. SysML v2 `port def`, Atopile `interface`)
+  const leafName = baseType.split(/[.:/]+/).pop() ?? baseType;
+  const candidateIds = index.byName?.get(leafName) ?? [];
+  for (const candId of candidateIds) {
+    const defSym = index.symbols.get(candId);
+    if (!defSym || defSym.id === portSym.id) continue;
+    const defRule = defSym.ruleName.toLowerCase();
+    if (!defRule.includes("port") && !defRule.includes("interface") && !defRule.includes("connector")) continue;
+    const memberIds = index.childrenOf.get(defSym.id) ?? [];
+    const variables: DiagramPortVariable[] = [];
+    for (const mid of memberIds) {
+      const mSym = index.symbols.get(mid);
+      if (!mSym?.name) continue;
+      const mMeta = mSym.metadata ?? {};
+      const mAttrs = mSym.attributes ?? {};
+      const mDirRaw = String(
+        mMeta["direction"] ?? mMeta["causality"] ?? mAttrs["direction"] ?? mAttrs["causality"] ?? "",
+      );
+      const mTypeRaw =
+        (typeof mMeta["typeSpecifier"] === "string" && mMeta["typeSpecifier"]) ||
+        (typeof mMeta["type"] === "string" && mMeta["type"]) ||
+        (typeof mAttrs["type"] === "string" && mAttrs["type"]) ||
+        "Real";
+      const parsedMember = parsePolyglotTypeAndDims(mTypeRaw);
+      const mLeaf = (parsedMember.baseType.split(/[.:/]+/).pop() ?? parsedMember.baseType).toLowerCase();
+      const mPrim = POLYGLOT_PRIMITIVE_SIGNAL_TYPES.get(mLeaf) ?? parsedMember.baseType;
+      const mFlowRaw = String(mMeta["flowPrefix"] ?? mAttrs["flowPrefix"] ?? "").toLowerCase();
+      const flowKind =
+        mFlowRaw === "flow" ? "flow" : mFlowRaw === "stream" ? "stream" : mDirRaw ? "signal" : "potential";
+      variables.push({
+        name: mSym.name,
+        type: mPrim,
+        flowKind,
+        direction: normalizePolyglotDir(mDirRaw, isConjugated),
+        ...(parsedMember.dims ? { dims: parsedMember.dims } : {}),
+      });
+    }
+    if (variables.length > 0) {
+      return {
+        connectorType,
+        portSignature: {
+          ...(dims ? { dims } : {}),
+          variables,
+        },
+      };
+    }
+  }
+
+  return { connectorType };
+}
 
 /** X6 SVG Markup element — defines the DOM structure of a node/port. */
 export interface X6Markup {
@@ -46,6 +238,8 @@ export interface X6PortItem {
   group?: string | undefined;
   direction?: string | undefined;
   isConjugated?: boolean | undefined;
+  connectorType?: string | undefined;
+  portSignature?: DiagramPortSignature | undefined;
   args?: { x?: number | undefined; y?: number | undefined; [key: string]: unknown } | undefined;
   markup?: X6Markup | X6Markup[] | undefined;
   attrs?: X6Attrs | undefined;
@@ -2198,11 +2392,20 @@ export function buildPolyglotDiagram(
     const portCustomAttrs =
       portCfg?.node?.attrs?.["body"] || portCfg?.node?.attrs?.["circle"] || portCfg?.node?.attrs?.["rect"];
 
+    const { connectorType: portConnType, portSignature: portSig } = buildPolyglotPortCompatibilityMeta(
+      sym,
+      index,
+      isConjugated,
+      metaDir,
+    );
+
     portItems.push({
       id: portName,
       group,
       direction: metaDir,
       isConjugated,
+      ...(portConnType ? { connectorType: portConnType } : {}),
+      ...(portSig ? { portSignature: portSig } : {}),
       attrs: {
         text: { text: portName },
         rect: {
@@ -2344,11 +2547,16 @@ export function buildPolyglotDiagram(
                   ? "bottom"
                   : "left";
 
+          const { connectorType: inheritedConnType, portSignature: inheritedPortSig } =
+            buildPolyglotPortCompatibilityMeta(portSym, index, isConjugated, causalityStr || undefined);
+
           portItems.push({
             id: portName,
             group,
             direction: causalityStr || undefined,
             isConjugated,
+            ...(inheritedConnType ? { connectorType: inheritedConnType } : {}),
+            ...(inheritedPortSig ? { portSignature: inheritedPortSig } : {}),
             attrs: {
               text: { text: portName },
               rect: {

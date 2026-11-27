@@ -20,6 +20,7 @@ import {
 } from "@modelscript/diagram/neural-spike";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -159,7 +160,7 @@ export class NeuralSpikeViewerPanel extends BaseWebviewPanel {
         <tr>
           <td><strong>Unit #${u.unitId}</strong></td>
           <td>${escapeXml(u.channelId)}</td>
-          <td><span class="cell-badge ${u.cellType ?? "unclassified"}">${u.cellType ?? "unclassified"}</span></td>
+          <td><span class="cell-badge ${escapeXml(u.cellType ?? "unclassified")}">${escapeXml(u.cellType ?? "unclassified")}</span></td>
           <td>${u.spikeTimesSeconds.length} spikes</td>
           <td>${(u.meanFiringRateHz ?? u.spikeTimesSeconds.length / (data.durationSeconds || 1)).toFixed(1)} Hz</td>
         </tr>`,
@@ -187,10 +188,14 @@ export class NeuralSpikeViewerPanel extends BaseWebviewPanel {
       })
       .join("");
 
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <style>
     body {
       margin: 0;
@@ -392,7 +397,7 @@ export class NeuralSpikeViewerPanel extends BaseWebviewPanel {
     ${diagsHtml}
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     ['checkPsth', 'checkLfp', 'checkStimuli'].forEach(id => {

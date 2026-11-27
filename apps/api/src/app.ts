@@ -98,6 +98,7 @@ import { SANCTIONED_COUNTRIES, SANCTIONED_REGIONS } from "./util/compliance.js";
 import { PeriodicWorker } from "./util/periodic-worker.js";
 import { seedInitialAdmin } from "./util/seed-admin.js";
 import { seedPrepackagedLibraries } from "./util/seed-examples.js";
+import { seedMlArenaDemoData } from "./util/seed-ml-arena.js";
 import { injectSeoIntoHtml, resolveSeoMetadata } from "./util/seo-injector.js";
 import { isFederationDisabled, isStrictAirgapEnv, resolveTierPreset } from "./util/tier-presets.js";
 
@@ -316,6 +317,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
     const devSeedPromise = (async () => {
       try {
         await seedPolyglotSocialData(database);
+        await seedMlArenaDemoData(database, libraryStorage.dataDir);
         if (isExplicitDevSeed) {
           if (!isTestEnv) {
             await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
@@ -356,6 +358,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
         seedPolyglotUsers(database);
 
         await seedPolyglotSocialData(database, { force: true });
+        await seedMlArenaDemoData(database, libraryStorage.dataDir, { force: true });
         await seedPrepackagedLibraries(libraryStorage, database, jobQueue);
         res.json({ success: true });
       } catch (err) {

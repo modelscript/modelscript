@@ -13,60 +13,12 @@
     "test": "node ../../scripts/ci/test-runner.js --tsconfig tsconfig.json",
     "typecheck": "tsc --noEmit"
   },
-  "contributes": {
-    "commands": [
-      {
-        "command": "modelscript.runFormalLints",
-        "title": "ModelScript: Run Formal Verification Lints (IC3/PDR, FTA, UQ, Flowpipe)"
-      },
-      {
-        "command": "modelscript.runCompilerLints",
-        "title": "ModelScript: Run WASM Compiler Lints"
-      },
-      {
-        "command": "modelscript.openAlmRemotes",
-        "title": "ModelScript: Open ALM & PLM Remotes"
-      },
-      {
-        "command": "modelscript.trainingStudio.open",
-        "title": "ModelScript: Open Dynamic-m Training Studio"
-      },
-      {
-        "command": "modelscript.trainingStudio.toggleGroupIdOverlay",
-        "title": "ModelScript: Toggle Relational Hypergraph group_id Overlay"
-      },
-      {
-        "command": "modelscript.openRtmContracts",
-        "title": "ModelScript: Open Requirements, RTM & Contracts"
-      },
-      {
-        "command": "modelscript.openSpatialDiagram3D",
-        "title": "ModelScript: Open 3D / VR Spatial Diagram Stage"
-      },
-      {
-        "command": "modelscript.openAnsatzCopilot",
-        "title": "ModelScript: Open Ansatz AI Copilot"
-      },
-      {
-        "command": "modelscript.openDomainInspector",
-        "title": "ModelScript: Open Polyglot Domain Inspector"
-      }
-    ],
-    "views": {
-      "modelscript-sidebar": [
-        {
-          "id": "modelscript.trainingStudio",
-          "name": "Dynamic-m Training Studio",
-          "type": "webview"
-        }
-      ]
-    }
-  },
   "dependencies": {
     "@antv/layout": "^0.3.25",
     "@mlc-ai/web-llm": "^0.2.85",
     "@modelscript/c": "workspace:*",
     "@modelscript/cad": "workspace:*",
+    "@modelscript/cad-viewer": "workspace:*",
     "@modelscript/cantera": "workspace:*",
     "@modelscript/canvas": "workspace:*",
     "@modelscript/cfd": "workspace:*",
@@ -82,6 +34,7 @@
     "@modelscript/pdb": "workspace:*",
     "@modelscript/pscad": "workspace:*",
     "@modelscript/qif": "workspace:*",
+    "@modelscript/rotunda": "workspace:*",
     "@modelscript/runtime": "workspace:*",
     "@modelscript/scad": "workspace:*",
     "@modelscript/sdk": "workspace:*",
@@ -103,7 +56,7 @@
   },
   "devDependencies": {
     "@types/dompurify": "^3.0.5",
-    "@types/vscode": "^1.72.0",
+    "@types/vscode": "^1.90.0",
     "esbuild": "^0.28.1",
     "typescript": "^5.9.3",
     "vscode-uri": "^3.2.0"

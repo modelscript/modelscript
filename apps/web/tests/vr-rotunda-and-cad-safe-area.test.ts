@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { buildCleanCreaseEdgeGeometry } from "@modelscript/editor/workbench/cad-viewer/HeroCadMaterials.js";
+import { buildCleanCreaseEdgeGeometry } from "@modelscript/cad-viewer/HeroCadMaterials.js";
 import {
   applyScadOperationOverrides,
   countCadFeatureNodes,
   formatCadPartDisplayName,
-} from "@modelscript/editor/workbench/cad-viewer/scad-feature-tree.js";
-import { computeCadSafeInsets } from "@modelscript/editor/workbench/cad-viewer/viewport-safe-area.js";
+} from "@modelscript/cad-viewer/scad-feature-tree.js";
+import { computeCadSafeInsets } from "@modelscript/cad-viewer/viewport-safe-area.js";
 import {
   createInitialRotundaState,
   EngineeringRotunda,
   resolveStageCameraPose,
   rotundaReducer,
   type RotundaActiveView,
-} from "@modelscript/editor/workbench/vr-rotunda/index.js";
+} from "@modelscript/rotunda/index.js";
 import { buildScadFeatureTreeFromCst, getScadParser } from "@modelscript/scad";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";

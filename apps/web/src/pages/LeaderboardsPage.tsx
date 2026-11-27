@@ -136,10 +136,10 @@ function fmtNum(v: number | null | undefined, digits = 3): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PageContainer = styled.div`
-  max-width: 1260px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 24px 20px 64px;
-  color: var(--ms-text-1, #e6edf3);
+  padding: 20px 20px 56px;
+  color: var(--color-text-primary);
 `;
 
 const HeaderRow = styled.div`
@@ -153,16 +153,16 @@ const HeaderRow = styled.div`
 
 const PageTitle = styled.h1`
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--ms-text-heading, var(--ms-text-1, #f0f6fc));
+  color: var(--color-text-heading);
 `;
 
 const Subtitle = styled.p`
   margin: 4px 0 0;
   font-size: 13px;
-  color: var(--ms-text-2, #8b949e);
+  color: var(--color-text-muted);
 `;
 
 const NavLinkButton = styled(Link)`
@@ -171,14 +171,16 @@ const NavLinkButton = styled(Link)`
   gap: 6px;
   padding: 7px 12px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
-  color: var(--ms-text-1, #e6edf3);
-  border: 1px solid var(--ms-border, #30363d);
-  background: var(--ms-bg-elv, #161b22);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-surface);
   &:hover {
-    border-color: var(--ms-brand, #38bdf8);
+    text-decoration: none;
+    border-color: var(--ms-brand);
+    background: var(--surface-row-hover);
   }
 `;
 
@@ -190,8 +192,9 @@ const FilterBar = styled.div`
   gap: 12px;
   padding: 14px 16px;
   border-radius: 12px;
-  border: 1px solid var(--ms-border, #30363d);
-  background: var(--ms-bg-elv, #161b22);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   margin-bottom: 18px;
 `;
 
@@ -208,19 +211,20 @@ const Pill = styled.button<{ $active?: boolean }>`
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid ${(p) => (p.$active ? "var(--ms-brand, #38bdf8)" : "var(--ms-border, #30363d)")};
-  background: ${(p) => (p.$active ? "rgba(56, 189, 248, 0.16)" : "transparent")};
-  color: ${(p) => (p.$active ? "var(--ms-brand, #38bdf8)" : "var(--ms-text-2, #8b949e)")};
+  border: 1px solid ${(p) => (p.$active ? "var(--ms-brand)" : "var(--color-border-default)")};
+  background: ${(p) => (p.$active ? "var(--ms-brand-soft)" : "var(--color-bg-surface)")};
+  color: ${(p) => (p.$active ? "var(--ms-brand)" : "var(--color-text-secondary)")};
   &:hover {
-    color: var(--ms-text-1, #e6edf3);
-    border-color: var(--ms-brand, #38bdf8);
+    color: var(--color-text-heading);
+    border-color: var(--ms-brand);
   }
 `;
 
 const SectionCard = styled.section`
   border-radius: 12px;
-  border: 1px solid var(--ms-border, #30363d);
-  background: var(--ms-bg-elv, #161b22);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   margin-bottom: 20px;
   overflow: hidden;
 `;
@@ -232,24 +236,24 @@ const SectionHeader = styled.div`
   justify-content: space-between;
   gap: 10px;
   padding: 14px 18px;
-  border-bottom: 1px solid var(--ms-divider, #21262d);
+  border-bottom: 1px solid var(--color-border);
 `;
 
 const SectionTitle = styled.h2`
   margin: 0;
   font-size: 15px;
   font-weight: 700;
-  color: var(--ms-text-heading, var(--ms-text-1, #f0f6fc));
+  color: var(--color-text-heading);
 `;
 
 const InfoBanner = styled.div`
   padding: 10px 14px;
   margin-bottom: 16px;
   border-radius: 10px;
-  font-size: 12px;
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.08);
-  color: var(--ms-text-1, #e6edf3);
+  font-size: 12.5px;
+  border: 1px solid var(--color-accent-blue-border);
+  background: var(--ms-brand-soft);
+  color: var(--color-text-primary);
 `;
 
 const BoardTable = styled.table`

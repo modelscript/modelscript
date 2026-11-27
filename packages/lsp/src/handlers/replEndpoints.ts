@@ -15,11 +15,7 @@ let replInterpreter: ArenaScriptInterpreter | null = null;
 export function registerReplEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/repl/evaluate", async (params: { input: string }) => {
     try {
-      const globalFallback = globalThis as { parser?: ReplParserLike; modelicaParser?: ReplParserLike };
-      const parser =
-        (context.parserService.getParser("modelica") as ReplParserLike | null | undefined) ??
-        globalFallback.parser ??
-        globalFallback.modelicaParser;
+      const parser = context.parserService.getParser("modelica") as ReplParserLike | null | undefined;
       if (!parser) {
         return { status: "error", error: "Script parser not initialized on server." };
       }

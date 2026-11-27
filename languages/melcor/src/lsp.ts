@@ -9,7 +9,10 @@
 
 import { collectWasmSyntaxErrors } from "@modelscript/dsl";
 import {
+  cstLineText,
+  groupAllCstTokensByLine,
   LspSymbolKind,
+  type CstNodeLike,
   type LspDiagnostic,
   type LspDocumentSymbol,
   type LspHover,
@@ -153,14 +156,77 @@ export function validateMelcor(text: string): LspDiagnostic[] {
   }
 }
 
+interface MelcorCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface MelcorCstIndex {
+  byRow: Map<number, MelcorCstLine>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildMelcorCstIndex(text: string): MelcorCstIndex {
+  const byRow = new Map<number, MelcorCstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode = (getMelcorWasmParser().parse(text)?.rootNode as CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(text, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = text.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  return { byRow, lastRow, lastEndCol };
+}
+
 export function getMelcorDocumentSymbols(text: string): LspDocumentSymbol[] {
   const deck = parseMelcor(text);
+  const cstIndex = buildMelcorCstIndex(text);
   const children: LspDocumentSymbol[] = [];
 
   const mkRange = (r?: { startLine: number; endLine: number }): LspRange => {
     const sl = r ? Math.max(0, r.startLine - 1) : 0;
     const el = r ? Math.max(0, r.endLine - 1) : sl;
-    return { start: { line: sl, character: 0 }, end: { line: el, character: 60 } };
+    const startEntry = cstIndex.byRow.get(sl);
+    const endEntry = cstIndex.byRow.get(el);
+    return {
+      start: { line: sl, character: startEntry?.startCol ?? 0 },
+      end: { line: el, character: endEntry?.endCol ?? Math.max(1, startEntry?.endCol ?? 1) },
+    };
   };
 
   for (const cv of deck.controlVolumes.values()) {
@@ -231,7 +297,7 @@ export function getMelcorDocumentSymbols(text: string): LspDocumentSymbol[] {
 
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, text.split("\n").length - 1), character: 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   return [
@@ -247,9 +313,10 @@ export function getMelcorDocumentSymbols(text: string): LspDocumentSymbol[] {
 }
 
 export function getMelcorHover(text: string, position: LspPosition): LspHover | null {
-  const lines = text.split("\n");
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildMelcorCstIndex(text);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = entry.colLine;
 
   // Find word under cursor
   let start = position.character;

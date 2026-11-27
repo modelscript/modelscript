@@ -358,7 +358,6 @@ export function ensureDiagramStyles(): void {
       opacity: 0.25;
       filter: grayscale(1);
       cursor: not-allowed;
-      pointer-events: none;
     }
 
     .ms-port.ms-magnet-adsorbed {

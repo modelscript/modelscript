@@ -7,6 +7,9 @@
  * hover documentation (`getGCodeHover`), and completions (`getGCodeCompletions`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getGCodeSchemasFromLibraries, lookupGCodeSchema } from "./catalog/library-package-adapter.js";
 import { lintGCode } from "./lints/index.js";
 import { normalizeGMCode, parseGCode } from "./parser/gcode-parser.js";
@@ -97,21 +100,73 @@ const MODAL_HOVER_DOCS: Record<string, string> = {
   M99: "**M99 — Subprogram Return**: Returns control from subprogram to caller.",
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface GCodeCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildGCodeCstIndex(content: string): GCodeCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("gcode", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates an RS-274 / ISO 6983 G-code document and returns LSP diagnostics.
  */
 export function validateGCode(content: string, _uri = "program.nc"): LspDiagnostic[] {
   const diags = lintGCode(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildGCodeCstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
+    const entry = cstIndex.byRow.get(lineIdx);
     const startChar = Math.max(0, d.column - 1);
-    const endChar = Math.max(
-      startChar + 1,
-      Math.min(lineText.length, startChar + Math.max(1, d.endOffset - d.startOffset)),
-    );
+    const maxEnd = entry?.endCol ?? startChar + Math.max(1, d.endOffset - d.startOffset);
+    const endChar = Math.max(startChar + 1, Math.min(maxEnd, startChar + Math.max(1, d.endOffset - d.startOffset)));
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -130,9 +185,9 @@ export function validateGCode(content: string, _uri = "program.nc"): LspDiagnost
  */
 export function getGCodeDocumentSymbols(content: string): LspDocumentSymbol[] {
   const program = parseGCode(content);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
-  const lastCol = (lines[lastLine] ?? "").length;
+  const cstIndex = buildGCodeCstIndex(content);
+  const lastLine = cstIndex.lastRow;
+  const lastCol = cstIndex.lastEndCol;
 
   const children: LspDocumentSymbol[] = [];
 
@@ -157,33 +212,44 @@ export function getGCodeDocumentSymbols(content: string): LspDocumentSymbol[] {
   for (const sub of program.subprograms.values()) {
     const startL = Math.max(0, sub.startLine - 1);
     const endL = Math.max(startL, sub.endLine - 1);
+    const startEntry = cstIndex.byRow.get(startL);
+    const endEntry = cstIndex.byRow.get(endL);
+    const startCol = startEntry?.startCol ?? 0;
     children.push({
       name: sub.name,
       detail: `Subprogram (${sub.blocks.length} blocks)`,
       kind: LspSymbolKind.Function,
       range: {
-        start: { line: startL, character: 0 },
-        end: { line: endL, character: (lines[endL] ?? "").length },
+        start: { line: startL, character: startCol },
+        end: { line: endL, character: endEntry?.endCol ?? 0 },
       },
       selectionRange: {
-        start: { line: startL, character: 0 },
-        end: { line: startL, character: Math.min(sub.name.length, (lines[startL] ?? "").length) },
+        start: { line: startL, character: startCol },
+        end: {
+          line: startL,
+          character: Math.min(startCol + sub.name.length, startEntry?.endCol ?? startCol + sub.name.length),
+        },
       },
     });
   }
 
+  const firstEntry = cstIndex.byRow.get(0);
+  const firstStart = firstEntry?.startCol ?? 0;
   return [
     {
       name: program.name,
       detail: `CNC G-code Program (${program.blocks.length} blocks)`,
       kind: LspSymbolKind.Package,
       range: {
-        start: { line: 0, character: 0 },
+        start: { line: 0, character: firstStart },
         end: { line: lastLine, character: lastCol },
       },
       selectionRange: {
-        start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.min((lines[0] ?? "").length, program.name.length) },
+        start: { line: 0, character: firstStart },
+        end: {
+          line: 0,
+          character: Math.min(firstEntry?.endCol ?? program.name.length, firstStart + program.name.length),
+        },
       },
       children,
     },
@@ -194,21 +260,27 @@ export function getGCodeDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides hover documentation for G/M words and `#` parameters at the given cursor position.
  */
 export function getGCodeHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (!lineText) return null;
+  const cstIndex = buildGCodeCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
 
-  // Find token under cursor
-  let start = position.character;
-  let end = position.character;
+  const lineText = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > lineText.length) return null;
+
+  // Find token under cursor within the CST line slice
+  let start = relChar;
+  let end = relChar;
   while (start > 0 && /[A-Za-z0-9.#]/.test(lineText[start - 1] ?? "")) start--;
   while (end < lineText.length && /[A-Za-z0-9.#]/.test(lineText[end] ?? "")) end++;
   const token = lineText.slice(start, end).trim();
   if (!token) return null;
 
+  const absStart = entry.startCol + start;
+  const absEnd = entry.startCol + end;
   const range: LspRange = {
-    start: { line: position.line, character: start },
-    end: { line: position.line, character: end },
+    start: { line: position.line, character: absStart },
+    end: { line: position.line, character: absEnd },
   };
 
   // G/M code lookup
@@ -240,8 +312,8 @@ export function getGCodeHover(content: string, position: LspPosition): LspHover 
     const paramId = Number.parseInt(paramMatch[1]!, 10);
     const hashIdx = token.lastIndexOf("#");
     const paramRange: LspRange = {
-      start: { line: position.line, character: start + hashIdx },
-      end: { line: position.line, character: end },
+      start: { line: position.line, character: absStart + hashIdx },
+      end: { line: position.line, character: absEnd },
     };
     const prog = parseGCode(content);
     const val = prog.parameters.get(paramId);

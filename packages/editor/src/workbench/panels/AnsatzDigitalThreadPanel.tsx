@@ -161,9 +161,9 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
         const targetUri = fName === activeFileName ? documentUri : `${basePrefix}/${fName.replace(/^\/+/, "")}`;
         try {
           const syms = await getDocumentSymbols(targetUri);
-          return [fName, Array.isArray(syms) ? flattenDocSymbols(syms) : []] as const;
+          return [fName, Array.isArray(syms) ? flattenDocSymbols(syms) : ([] as ExtractedSymbolHint[])] as const;
         } catch {
-          return [fName, []] as const;
+          return [fName, [] as ExtractedSymbolHint[]] as const;
         }
       }),
     ).then((entries) => {
@@ -949,7 +949,7 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
                 Detected Conflicts ({conflicts.length})
               </div>
               {conflicts.map((conflict, idx) => {
-                const c = conflict as unknown as Record<string, unknown>;
+                const c: Record<string, unknown> = conflict && typeof conflict === "object" ? { ...conflict } : {};
                 const msg =
                   (typeof c.message === "string" && c.message) ||
                   (typeof c.description === "string" && c.description) ||
@@ -1071,20 +1071,30 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
                 Blast Radius: {blastRadius.totalImpactedCount} impacted node(s) across{" "}
                 {blastRadius.impactedThreads.length} thread(s).
               </div>
-              {Array.isArray((blastRadius as unknown as { impactedNodes?: unknown[] }).impactedNodes) &&
-                ((
-                  blastRadius as unknown as {
-                    impactedNodes?: Array<{ domain?: string; name?: string; nodeId?: string }>;
-                  }
-                ).impactedNodes?.length ?? 0) > 0 && (
+              {(() => {
+                const rawImpacted =
+                  "impactedNodes" in blastRadius && Array.isArray(blastRadius.impactedNodes)
+                    ? blastRadius.impactedNodes
+                    : [];
+                if (rawImpacted.length === 0) return null;
+                return (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {(
-                      blastRadius as unknown as {
-                        impactedNodes: Array<{ domain?: string; name?: string; nodeId?: string }>;
-                      }
-                    ).impactedNodes
-                      .slice(0, 24)
-                      .map((node, idx) => (
+                    {rawImpacted.slice(0, 24).map((rawNode, idx) => {
+                      const node: { domain?: string; name?: string; nodeId?: string } =
+                        rawNode && typeof rawNode === "object"
+                          ? {
+                              ...(typeof (rawNode as Record<string, unknown>).domain === "string"
+                                ? { domain: (rawNode as Record<string, unknown>).domain as string }
+                                : {}),
+                              ...(typeof (rawNode as Record<string, unknown>).name === "string"
+                                ? { name: (rawNode as Record<string, unknown>).name as string }
+                                : {}),
+                              ...(typeof (rawNode as Record<string, unknown>).nodeId === "string"
+                                ? { nodeId: (rawNode as Record<string, unknown>).nodeId as string }
+                                : {}),
+                            }
+                          : {};
+                      return (
                         <span
                           key={`${node.domain ?? ""}:${node.nodeId ?? idx}`}
                           style={{
@@ -1099,9 +1109,11 @@ export const AnsatzDigitalThreadPanel: React.FC<AnsatzDigitalThreadPanelProps> =
                           {node.domain ? `[${node.domain}] ` : ""}
                           {node.name ?? node.nodeId ?? "node"}
                         </span>
-                      ))}
+                      );
+                    })}
                   </div>
-                )}
+                );
+              })()}
             </div>
           )}
         </div>

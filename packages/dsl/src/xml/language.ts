@@ -30,16 +30,23 @@ export const xmlGrammar = language({
         ),
       ),
 
-    // Whole tags are single tokens (attributes are re-scanned by the reader, offsets stay exact).
-    EmptyTag: () =>
-      /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*\/>/,
+    TagHead: ($) => seq("<", field("name", $["XmlName"]!), repeat(field("attr", $["Attribute"]!))),
 
-    StartTag: () =>
-      /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*>/,
+    EmptyTag: ($) => seq($["TagHead"]!, "/>"),
 
-    CloseTag: () => /<\/[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*>/,
+    StartTag: ($) => seq($["TagHead"]!, ">"),
 
-    Text: () => /[^<\s][^<]*/,
+    CloseTag: ($) => seq("</", field("name", $["XmlName"]!), ">"),
+
+    Attribute: ($) => seq(field("name", $["XmlName"]!), "=", field("value", $["AttrValue"]!)),
+
+    XmlName: () => /[A-Za-z_:][A-Za-z0-9_.:-]*/,
+
+    AttrValue: () => /"[^"<]*"|'[^'<]*'/,
+
+    TextChunk: () => /[^<>"'=/\s]+/,
+
+    Text: ($) => choice($["TextChunk"]!, $["XmlName"]!, $["AttrValue"]!, "=", ">", "/>", "/", '"', "'"),
 
     CData: () => /<!\[CDATA\[([^\]]|\][^\]]|\]\][^>])*\]\]>/,
 

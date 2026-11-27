@@ -19,15 +19,61 @@ import {
   Thread,
 } from "@vscode/debugadapter";
 import { DebugProtocol } from "@vscode/debugprotocol";
+import * as vscode from "vscode";
 
 import {
+  defaultBasename,
   WasmSimulationStepper,
+  type DapFileSystem,
   type DebugVariableEntry,
   type SimulationStepSnapshot,
 } from "./dap/simulation-debug-session.js";
 import { MultiBodyAnimationPanel } from "./multibody-animation-panel.js";
 
-export { WasmSimulationStepper, type DebugVariableEntry, type SimulationStepSnapshot };
+export {
+  defaultBasename,
+  WasmSimulationStepper,
+  type DapFileSystem,
+  type DebugVariableEntry,
+  type SimulationStepSnapshot,
+};
+
+/**
+ * Creates a `DapFileSystem` backed by `vscode.workspace.fs` (supporting both
+ * VS Code Web `memfs://` virtual workspaces and Desktop `file://` workspaces),
+ * with a lazy `node:fs` fallback when running standalone outside VS Code.
+ */
+export function createVscodeDapFileSystem(): DapFileSystem {
+  return {
+    async readFile(uriOrPath: string): Promise<string> {
+      const trimmed = uriOrPath.trim();
+      if (typeof vscode !== "undefined" && vscode.workspace?.fs?.readFile) {
+        try {
+          const uri = /^[a-zA-Z][a-zA-Z0-9+.-]+:/.test(trimmed) ? vscode.Uri.parse(trimmed) : vscode.Uri.file(trimmed);
+          const bytes = await vscode.workspace.fs.readFile(uri);
+          if (bytes && bytes.byteLength > 0) {
+            return new TextDecoder("utf-8").decode(bytes);
+          }
+        } catch {
+          // Fall through to standalone node:fs fallback below
+        }
+      }
+      try {
+        const nodeFs = await import("node:fs");
+        const filePath = trimmed.startsWith("file://") ? trimmed.slice("file://".length) : trimmed;
+        if (nodeFs.existsSync(filePath)) {
+          return nodeFs.readFileSync(filePath, "utf8");
+        }
+      } catch {
+        // Browser environment without node:fs
+      }
+      return "";
+    },
+    basename(p: string): string {
+      return defaultBasename(p);
+    },
+  };
+}
 
 /** Currently active in-process DAP debug session instance, if one is running. */
 export let activeDebugSession: ModelScriptDebugSession | undefined;
@@ -84,9 +130,13 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
   /** 1-based source column number where the simulation debugger most recently paused. */
   public lastStoppedColumn?: number | undefined;
 
+  /** Filesystem adapter used to load `.mo` files in browser or desktop VS Code hosts. */
+  private readonly fs: DapFileSystem;
+
   /** Initializes a new DAP session with 1-based line and column indexing. */
-  public constructor() {
+  public constructor(fs?: DapFileSystem) {
     super();
+    this.fs = fs ?? createVscodeDapFileSystem();
     setActiveDebugSession(this);
     // This debugger uses 1-based lines and columns matching LSP/OMC diagnostics
     this.setDebuggerLinesStartAt1(true);
@@ -116,7 +166,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
   ): Promise<void> {
     const program = (args as Record<string, string>)["program"];
     if (program) {
-      this.stepper = new WasmSimulationStepper(program);
+      this.stepper = new WasmSimulationStepper(program, 0.01, this.fs);
       await this.stepper.init();
       this.lastStoppedUri = program;
     }
@@ -147,12 +197,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
     const clientLines = args.breakpoints || [];
 
     const actualBreakpoints = clientLines.map((l) => {
-      const bp = new Breakpoint(
-        true,
-        l.line,
-        l.column,
-        new Source(path ? (path.split("/").pop() as string) : "virtual", path),
-      );
+      const bp = new Breakpoint(true, l.line, l.column, new Source(path ? this.fs.basename(path) : "virtual", path));
       return bp;
     });
 
@@ -186,7 +231,7 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
       if (pathStr.startsWith("file://")) pathStr = pathStr.replace("file://", "");
       else if (pathStr.startsWith("memfs:/")) pathStr = pathStr.replace("memfs:/", "");
 
-      const basename = pathStr.split("/").pop() || "unknown.mo";
+      const basename = this.fs.basename(pathStr) || "unknown.mo";
       // We pass the full URI instead of the raw path to ensure virtual filesystems open correctly
       source = new Source(basename, this.lastStoppedUri);
     }

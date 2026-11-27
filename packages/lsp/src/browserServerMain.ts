@@ -17,30 +17,17 @@ import {
   TextDocuments,
 } from "vscode-languageserver";
 
-import { type SysML2Layout } from "@modelscript/sysml2/diagram";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { createDiagramDispatch } from "./diagramApi.js";
 
 import type { ModelScriptLspSettings, SharedCompilerContextLike } from "./lsp-context.js";
 import type { Tree as ParsedCstTree, SyntaxNode } from "./utils/cst-facade.js";
 
-import { ArenaQueryFlattener, deriveSimplification } from "@modelscript/modelica";
-import { DAEBuilder, initBltWasm, type WorkspaceCstTree, type WorkspaceParser } from "@modelscript/runtime";
+import { initBltWasm, type WorkspaceParser } from "@modelscript/runtime";
 import { LineIndex } from "./utils/line-index.js";
 
-import {
-  createModelicaQueryEngine,
-  createModelicaWorkspaceIndex,
-  injectPredefinedTypes,
-} from "@modelscript/modelica/factory";
-
-import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
-import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
-
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
-
 import * as modelicaDiagramOps from "@modelscript/modelica/diagram";
-import { AnnotationEvaluator, clearIconCache } from "@modelscript/modelica/diagram";
 import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
 import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
 
@@ -52,41 +39,24 @@ import { FIELD_NAMES as scadFieldNames, SYNTAX_NAMES as scadSyntaxNames } from "
 import { FIELD_NAMES as stepFieldNames, SYNTAX_NAMES as stepSyntaxNames } from "@modelscript/step/parser";
 import { FIELD_NAMES as sysml2FieldNames, SYNTAX_NAMES as sysml2SyntaxNames } from "@modelscript/sysml2/parser";
 import { legend } from "./providers/semanticTokensProvider.js";
-import { registerBuiltinLanguagePlugins } from "./registry/builtin-plugins.js";
+import { ensureLazyLanguagePluginLoaded, registerCoreLanguagePlugins } from "./registry/core-plugins.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
 import { registerAllLspEndpoints, registerAllLspProviders } from "./router.js";
 import { DiagramService } from "./services/diagram-service.js";
-import { HierarchyService } from "./services/hierarchy-service.js";
 import { ParserService } from "./services/parser-service.js";
-import { ValidationService, deduplicateAllDiagnostics } from "./services/validation-service.js";
-import { parseTreeWithXmlGuard } from "./utils/ast-utils.js";
+import {
+  createDocumentLifecycleTimers,
+  createFlattenArenaFromInstance,
+  registerDocumentLifecycleHandlers,
+  simpleHash,
+} from "./services/server-lifecycle.js";
+import { ValidationService } from "./services/validation-service.js";
 import { LspWorkDoneProgressReporter } from "./utils/progress-reporter.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
-import { loadRegistryPackages, type LoaderContext } from "./vfs/library-loader.js";
-
-interface FlattenableClassInstanceLike {
-  id: number;
-  name?: string | undefined;
-  compositeName?: string | undefined;
-}
 
 interface UserLanguageCatalogEntry {
   extensions?: string[] | undefined;
   name?: string | undefined;
-}
-
-/**
- * Flatten a class instance using the arena-native pipeline.
- */
-function flattenArenaFromInstance(classInstance: FlattenableClassInstanceLike, _context?: unknown): DAEBuilder {
-  const className = classInstance.compositeName || classInstance.name;
-  if (!className) throw new Error("Class instance has no name");
-
-  if (!workspaceManager.globalModelicaQueryEngine) throw new Error("Query engine not initialized");
-  const flattener = new ArenaQueryFlattener(workspaceManager.globalModelicaQueryEngine.toQueryDB());
-  const arena = flattener.flatten(classInstance.id);
-  if (!arena) throw new Error(`Failed to flatten class '${className}'`);
-  return arena as unknown as DAEBuilder;
 }
 
 /* Browser-specific connection setup */
@@ -104,47 +74,20 @@ connection.console.info("ModelScript language server starting...");
 const sharedFs = new BrowserFileSystem();
 let sharedContext: SharedCompilerContextLike | null = null;
 
-/* Loader context — saved from initWasmParsers so notification handlers can reuse it */
-let savedLoaderCtx: LoaderContext | null = null;
-const globals = globalThis as unknown as Record<string, unknown>;
-Object.defineProperty(globalThis, "savedLoaderCtx", { get: () => savedLoaderCtx, set: (v) => (savedLoaderCtx = v) });
-globalThis.flattenArenaFromInstance = flattenArenaFromInstance;
-globalThis.injectPredefinedTypes = injectPredefinedTypes;
-globalThis.clearIconCache = clearIconCache;
-globalThis.loadRegistryPackages = loadRegistryPackages;
-globalThis.createModelicaQueryEngine = createModelicaQueryEngine;
-globalThis.createSysML2QueryEngine = createSysML2QueryEngine;
-Object.assign(globals, {
-  create_modelica_query_engine: createModelicaQueryEngine,
-  create_sysml2_query_engine: createSysML2QueryEngine,
-  injectPredefinedTypes,
-  AnnotationEvaluator,
-  create_modelica_workspace_index: createModelicaWorkspaceIndex,
-  create_sysml2_workspace_index: createSysML2WorkspaceIndex,
-  create_owl2_workspace_index: createOWL2WorkspaceIndex,
-  createModelicaWorkspaceIndex,
-  createSysML2WorkspaceIndex,
-  createOWL2WorkspaceIndex,
-  create_owl2_query_engine: createOWL2QueryEngine,
-  createOWL2QueryEngine,
-  modelicaDiagramOps,
-  sysml2DiagramOps: { ...sysml2DiagramOps, buildSysML2DiagramData },
-  deriveSimplification,
-  modelicaSyntaxNames,
-  modelicaFieldNames,
-  sysml2SyntaxNames,
-  sysml2FieldNames,
-  stepSyntaxNames,
-  stepFieldNames,
-  owl2SyntaxNames,
-  owl2FieldNames,
-  csvSyntaxNames,
-  csvFieldNames,
-  lasSyntaxNames,
-  lasFieldNames,
-  scadSyntaxNames,
-  scadFieldNames,
-});
+/* Registry URL — read from client initializationOptions or default */
+let registryUrl = "https://api.modelscript.org";
+
+/**
+ * Minimal external-package bridge on `globalThis` for packages outside `@modelscript/lsp`
+ * that read `serverDistBase` (`@modelscript/runtime/analysis/wasm_blt`, `@modelscript/modelica/diagram`,
+ * `@modelscript/fortran`, `@modelscript/scad`), `modelicaDiagramOps` (`@modelscript/modelica/diagram`),
+ * or `documents` (`LanguageRegistry`).
+ */
+const externalGlobalBridge = globalThis as {
+  serverDistBase?: string;
+  modelicaDiagramOps?: typeof modelicaDiagramOps;
+  documents?: TextDocuments<TextDocument>;
+};
 
 /* WASM Parser state */
 
@@ -185,70 +128,28 @@ import { WorkspaceManager } from "./services/workspace-manager.js";
 const documents = new TextDocuments(TextDocument);
 const documentManager: DocumentManager = new DocumentManager(documents, () => parserService.getSharedCstTreeWrapper());
 const workspaceManager = new WorkspaceManager(documentManager);
+workspaceManager.sharedFs = sharedFs;
+const flattenArenaFromInstance = createFlattenArenaFromInstance(workspaceManager);
 const parserService: ParserService = new ParserService(connection, documentManager, workspaceManager, documents);
+workspaceManager.parserService = parserService;
+parserService.sharedFs = sharedFs;
+parserService.registryUrl = registryUrl;
+parserService.registerSyntaxTables({
+  modelica: { syntaxNames: modelicaSyntaxNames, fieldNames: modelicaFieldNames },
+  sysml2: { syntaxNames: sysml2SyntaxNames, fieldNames: sysml2FieldNames },
+  step: { syntaxNames: stepSyntaxNames, fieldNames: stepFieldNames },
+  owl2: { syntaxNames: owl2SyntaxNames, fieldNames: owl2FieldNames },
+  csv: { syntaxNames: csvSyntaxNames, fieldNames: csvFieldNames },
+  las: { syntaxNames: lasSyntaxNames, fieldNames: lasFieldNames },
+  scad: { syntaxNames: scadSyntaxNames, fieldNames: scadFieldNames },
+});
 const validationService = new ValidationService(connection, documentManager, workspaceManager, parserService);
-const hierarchyService = new HierarchyService(connection, documentManager, workspaceManager);
-void hierarchyService;
+parserService.setValidationService(validationService);
 const cadMetricsService = new CadMetricsService();
 
-// Expose state to globalThis for loosely-coupled extracted services
-globalThis.documents = documents;
-
-Object.defineProperty(globalThis, "sharedContext", { get: () => sharedContext, set: (v) => (sharedContext = v) });
-Object.defineProperty(globalThis, "parserReady", {
-  get: () => parserService.parserReady,
-  set: (v) => (parserService.parserReady = v),
-});
-Object.defineProperty(globalThis, "parser", {
-  get: () => parserService.parser,
-  set: (v) => (parserService.parser = v),
-});
-Object.defineProperty(globalThis, "modelicaParser", {
-  get: () => parserService.parser,
-  set: (v) => (parserService.parser = v),
-});
-Object.defineProperty(globalThis, "sysml2ParserReady", {
-  get: () => parserService.sysml2ParserReady,
-  set: (v) => (parserService.sysml2ParserReady = v),
-});
-Object.defineProperty(globalThis, "sysml2Parser", {
-  get: () => parserService.sysml2Parser,
-  set: (v) => (parserService.sysml2Parser = v),
-});
-Object.defineProperty(globalThis, "stepParserReady", {
-  get: () => parserService.stepParserReady,
-  set: (v) => (parserService.stepParserReady = v),
-});
-Object.defineProperty(globalThis, "stepParser", {
-  get: () => parserService.stepParser,
-  set: (v) => (parserService.stepParser = v),
-});
-Object.defineProperty(globalThis, "owl2ParserReady", {
-  get: () => parserService.owl2ParserReady,
-  set: (v) => (parserService.owl2ParserReady = v),
-});
-Object.defineProperty(globalThis, "owl2Parser", {
-  get: () => parserService.owl2Parser,
-  set: (v) => (parserService.owl2Parser = v),
-});
-let fqnCacheIndex = new Map<string, unknown>();
-let fqnCache = new Map<string, number>();
-Object.defineProperty(globalThis, "fqnCacheIndex", { get: () => fqnCacheIndex, set: (v) => (fqnCacheIndex = v) });
-Object.defineProperty(globalThis, "fqnCache", {
-  get: () => fqnCache,
-  set: (v: Map<string, number>) => (fqnCache = v),
-});
-
-// Expose validateTextDocument as a global function so extracted handlers can call it
-globalThis.validateTextDocument = async (doc: TextDocument) => {
-  await validationService.validateTextDocument(doc);
-  const promise = validationService.activeValidationPromises.get(doc.uri);
-  if (promise) await promise;
-};
-globalThis.runVerificationForUri = (uri: string) => validationService.runVerificationForUri(uri);
-globalThis.getSharedCstTreeWrapper = () => parserService.getSharedCstTreeWrapper();
-globalThis.sharedFs = sharedFs;
-globalThis.connection = connection;
+// Minimal external-package bridge (read by @modelscript/modelica/diagram & LanguageRegistry)
+externalGlobalBridge.documents = documents;
+externalGlobalBridge.modelicaDiagramOps = modelicaDiagramOps;
 
 const diagramService = new DiagramService(
   connection,
@@ -261,67 +162,12 @@ const diagramService = new DiagramService(
     sysml2DiagramOps: { ...sysml2DiagramOps, buildSysML2DiagramData },
   },
 );
-// Register all 44 built-in domain language plugins & workspace indices
-registerBuiltinLanguagePlugins({
+// Register core language plugins eagerly; non-core domain & heritage plugins are lazy-loaded on demand
+registerCoreLanguagePlugins({
   workspaceManager,
   parserService,
   connection,
 });
-
-/**
- * Formats a status bar readiness summary string showing loaded MSL and SysML v2 file counts.
- */
-const getReadyMessage = () => {
-  const parts = [];
-  const mslCount = workspaceManager.getWorkspaceIndex("modelica")?.fileCount ?? 0;
-  if (mslCount > 0) parts.push(`${mslCount} MSL`);
-  const sysmlCount = workspaceManager.getWorkspaceIndex("sysml2")?.fileCount ?? 0;
-  if (sysmlCount > 0) parts.push(`${sysmlCount} SysML2`);
-  return parts.length > 0 ? `ModelScript (${parts.join(", ")})` : "ModelScript";
-};
-globalThis.getReadyMessage = getReadyMessage;
-
-// ── Multi-Body generation from STEP ───────────────────────────────
-globalThis.documentLSPBridges = validationService.documentLSPBridges;
-globals["documents"] = documents;
-
-// Global Query Engines are now managed by workspaceManager
-
-Object.defineProperty(globalThis, "csvParser", {
-  get: () => parserService.csvParser,
-  set: (v) => (parserService.csvParser = v),
-  configurable: true,
-});
-Object.defineProperty(globalThis, "csvParserReady", {
-  get: () => parserService.csvParserReady,
-  set: (v) => (parserService.csvParserReady = v),
-  configurable: true,
-});
-Object.defineProperty(globalThis, "lasParser", {
-  get: () => parserService.lasParser,
-  set: (v) => (parserService.lasParser = v),
-  configurable: true,
-});
-Object.defineProperty(globalThis, "lasParserReady", {
-  get: () => parserService.lasParserReady,
-  set: (v) => (parserService.lasParserReady = v),
-  configurable: true,
-});
-
-/* Whether dependencies have loaded */
-Object.defineProperty(globalThis, "dependenciesReady", { get: () => validationService.dependenciesReady });
-
-/* Registry URL — read from client initializationOptions or default */
-let registryUrl = "https://api.modelscript.org";
-Object.defineProperty(globalThis, "registryUrl", {
-  get: () => registryUrl,
-  set: (v) => (registryUrl = v),
-  configurable: true,
-});
-
-/* SysML2 layout data — stores diagram positions in-memory (sidecar to .sysml files) */
-const sysml2Layouts = new Map<string, SysML2Layout>();
-void sysml2Layouts;
 
 /* Resolve a modification/annotation path element to its named element */
 
@@ -339,13 +185,13 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
 
   let serverDistBase = `${extensionUri}/server/dist`;
   if (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://")) {
-    const origin = (globalThis as unknown as { location?: { origin?: string | undefined } | undefined }).location
-      ?.origin;
+    const origin = typeof self !== "undefined" ? self.location?.origin : undefined;
     if (origin && (origin.startsWith("http://") || origin.startsWith("https://"))) {
       serverDistBase = `${origin}/static/devextensions/server/dist`;
     }
   }
-  globals["serverDistBase"] = serverDistBase;
+  parserService.serverDistBase = serverDistBase;
+  externalGlobalBridge.serverDistBase = serverDistBase;
 
   try {
     await initBltWasm(`${serverDistBase}/release.wasm`);
@@ -357,6 +203,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   // Read the registry URL from client settings (sent via initializationOptions)
   if (params.initializationOptions?.registryUrl) {
     registryUrl = params.initializationOptions.registryUrl as string;
+    parserService.registryUrl = registryUrl;
     connection.console.info(`[lsp] Using registry URL: ${registryUrl}`);
   }
 
@@ -366,7 +213,7 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
   const useLocalMsl = (params.initializationOptions?.useLocalMsl as boolean) ?? false;
 
   const registerBuiltinLanguages = () => {
-    registerBuiltinLanguagePlugins({
+    registerCoreLanguagePlugins({
       workspaceManager,
       parserService,
       connection,
@@ -380,6 +227,11 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       `[lsp] Triggering initWasmParsers with extensionUri=${extensionUri}, lazyLoadParsers=${lazyLoadParsers}, initialLanguageId=${initialLanguageId ?? "none"}`,
     );
     registerBuiltinLanguages();
+    if (!lazyLoadParsers) {
+      void ensureLazyLanguagePluginLoaded("__all__", { workspaceManager, parserService, connection });
+    } else if (initialLanguageId) {
+      void ensureLazyLanguagePluginLoaded(initialLanguageId, { workspaceManager, parserService, connection });
+    }
     parserService
       .initWasmParsers(extensionUri, validationService, projectDependencies, useLocalMsl, registerBuiltinLanguages, {
         lazyLoadParsers,
@@ -388,20 +240,24 @@ connection.onInitialize(async (params): Promise<InitializeResult> => {
       .then(async () => {
         registerBuiltinLanguages();
 
-        // Revalidate open documents now that parsers are ready
-        for (const doc of documents.all()) {
-          try {
-            await validationService.validateTextDocument(doc);
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            connection.console.warn(`[lsp] Post-init validation failed for ${doc.uri}: ${msg}`);
+        // In lazyLoadParsers mode, initWasmParsers already ran the early validation pass and
+        // each ensureStdlibForLanguage() revalidates its own matching documents once loaded.
+        // Skip the redundant full-workspace revalidation sweep here to avoid validating every
+        // companion file multiple times during startup.
+        if (!lazyLoadParsers) {
+          for (const doc of documents.all()) {
+            try {
+              await validationService.validateTextDocument(doc);
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              connection.console.warn(`[lsp] Post-init validation failed for ${doc.uri}: ${msg}`);
+            }
           }
         }
 
         // Attempt to fetch user-registered languages from Web IDE express endpoint
         try {
-          const origin = (globalThis as unknown as { location?: { origin?: string | undefined } | undefined }).location
-            ?.origin;
+          const origin = typeof self !== "undefined" ? self.location?.origin : undefined;
           if (origin) {
             const resp = await fetch(`${origin}/api/languages/user`);
             if (resp.ok) {
@@ -517,58 +373,8 @@ connection.onInitialized(() => {
 
 documents.listen(connection);
 
-// Validate documents when they change, and re-validate other open docs for cross-file resolution
-let verificationTimer: ReturnType<typeof setTimeout> | null = null;
-let activeVerification: AbortController | null = null;
-// (Moved to ValidationService)
 // Track deferred semantic work so it can be cancelled when new edits arrive
-const activeSemanticTimers = new Map<string, ReturnType<typeof setTimeout>>();
-globalThis.activeSemanticTimers = activeSemanticTimers;
-const activeShortDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const activeSyntaxDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
-const lastSyntaxErrorsCount = new Map<string, number>();
-// Per-URI revision counter: incremented on every edit, checked before semantic work
-// Track last-indexed text per URI to avoid re-marking dirty when text hasn't changed
-// Track the last semantic diagnostics to avoid flashing when sending early syntax diagnostics
-// Throttle projectTreeChanged notifications so the diagram editor isn't rebuilt
-// on every keystroke. Uses a leading-edge throttle: the first call fires
-// immediately; subsequent calls within the cooldown window are coalesced
-// into a single trailing fire.
-let projectTreeChangedTimer: ReturnType<typeof setTimeout> | null = null;
-let projectTreeChangedPending = false;
-
-// Expose validation/revision state to globalThis for extracted services/handlers
-globalThis.activeValidationTimers = validationService.activeValidationTimers;
-globalThis.activeValidationPromises = validationService.activeValidationPromises;
-globalThis.documentRevisions = validationService.documentRevisions;
-globalThis.lastIndexedText = validationService.lastIndexedText;
-globalThis.lastSemanticDiagnostics = validationService.lastSemanticDiagnostics;
-globalThis.verificationDiagnosticsByUri = validationService.verificationDiagnosticsByUri;
-Object.defineProperty(globalThis, "revalidationTimer", {
-  get: () => validationService.revalidationTimer,
-  set: (v) => (validationService.revalidationTimer = v),
-  configurable: true,
-});
-Object.defineProperty(globalThis, "verificationTimer", {
-  get: () => verificationTimer,
-  set: (v) => (verificationTimer = v),
-  configurable: true,
-});
-Object.defineProperty(globalThis, "activeVerification", {
-  get: () => activeVerification,
-  set: (v) => (activeVerification = v),
-  configurable: true,
-});
-Object.defineProperty(globalThis, "projectTreeChangedTimer", {
-  get: () => projectTreeChangedTimer,
-  set: (v) => (projectTreeChangedTimer = v),
-  configurable: true,
-});
-Object.defineProperty(globalThis, "projectTreeChangedPending", {
-  get: () => projectTreeChangedPending,
-  set: (v) => (projectTreeChangedPending = v),
-  configurable: true,
-});
+const lifecycleTimers = createDocumentLifecycleTimers();
 documents.onDidOpen(async (event) => {
   connection.console.info(`[documents] onDidOpen: ${event.document.uri} (${event.document.languageId})`);
   try {
@@ -598,292 +404,19 @@ documents.onDidSave(async (event) => {
   }
 });
 
-documents.onDidChangeContent((change) => {
-  const tKeypressStart = performance.now();
-  const uri = change.document.uri;
-  validationService.verificationDiagnosticsByUri.delete(uri);
-  validationService.verificationResultsByUri.delete(uri);
-  validationService.lastAutoVerifiedText.delete(uri);
-
-  // Invalidate digital thread slots associated with this URI
-  const threadEntries = workspaceManager.getThreadsForUri(uri);
-  for (const entry of threadEntries) {
-    workspaceManager.hypergraph.markStale(entry.slot);
-  }
-  validationService.scheduleDigitalThreadValidation(uri);
-
-  // Bump revision — any in-flight deferred semantic work for an older revision
-  // will check this and bail out before doing expensive linting.
-  const currentRevision = (validationService.documentRevisions.get(uri) ?? 0) + 1;
-  validationService.documentRevisions.set(uri, currentRevision);
-
-  // Cancel any pending semantic analysis for this URI
-  const semanticTimer = activeSemanticTimers.get(uri);
-  if (semanticTimer) {
-    clearTimeout(semanticTimer);
-    activeSemanticTimers.delete(uri);
-  }
-
-  // Cancel any pending cross-file revalidation to prevent cascading
-  // semantic analyses during rapid editing.
-  if (validationService.revalidationTimer) {
-    clearTimeout(validationService.revalidationTimer);
-    validationService.revalidationTimer = null;
-  }
-
-  // Cancel active Tier 1 syntax, Tier 2, and Tier 3 timers for this URI
-  const existingSyntaxTimer = activeSyntaxDebounceTimers.get(uri);
-  if (existingSyntaxTimer) {
-    clearTimeout(existingSyntaxTimer);
-    activeSyntaxDebounceTimers.delete(uri);
-  }
-
-  const existingTier2 = activeShortDebounceTimers.get(uri);
-  if (existingTier2) {
-    clearTimeout(existingTier2);
-    activeShortDebounceTimers.delete(uri);
-  }
-
-  const existingTier3 = validationService.activeValidationTimers.get(uri);
-  if (existingTier3) {
-    clearTimeout(existingTier3);
-    validationService.activeValidationTimers.delete(uri);
-  }
-
-  // === TIER 1: Keystroke (0ms) — Fast WASM GLR Incremental Parse + Syntax Errors ===
-  const plugin = globalLanguageRegistry.getPluginForUri(uri);
-  const isCfd = plugin?.id === "cfd" || /\.(cfg|cfgt|su2|cfd)$/i.test(uri);
-  const isFea = plugin?.id === "fea" || /\.(inp|inpt|bdf|fea)$/i.test(uri);
-  const isLargeStep =
-    (plugin?.id === "step" || /\.(step|stp|p21)$/i.test(uri)) && change.document.getText().length > 32_768;
-  const hasCustomValidator = Boolean(plugin?.customHandlers?.validate);
-  if (isCfd || isFea || isLargeStep || hasCustomValidator) {
-    activeSyntaxDebounceTimers.set(
-      uri,
-      setTimeout(
-        async () => {
-          activeSyntaxDebounceTimers.delete(uri);
-          if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
-          const latestDoc = documents.get(uri);
-          await validationService.validateTextDocument(latestDoc ?? change.document);
-        },
-        hasCustomValidator ? 60 : 100,
-      ),
-    );
-    return;
-  }
-  const parser =
-    plugin?.parser ??
-    parserService.getParserForUri(uri) ??
-    ((uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim")) && parserService.isParserReady("modelica")
-      ? parserService.getParser("modelica")
-      : undefined);
-
-  if (parser && !validationService.isWasmParserBusy()) {
-    try {
-      const text = change.document.getText();
-      const oldCached = documentManager.documentTrees.get(uri);
-      const tree = parseTreeWithXmlGuard({
-        uri,
-        text,
-        plugin,
-        parser,
-        oldCached,
-        onIncrementalEdit: (edit) => validationService.adjustDiagnostics(uri, edit),
-      });
-
-      if (tree) {
-        if (oldCached?.tree && oldCached.tree !== tree) {
-          oldCached.tree.delete?.();
-        }
-        const classCache = oldCached && oldCached.text === text ? oldCached.classCache : new Map<string, unknown>();
-        documentManager.documentTrees.set(uri, { text, tree, classCache });
-        const wsTree = tree as unknown as WorkspaceCstTree;
-        workspaceManager.unifiedWorkspace.setDocumentTree(uri, wsTree);
-        const uDoc = workspaceManager.unifiedWorkspace.getDocument(uri);
-        if (uDoc) {
-          uDoc.text = text;
-          uDoc.tree = wsTree;
-        }
-        const { syntaxDiags, wasmLintDiags } = validationService.collectSyntaxErrors(
-          tree.rootNode,
-          change.document,
-          plugin,
-        );
-        const wasmLspDiags = validationService
-          .convertWasmLintDiagnostics(wasmLintDiags, change.document, plugin, text)
-          .filter((d) => {
-            const codeStr = String(d.code ?? "").toLowerCase();
-            return (
-              codeStr !== "2002" &&
-              codeStr !== "2003" &&
-              codeStr !== "m2002" &&
-              codeStr !== "m2003" &&
-              codeStr !== "variable-not-found" &&
-              codeStr !== "class-not-found"
-            );
-          });
-        const fastDiags = deduplicateAllDiagnostics([...syntaxDiags, ...wasmLspDiags]);
-        const lastCount = lastSyntaxErrorsCount.get(uri) ?? 0;
-
-        // Surface fast syntax and WASM CST lint errors: clear immediately when 0, debounce by 40ms when editing
-        if (fastDiags.length === 0 && lastCount > 0) {
-          lastSyntaxErrorsCount.set(uri, 0);
-          const cachedSemantic = validationService.applyDiagnosticFilters(
-            (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
-              (d) => d.source !== "sysml2-verifier" && (typeof d.code !== "number" || d.code < 1000 || d.code >= 6000),
-            ),
-          );
-          validationService.lastSemanticDiagnostics.set(uri, cachedSemantic);
-          connection.sendDiagnostics({ uri, diagnostics: cachedSemantic });
-        } else if (fastDiags.length > 0) {
-          activeSyntaxDebounceTimers.set(
-            uri,
-            setTimeout(() => {
-              activeSyntaxDebounceTimers.delete(uri);
-              if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
-              lastSyntaxErrorsCount.set(uri, fastDiags.length);
-              const cachedSemantic = (validationService.lastSemanticDiagnostics.get(uri) || []).filter(
-                (d) =>
-                  d.source !== "sysml2-verifier" && (typeof d.code !== "number" || d.code < 1000 || d.code >= 6000),
-              );
-              const allDiags = validationService.applyDiagnosticFilters(
-                deduplicateAllDiagnostics([...fastDiags, ...cachedSemantic]),
-              );
-              validationService.lastSemanticDiagnostics.set(uri, allDiags);
-              connection.sendDiagnostics({ uri, diagnostics: allDiags });
-            }, 40),
-          );
-        }
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      connection.console.warn(`[instant-parse] Error for ${uri}: ${msg}`);
-    }
-  }
-
-  const tKeypressEnd = performance.now();
-  if (tKeypressEnd - tKeypressStart > 15) {
-    connection.console.info(`[perf][keypress] Synchronous Tier 1: ${(tKeypressEnd - tKeypressStart).toFixed(2)}ms`);
-  }
-
-  // === TIER 2: Short Debounce (~60ms) — Local File Index, QueryEngine Swap & Outline Update ===
-  activeShortDebounceTimers.set(
-    uri,
-    setTimeout(() => {
-      activeShortDebounceTimers.delete(uri);
-      if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) return;
-
-      void validationService.syncDocumentForDiagram(uri).then((didSync) => {
-        if (didSync && (validationService.documentRevisions.get(uri) ?? 0) === currentRevision) {
-          validationService.sendProjectTreeChanged(uri);
-        }
-      });
-    }, 60),
-  );
-
-  // === TIER 3: Longer Debounce (~250ms) — Salsa QueryEngine, Declarative Lints & Semantic Diagnostics ===
-  validationService.activeValidationTimers.set(
-    uri,
-    setTimeout(async () => {
-      validationService.activeValidationTimers.delete(uri);
-      // Wait for any in-flight validation to finish before starting a new one.
-      const inflight = validationService.activeValidationPromises.get(uri);
-      if (inflight) {
-        try {
-          await Promise.race([inflight, new Promise((r) => setTimeout(r, 1000))]);
-        } catch {
-          // Previous validation failure is already handled; proceed to re-validate current revision.
-        }
-      }
-      // Re-check staleness: if another edit arrived while we waited, bail out.
-      if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) {
-        return;
-      }
-      const doc = documents.get(uri);
-      if (doc) await validationService.validateTextDocument(doc);
-    }, 250),
-  );
+registerDocumentLifecycleHandlers({
+  connection,
+  documents,
+  documentManager,
+  workspaceManager,
+  parserService,
+  validationService,
+  diagramService,
+  cadMetricsService,
+  timers: lifecycleTimers,
+  debounceMs: 250,
 });
 
-// Clean up when a document is closed
-documents.onDidClose((event) => {
-  const uri = event.document.uri;
-  const closedLangId = (
-    event.document.languageId ||
-    globalLanguageRegistry.getPluginForUri(uri)?.id ||
-    ""
-  ).toLowerCase();
-  const linkedThreadUris = new Set<string>();
-  for (const entry of workspaceManager.getThreadsForUri(uri)) {
-    for (const aligned of workspaceManager.findAlignedElementsBySlot(entry.slot)) {
-      if (aligned.uri && aligned.uri !== uri) linkedThreadUris.add(aligned.uri);
-    }
-  }
-  const syntaxTimer = activeSyntaxDebounceTimers.get(uri);
-  if (syntaxTimer) {
-    clearTimeout(syntaxTimer);
-    activeSyntaxDebounceTimers.delete(uri);
-  }
-  const shortTimer = activeShortDebounceTimers.get(uri);
-  if (shortTimer) {
-    clearTimeout(shortTimer);
-    activeShortDebounceTimers.delete(uri);
-  }
-  lastSyntaxErrorsCount.delete(uri);
-  validationService.disposeDocument(uri);
-  workspaceManager.disposeDocument(uri);
-  cadMetricsService.disposeDocument(uri);
-  const normUri = uri.replace(/^file:\/\/\/+/, "file:///");
-  const oneSlashUri = uri.replace(/^file:\/\/\/+/, "file:/");
-  for (const u of new Set([uri, normUri, oneSlashUri])) {
-    const oldTree = documentManager.documentTrees.get(u);
-    if (oldTree) {
-      oldTree.tree?.facade?.removeDocument?.(u);
-      oldTree.tree?.delete?.();
-      documentManager.documentTrees.delete(u);
-    }
-  }
-  if (closedLangId) {
-    parserService.getFacade(closedLangId)?.removeDocument?.(uri);
-  }
-  connection.sendDiagnostics({ uri, diagnostics: [] });
-
-  // Re-validate only remaining open documents that share the closed language or are linked via digital threads
-  const isCrossDomainPeer = (langA: string, langB: string): boolean =>
-    (langA === "modelica" && (langB === "sysml2" || langB === "sysml")) ||
-    ((langA === "sysml2" || langA === "sysml") && langB === "modelica") ||
-    (langA === "psse" && langB === "pscad") ||
-    (langA === "pscad" && langB === "psse");
-  for (const doc of documents.all()) {
-    const docLangId = (doc.languageId || globalLanguageRegistry.getPluginForUri(doc.uri)?.id || "").toLowerCase();
-    if (
-      linkedThreadUris.has(doc.uri) ||
-      (closedLangId && (docLangId === closedLangId || isCrossDomainPeer(closedLangId, docLangId)))
-    ) {
-      validationService.validateTextDocument(doc);
-    }
-  }
-});
-
-// Custom request: get diagram data for the webview
-// Cache to avoid rebuilding diagram data when nothing has changed.
-// Key: `${uri}|${className}|${diagramType}|${version}`
-const diagramCache = new Map<string, { version: number | string; data: unknown }>();
-globalThis.diagramCache = diagramCache;
-
-/** Fast non-cryptographic hash (djb2) for cache key generation. */
-function simpleHash(str: string): number {
-  let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
-  }
-  return hash >>> 0;
-}
-globalThis.simpleHash = simpleHash;
-
-// Legacy handler — delegates to shared implementation
-// Custom request: get component properties on-demand (lazy loading for diagram panel)
 // Custom request: get CAD components for the webview
 import { cadComponentsCache } from "./handlers/diagramHandler.js";
 // ── Unified Diagram API (dispatch-based) ──
@@ -891,24 +424,6 @@ import { cadComponentsCache } from "./handlers/diagramHandler.js";
 // Lazy-initialized dispatch — backends require runtime state that isn't available at import time.
 let diagramDispatch: ReturnType<typeof createDiagramDispatch> | null = null;
 void diagramDispatch;
-// New unified methods — clients should migrate to these
-// Custom request: simulate a model
-// Custom request: train a surrogate ROM from a Modelica model
-// Custom request: optimize a model
-// Custom request: calibrate a model against measurement data
-// Custom request: discover experiment-annotated classes across the workspace
-// ── Monte Carlo uncertainty estimation ──
-// ── Step-by-step co-simulation API ──
-
-/** Stored simulator instances for step-by-step co-simulation. */
-const cosimSimulators = new Map<
-  string,
-  {
-    arena: DAEBuilder;
-    currentValues: Map<string, number>;
-    stepSize: number;
-  }
->();
 // ── Co-simulation graph extraction from Modelica wrapper model ──
 
 /**
@@ -973,62 +488,6 @@ export interface TreeNodeInfo {
   /** True when the icon is pending. */
   pendingIcon?: boolean | undefined;
 }
-
-// ── Fast library tree: works directly from SymbolIndex metadata ──
-// No ModelicaClassInstance creation, no instantiation, no icon rendering.
-// Uses childrenOf map for O(1) parent-child lookups.
-
-/** Known Modelica class kind keywords — order matters (last match wins in classPrefixes text). */
-const CLASS_KIND_KEYWORDS = [
-  "class",
-  "model",
-  "record",
-  "block",
-  "connector",
-  "type",
-  "package",
-  "function",
-  "operator",
-  "optimization",
-];
-
-/** Map SysML2 grammar rule names to human-readable class kinds for the tree view. */
-const SYSML2_RULE_TO_KIND: Record<string, string> = {
-  Package: "package",
-  LibraryPackage: "package",
-  PartDefinition: "part def",
-  AttributeDefinition: "attribute def",
-  PortDefinition: "port def",
-  ItemDefinition: "item def",
-  OccurrenceDefinition: "occurrence def",
-  ConnectionDefinition: "connection def",
-  InterfaceDefinition: "interface def",
-  AllocationDefinition: "allocation def",
-  FlowDefinition: "flow def",
-  ActionDefinition: "action def",
-  StateDefinition: "state def",
-  CalculationDefinition: "calc def",
-  ConstraintDefinition: "constraint def",
-  RequirementDefinition: "requirement def",
-  ConcernDefinition: "concern def",
-  UseCaseDefinition: "use case def",
-  CaseDefinition: "case def",
-  AnalysisCaseDefinition: "analysis case def",
-  VerificationCaseDefinition: "verification def",
-  ViewDefinition: "view def",
-  ViewpointDefinition: "viewpoint def",
-  RenderingDefinition: "rendering def",
-  MetadataDefinition: "metadata def",
-  EnumerationDefinition: "enumeration",
-};
-
-/** Visible SysML2 symbol kinds in the library tree. */
-const SYSML2_TREE_KINDS = new Set(["Definition", "Package", "Enumeration"]);
-
-// Expose constants for extracted handlers
-globalThis.CLASS_KIND_KEYWORDS = CLASS_KIND_KEYWORDS;
-globalThis.SYSML2_RULE_TO_KIND = SYSML2_RULE_TO_KIND;
-globalThis.SYSML2_TREE_KINDS = SYSML2_TREE_KINDS;
 
 // Custom request: search classes by name across the workspace index
 // Custom request: get project tree (workspace files and their classes)
@@ -1245,19 +704,17 @@ const lspContext: LspContext = {
   cadMetricsService,
   polyglotEngine,
   polyglotContext,
+  sharedFs,
+  flattenArenaFromInstance,
   state: {
     activeValidationPromises: validationService.activeValidationPromises,
     get sharedContext() {
-      return (parserService.sharedContext ??
-        (globals["sharedContext"] as SharedCompilerContextLike | null | undefined) ??
-        null) as SharedCompilerContextLike | null;
+      return parserService.sharedContext ?? sharedContext ?? null;
     },
     set sharedContext(v: SharedCompilerContextLike | null) {
+      sharedContext = v;
       parserService.sharedContext = v;
-      globals["sharedContext"] = v;
     },
-    fqnCache: new Map(),
-    fqnCacheIndex: new Map(),
     documentRevisions: validationService.documentRevisions,
     documentLSPBridges: validationService.documentLSPBridges,
     lastSemanticDiagnostics: validationService.lastSemanticDiagnostics,
@@ -1296,21 +753,6 @@ connection.onDidChangeConfiguration((change) => {
 });
 
 connection.listen();
-
-let debuggerResumeCallback: (() => void) | undefined;
-let currentDebugEnv: Map<string, number> | undefined;
-let stepMode = true; // Initially true to stop on first statement
-const breakpointsMap = new Map<string, { line: number; column?: number | undefined }[]>();
-
-// Expose debugger and co-sim state to extracted handlers
-globalThis.cosimSimulators = cosimSimulators;
-globalThis.breakpointsMap = breakpointsMap;
-Object.defineProperty(globalThis, "debuggerResumeCallback", {
-  get: () => debuggerResumeCallback,
-  set: (v) => (debuggerResumeCallback = v),
-});
-Object.defineProperty(globalThis, "currentDebugEnv", { get: () => currentDebugEnv, set: (v) => (currentDebugEnv = v) });
-Object.defineProperty(globalThis, "stepMode", { get: () => stepMode, set: (v) => (stepMode = v) });
 
 /**
  * Formats a runtime debugger value (scalar or array wrapper) into a human-readable string.

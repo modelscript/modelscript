@@ -42,7 +42,7 @@ export interface CaeContinuumSummary {
   };
 }
 
-export function analyzeCaeContinuum(code: string, lines: string[]): CaeContinuumSummary {
+export function analyzeCaeContinuum(_code: string, lines: string[]): CaeContinuumSummary {
   // 1. STEP B-Rep Topological Entity Counting (strictly counting unique topological entities, NOT half-edges!)
   let vertexPointCount = 0;
   let cartesianPointCount = 0;
@@ -225,10 +225,10 @@ export const CaeContinuumInspector: React.FC<CaeContinuumInspectorProps> = ({
         value={subView}
         onChange={(id) => setSubView(id as typeof subView)}
         tabs={[
-          { id: "euler", label: `📐 B-Rep Euler-Poincaré (χ = ${brep.eulerChi})` },
-          { id: "gdt", label: `🎯 GD&T & Datums (${gdt.length})` },
-          { id: "fea", label: `🕸️ FEA Mesh (${fea.elementCount} elems)` },
-          { id: "cfd", label: `🌪️ CFD Boundary Layer (${cfd.markers.length} markers)` },
+          { id: "euler", label: `B-Rep Topology (χ = ${brep.eulerChi})` },
+          { id: "gdt", label: `GD&T & Datums (${gdt.length})` },
+          { id: "fea", label: `FEA Mesh (${fea.elementCount})` },
+          { id: "cfd", label: `CFD Boundary Layer (${cfd.markers.length})` },
         ]}
       />
 
@@ -269,7 +269,9 @@ export const CaeContinuumInspector: React.FC<CaeContinuumInspectorProps> = ({
                     fontSize: 16,
                     fontWeight: 800,
                     fontFamily: "monospace",
-                    color: brep.isWatertightManifold ? "#3fb950" : "#f0883e",
+                    color: brep.isWatertightManifold
+                      ? "var(--ms-status-pass-fg, var(--ms-success))"
+                      : "var(--ms-status-warn-fg, var(--ms-warning))",
                   }}
                 >
                   {brep.eulerChi} {brep.isWatertightManifold ? "✓ Closed 2-Manifold" : `(target ${brep.expectedChi})`}

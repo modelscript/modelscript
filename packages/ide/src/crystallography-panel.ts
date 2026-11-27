@@ -23,6 +23,7 @@ import {
 } from "@modelscript/diagram/crystallography";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -180,11 +181,14 @@ export class CrystallographyPanel extends BaseWebviewPanel {
     diagnostics: ReturnType<typeof lintCrystalStructure>,
   ): string {
     const cell = structure.cell;
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Crystallography & Materials Visualizer</title>
   <style>
@@ -331,8 +335,8 @@ export class CrystallographyPanel extends BaseWebviewPanel {
       </div>
     </div>
     <div class="tab-bar">
-      <button class="tab-btn ${this._activeTab === "unitcell" ? "active" : ""}" onclick="onTabClick('unitcell')">3D Unit Cell</button>
-      <button class="tab-btn ${this._activeTab === "pxrd" ? "active" : ""}" onclick="onTabClick('pxrd')">Powder XRD Pattern</button>
+      <button class="tab-btn ${this._activeTab === "unitcell" ? "active" : ""}" id="tabUnitcell" data-tab="unitcell">3D Unit Cell</button>
+      <button class="tab-btn ${this._activeTab === "pxrd" ? "active" : ""}" id="tabPxrd" data-tab="pxrd">Powder XRD Pattern</button>
     </div>
   </div>
 
@@ -348,7 +352,7 @@ export class CrystallographyPanel extends BaseWebviewPanel {
         <div style="display: flex; flex-direction: column;">
           <label>Camera Azimuth (Yaw)</label>
           <div class="slider-row">
-            <input type="range" min="0" max="360" step="5" value="${this._azimuthDeg}" oninput="onAzimSlide(this.value)" onchange="onAzimCommit(this.value)">
+            <input type="range" id="azimSlider" min="0" max="360" step="5" value="${this._azimuthDeg}">
             <span class="val-badge" id="azimBadge">${this._azimuthDeg}°</span>
           </div>
         </div>
@@ -356,7 +360,7 @@ export class CrystallographyPanel extends BaseWebviewPanel {
         <div style="display: flex; flex-direction: column;">
           <label>Camera Elevation (Pitch)</label>
           <div class="slider-row">
-            <input type="range" min="-90" max="90" step="5" value="${this._elevationDeg}" oninput="onElevSlide(this.value)" onchange="onElevCommit(this.value)">
+            <input type="range" id="elevSlider" min="-90" max="90" step="5" value="${this._elevationDeg}">
             <span class="val-badge" id="elevBadge">${this._elevationDeg}°</span>
           </div>
         </div>
@@ -364,9 +368,9 @@ export class CrystallographyPanel extends BaseWebviewPanel {
         <div style="display: flex; flex-direction: column;">
           <label>Miller Index Plane (h k l)</label>
           <div class="hkl-inputs">
-            <input type="number" id="hInput" value="${this._millerPlane?.h ?? 1}" min="-3" max="3" onchange="onHklCommit()">
-            <input type="number" id="kInput" value="${this._millerPlane?.k ?? 1}" min="-3" max="3" onchange="onHklCommit()">
-            <input type="number" id="lInput" value="${this._millerPlane?.l ?? 1}" min="-3" max="3" onchange="onHklCommit()">
+            <input type="number" id="hInput" value="${this._millerPlane?.h ?? 1}" min="-3" max="3">
+            <input type="number" id="kInput" value="${this._millerPlane?.k ?? 1}" min="-3" max="3">
+            <input type="number" id="lInput" value="${this._millerPlane?.l ?? 1}" min="-3" max="3">
           </div>
         </div>
       `
@@ -408,7 +412,7 @@ export class CrystallographyPanel extends BaseWebviewPanel {
                 .map(
                   (d) => `
                 <div class="diag-item diag-info">
-                  <strong>[${d.code}]</strong> ${escapeXml(d.message)}
+                  <strong>[${escapeXml(d.code)}]</strong> ${escapeXml(d.message)}
                 </div>`,
                 )
                 .join("")}
@@ -420,35 +424,46 @@ export class CrystallographyPanel extends BaseWebviewPanel {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    function onTabClick(tab) {
-      vscode.postMessage({ command: 'switchTab', tab: tab });
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-tab');
+        if (tab) vscode.postMessage({ command: 'switchTab', tab });
+      });
+    });
+
+    const azimSlider = document.getElementById('azimSlider');
+    if (azimSlider) {
+      azimSlider.addEventListener('input', (e) => {
+        document.getElementById('azimBadge').innerText = e.target.value + '°';
+      });
+      azimSlider.addEventListener('change', (e) => {
+        vscode.postMessage({ command: 'setCamera', azimuth: e.target.value });
+      });
     }
 
-    function onAzimSlide(val) {
-      document.getElementById('azimBadge').innerText = val + '°';
+    const elevSlider = document.getElementById('elevSlider');
+    if (elevSlider) {
+      elevSlider.addEventListener('input', (e) => {
+        document.getElementById('elevBadge').innerText = e.target.value + '°';
+      });
+      elevSlider.addEventListener('change', (e) => {
+        vscode.postMessage({ command: 'setCamera', elevation: e.target.value });
+      });
     }
 
-    function onAzimCommit(val) {
-      vscode.postMessage({ command: 'setCamera', azimuth: val });
-    }
-
-    function onElevSlide(val) {
-      document.getElementById('elevBadge').innerText = val + '°';
-    }
-
-    function onElevCommit(val) {
-      vscode.postMessage({ command: 'setCamera', elevation: val });
-    }
-
-    function onHklCommit() {
-      const h = document.getElementById('hInput').value;
-      const k = document.getElementById('kInput').value;
-      const l = document.getElementById('lInput').value;
+    const onHklCommit = () => {
+      const h = document.getElementById('hInput')?.value;
+      const k = document.getElementById('kInput')?.value;
+      const l = document.getElementById('lInput')?.value;
       vscode.postMessage({ command: 'setMillerPlane', h, k, l });
-    }
+    };
+    ['hInput', 'kInput', 'lInput'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('change', onHklCommit);
+    });
   </script>
 </body>
 </html>`;

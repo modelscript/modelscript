@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // ts-check
-import { Connection, Diagnostic, DiagnosticSeverity, Range } from "vscode-languageserver";
+import { Connection, Diagnostic, DiagnosticSeverity } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { DocumentManager } from "./document-manager.js";
 import { ParserService } from "./parser-service.js";
-import { hasWorkspaceLinter, runWorkspaceLinterForDocument } from "./workspace-linter-dispatch.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
-import { parseXmlSync } from "@modelscript/dsl/xml";
-import { runModelicaFastStaticLints } from "@modelscript/modelica";
+import { clearIconCache } from "@modelscript/modelica/diagram";
+import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
+import { createOWL2QueryEngine } from "@modelscript/owl2/factory";
 import {
   ExprKind,
   PolyglotTransformer,
@@ -18,8 +18,8 @@ import {
   type UnifiedWorkspace,
   type WorkspaceCstTree,
 } from "@modelscript/runtime";
-import { runSysML2FastStaticLints } from "@modelscript/sysml2";
-import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
+import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
+import { LSPBridge } from "../lsp-bridge.js";
 import {
   computeTreeEdit,
   isLargeXmlForWasm,
@@ -70,6 +70,18 @@ import {
   type VerificationResultLike,
 } from "./validation/modelica-verification.js";
 import {
+  applyDiagnosticFiltersImpl,
+  asIncrementalTree,
+  collectFastStaticDiagnostics,
+  type DiagnosticsFilterConfig,
+  parseFullWithUri,
+  type PolyglotValidatorContext,
+  type StoredDocumentTree,
+  syncDocumentForDiagramImpl,
+  validateActionLintDocumentImpl,
+  validateCustomPluginDocumentImpl,
+} from "./validation/polyglot-validator.js";
+import {
   findDeclarationLocationImpl,
   findRangeForIriImpl,
   postValidateModelicaReasonerImpl,
@@ -82,15 +94,20 @@ import {
   routeReasonerDiagnosticsImpl,
 } from "./validation/reasoner-diagnostics.js";
 import {
+  type FinalizeCrossLanguageParams,
+  finalizeCrossLanguageValidationImpl,
+  runUnifiedSemanticPipelineImpl,
+  type SemanticPipelineContext,
+  syncWorkspaceStateAfterIndexImpl,
+  type UnifiedSemanticPipelineParams,
+} from "./validation/semantic-pipeline.js";
+import {
   collectSyntaxErrorsFromRoot,
   convertWasmLintDiagnosticsToLsp,
   type SyntaxCollectionContext,
 } from "./validation/syntax-and-wasm-diagnostics.js";
 import {
-  type EngineLintDiagnosticLike,
   type PolyglotTreeLike,
-  type SharedContextWorkspaceBridge,
-  splitLinesPreserve,
   type ValidationQueryEngine,
   type WasmLintDiagnostic,
 } from "./validation/text-helpers.js";
@@ -103,69 +120,14 @@ export {
 };
 export type { WasmLintDiagnostic };
 
-type StoredDocumentTree = NonNullable<ReturnType<DocumentManager["documentTrees"]["get"]>>["tree"];
-
-interface ValidationTreeLike {
-  rootNode?: {
-    hasError?: boolean | (() => boolean);
-  };
-}
-
-interface ValidationGlobalHooks {
-  clearDiagramCache?: () => void;
-  clearIconCache?: () => void;
-  preprocessLanguageText?: (langId: string, text: string) => string;
-  injectPredefinedTypes?: (index: SymbolIndex) => void;
-  projectTreeChangedTimer?: ReturnType<typeof setTimeout> | null;
-  projectTreeChangedPending?: boolean;
-}
-
 interface Owl2StoreDisposableLike {
   setAxioms?: (key: string, axioms: unknown[]) => unknown;
   clearAxioms?: (key: string) => void;
   _axiomsBySource?: Map<string, unknown>;
 }
 
-interface ValidationEngineOps {
-  disposeDocument?: (uri: string) => void;
-  swapIndex?: (index: SymbolIndex, changedIds: Set<number>, structuralChangedIds?: Set<number>) => void;
-  updateIndex?: (index: SymbolIndex) => void;
-  updateTree?: (treeWrapper: unknown) => void;
-}
-
-interface SharedContextMutableLike {
-  setQueryEngine?: (engine: unknown) => void;
-  queryEngine?: unknown;
-  setWorkspaceIndex?: (wsIndex: unknown) => void;
-  workspaceIndex?: unknown;
-}
-
-interface LanguageDefIndexingLike {
-  indexing?: {
-    indexFile?: unknown;
-  };
-}
-
-interface WorkspaceIndexFileOps {
-  indexFile?: (uri: string, text: string) => void;
-  addFile?: (uri: string, text: string) => void;
-}
-
-interface RawPluginDiagnosticLike {
-  range?: Range;
-  startOffset?: number;
-  endOffset?: number;
-  line?: number;
-  column?: number;
-  col?: number;
-  endLine?: number;
-  endColumn?: number;
-  endCol?: number;
-  severity?: number | string;
-  code?: string | number;
-  id?: string | number;
-  message?: string;
-  source?: string;
+function asOwl2StoreDisposable(store: unknown): Owl2StoreDisposableLike | null {
+  return store && typeof store === "object" ? (store as Owl2StoreDisposableLike) : null;
 }
 
 /**
@@ -305,6 +267,15 @@ export class ValidationService {
     return this.declaredDependencies.every((dep) => this.loadedDependencies.has(`${dep.name}@${dep.version}`));
   }
 
+  private clearDiagramCacheCallback?: (() => void) | undefined;
+  private projectTreeChangedTimer: ReturnType<typeof setTimeout> | null = null;
+  private projectTreeChangedPending = false;
+
+  /** Registers a callback to invalidate diagram caches when dependencies finish loading. */
+  public setClearDiagramCache(fn: () => void): void {
+    this.clearDiagramCacheCallback = fn;
+  }
+
   /**
    * Marks a project dependency (`name@version`) as loaded and triggers full re-validation
    * of all open documents once all declared dependencies are ready.
@@ -312,9 +283,8 @@ export class ValidationService {
   markDependencyLoaded(name: string, version: string): void {
     this.loadedDependencies.add(`${name}@${version}`);
     if (this.dependenciesReady) {
-      const gHooks = globalThis as unknown as ValidationGlobalHooks;
-      gHooks.clearDiagramCache?.();
-      gHooks.clearIconCache?.();
+      this.clearDiagramCacheCallback?.();
+      clearIconCache();
       if (this.documentManager?.documents) {
         const isModelicaDep = name === "Modelica";
         const isSysmlDep = name === "SysML";
@@ -362,10 +332,9 @@ export class ValidationService {
     public parserService: ParserService,
   ) {
     this.reasonerService = new ReasonerService(connection, workspaceManager);
-    const hgWithListener = this.workspaceManager?.hypergraph as unknown as
-      { addListener?: (cb: (event: unknown) => void) => void } | undefined;
-    if (hgWithListener && typeof hgWithListener.addListener === "function") {
-      hgWithListener.addListener((event: unknown) => {
+    const hg: unknown = this.workspaceManager?.hypergraph;
+    if (hg && typeof hg === "object" && "addListener" in hg && typeof hg.addListener === "function") {
+      (hg.addListener as (cb: (event: unknown) => void) => void)((event: unknown) => {
         try {
           this.connection.sendNotification("modelscript/threadStatusChanged", event);
         } catch {
@@ -403,16 +372,15 @@ export class ValidationService {
       }
     }
     if (typeof this.connection?.sendNotification !== "function") return;
-    const g = globalThis as unknown as ValidationGlobalHooks;
-    if (g.projectTreeChangedTimer) {
-      g.projectTreeChangedPending = true;
+    if (this.projectTreeChangedTimer) {
+      this.projectTreeChangedPending = true;
       return;
     }
     this.connection.sendNotification("modelscript/projectTreeChanged");
-    g.projectTreeChangedTimer = setTimeout(() => {
-      g.projectTreeChangedTimer = null;
-      if (g.projectTreeChangedPending) {
-        g.projectTreeChangedPending = false;
+    this.projectTreeChangedTimer = setTimeout(() => {
+      this.projectTreeChangedTimer = null;
+      if (this.projectTreeChangedPending) {
+        this.projectTreeChangedPending = false;
         this.connection?.sendNotification?.("modelscript/projectTreeChanged");
       }
     }, 100);
@@ -492,6 +460,8 @@ export class ValidationService {
     this.lastSemanticDiagnostics.delete(eff);
     this.lastIndexedText.delete(uri);
     this.lastIndexedText.delete(eff);
+    this.documentLSPBridges.delete(uri);
+    this.documentLSPBridges.delete(eff);
     this.lastStepOwnDiagnostics.delete(uri);
     this.lastStepOwnDiagnostics.delete(eff);
     this.lastScadOwnDiagnostics.delete(uri);
@@ -523,6 +493,11 @@ export class ValidationService {
     this.modelicaDaeVerificationResultsByUri.delete(eff);
     this.daeVerificationResultsByUri.delete(uri);
     this.daeVerificationResultsByUri.delete(eff);
+    for (const key of Array.from(this.daeVerificationCache.keys())) {
+      if (key === uri || key === eff || key.startsWith(`${uri}#`) || key.startsWith(`${eff}#`)) {
+        this.daeVerificationCache.delete(key);
+      }
+    }
     this.reasonerDiagnosticsByUri.delete(uri);
     this.reasonerDiagnosticsByUri.delete(eff);
     this.digitalThreadDiagnosticsByUri.delete(uri);
@@ -533,7 +508,7 @@ export class ValidationService {
     this.parsedSysmlReqsCache.delete(eff);
 
     // Retract registered axioms from owl2Store and update reasoner
-    const store = this.workspaceManager?.unifiedWorkspace?.owl2Store as unknown as Owl2StoreDisposableLike | undefined;
+    const store = asOwl2StoreDisposable(this.workspaceManager?.unifiedWorkspace?.owl2Store);
     if (store && typeof store.setAxioms === "function") {
       const keysToClear: string[] = [];
       if (store._axiomsBySource instanceof Map) {
@@ -665,259 +640,94 @@ export class ValidationService {
    * Used by `DiagramService` (`getDiagramData`, `applyEdits`) and Tier 2 short debounce so diagram
    * operations and outline trees see up-to-date AST and class instances in ~1–2ms.
    */
-  public async syncDocumentForDiagram(uri: string, explicitText?: string): Promise<boolean> {
-    const effectiveUri = uri.startsWith("modelscript-lib://global")
-      ? "file://" + uri.substring("modelscript-lib://global".length)
-      : uri;
-    const doc = this.documentManager.documents.get(uri) ?? this.documentManager.documents.get(effectiveUri);
-    const text = explicitText ?? doc?.getText();
-    if (!text) return false;
-    const plugin = globalLanguageRegistry.getPluginForUri(uri);
-    const langId =
-      plugin?.id ??
-      (doc?.languageId ||
-        (uri.endsWith(".mo") || uri.endsWith(".mos") || uri.endsWith(".msim") ? "modelica" : "sysml2"));
-    const isModelica = langId === "modelica";
-
-    let cached = this.documentManager.documentTrees.get(uri) ?? this.documentManager.documentTrees.get(effectiveUri);
-    if (!cached?.tree || cached.text !== text) {
-      await this.parserService.ensureLanguageParserLoaded(doc?.languageId || uri);
-      const parser =
-        plugin?.parser ??
-        this.parserService.getParserForUri(uri) ??
-        (isModelica && this.parserService.isParserReady("modelica")
-          ? this.parserService.getParser("modelica")
-          : undefined);
-      let processedText = text;
-      const gHooks = globalThis as unknown as ValidationGlobalHooks;
-      if (plugin?.preprocessText) {
-        processedText = plugin.preprocessText(text);
-      } else if (typeof gHooks.preprocessLanguageText === "function") {
-        processedText = gHooks.preprocessLanguageText(langId, text);
-      }
-
-      let releaseLock: () => void = () => {};
-      const currentLock = this.wasmParserMutex;
-      this.wasmParserMutex = new Promise<void>((resolve) => {
-        releaseLock = resolve;
-      });
-      await currentLock;
-
-      let tree: StoredDocumentTree | undefined;
-      try {
-        if (isLargeXmlForWasm(uri, processedText, plugin)) {
-          tree =
-            cached?.text === text && (cached?.tree as XmlFallbackTree | undefined)?.__isXmlCstFallback
-              ? cached.tree
-              : parseXmlFallbackTree(processedText);
-        } else {
-          const oldTree = cached?.tree as unknown as
-            | {
-                rootPtr?: number;
-                rootNode?: { id?: number; tree?: { facade?: unknown } };
-                facade?: unknown;
-                edit?: (e: unknown) => void;
-              }
-            | null
-            | undefined;
-          const activeFacade = (plugin?.facade ??
-            oldTree?.facade ??
-            oldTree?.rootNode?.tree?.facade ??
-            this.parserService.facade) as { lastAstRoot?: number; loadSource?: (text: string) => void } | undefined;
-          const isOldTreeActiveInWasm = isWasmTreeActiveInFacade(cached?.tree, activeFacade, uri);
-
-          if (cached?.tree && cached.text !== text && isOldTreeActiveInWasm && parser) {
-            const edit = computeTreeEdit(cached.text, text);
-            if (typeof oldTree?.edit === "function") {
-              oldTree.edit(edit as never);
-            }
-            tree = parser.parse(
-              processedText,
-              cached.tree,
-              edit.startIndex,
-              edit.oldEndIndex,
-              edit.newEndIndex,
-              uri,
-            ) as StoredDocumentTree | undefined;
-          } else if (parser) {
-            tree = (
-              parser as unknown as {
-                parse(
-                  t: string,
-                  p?: unknown,
-                  a?: number,
-                  b?: number,
-                  c?: number,
-                  u?: string,
-                ): ReturnType<NonNullable<typeof parser>["parse"]>;
-              }
-            ).parse(processedText, null, 0, 0, 0, uri) as StoredDocumentTree | undefined;
-          } else if (this.parserService.sharedContext && isModelica) {
-            tree = this.parserService.sharedContext.parse(".mo", processedText) as StoredDocumentTree | undefined;
-          }
-        }
-      } finally {
-        releaseLock();
-      }
-
-      if (tree) {
-        if (cached?.tree && cached.tree !== tree) {
-          cached.tree.delete?.();
-        }
-        const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
-        const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
-        const docEntry = {
-          text,
-          tree,
-          classCache: cached?.classCache ?? new Map(),
-        };
-        this.documentManager.documentTrees.set(uri, docEntry);
-        this.documentManager.documentTrees.set(normUri, docEntry);
-        this.documentManager.documentTrees.set(oneSlashUri, docEntry);
-        cached = docEntry;
-      }
-    }
-
-    if (!cached?.tree) return false;
-
-    const normUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
-    const oneSlashUri = uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/");
-    if (this.workspaceManager.unifiedWorkspace) {
-      const wsTree = cached.tree as unknown as WorkspaceCstTree;
-      this.workspaceManager.unifiedWorkspace.setDocumentTree(uri, wsTree);
-      this.workspaceManager.unifiedWorkspace.setDocumentTree(normUri, wsTree);
-      this.workspaceManager.unifiedWorkspace.setDocumentTree(oneSlashUri, wsTree);
-      const uDoc =
-        this.workspaceManager.unifiedWorkspace.getDocument(uri) ??
-        this.workspaceManager.unifiedWorkspace.getDocument(normUri) ??
-        this.workspaceManager.unifiedWorkspace.getDocument(oneSlashUri);
-      if (uDoc) {
-        uDoc.text = text;
-        uDoc.tree = wsTree;
-      }
-    }
-
-    const prevIndexedText = this.lastIndexedText.get(effectiveUri) ?? this.lastIndexedText.get(uri);
-    const hasInstances = Boolean(
-      this.workspaceManager.documentInstances.get(uri)?.length ||
-      this.workspaceManager.documentInstances.get(effectiveUri)?.length,
-    );
-    if (prevIndexedText === text && hasInstances) {
-      return false;
-    }
-
-    const wsIndex = plugin?.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(langId);
-    let changedIds: Set<number> | null = null;
-    let changedNames: Set<string> | null = null;
-    let structuralChangedIds: Set<number> | null = null;
-
-    if (wsIndex) {
-      if (prevIndexedText !== text) {
-        let actualEditRanges: { startOffset: number; endOffset: number }[] | undefined;
-        let totalDelta = 0;
-        if (prevIndexedText !== undefined) {
-          const edit = computeTreeEdit(prevIndexedText, text);
-          actualEditRanges = [
-            {
-              startOffset: edit.startIndex,
-              endOffset: Math.max(edit.oldEndIndex, edit.newEndIndex),
-            },
-          ];
-          totalDelta = edit.newEndIndex - edit.oldEndIndex;
-        }
-        if (typeof wsIndex.has === "function") {
-          if (wsIndex.has(effectiveUri)) {
-            wsIndex.reindexDocument?.(effectiveUri, () => cached!.tree.rootNode, actualEditRanges, totalDelta);
-          } else {
-            wsIndex.register?.(effectiveUri, () => cached!.tree.rootNode);
-          }
-          wsIndex.getFileIndex?.(effectiveUri);
-        }
-        const wsInstances = this.workspaceManager.workspaceInstances;
-        if (wsInstances) {
-          for (const key of wsInstances.keys()) {
-            if (key.startsWith(effectiveUri + "#")) {
-              wsInstances.delete(key);
-            }
-          }
-        }
-        this.workspaceManager.workspaceInstances.delete(uri);
-        this.workspaceManager.workspaceInstances.delete(effectiveUri);
-        this.workspaceManager.documentInstances.delete(uri);
-        this.workspaceManager.documentInstances.delete(effectiveUri);
-        this.lastIndexedText.set(effectiveUri, text);
-        this.lastIndexedText.set(uri, text);
-      }
-
-      const changedIdsObj = (
-        typeof wsIndex.takeGlobalChangedIds === "function" ? wsIndex.takeGlobalChangedIds() : null
-      ) as { changedIds: Set<number> | null; structuralChangedIds?: Set<number> | null } | null;
-      changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
-      structuralChangedIds = changedIdsObj?.structuralChangedIds ?? null;
-      changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
-
-      if (prevIndexedText !== text && !changedIds) {
-        const activeEngine = (plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId)) as unknown as {
-          disposeDocument?: (u: string) => void;
-        } | null;
-        if (activeEngine && typeof activeEngine.disposeDocument === "function") {
-          activeEngine.disposeDocument(effectiveUri);
-          if (uri !== effectiveUri) activeEngine.disposeDocument(uri);
-          if (normUri !== effectiveUri && normUri !== uri) activeEngine.disposeDocument(normUri);
-        }
-      }
-    }
-
-    if (this.revalidationTimer) {
-      clearTimeout(this.revalidationTimer);
-      this.revalidationTimer = null;
-    }
-
-    const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
-    const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
-
-    let engine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
-    if (!engine) {
-      engine = this.createDefaultQueryEngine(langId, unifiedIndex, cstTreeWrapper);
-      if (engine) {
-        this.workspaceManager.setQueryEngine(langId, engine);
-      }
-    } else {
-      if (langId === "modelica") {
-        const injectFn = (globalThis as unknown as ValidationGlobalHooks).injectPredefinedTypes;
-        if (typeof injectFn === "function") injectFn(unifiedIndex);
-      }
-      const engineOps = engine as unknown as ValidationEngineOps;
-      if (changedIds && typeof engineOps.swapIndex === "function") {
-        engineOps.swapIndex(unifiedIndex, changedIds, structuralChangedIds || undefined);
-      } else if (prevIndexedText !== text && typeof engineOps.updateIndex === "function") {
-        engineOps.updateIndex(unifiedIndex);
-      }
-      if (typeof engineOps.updateTree === "function") {
-        engineOps.updateTree(cstTreeWrapper);
-      }
-    }
-
-    this.syncWorkspaceStateAfterIndex(effectiveUri, changedIds, structuralChangedIds, changedNames);
-
-    const context = this.parserService.sharedContext;
-    if (context && langId === "modelica") {
-      const ctxMutable = context as unknown as SharedContextMutableLike;
-      if (typeof ctxMutable.setQueryEngine === "function") ctxMutable.setQueryEngine(engine);
-      else ctxMutable.queryEngine = engine;
-      if (typeof ctxMutable.setWorkspaceIndex === "function") ctxMutable.setWorkspaceIndex(wsIndex);
-      else ctxMutable.workspaceIndex = wsIndex;
-    }
-
-    const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), uri, {
+  private getPolyglotValidatorContext(): PolyglotValidatorContext {
+    return {
+      connection: this.connection,
+      documentManager: this.documentManager,
+      workspaceManager: this.workspaceManager,
+      parserService: this.parserService,
+      lastIndexedText: this.lastIndexedText,
+      documentRevisions: this.documentRevisions,
       documentLSPBridges: this.documentLSPBridges,
-      documents: this.documentManager.documents,
-      sharedFs: this.parserService?.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs,
-    });
-    this.documentLSPBridges.set(uri, bridge);
+      clearRevalidationTimer: () => {
+        if (this.revalidationTimer) {
+          clearTimeout(this.revalidationTimer);
+          this.revalidationTimer = null;
+        }
+      },
+      withWasmParserLock: async <T>(fn: () => T): Promise<T> => {
+        let releaseLock: () => void = () => {};
+        const currentLock = this.wasmParserMutex;
+        this.wasmParserMutex = new Promise<void>((resolve) => {
+          releaseLock = resolve;
+        });
+        await currentLock;
+        try {
+          return fn();
+        } finally {
+          releaseLock();
+        }
+      },
+      computeTokenEndCharacter: (t, l, c) => this.computeTokenEndCharacter(t, l, c),
+      parseIncrementalWasmTree: (u, l, t, p) => this.parseIncrementalWasmTree(u, l, t, p),
+      indexNativeDslDocument: (u, t, l, d) => this.indexNativeDslDocument(u, t, l, d),
+      createDefaultQueryEngine: (l, idx, cst) => this.createDefaultQueryEngine(l, idx, cst),
+      syncWorkspaceStateAfterIndex: (e, c, s, n) => this.syncWorkspaceStateAfterIndex(e, c, s, n),
+      populateClassWrappers: (e, u, idx, eng, c) => this.populateClassWrappers(e, u, idx, eng, c),
+      finalizeCrossLanguageValidation: (p) => this.finalizeCrossLanguageValidation(p),
+    };
+  }
 
-    this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
-    return true;
+  private getSemanticPipelineContext(): SemanticPipelineContext {
+    return {
+      connection: this.connection,
+      documentManager: this.documentManager,
+      workspaceManager: this.workspaceManager,
+      parserService: this.parserService,
+      diagnosticsConfig: this.diagnosticsConfig,
+      lastSemanticDiagnostics: this.lastSemanticDiagnostics,
+      lastIndexedText: this.lastIndexedText,
+      documentLSPBridges: this.documentLSPBridges,
+      documentRevisions: this.documentRevisions,
+      documentViewports: this.documentViewports,
+      verificationDiagnosticsByUri: this.verificationDiagnosticsByUri,
+      reasonerDiagnosticsByUri: this.reasonerDiagnosticsByUri,
+      digitalThreadDiagnosticsByUri: this.digitalThreadDiagnosticsByUri,
+      isCascadeRevalidationActive: () => this.isCascadeRevalidationActive,
+      clearRevalidationTimer: () => {
+        if (this.revalidationTimer) {
+          clearTimeout(this.revalidationTimer);
+          this.revalidationTimer = null;
+        }
+      },
+      indexNativeDslDocument: (u, t, l, d) => this.indexNativeDslDocument(u, t, l, d),
+      createDefaultQueryEngine: (l, idx, cst) => this.createDefaultQueryEngine(l, idx, cst),
+      syncWorkspaceStateAfterIndex: (e, c, s, n) => this.syncWorkspaceStateAfterIndex(e, c, s, n),
+      populateClassWrappers: (e, u, idx, eng, c) => this.populateClassWrappers(e, u, idx, eng, c),
+      convertWasmLintDiagnostics: (w, d, p, t, b) => this.convertWasmLintDiagnostics(w, d, p, t, b),
+      reconcileCrossLanguageWasmDiagnostics: (w, idx, eng, ed, eUri, l, t, td, p) =>
+        this.reconcileCrossLanguageWasmDiagnostics(w, idx, eng, ed, eUri, l, t, td, p),
+      applyDiagnosticFilters: (d) => this.applyDiagnosticFilters(d),
+      sendProjectTreeChanged: (u) => this.sendProjectTreeChanged(u),
+      postValidateOwl2: (e, t, txt, d) => this.postValidateOwl2(e, t, txt, d),
+      postValidateSysml2: (e, d) => this.postValidateSysml2(e, d),
+      checkAutoVerify: (e) => this.checkAutoVerify(e),
+      postValidateModelicaAbstractInterpretation: (e, td, d) =>
+        this.postValidateModelicaAbstractInterpretation(e, td, d),
+      postValidateModelicaDaeReachability: (e, td, d) => this.postValidateModelicaDaeReachability(e, td, d),
+      postValidateModelicaReasoner: (e, d) => this.postValidateModelicaReasoner(e, d),
+      postValidatePolyglotReasoner: (e, l, d) => this.postValidatePolyglotReasoner(e, l, d),
+      postValidatePolyglotDrift: (e, l, d) => this.postValidatePolyglotDrift(e, l, d),
+      collectLiveTggCorrespondenceDiagnostics: (p) => this.collectLiveTggCorrespondenceDiagnostics(p),
+      collectThreadDiagnostics: (u, td) => this.collectThreadDiagnostics(u, td),
+      collectDroneSimulationParityDiagnostics: (u, l, t, td, d) =>
+        this.collectDroneSimulationParityDiagnostics(u, l, t, td, d),
+      scheduleCrossLanguageRevalidation: (e) => this.scheduleCrossLanguageRevalidation(e),
+    };
+  }
+
+  public async syncDocumentForDiagram(uri: string, explicitText?: string): Promise<boolean> {
+    return syncDocumentForDiagramImpl(this.getPolyglotValidatorContext(), uri, explicitText);
   }
 
   /**
@@ -951,94 +761,13 @@ export class ValidationService {
    * Validates a `TextDocument` by routing to domain-specific validators (STEP, CFD, FEA, SCAD,
    * PSCAD, SSP, CSV, JS/TS sidecars) or running the uniform incremental WASM GLR parse and semantic pipeline.
    */
-  public diagnosticsConfig: {
-    enabled?: boolean | undefined;
-    maxProblems?: number | undefined;
-    maxNumberOfProblems?: number | undefined;
-    disabledRules?: string[] | undefined;
-    crossDomainDrift?: "error" | "warning" | "information" | "off" | undefined;
-    formalVerificationOnSave?: boolean | undefined;
-    daeSingularityCheck?: boolean | undefined;
-    showInformationalBadges?: boolean | undefined;
-  } = {};
+  public diagnosticsConfig: DiagnosticsFilterConfig = {};
 
   /**
    * Applies user diagnostic configuration (`disabledRules`, `crossDomainDrift`, and `maxProblems` / `maxNumberOfProblems`).
    */
   public applyDiagnosticFilters(diagnostics: Diagnostic[]): Diagnostic[] {
-    const disabledRaw = this.diagnosticsConfig.disabledRules;
-    const disabledSet =
-      Array.isArray(disabledRaw) && disabledRaw.length > 0
-        ? new Set(disabledRaw.map((r) => String(r).trim().toLowerCase()).filter(Boolean))
-        : null;
-    const driftMode = this.diagnosticsConfig.crossDomainDrift;
-    const isDriftDiag = (d: Diagnostic): boolean => {
-      const c = String(d.code ?? "").toUpperCase();
-      return (
-        c === "M5104" ||
-        c === "THREAD_DIVERGENCE" ||
-        c === "POLYGLOT_TWIN_DRIFT" ||
-        c === "X7001" ||
-        c === "X7002" ||
-        c === "X7003" ||
-        c === "X7004" ||
-        c === "X7005" ||
-        d.source === "modelscript-drift-checker"
-      );
-    };
-
-    let filtered = diagnostics;
-    if (disabledSet || driftMode) {
-      filtered = [];
-      for (const d of diagnostics) {
-        if (disabledSet) {
-          const codeStr = d.code !== undefined ? String(d.code).toLowerCase() : "";
-          const mCodeStr = typeof d.code === "number" ? `m${d.code}` : "";
-          const dataRule =
-            typeof (d.data as { rule?: unknown } | undefined)?.rule === "string"
-              ? String((d.data as { rule: string }).rule).toLowerCase()
-              : "";
-          if (
-            (codeStr && disabledSet.has(codeStr)) ||
-            (mCodeStr && disabledSet.has(mCodeStr)) ||
-            (dataRule && disabledSet.has(dataRule))
-          ) {
-            continue;
-          }
-        }
-        if (driftMode && isDriftDiag(d)) {
-          if (driftMode === "off") continue;
-          const mappedSev =
-            driftMode === "error"
-              ? DiagnosticSeverity.Error
-              : driftMode === "information"
-                ? DiagnosticSeverity.Information
-                : DiagnosticSeverity.Warning;
-          filtered.push(d.severity === mappedSev ? d : { ...d, severity: mappedSev });
-          continue;
-        }
-        filtered.push(d);
-      }
-    }
-
-    const rawMax = this.diagnosticsConfig.maxProblems ?? this.diagnosticsConfig.maxNumberOfProblems;
-    const limit = typeof rawMax === "number" && rawMax > 0 ? Math.floor(rawMax) : 1000;
-    const capped = filtered.length > limit ? filtered.slice(0, limit) : filtered;
-    return capped.map((d) => {
-      if (d.codeDescription || d.code === undefined || d.code === null || d.code === "") return d;
-      const codeStr = typeof d.code === "number" ? `M${d.code}` : String(d.code);
-      if (
-        /^(M\d{4}|S\d{4}|X\d{4}|THREAD_[A-Z_]+|POLYGLOT_TWIN_DRIFT|division_by_zero|div_by_zero|math_domain|array_out_of_bounds)$/i.test(
-          codeStr,
-        )
-      ) {
-        return {
-          ...d,
-          codeDescription: { href: `https://modelscript.org/docs/diagnostics#${encodeURIComponent(codeStr)}` },
-        };
-      }
-      return d;
-    });
+    return applyDiagnosticFiltersImpl(this.diagnosticsConfig, diagnostics);
   }
 
   public async validateTextDocument(
@@ -1064,221 +793,15 @@ export class ValidationService {
       return;
     }
 
-    const normalizePluginDiagnostics = (rawDiags: unknown, sourceId: string): Diagnostic[] => {
-      if (!Array.isArray(rawDiags)) return [];
-      const lines = splitLinesPreserve(text);
-      return (rawDiags as RawPluginDiagnosticLike[]).map((d) => {
-        let range = d.range;
-        const skipLeadingWs = (lineZero: number, colZero: number): number => {
-          const lt = lines[lineZero] ?? "";
-          let c = Math.max(0, Math.min(colZero, lt.length));
-          while (c < lt.length && (lt[c] === " " || lt[c] === "\t")) {
-            c++;
-          }
-          return c < lt.length ? c : Math.max(0, Math.min(colZero, lt.length));
-        };
-        if (!range) {
-          if (typeof d.startOffset === "number" && typeof d.endOffset === "number") {
-            const rawStart = textDocument.positionAt(d.startOffset);
-            const rawEnd = textDocument.positionAt(Math.max(d.startOffset + 1, d.endOffset));
-            if (rawStart.line === rawEnd.line) {
-              const sChar = skipLeadingWs(rawStart.line, rawStart.character);
-              const lt = lines[rawStart.line] ?? "";
-              let eChar = Math.min(Math.max(sChar + 1, rawEnd.character), lt.length);
-              while (eChar > sChar + 1 && (lt[eChar - 1] === " " || lt[eChar - 1] === "\t")) {
-                eChar--;
-              }
-              range = {
-                start: { line: rawStart.line, character: sChar },
-                end: { line: rawEnd.line, character: eChar },
-              };
-            } else {
-              range = { start: rawStart, end: rawEnd };
-            }
-          } else {
-            const line = Math.min(Math.max(0, (d.line ?? 1) - 1), Math.max(0, lines.length - 1));
-            const rawCol = Math.max(0, (d.column ?? d.col ?? 1) - 1);
-            const col = skipLeadingWs(line, rawCol);
-            const endLine = Math.min(Math.max(line, (d.endLine ?? d.line ?? 1) - 1), Math.max(0, lines.length - 1));
-            const explicitEndCol1 = d.endColumn ?? d.endCol;
-            const endLineText = lines[endLine] ?? "";
-            const endCol =
-              endLine === line
-                ? explicitEndCol1 !== undefined
-                  ? Math.min(Math.max(col + 1, explicitEndCol1 - 1), Math.max(col + 1, endLineText.length))
-                  : this.computeTokenEndCharacter(text, line, col)
-                : Math.min(Math.max(0, (explicitEndCol1 ?? 1) - 1), endLineText.length);
-            range = {
-              start: { line, character: col },
-              end: { line: endLine, character: endCol },
-            };
-          }
-        } else if (range.start && range.end && range.start.line === range.end.line) {
-          const lineZero = Math.min(Math.max(0, range.start.line), Math.max(0, lines.length - 1));
-          const lt = lines[lineZero] ?? "";
-          let sChar = Math.max(0, Math.min(range.start.character ?? 0, lt.length));
-          if (sChar === 0) {
-            sChar = skipLeadingWs(lineZero, 0);
-          }
-          let eChar = Math.min(Math.max(sChar + 1, range.end.character ?? sChar + 1), Math.max(sChar + 1, lt.length));
-          while (eChar > sChar + 1 && (lt[eChar - 1] === " " || lt[eChar - 1] === "\t")) {
-            eChar--;
-          }
-          range = {
-            start: { line: lineZero, character: sChar },
-            end: { line: lineZero, character: eChar },
-          };
-        }
-        let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-        if (d.severity === 1 || d.severity === "error" || d.severity === DiagnosticSeverity.Error) {
-          severity = DiagnosticSeverity.Error;
-        } else if (d.severity === 3 || d.severity === "info" || d.severity === "information") {
-          severity = DiagnosticSeverity.Information;
-        } else if (d.severity === 4 || d.severity === "hint") {
-          severity = DiagnosticSeverity.Hint;
-        }
-        const diagCode = d.code ?? d.id;
-        return {
-          severity,
-          range,
-          ...(diagCode !== undefined ? { code: diagCode } : {}),
-          message: d.message ?? "Diagnostic warning",
-          source: d.source ?? sourceId,
-        };
-      });
-    };
-
     // 1. Check custom validation handler (e.g. for specialized formats)
     if (plugin?.customHandlers?.validate) {
-      const revisionAtStart = this.documentRevisions.get(uri) ?? null;
-      const isStale = () => revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart;
-      try {
-        await this.parserService?.ensureLanguageParserLoaded?.(plugin.id);
-        if (isStale()) return;
-        const existingCached = this.documentManager.documentTrees.get(uri);
-        const wasmTree = this.parseIncrementalWasmTree(uri, plugin.id, text, plugin);
-        const res = await (plugin.customHandlers.validate as (d: TextDocument, t?: unknown) => unknown)(
-          textDocument,
-          wasmTree ?? undefined,
-        );
-        if (isStale()) return;
-        if (Array.isArray(res)) {
-          const diags = normalizePluginDiagnostics(res, plugin.id);
-          const head = text
-            .slice(0, 512)
-            .replace(/^\uFEFF/, "")
-            .trimStart();
-          const isXmlDoc =
-            head.startsWith("<?xml") ||
-            /^<!DOCTYPE\b/i.test(head) ||
-            (head.startsWith("<") &&
-              (/\.(xml|reqif|reqifz|mdzip|mdxml|xmi|urdf|sdf|xacro|sbml|cellml|sedml|arxml|osim|aml|plcopen|xodr|xosc|qif|sbol|3mf|feb|scl|scd|icd|cid|pscx|owx|rdf)$/i.test(
-                uri,
-              ) ||
-                Boolean((plugin.languageDef as { grammar?: { xmlRules?: unknown } } | undefined)?.grammar?.xmlRules)));
-          const usesNativeXmlWasm =
-            new Set([
-              "autosar",
-              "cellml",
-              "dicom-rt",
-              "febio",
-              "igtl",
-              "jsbsim",
-              "lps",
-              "magicdraw",
-              "opendrive",
-              "openscenario",
-              "opensim",
-              "oscal",
-              "plcopen",
-              "pscad",
-              "reqif",
-              "sbml",
-              "sbol",
-              "sedml",
-              "simulink",
-              "ssp",
-              "three-mf",
-              "urdf",
-            ]).has(plugin.id) && text.length <= 2 * 1024 * 1024;
-          if (isXmlDoc && !usesNativeXmlWasm) {
-            const xmlDoc = parseXmlSync(text);
-            if (xmlDoc.errors.length > 0) {
-              const hasNonZeroSyntaxDiag = diags.some(
-                (d) =>
-                  d.severity === DiagnosticSeverity.Error &&
-                  (d.range.start.line > 0 || d.range.start.character > 0) &&
-                  (d.code === "REQIF-PARSE-ERROR" || String(d.code ?? "").startsWith("XML-")),
-              );
-              if (!hasNonZeroSyntaxDiag) {
-                const filtered = diags.filter(
-                  (d) =>
-                    !(
-                      d.severity === DiagnosticSeverity.Error &&
-                      d.range.start.line === 0 &&
-                      d.range.start.character === 0 &&
-                      /parse|syntax|xml/i.test(d.message)
-                    ),
-                );
-                diags.length = 0;
-                diags.push(...filtered);
-                for (const err of xmlDoc.errors) {
-                  diags.push({
-                    range: {
-                      start: textDocument.positionAt(err.start),
-                      end: textDocument.positionAt(Math.max(err.start + 1, err.end)),
-                    },
-                    severity: DiagnosticSeverity.Error,
-                    code: err.code ?? "XML-PARSE-ERROR",
-                    source: plugin.id,
-                    message: err.message || "XML syntax error",
-                  });
-                }
-              }
-            }
-          }
-          const docTree = (wasmTree ?? { rootNode: { text } }) as StoredDocumentTree;
-          this.documentManager.documentTrees.set(uri, {
-            text,
-            tree: docTree,
-            classCache: existingCached?.classCache ?? new Map(),
-          });
-          const contentChanged = this.lastIndexedText.get(uri) !== text;
-          if ((plugin.languageDef as LanguageDefIndexingLike | undefined)?.indexing?.indexFile) {
-            this.indexNativeDslDocument(uri, text, plugin.id, plugin.languageDef);
-          } else if (plugin.workspaceIndex) {
-            try {
-              const idxLike = plugin.workspaceIndex as unknown as WorkspaceIndexFileOps;
-              if (typeof idxLike.indexFile === "function") {
-                idxLike.indexFile(uri, text);
-              } else if (typeof idxLike.addFile === "function") {
-                idxLike.addFile(uri, text);
-              }
-            } catch (indexErr: unknown) {
-              const msg = indexErr instanceof Error ? indexErr.message : String(indexErr);
-              this.connection.console.warn(`[validate] Failed to index ${uri} in plugin workspace: ${msg}`);
-            }
-          }
-          this.lastIndexedText.set(uri, text);
-          await this.finalizeCrossLanguageValidation({
-            uri,
-            effectiveUri: uri,
-            text,
-            langId: plugin.id,
-            tree: docTree as unknown as PolyglotTreeLike,
-            textDocument,
-            diagnostics: diags,
-            hasSyntaxErrors: diags.some((d) => d.severity === DiagnosticSeverity.Error),
-            contentChanged,
-            isStale,
-          });
-          return;
-        }
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        this.connection.console.error(`[validate] Custom validation handler failed for ${uri}: ${msg}`);
-        return;
-      }
+      const handled = await validateCustomPluginDocumentImpl(
+        this.getPolyglotValidatorContext(),
+        textDocument,
+        text,
+        plugin,
+      );
+      if (handled) return;
     }
 
     // Handle Javascript/TypeScript sidecar files natively if no plugin customHandler
@@ -1312,68 +835,21 @@ export class ValidationService {
 
     const isModelica = langId === "modelica" || /\.(mo|mos|msim)($|\?|#)/i.test(uri);
     if (!parser && (!this.parserService?.sharedContext || !isModelica)) {
-      if (plugin?.actionHandlers) {
-        const lintKey = Object.keys(plugin.actionHandlers).find((k) => k.startsWith("lint_"));
-        if (lintKey && typeof plugin.actionHandlers[lintKey] === "function") {
-          try {
-            const rawDiags = await plugin.actionHandlers[lintKey](
-              { documentText: text, uri },
-              { documentText: text, uri },
-            );
-            const diags = normalizePluginDiagnostics(rawDiags, plugin.id);
-            const docTree = { rootNode: { text } } as unknown as StoredDocumentTree;
-            this.documentManager.documentTrees.set(uri, {
-              text,
-              tree: docTree,
-              classCache: new Map(),
-            });
-            const contentChanged = this.lastIndexedText.get(uri) !== text;
-            const wsIdx = plugin.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(plugin.id);
-            if ((plugin.languageDef as LanguageDefIndexingLike | undefined)?.indexing?.indexFile) {
-              this.indexNativeDslDocument(uri, text, plugin.id, plugin.languageDef);
-            } else if (wsIdx) {
-              try {
-                const idxLike = wsIdx as unknown as WorkspaceIndexFileOps;
-                if (typeof idxLike.indexFile === "function") {
-                  idxLike.indexFile(uri, text);
-                } else if (typeof idxLike.addFile === "function") {
-                  idxLike.addFile(uri, text);
-                }
-              } catch (wsErr: unknown) {
-                const msg = wsErr instanceof Error ? wsErr.message : String(wsErr);
-                this.connection.console.warn(`[validate] Failed to index ${uri} in workspace: ${msg}`);
-              }
-            }
-            this.lastIndexedText.set(uri, text);
-            await this.finalizeCrossLanguageValidation({
-              uri,
-              effectiveUri: uri,
-              text,
-              langId: plugin.id,
-              tree: docTree as unknown as PolyglotTreeLike,
-              textDocument,
-              diagnostics: diags,
-              hasSyntaxErrors: diags.some((d) => d.severity === DiagnosticSeverity.Error),
-              contentChanged,
-            });
-            return;
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            this.connection.console.error(`[validate] Action lint handler ${lintKey} failed for ${uri}: ${msg}`);
-          }
-        }
-      }
+      const handled = await validateActionLintDocumentImpl(
+        this.getPolyglotValidatorContext(),
+        textDocument,
+        text,
+        plugin,
+      );
+      if (handled) return;
       this.connection.sendDiagnostics({ uri: textDocument.uri, diagnostics: [] });
       return;
     }
 
     // Pre-process text if needed via plugin hook
     let processedText = text;
-    const gHooks = globalThis as unknown as ValidationGlobalHooks;
     if (plugin?.preprocessText) {
       processedText = plugin.preprocessText(text);
-    } else if (typeof gHooks.preprocessLanguageText === "function") {
-      processedText = gHooks.preprocessLanguageText(langId, text);
     }
 
     const oldCached = this.documentManager.documentTrees.get(uri);
@@ -1399,15 +875,7 @@ export class ValidationService {
               ? oldCached.tree
               : parseXmlFallbackTree(processedText);
         } else {
-          const oldTree = oldCached?.tree as unknown as
-            | {
-                rootPtr?: number;
-                rootNode?: { id?: number; tree?: { facade?: unknown } };
-                facade?: unknown;
-                edit?: (e: unknown) => void;
-              }
-            | null
-            | undefined;
+          const oldTree = asIncrementalTree(oldCached?.tree);
           const activeFacade = (plugin?.facade ??
             oldTree?.facade ??
             oldTree?.rootNode?.tree?.facade ??
@@ -1448,18 +916,7 @@ export class ValidationService {
             }
           } else {
             if (parser) {
-              tree = (
-                parser as unknown as {
-                  parse(
-                    t: string,
-                    p?: unknown,
-                    a?: number,
-                    b?: number,
-                    c?: number,
-                    u?: string,
-                  ): ReturnType<NonNullable<typeof parser>["parse"]>;
-                }
-              ).parse(processedText, null, 0, 0, 0, uri) as StoredDocumentTree | undefined;
+              tree = parseFullWithUri(parser, processedText, uri);
             } else if (this.parserService.sharedContext && isModelica) {
               tree = this.parserService.sharedContext.parse(".mo", processedText) as StoredDocumentTree | undefined;
             }
@@ -1531,36 +988,7 @@ export class ValidationService {
           plugin,
         )
       : rawWasmLspDiags;
-    const fastStaticDiags: Diagnostic[] = [];
-    const mapSev = (s: string): DiagnosticSeverity =>
-      s === "error"
-        ? DiagnosticSeverity.Error
-        : s === "warning"
-          ? DiagnosticSeverity.Warning
-          : s === "info"
-            ? DiagnosticSeverity.Information
-            : DiagnosticSeverity.Hint;
-    if (isModelica) {
-      for (const fd of runModelicaFastStaticLints(text)) {
-        fastStaticDiags.push({
-          severity: mapSev(fd.severity),
-          range: Range.create(0, 0, 0, 1),
-          code: `M${fd.code}`,
-          source: "modelscript-fast-static",
-          message: fd.message,
-        });
-      }
-    } else if (langId === "sysml2" || langId === "sysml" || /\.(sysml|kerml)($|\?|#)/i.test(uri)) {
-      for (const fd of runSysML2FastStaticLints(text)) {
-        fastStaticDiags.push({
-          severity: mapSev(fd.severity),
-          range: Range.create(0, 0, 0, 1),
-          code: `S${fd.code}`,
-          source: "modelscript-fast-static",
-          message: fd.message,
-        });
-      }
-    }
+    const fastStaticDiags = collectFastStaticDiagnostics(isModelica, langId, uri, text);
     const prevPublished = this.lastSemanticDiagnostics.get(uri);
     const cachedSemantic = (prevPublished || []).filter(
       (d) =>
@@ -1626,449 +1054,8 @@ export class ValidationService {
    * 7. Class instance wrapper population for tree views
    * 8. Diagnostic deduplication and delivery
    */
-  public async runUnifiedSemanticPipeline(params: {
-    uri: string;
-    text: string;
-    tree: unknown;
-    editRanges?: Array<{ startOffset: number; endOffset: number }> | undefined;
-    baseDiagnostics: Diagnostic[];
-    wasmLintDiags?: WasmLintDiagnostic[] | undefined;
-    revisionAtStart: number | null;
-    plugin?: LanguagePlugin | undefined;
-    langId: string;
-    textDocument?: TextDocument | undefined;
-    isSave?: boolean | undefined;
-  }): Promise<void> {
-    const {
-      uri,
-      text,
-      tree,
-      editRanges,
-      baseDiagnostics,
-      wasmLintDiags,
-      revisionAtStart,
-      plugin,
-      langId,
-      textDocument,
-      isSave,
-    } = params;
-    const newSemanticDiagnostics: Diagnostic[] = [];
-    const treeLike = tree as ValidationTreeLike;
-
-    const isStale = () => {
-      if (revisionAtStart !== null && (this.documentRevisions.get(uri) ?? 0) !== revisionAtStart) return true;
-      return false;
-    };
-    const YIELD_BUDGET_MS = 12;
-    let lastYieldAt = performance.now();
-    const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
-    const yieldAndCheckStale = async () => {
-      if (isStale()) return true;
-      const now = performance.now();
-      if (now - lastYieldAt >= YIELD_BUDGET_MS) {
-        await yieldToEventLoop();
-        lastYieldAt = performance.now();
-        return isStale();
-      }
-      return false;
-    };
-
-    try {
-      const t0 = performance.now();
-      void t0;
-      const effectiveUri = uri.startsWith("modelscript-lib://global")
-        ? "file://" + uri.substring("modelscript-lib://global".length)
-        : uri;
-
-      // ── Step 1: Re-index ─────────────────────────────────────────────────
-      const wsIndex = plugin?.workspaceIndex ?? this.workspaceManager.getWorkspaceIndex(langId);
-      const textChanged = this.lastIndexedText.get(effectiveUri) !== text;
-      let changedIds: Set<number> | null = null;
-      let changedNames: Set<string> | null = null;
-      let structuralChangedIds: Set<number> | null = null;
-
-      if (wsIndex) {
-        if (textChanged) {
-          let actualEditRanges: { startOffset: number; endOffset: number; delta?: number }[] | undefined = editRanges;
-          let totalDelta = actualEditRanges ? actualEditRanges.reduce((acc, r) => acc + (r.delta ?? 0), 0) : 0;
-          if (!actualEditRanges) {
-            const lastText = this.lastIndexedText.get(effectiveUri);
-            if (lastText) {
-              const edit = computeTreeEdit(lastText, text);
-              const maxEnd = Math.max(edit.oldEndIndex, edit.newEndIndex);
-              totalDelta = edit.newEndIndex - edit.oldEndIndex;
-              actualEditRanges = [
-                {
-                  startOffset: edit.startIndex,
-                  endOffset: maxEnd,
-                  delta: totalDelta,
-                },
-              ];
-            }
-          }
-
-          if (typeof wsIndex.has === "function") {
-            if (wsIndex.has(effectiveUri)) {
-              wsIndex.reindexDocument?.(effectiveUri, () => treeLike.rootNode as never, actualEditRanges, totalDelta);
-            } else {
-              wsIndex.register?.(effectiveUri, () => treeLike.rootNode as never);
-            }
-            wsIndex.getFileIndex?.(effectiveUri);
-          }
-          this.workspaceManager.workspaceInstances.delete(uri);
-          this.workspaceManager.workspaceInstances.delete(effectiveUri);
-          this.workspaceManager.documentInstances.delete(uri);
-          this.workspaceManager.documentInstances.delete(effectiveUri);
-          this.lastIndexedText.set(effectiveUri, text);
-          const activeEngine = (plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId)) as unknown as
-            ValidationEngineOps | null | undefined;
-          if (activeEngine && typeof activeEngine.disposeDocument === "function") {
-            activeEngine.disposeDocument(effectiveUri);
-            activeEngine.disposeDocument(uri);
-            const effNorm = effectiveUri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///");
-            activeEngine.disposeDocument(effNorm);
-          }
-        }
-
-        const changedIdsObj = (
-          typeof wsIndex.takeGlobalChangedIds === "function" ? wsIndex.takeGlobalChangedIds() : null
-        ) as { changedIds: Set<number> | null; structuralChangedIds?: Set<number> | null } | null;
-        changedIds = changedIdsObj ? changedIdsObj.changedIds : null;
-        structuralChangedIds = changedIdsObj?.structuralChangedIds ?? null;
-        changedNames = typeof wsIndex.takeGlobalChangedNames === "function" ? wsIndex.takeGlobalChangedNames() : null;
-      } else if (textChanged && (plugin?.languageDef as LanguageDefIndexingLike | undefined)?.indexing?.indexFile) {
-        this.indexNativeDslDocument(effectiveUri, text, plugin?.id ?? langId, plugin?.languageDef);
-        this.workspaceManager.workspaceInstances.delete(uri);
-        this.workspaceManager.workspaceInstances.delete(effectiveUri);
-        this.workspaceManager.documentInstances.delete(uri);
-        this.workspaceManager.documentInstances.delete(effectiveUri);
-        this.lastIndexedText.set(effectiveUri, text);
-      }
-
-      if (isStale()) return;
-
-      // ── Step 2: Cross-File Dependency State Prep ──────────────────────────
-      if (this.revalidationTimer) {
-        clearTimeout(this.revalidationTimer);
-        this.revalidationTimer = null;
-      }
-
-      // ── Step 3: Unified Index & QueryEngine Update ───────────────────────
-      const unifiedIndex = this.workspaceManager.unifiedWorkspace.getIndex();
-      const cstTreeWrapper = this.parserService.getSharedCstTreeWrapper();
-
-      let engine = plugin?.queryEngine ?? this.workspaceManager.getQueryEngine(langId);
-      if (!engine) {
-        engine = this.createDefaultQueryEngine(langId, unifiedIndex, cstTreeWrapper);
-        if (engine) {
-          this.workspaceManager.setQueryEngine(langId, engine);
-        }
-      } else {
-        if (plugin?.queryEngine && !this.workspaceManager.getQueryEngine(langId)) {
-          this.workspaceManager.setQueryEngine(langId, engine);
-        }
-        if (langId === "modelica") {
-          const injectFn = (globalThis as unknown as ValidationGlobalHooks).injectPredefinedTypes;
-          if (typeof injectFn === "function") injectFn(unifiedIndex);
-        }
-        const engineOps = engine as unknown as ValidationEngineOps;
-        if (changedIds && typeof engineOps.swapIndex === "function") {
-          engineOps.swapIndex(unifiedIndex, changedIds, structuralChangedIds || undefined);
-        } else if (textChanged && typeof engineOps.updateIndex === "function") {
-          engineOps.updateIndex(unifiedIndex);
-        }
-        if (typeof engineOps.updateTree === "function") {
-          engineOps.updateTree(cstTreeWrapper);
-        }
-      }
-
-      this.syncWorkspaceStateAfterIndex(effectiveUri, changedIds, structuralChangedIds, changedNames);
-
-      // Sync parser sharedContext if Modelica
-      const context = this.parserService.sharedContext;
-      if (context && langId === "modelica") {
-        const ctxMutable = context as unknown as SharedContextMutableLike;
-        if (typeof ctxMutable.setQueryEngine === "function") ctxMutable.setQueryEngine(engine);
-        else ctxMutable.queryEngine = engine;
-        if (typeof ctxMutable.setWorkspaceIndex === "function") ctxMutable.setWorkspaceIndex(wsIndex);
-        else ctxMutable.workspaceIndex = wsIndex;
-      }
-
-      // Create / update LSP bridge
-      const currentDoc = this.documentManager.documents.get(uri);
-      const currentText = currentDoc ? currentDoc.getText() : text;
-      const bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(currentText), uri, {
-        documentLSPBridges: this.documentLSPBridges,
-        documents: this.documentManager.documents,
-        sharedFs: this.parserService?.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs,
-      });
-      this.documentLSPBridges.set(uri, bridge);
-
-      // Populate class wrappers immediately so diagram edit handlers always see up-to-date CST nodes
-      if (textChanged || !this.workspaceManager.documentInstances.get(uri)?.length) {
-        this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
-      }
-
-      await yieldToEventLoop();
-      if (isStale()) return;
-
-      // ── Step 4: Preflight Cache Hydration ────────────────────────────────
-      const resourceSymbolIds = unifiedIndex.symbolsByResource?.get(effectiveUri);
-      const docSymbolCount = resourceSymbolIds ? resourceSymbolIds.length : 0;
-      const isWorkspaceFile = !!this.documentManager.documents.get(uri);
-
-      const vEngine = engine as ValidationQueryEngine | null | undefined;
-      if (
-        vEngine &&
-        resourceSymbolIds &&
-        resourceSymbolIds.length > 0 &&
-        vEngine.preflight &&
-        !isWorkspaceFile &&
-        docSymbolCount < 2000
-      ) {
-        try {
-          await vEngine.preflight(resourceSymbolIds, ["resolve", "members", "type_check"]);
-        } catch {
-          // Best-effort
-        }
-      }
-
-      // ── Step 5: Declarative & CST Lints ────────────────────────────────────
-      const rootHasErr = treeLike.rootNode?.hasError;
-      const hasError = typeof rootHasErr === "function" ? rootHasErr() : Boolean(rootHasErr);
-      const hasSyntaxErrors = baseDiagnostics.length > 0 || hasError;
-
-      if (hasSyntaxErrors) {
-        const cachedSemantic = this.lastSemanticDiagnostics.get(uri) || [];
-        newSemanticDiagnostics.push(...cachedSemantic);
-      }
-
-      // 5a. WASM Linear Memory CST Linter diagnostics (pre-collected synchronously in collectSyntaxErrors)
-      // NOTE: We use the pre-collected wasmLintDiags instead of re-calling facade.getDiagnostics(rootPtr)
-      // here because the WASM input buffer may have been overwritten by parsing another document
-      // during the async yields above. Using a stale rootPtr with a different input buffer would
-      // cause the linter to read garbled text at the old CST byte offsets.
-      let pendingWasmDiags: Diagnostic[] = [];
-      if (!hasSyntaxErrors && wasmLintDiags && wasmLintDiags.length > 0) {
-        try {
-          pendingWasmDiags = this.convertWasmLintDiagnostics(
-            wasmLintDiags,
-            currentDoc ?? textDocument,
-            plugin,
-            currentText,
-            bridge,
-          );
-        } catch (e: unknown) {
-          this.connection.console.warn(
-            `[runUnifiedSemanticPipeline] CST linter error for ${uri}: ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
-      }
-
-      // 5b. Salsa QueryEngine symbol lints
-      const skipHeavyLints = (!isWorkspaceFile && docSymbolCount > 1000) || hasSyntaxErrors;
-      let capturedEngineDiags: EngineLintDiagnosticLike[] = [];
-      const semanticLineIndex = new SemanticDiagnosticLineIndex(newSemanticDiagnostics);
-      if (!skipHeavyLints && vEngine && typeof vEngine.runAllLintsAsync === "function") {
-        const viewportRange = this.documentViewports.get(uri) ?? undefined;
-        let engineDiags: EngineLintDiagnosticLike[];
-        if (typeof vEngine.setCancellationChecker === "function") {
-          vEngine.setCancellationChecker(isStale, 64);
-        }
-        try {
-          engineDiags = await vEngine.runAllLintsAsync(effectiveUri, yieldAndCheckStale, viewportRange);
-        } finally {
-          if (typeof vEngine.setCancellationChecker === "function") {
-            vEngine.setCancellationChecker(null);
-          }
-        }
-        if (isStale()) return;
-        capturedEngineDiags = Array.isArray(engineDiags) ? engineDiags : [];
-
-        const bridgePositions = (bridge as unknown as { positions?: PositionIndex }).positions;
-        const posIdx = bridgePositions ?? this.documentManager.getLineIndexForDoc(uri);
-        for (const d of capturedEngineDiags) {
-          const startOff = d.startOffset;
-          const endOff = d.endOffset;
-          const start = posIdx?.charOffsetToPosition?.(startOff) ?? { line: 0, character: 0 };
-          const end = posIdx?.charOffsetToPosition?.(endOff) ?? start;
-          let severity: DiagnosticSeverity = DiagnosticSeverity.Warning;
-          if (d.severity === "error") severity = DiagnosticSeverity.Error;
-          if (d.severity === "info") severity = DiagnosticSeverity.Information;
-
-          const diagCode = d.code ?? d.lintName;
-          const incomingDiag: Diagnostic = {
-            severity,
-            range: { start, end },
-            message: d.message,
-            source: plugin?.name ? plugin.name.toLowerCase() : "modelscript",
-            ...(diagCode !== undefined ? { code: diagCode } : {}),
-          };
-
-          const isDuplicate = tryDeduplicateOrMergeSemanticDiagnostic(
-            newSemanticDiagnostics,
-            incomingDiag,
-            plugin,
-            semanticLineIndex,
-          );
-
-          if (!isDuplicate) {
-            newSemanticDiagnostics.push(incomingDiag);
-            semanticLineIndex.add(incomingDiag);
-          }
-        }
-      }
-
-      // Reconcile single-file WASM CST M2002/M2003 lints with multi-file & cross-language resolution
-      if (pendingWasmDiags.length > 0) {
-        const reconciledWasm = this.reconcileCrossLanguageWasmDiagnostics(
-          pendingWasmDiags,
-          unifiedIndex,
-          engine,
-          capturedEngineDiags,
-          effectiveUri,
-          langId,
-          currentText,
-          currentDoc ?? textDocument,
-          plugin,
-        );
-        for (const wd of reconciledWasm) {
-          if (!tryDeduplicateOrMergeSemanticDiagnostic(newSemanticDiagnostics, wd, plugin, semanticLineIndex)) {
-            newSemanticDiagnostics.push(wd);
-            semanticLineIndex.add(wd);
-          }
-        }
-      }
-
-      // Stream core compiler lints immediately before running heavier post-validation hooks
-      // (abstract interpretation, DAE reachability, cross-language drift, workspace linters).
-      if (isStale()) return;
-      const earlyDiags = this.applyDiagnosticFilters(
-        deduplicateAllDiagnostics([...baseDiagnostics, ...newSemanticDiagnostics]),
-      );
-      this.connection.sendDiagnostics({ uri, diagnostics: earlyDiags });
-      this.sendProjectTreeChanged(uri);
-
-      // ── Step 6: Domain Post-Validation Hooks ──────────────────────────────
-      if (plugin?.customHandlers?.postValidate && textDocument) {
-        await plugin.customHandlers.postValidate(textDocument, context, newSemanticDiagnostics);
-      } else {
-        if (langId === "owl2" && !hasSyntaxErrors) {
-          await this.postValidateOwl2(
-            effectiveUri,
-            tree as PolyglotTreeLike | null | undefined,
-            text,
-            newSemanticDiagnostics,
-          );
-        } else if (langId === "sysml2" || langId === "sysml") {
-          if (!hasSyntaxErrors) {
-            this.postValidateSysml2(effectiveUri, newSemanticDiagnostics);
-          }
-          this.checkAutoVerify(effectiveUri);
-        } else if (langId === "modelica" && !hasSyntaxErrors && textDocument) {
-          const deferFormalToSave = Boolean(this.diagnosticsConfig.formalVerificationOnSave) && !isSave;
-          if (!deferFormalToSave) {
-            await this.postValidateModelicaAbstractInterpretation(effectiveUri, textDocument, newSemanticDiagnostics);
-            if (this.diagnosticsConfig.daeSingularityCheck !== false) {
-              await this.postValidateModelicaDaeReachability(effectiveUri, textDocument, newSemanticDiagnostics);
-            }
-          }
-          this.postValidateModelicaReasoner(effectiveUri, newSemanticDiagnostics);
-        } else if (!hasSyntaxErrors) {
-          this.postValidatePolyglotReasoner(effectiveUri, langId, newSemanticDiagnostics);
-        }
-      }
-
-      const vDiags = this.verificationDiagnosticsByUri.get(uri) ?? this.verificationDiagnosticsByUri.get(effectiveUri);
-      if (vDiags) {
-        newSemanticDiagnostics.push(...vDiags);
-      }
-
-      const rDiags = this.reasonerDiagnosticsByUri.get(uri) ?? this.reasonerDiagnosticsByUri.get(effectiveUri);
-      if (rDiags && rDiags.length > 0) {
-        for (const rd of rDiags) {
-          if (
-            !newSemanticDiagnostics.some(
-              (d) =>
-                d.range.start.line === rd.range.start.line &&
-                d.range.start.character === rd.range.start.character &&
-                d.message === rd.message,
-            )
-          ) {
-            newSemanticDiagnostics.push(rd);
-          }
-        }
-      }
-
-      const dtDiags =
-        this.digitalThreadDiagnosticsByUri.get(uri) ?? this.digitalThreadDiagnosticsByUri.get(effectiveUri);
-      if (dtDiags && dtDiags.length > 0) {
-        newSemanticDiagnostics.push(...dtDiags);
-      }
-
-      // ── Step 7: Populate Class / Symbol Wrappers for Trees ───────────────
-      if (!this.workspaceManager.documentInstances.get(uri)?.length) {
-        this.populateClassWrappers(effectiveUri, uri, unifiedIndex, engine, context);
-      }
-
-      // ── Step 8: Finalize Cross-Language Links, Deliver Diagnostics, & Cascade ──
-      if (isStale()) return;
-      const finalSemanticDiags = await this.finalizeCrossLanguageValidation({
-        uri,
-        effectiveUri,
-        text,
-        langId,
-        tree: tree as PolyglotTreeLike | null | undefined,
-        textDocument: currentDoc ?? textDocument,
-        diagnostics: newSemanticDiagnostics,
-        hasSyntaxErrors,
-        changedIds,
-        structuralChangedIds,
-        changedNames,
-        skipSend: true,
-        skipCascade: true,
-        isStale,
-      });
-      if (isStale()) return;
-      this.lastSemanticDiagnostics.set(uri, finalSemanticDiags);
-      const rawDiagnostics = [...baseDiagnostics, ...finalSemanticDiags];
-      const diagnostics = this.applyDiagnosticFilters(deduplicateAllDiagnostics(rawDiagnostics));
-      const unchangedFromEarly =
-        diagnostics.length === earlyDiags.length &&
-        diagnostics.every((d, i) => {
-          const early = earlyDiags[i];
-          return (
-            early !== undefined &&
-            d.message === early.message &&
-            d.code === early.code &&
-            d.range.start.line === early.range.start.line &&
-            d.range.start.character === early.range.start.character
-          );
-        });
-      if (!unchangedFromEarly) {
-        this.connection.sendDiagnostics({ uri, diagnostics });
-        this.sendProjectTreeChanged(uri);
-      }
-
-      if ((textChanged || (changedNames && changedNames.size > 0)) && !this.isCascadeRevalidationActive) {
-        this.scheduleCrossLanguageRevalidation(effectiveUri);
-      }
-    } catch (e: unknown) {
-      const errObj = e instanceof Error ? e : null;
-      const errName =
-        errObj?.name ?? (typeof e === "object" && e && "name" in e ? String((e as { name?: unknown }).name) : "");
-      const errMsg = errObj?.message ?? String(e);
-      if (errName === "QueryCancelledError" || errMsg === "Query computation was cancelled") {
-        return;
-      }
-      this.connection.console.error(`[runUnifiedSemanticPipeline] Error for ${uri}: ${errMsg}\n${errObj?.stack ?? ""}`);
-      if (!isStale()) {
-        const rawDiagnostics = [...baseDiagnostics, ...newSemanticDiagnostics];
-        const diagnostics = this.applyDiagnosticFilters(deduplicateAllDiagnostics(rawDiagnostics));
-        this.connection.sendDiagnostics({ uri, diagnostics });
-        this.sendProjectTreeChanged(uri);
-      }
-    }
+  public async runUnifiedSemanticPipeline(params: UnifiedSemanticPipelineParams): Promise<void> {
+    await runUnifiedSemanticPipelineImpl(this.getSemanticPipelineContext(), params);
   }
 
   /**
@@ -2116,14 +1103,12 @@ export class ValidationService {
     const norm = rawNorm === "sysml" ? "sysml2" : rawNorm;
     const plugin = globalLanguageRegistry.getPluginById(norm) ?? globalLanguageRegistry.getPluginById(rawNorm);
     const altPlugin = norm === "sysml2" ? globalLanguageRegistry.getPluginById("sysml") : undefined;
-    const g = globalThis as unknown as Record<string, unknown>;
     const factory =
       plugin?.createQueryEngine ??
       altPlugin?.createQueryEngine ??
-      (norm === "sysml2" ? g["createSysML2QueryEngine"] : undefined) ??
-      (norm === "owl2" ? g["createOWL2QueryEngine"] : undefined) ??
-      g[`create_${norm}_query_engine`] ??
-      g[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}QueryEngine`];
+      (norm === "modelica" ? createModelicaQueryEngine : undefined) ??
+      (norm === "sysml2" ? createSysML2QueryEngine : undefined) ??
+      (norm === "owl2" ? createOWL2QueryEngine : undefined);
     if (typeof factory === "function") {
       return (factory as (idx: SymbolIndex, cst: unknown) => QueryEngine)(unifiedIndex, cstTreeWrapper);
     }
@@ -2140,45 +1125,14 @@ export class ValidationService {
     structuralChangedIds?: Set<number> | null,
     changedNames?: Set<string> | null,
   ): void {
-    const uw = this.workspaceManager?.unifiedWorkspace as
-      | (UnifiedWorkspace & {
-          updateQueryEngines?: (
-            uri?: string,
-            changedIds?: Set<number>,
-            structuralChangedIds?: Set<number>,
-            changedNames?: Set<string>,
-          ) => void;
-        })
-      | undefined;
-    if (uw && typeof uw.updateQueryEngines === "function") {
-      try {
-        uw.updateQueryEngines(
-          effectiveUri,
-          changedIds ?? undefined,
-          structuralChangedIds ?? undefined,
-          changedNames ?? undefined,
-        );
-      } catch {
-        // Best-effort query engine refresh
-      }
-    }
-    const sharedContext = this.parserService?.sharedContext as SharedContextWorkspaceBridge | undefined;
-    if (sharedContext && uw) {
-      try {
-        if (typeof sharedContext.attachExternalUnifiedWorkspace === "function") {
-          if (sharedContext.__attachedExternalUw !== uw) {
-            sharedContext.attachExternalUnifiedWorkspace(uw);
-            sharedContext.__attachedExternalUw = uw;
-          } else if (typeof sharedContext.syncExternalWorkspace === "function") {
-            sharedContext.syncExternalWorkspace();
-          }
-        } else if (typeof sharedContext.syncExternalWorkspace === "function") {
-          sharedContext.syncExternalWorkspace();
-        }
-      } catch {
-        // Non-fatal if context lacks foreign workspace support
-      }
-    }
+    syncWorkspaceStateAfterIndexImpl(
+      this.workspaceManager,
+      this.parserService,
+      effectiveUri,
+      changedIds,
+      structuralChangedIds,
+      changedNames,
+    );
   }
 
   private pendingCascadeUri: string | null = null;
@@ -2337,6 +1291,12 @@ export class ValidationService {
       }
     }
     if (transformer) {
+      if (!this.tggTransformerCache.has(norm) && this.tggTransformerCache.size >= 64) {
+        const oldest = this.tggTransformerCache.keys().next().value;
+        if (oldest !== undefined) {
+          this.tggTransformerCache.delete(oldest);
+        }
+      }
       this.tggTransformerCache.set(norm, transformer);
     }
     return transformer;
@@ -2389,127 +1349,8 @@ export class ValidationService {
    * Ensures UnifiedWorkspace query engine sync, automatic thread discovery, TGG conformance checks,
    * digital-thread contradiction reporting, and bounded dependent revalidation run uniformly.
    */
-  private async finalizeCrossLanguageValidation(params: {
-    uri: string;
-    effectiveUri?: string | undefined;
-    text: string;
-    langId: string;
-    tree?: PolyglotTreeLike | null | undefined;
-    textDocument?: TextDocument | undefined;
-    diagnostics: Diagnostic[];
-    hasSyntaxErrors?: boolean | undefined;
-    changedIds?: Set<number> | null | undefined;
-    structuralChangedIds?: Set<number> | null | undefined;
-    changedNames?: Set<string> | null | undefined;
-    skipSend?: boolean | undefined;
-    skipCascade?: boolean | undefined;
-    contentChanged?: boolean | undefined;
-    isStale?: (() => boolean) | undefined;
-  }): Promise<Diagnostic[]> {
-    const {
-      uri,
-      effectiveUri = uri,
-      text,
-      langId,
-      tree,
-      textDocument,
-      diagnostics,
-      hasSyntaxErrors = false,
-      changedIds,
-      structuralChangedIds,
-      changedNames,
-      skipSend = false,
-      skipCascade = false,
-      contentChanged = false,
-      isStale,
-    } = params;
-
-    this.syncWorkspaceStateAfterIndex(effectiveUri, changedIds, structuralChangedIds, changedNames);
-
-    if (
-      (contentChanged || (langId !== "step" && text.length <= 262_144)) &&
-      typeof this.workspaceManager?.discoverThreadsForDocument === "function"
-    ) {
-      try {
-        this.workspaceManager.discoverThreadsForDocument(effectiveUri, text, langId, tree);
-      } catch {
-        // Non-fatal on partial buffers
-      }
-    }
-
-    if (!hasSyntaxErrors) {
-      this.postValidatePolyglotDrift(effectiveUri, langId, diagnostics);
-      this.collectLiveTggCorrespondenceDiagnostics({
-        effectiveUri,
-        langId,
-        text,
-        tree,
-        textDocument,
-        diagnostics,
-      });
-    }
-
-    const threadDiags = this.collectThreadDiagnostics(effectiveUri, textDocument);
-    if (threadDiags.length > 0) {
-      diagnostics.push(...threadDiags);
-    }
-
-    this.collectDroneSimulationParityDiagnostics(uri, langId, text, textDocument, diagnostics);
-
-    await this.collectWorkspaceLinterDiagnostics(effectiveUri, langId, text, diagnostics);
-
-    if (isStale?.()) return diagnostics;
-
-    const finalDiags = this.applyDiagnosticFilters(deduplicateAllDiagnostics(diagnostics));
-
-    if (!skipSend) {
-      this.lastSemanticDiagnostics.set(uri, finalDiags);
-      if (effectiveUri !== uri) {
-        this.lastSemanticDiagnostics.set(effectiveUri, finalDiags);
-      }
-      this.connection.sendDiagnostics({ uri, diagnostics: finalDiags });
-      this.sendProjectTreeChanged(uri);
-    }
-
-    if (!skipCascade && contentChanged && !this.isCascadeRevalidationActive) {
-      this.scheduleCrossLanguageRevalidation(effectiveUri);
-    }
-
-    return finalDiags;
-  }
-
-  /**
-   * Collects multi-file / workspace-graph diagnostics for languages with a registered
-   * `lint<Lang>Workspace` analyzer across all open and cached workspace documents.
-   */
-  private async collectWorkspaceLinterDiagnostics(
-    effectiveUri: string,
-    langId: string,
-    text: string,
-    diagnostics: Diagnostic[],
-  ): Promise<void> {
-    if (!hasWorkspaceLinter(langId)) return;
-    try {
-      const workspaceDocs: Record<string, string> = {};
-      if (this.documentManager?.documentTrees) {
-        for (const [docUri, entry] of this.documentManager.documentTrees.entries()) {
-          if (typeof entry?.text === "string") {
-            workspaceDocs[docUri] = entry.text;
-          }
-        }
-      }
-      if (this.documentManager?.documents && typeof this.documentManager.documents.all === "function") {
-        for (const doc of this.documentManager.documents.all()) {
-          workspaceDocs[doc.uri] = doc.getText();
-        }
-      }
-      workspaceDocs[effectiveUri] = text;
-
-      await runWorkspaceLinterForDocument(langId, workspaceDocs, effectiveUri, diagnostics);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.connection?.console?.warn?.(`[validate] Workspace linter failed for ${effectiveUri} (${langId}): ${msg}`);
-    }
+  private async finalizeCrossLanguageValidation(params: FinalizeCrossLanguageParams): Promise<Diagnostic[]> {
+    return finalizeCrossLanguageValidationImpl(this.getSemanticPipelineContext(), params);
   }
 
   private async finalizeCustomDocument(
@@ -2528,12 +1369,13 @@ export class ValidationService {
       prevIndexedTextOverride !== undefined ? prevIndexedTextOverride : this.lastIndexedText.get(textDocument.uri);
     const contentChanged = prevText !== text;
     this.lastIndexedText.set(textDocument.uri, text);
+    const storedTree = this.documentManager.documentTrees.get(textDocument.uri)?.tree;
     await this.finalizeCrossLanguageValidation({
       uri: textDocument.uri,
       effectiveUri: textDocument.uri,
       text,
       langId,
-      tree: this.documentManager.documentTrees.get(textDocument.uri)?.tree,
+      tree: storedTree && "edit" in storedTree ? storedTree : undefined,
       textDocument,
       diagnostics,
       hasSyntaxErrors: diagnostics.some((d) => d.severity === DiagnosticSeverity.Error),

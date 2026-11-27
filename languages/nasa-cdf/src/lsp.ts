@@ -7,6 +7,9 @@
  * hover documentation (`getNasaCdfHover`), and completions (`getNasaCdfCompletions`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getNasaCdfSchemasFromLibraries, lookupNasaCdfSchema } from "./catalog/library-package-adapter.js";
 import { lintNasaCdf } from "./lints/index.js";
 import { parseCdfSkeleton } from "./parser/skt-parser.js";
@@ -89,6 +92,55 @@ const KEYWORD_DOCS: Record<string, string> = {
     "**CDF_TIME_TT2000** (code `33`): 64-bit signed integer nanoseconds since J2000.0 TT (incorporating UTC leap seconds).",
 };
 
+interface NasaCdfCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface NasaCdfCstIndex {
+  byRow: Map<number, NasaCdfCstLine>;
+}
+
+function buildNasaCdfCstIndex(content: string): NasaCdfCstIndex {
+  const byRow = new Map<number, NasaCdfCstLine>();
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("nasa-cdf", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+    }
+  }
+
+  return { byRow };
+}
+
 /**
  * Validates NASA CDF Skeleton Table text and returns LSP diagnostics.
  */
@@ -108,16 +160,23 @@ export function validateNasaCdf(content: string, uri?: string): LspDiagnostic[] 
     ];
   }
 
-  return lintNasaCdf(doc).map((d) => ({
-    range: {
-      start: { line: Math.max(0, d.line - 1), character: Math.max(0, d.column - 1) },
-      end: { line: Math.max(0, d.line - 1), character: Math.max(1, d.column + 16) },
-    },
-    severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-    code: d.code,
-    source: "nasa-cdf",
-    message: d.message,
-  }));
+  const cstIndex = buildNasaCdfCstIndex(content);
+  return lintNasaCdf(doc).map((d) => {
+    const lineIdx = Math.max(0, d.line - 1);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = Math.max(0, d.column - 1);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? d.column + 16);
+    return {
+      range: {
+        start: { line: lineIdx, character: startChar },
+        end: { line: lineIdx, character: endChar },
+      },
+      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+      code: d.code,
+      source: "nasa-cdf",
+      message: d.message,
+    };
+  });
 }
 
 /**
@@ -125,11 +184,16 @@ export function validateNasaCdf(content: string, uri?: string): LspDiagnostic[] 
  */
 export function getNasaCdfDocumentSymbols(content: string, uri?: string): LspDocumentSymbol[] {
   const doc = parseCdfSkeleton(content, uri);
+  const cstIndex = buildNasaCdfCstIndex(content);
   const symbols: LspDocumentSymbol[] = [];
 
   const mkRange = (line: number): LspRange => {
     const l = Math.max(0, line - 1);
-    return { start: { line: l, character: 0 }, end: { line: l, character: 40 } };
+    const entry = cstIndex.byRow.get(l);
+    return {
+      start: { line: l, character: entry?.startCol ?? 0 },
+      end: { line: l, character: entry?.endCol ?? 1 },
+    };
   };
 
   if (doc.hasHeaderSection) {
@@ -195,9 +259,10 @@ export function getNasaCdfDocumentSymbols(content: string, uri?: string): LspDoc
  * Returns Markdown hover documentation for the NASA CDF keyword, data type, or ISTP attribute at `position`.
  */
 export function getNasaCdfHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (!lineText) return null;
+  const cstIndex = buildNasaCdfCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const lineText = entry.colLine;
 
   let start = position.character;
   let end = position.character;

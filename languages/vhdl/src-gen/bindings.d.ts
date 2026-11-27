@@ -1480,11 +1480,11 @@ export declare enum SyntaxKind {
   PrimaryExpr = 114,
   START = 115,
   _START = 115,
-  Identifier = 176,
-  NumberLiteral = 177,
-  CharLiteral = 178,
-  BitStringLiteral = 179,
-  Comment = 180,
+  Identifier = 182,
+  NumberLiteral = 183,
+  CharLiteral = 184,
+  BitStringLiteral = 185,
+  Comment = 186,
   EOF = 1023,
 }
 
@@ -1763,7 +1763,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is GenericDeclNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     default(node: SyntaxNode | null | undefined): SyntaxNode | null;
     defaultList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -1779,7 +1779,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is PortDeclNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     mode(node: SyntaxNode | null | undefined): SyntaxNode | null;
     modeList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -1844,7 +1844,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is SignalDeclNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     init(node: SyntaxNode | null | undefined): SyntaxNode | null;
     initList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -1855,7 +1855,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is VariableDeclNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     init(node: SyntaxNode | null | undefined): SyntaxNode | null;
     initList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -1866,7 +1866,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is ConstantDeclNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];

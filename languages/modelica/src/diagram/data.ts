@@ -248,6 +248,10 @@ import type {
   DiagramEdgeMarker,
   DiagramNode,
   DiagramPort,
+  DiagramPortDirection,
+  DiagramPortFlowKind,
+  DiagramPortSignature,
+  DiagramPortVariable,
   EntityPropertySchema,
   PropertyFieldConfig,
   PropertyGroupConfig,
@@ -420,6 +424,333 @@ function collectAllComponents(
     }
   }
   return Array.from(byName.values());
+}
+
+const PRIMITIVE_MODELICA_TYPES = new Map<string, string>([
+  ["real", "Real"],
+  ["integer", "Integer"],
+  ["boolean", "Boolean"],
+  ["string", "String"],
+]);
+
+function normalizePrimitiveTypeName(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  const leaf = trimmed.split(".").pop()?.trim().toLowerCase() ?? "";
+  return PRIMITIVE_MODELICA_TYPES.get(leaf);
+}
+
+function resolveModelicaBaseType(comp: ModelicaComponentInstance, visited = new Set<ModelicaClassInstance>()): string {
+  const decl = comp.declaration as DataSymbolEntryLike | undefined;
+  const rawSpec =
+    (typeof decl?.metadata?.typeSpecifier === "string" && decl.metadata.typeSpecifier) ||
+    (typeof comp.typeSpecifier === "string" && comp.typeSpecifier) ||
+    (typeof comp.typeName === "string" && comp.typeName) ||
+    comp.classInstance?.compositeName ||
+    comp.classInstance?.name ||
+    "";
+
+  const directPrim = normalizePrimitiveTypeName(rawSpec);
+  if (directPrim) return directPrim;
+
+  // Walk type alias / extends chain on classInstance (e.g. SI.ElectricPotential -> Real)
+  const walkClass = (ci: ModelicaClassInstance | null | undefined, depth: number): string | undefined => {
+    if (!ci || depth > 8 || visited.has(ci)) return undefined;
+    visited.add(ci);
+    const ciPrim = normalizePrimitiveTypeName(ci.compositeName) ?? normalizePrimitiveTypeName(ci.name);
+    if (ciPrim) return ciPrim;
+
+    const entryMeta = (ci["entry"] as DataSymbolEntryLike | undefined)?.metadata as Record<string, unknown> | undefined;
+    if (typeof entryMeta?.["typeSpecifier"] === "string") {
+      const prim = normalizePrimitiveTypeName(entryMeta["typeSpecifier"]);
+      if (prim) return prim;
+    }
+    if (typeof entryMeta?.["baseType"] === "string") {
+      const prim = normalizePrimitiveTypeName(entryMeta["baseType"]);
+      if (prim) return prim;
+    }
+
+    // Check short-class CST text (e.g. `type Voltage = Real(unit="V");`)
+    const cstText = (ci["cstNode"] as { text?: string } | undefined)?.text;
+    if (typeof cstText === "string") {
+      const eqIdx = cstText.indexOf("=");
+      if (eqIdx !== -1) {
+        const rhs = cstText.slice(eqIdx + 1, eqIdx + 80).trim();
+        const m = rhs.match(/^(?:(?:input|output|flow|stream|discrete|parameter|constant)\s+)*([A-Za-z_][\w.]*)/);
+        if (m?.[1]) {
+          const prim = normalizePrimitiveTypeName(m[1]);
+          if (prim) return prim;
+        }
+      }
+    }
+
+    for (const ext of ci.extendsClassInstances ?? []) {
+      const base = ext?.classInstance ?? ext;
+      if (base && typeof base === "object") {
+        const found = walkClass(base, depth + 1);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  };
+
+  const resolved = walkClass(comp.classInstance, 0);
+  if (resolved) return resolved;
+
+  // Fall back to short type name (e.g. enum or custom record type)
+  const leaf = rawSpec.trim().split(".").pop()?.trim();
+  return leaf || "Real";
+}
+
+function extractSubscriptDims(comp: ModelicaComponentInstance): string[] | undefined {
+  const rawSubs =
+    comp["arraySubscripts"] ??
+    ((comp.declaration as DataSymbolEntryLike | undefined)?.metadata as Record<string, unknown> | undefined)?.[
+      "arraySubscripts"
+    ];
+  if (Array.isArray(rawSubs) && rawSubs.length > 0) {
+    const dims = rawSubs
+      .map((s) => (typeof s === "string" ? s.trim() : typeof s === "number" ? String(s) : ""))
+      .filter(Boolean);
+    return dims.length > 0 ? dims : undefined;
+  }
+  return undefined;
+}
+
+function resolveComponentFlowKind(comp: ModelicaComponentInstance): DiagramPortFlowKind {
+  const db = comp["db"] as DataQueryDbLike | undefined;
+  const id = typeof comp["id"] === "number" ? comp["id"] : (comp.declaration as DataSymbolEntryLike | undefined)?.id;
+  if (db?.query && typeof id === "number") {
+    try {
+      const qFlow = db.query("flowPrefix", id);
+      if (qFlow === "flow") return "flow";
+      if (qFlow === "stream") return "stream";
+    } catch {
+      // ignore query errors
+    }
+  }
+  const declMeta = (comp.declaration as DataSymbolEntryLike | undefined)?.metadata as
+    Record<string, unknown> | undefined;
+  const fp = comp["flowPrefix"] ?? declMeta?.["flowPrefix"];
+  if (fp === "flow" || fp === true) return "flow";
+  if (fp === "stream" || declMeta?.["streamPrefix"]) return "stream";
+
+  const cstText = (comp["cstNode"] as { text?: string } | undefined)?.text;
+  if (typeof cstText === "string") {
+    const head = cstText.slice(0, 80);
+    if (/\bflow\b/.test(head)) return "flow";
+    if (/\bstream\b/.test(head)) return "stream";
+  }
+  return "potential";
+}
+
+function resolveComponentDirection(
+  comp: ModelicaComponentInstance,
+  ci?: ModelicaClassInstance | null,
+): DiagramPortDirection {
+  const db = (comp["db"] ?? ci?.db) as DataQueryDbLike | undefined;
+  const id = typeof comp["id"] === "number" ? comp["id"] : (comp.declaration as DataSymbolEntryLike | undefined)?.id;
+  if (db?.query && typeof id === "number") {
+    try {
+      const qCaus = db.query("causality", id);
+      if (qCaus === "input") return "in";
+      if (qCaus === "output") return "out";
+    } catch {
+      // ignore
+    }
+  }
+  const declMeta = (comp.declaration as DataSymbolEntryLike | undefined)?.metadata as
+    Record<string, unknown> | undefined;
+  const ciMeta = (ci?.["entry"] as DataSymbolEntryLike | undefined)?.metadata as Record<string, unknown> | undefined;
+  const rawCaus = String(comp["causality"] ?? declMeta?.["causality"] ?? ciMeta?.["causality"] ?? "").toLowerCase();
+  if (rawCaus === "input" || rawCaus === "in") return "in";
+  if (rawCaus === "output" || rawCaus === "out") return "out";
+
+  const cstText =
+    (comp["cstNode"] as { text?: string } | undefined)?.text ??
+    (ci?.["cstNode"] as { text?: string } | undefined)?.text;
+  if (typeof cstText === "string") {
+    const head = cstText.slice(0, 120);
+    if (/\binput\b/.test(head)) return "in";
+    if (/\boutput\b/.test(head)) return "out";
+  }
+
+  const nameLower = (ci?.name ?? comp.typeSpecifier ?? "").toLowerCase();
+  if (nameLower.endsWith("input")) return "in";
+  if (nameLower.endsWith("output")) return "out";
+  return "inout";
+}
+
+function extractRedeclarePackages(
+  ...sources: Array<ModelicaComponentInstance | ModelicaClassInstance | null | undefined>
+): Record<string, string> | undefined {
+  let result: Record<string, string> | undefined;
+  const re = /\bredeclare\s+(?:replaceable\s+)?package\s+([A-Za-z_]\w*)\s*=\s*([A-Za-z_][\w.]*)/g;
+  for (const src of sources) {
+    if (!src) continue;
+    const directMap = src["redeclarePackages"] as Record<string, unknown> | undefined;
+    if (directMap && typeof directMap === "object") {
+      for (const [k, v] of Object.entries(directMap)) {
+        if (typeof v === "string" && v.trim()) {
+          result ??= {};
+          result[k] = v.trim();
+        }
+      }
+    }
+    const cstText =
+      (src["cstNode"] as { text?: string } | undefined)?.text ??
+      (src as { declaration?: { cstNode?: { text?: string } } }).declaration?.cstNode?.text;
+    if (typeof cstText === "string" && cstText.includes("redeclare")) {
+      re.lastIndex = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(cstText)) !== null) {
+        if (m[1] && m[2]) {
+          result ??= {};
+          result[m[1]] = m[2];
+        }
+      }
+    }
+  }
+  return result;
+}
+
+const connectorSignatureCache = new WeakMap<ModelicaClassInstance, DiagramPortSignature | null>();
+
+/**
+ * Extracts a compact, JSON-serializable Modelica §9.3 structural plug-compatibility
+ * signature from a resolved connector component instance.
+ */
+export function extractModelicaPortSignature(
+  connector: ModelicaComponentInstance,
+  owningComponent?: ModelicaComponentInstance | null,
+): DiagramPortSignature | undefined {
+  const ci = connector.classInstance;
+  const outerDims = extractSubscriptDims(connector);
+  const redeclarePackages = extractRedeclarePackages(owningComponent, connector);
+
+  if (!ci) {
+    // Direct primitive causal port without a resolved classInstance (e.g. `input Real u;`)
+    const prim = normalizePrimitiveTypeName(connector.typeSpecifier ?? connector.typeName);
+    if (!prim) return undefined;
+    const dir = resolveComponentDirection(connector, null);
+    return {
+      ...(outerDims ? { dims: outerDims } : {}),
+      variables: [
+        {
+          name: "value",
+          type: prim,
+          flowKind: "signal",
+          direction: dir,
+          ...(outerDims ? { dims: outerDims } : {}),
+        },
+      ],
+    };
+  }
+
+  let cached = connectorSignatureCache.get(ci);
+  if (cached === undefined) {
+    const ciEntry = ci["entry"] as DataSymbolEntryLike | undefined;
+    const classPrefixes = ciEntry?.metadata?.classPrefixes;
+    const isExpandable =
+      ci.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR ||
+      Boolean(classPrefixes?.includes("expandable")) ||
+      Boolean(ci["isExpandable"]);
+
+    if (isExpandable) {
+      cached = { isExpandable: true, variables: [] };
+    } else {
+      const variables: DiagramPortVariable[] = [];
+      const flattenMembers = (
+        targetCi: ModelicaClassInstance,
+        prefix: string,
+        visited: Set<ModelicaClassInstance>,
+        depth: number,
+      ): void => {
+        if (depth > 4 || visited.has(targetCi)) return;
+        visited.add(targetCi);
+        for (const elem of collectAllComponents(targetCi)) {
+          if (!elem.name) continue;
+          const elemDecl = elem.declaration as DataSymbolEntryLike | undefined;
+          const elemMeta = elemDecl?.metadata as Record<string, unknown> | undefined;
+          const variability = String(elem["variability"] ?? elemMeta?.["variability"] ?? "").toLowerCase();
+          if (variability === ModelicaVariability.PARAMETER || variability === ModelicaVariability.CONSTANT) {
+            continue;
+          }
+          const isProtected = Boolean(
+            elem["isProtected"] ||
+            elemDecl?.isProtected ||
+            elemMeta?.["isProtected"] ||
+            elem["visibility"] === "protected",
+          );
+          if (isProtected) continue;
+
+          const elemCi = elem.classInstance;
+          const elemIsConnector =
+            elemCi &&
+            (elemCi.classKind === ModelicaClassKind.CONNECTOR ||
+              elemCi.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR) &&
+            collectAllComponents(elemCi).length > 0;
+          if (elemIsConnector) {
+            flattenMembers(elemCi, `${prefix}${elem.name}.`, visited, depth + 1);
+            continue;
+          }
+
+          const flowKind = resolveComponentFlowKind(elem);
+          const direction = resolveComponentDirection(elem, elemCi);
+          const baseType = resolveModelicaBaseType(elem);
+          const dims = extractSubscriptDims(elem);
+          variables.push({
+            name: `${prefix}${elem.name}`,
+            type: baseType,
+            flowKind,
+            direction,
+            ...(dims ? { dims } : {}),
+          });
+        }
+      };
+
+      flattenMembers(ci, "", new Set(), 0);
+
+      if (variables.length > 0) {
+        cached = { variables };
+      } else {
+        // Short-class primitive connector (e.g. `connector RealInput = input Real;`)
+        const prim = resolveModelicaBaseType({
+          name: ci.name ?? "",
+          classInstance: ci,
+          typeSpecifier: ci.compositeName ?? ci.name,
+        });
+        const normPrim = normalizePrimitiveTypeName(prim);
+        if (normPrim) {
+          const dir = resolveComponentDirection(connector, ci);
+          cached = {
+            variables: [
+              {
+                name: "value",
+                type: normPrim,
+                flowKind: "signal",
+                direction: dir,
+              },
+            ],
+          };
+        } else {
+          cached = null;
+        }
+      }
+    }
+    connectorSignatureCache.set(ci, cached);
+  }
+
+  if (!cached) return undefined;
+  if ((outerDims && !cached.dims) || redeclarePackages) {
+    return {
+      ...cached,
+      ...(outerDims && !cached.dims ? { dims: outerDims } : {}),
+      ...(redeclarePackages ? { redeclarePackages } : {}),
+    };
+  }
+  return cached;
 }
 
 function collectAllConnectEquations(
@@ -1069,10 +1400,12 @@ export async function buildDiagramData(
             : [connectorMarkup];
 
         const portConnectorType = connector.classInstance?.compositeName || connector.classInstance?.name || undefined;
+        const portSignature = extractModelicaPortSignature(connector, component);
         ports.push({
           id: connector.name ?? "",
           group: "absolute",
           ...(portConnectorType ? { connectorType: portConnectorType } : {}),
+          ...(portSignature ? { portSignature } : {}),
           args: { x: desiredCenterX, y: desiredCenterY, angle: portAngle },
           markup: {
             tagName: "g",
@@ -1155,6 +1488,23 @@ export async function buildDiagramData(
       properties.iconSvg = directIconSvg;
     }
 
+    const compClassPrefixesForNode = compClassEntry?.metadata?.classPrefixes;
+    const isTopLevelConnectorNode = Boolean(
+      componentClassInstance &&
+      (componentClassInstance.classKind === ModelicaClassKind.CONNECTOR ||
+        componentClassInstance.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR ||
+        compClassPrefixesForNode?.includes("connector")),
+    );
+    const topLevelPortSignature = isTopLevelConnectorNode ? extractModelicaPortSignature(component) : undefined;
+    const insidePortSignature: DiagramPortSignature | undefined = topLevelPortSignature
+      ? { ...topLevelPortSignature, isInsideConnector: true }
+      : undefined;
+    const nodeDataPayload: Record<string, unknown> = {
+      ...(isIconMode && !ownComponentNames.has(component.name) ? { isInherited: true, readOnly: true } : {}),
+      ...(isTopLevelConnectorNode ? { isInsideConnector: true, connectorType: resolvedClassName } : {}),
+      ...(insidePortSignature ? { portSignature: insidePortSignature } : {}),
+    };
+
     nodes.push({
       id: component.name,
       x: relTranslateX * Math.cos(a) - relTranslateY * Math.sin(a) - absWidth / 2 + componentTransform.originX,
@@ -1178,7 +1528,7 @@ export async function buildDiagramData(
         groups: { absolute: { position: "absolute", zIndex: 100 } },
       },
       properties,
-      ...(isIconMode && !ownComponentNames.has(component.name) ? { data: { isInherited: true, readOnly: true } } : {}),
+      ...(Object.keys(nodeDataPayload).length > 0 ? { data: nodeDataPayload } : {}),
     });
   }
 

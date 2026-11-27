@@ -10,14 +10,8 @@ describe("Ansatz 3D Canvas Fullscreen & Visible-Area Centering", () => {
     import.meta.dirname,
     "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
   );
-  const cadViewerPath = path.resolve(
-    import.meta.dirname,
-    "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx",
-  );
-  const timelinePath = path.resolve(
-    import.meta.dirname,
-    "../../../packages/editor/src/workbench/cad-viewer/AnimationTimeline.tsx",
-  );
+  const cadViewerPath = path.resolve(import.meta.dirname, "../../../packages/cad-viewer/src/CadViewer.tsx");
+  const timelinePath = path.resolve(import.meta.dirname, "../../../packages/cad-viewer/src/AnimationTimeline.tsx");
 
   it("renders the 3D CAD Viewer pane fullscreen without outer floating-layout padding and passes fitInsets", () => {
     const src = fs.readFileSync(visualizerPanePath, "utf-8");

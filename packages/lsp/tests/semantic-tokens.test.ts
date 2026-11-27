@@ -190,7 +190,9 @@ end SimplePendulum;`;
 
     const fakeWasmTree = {
       rootNode: { getPtr: () => 1 },
-      getSemanticTokens: () => new Uint32Array([0, 0, 2, 3, 1]),
+      facade: {
+        getSemanticTokens: () => new Uint32Array([0, 2, 3, 1]),
+      },
     };
 
     registerSemanticTokensProvider(

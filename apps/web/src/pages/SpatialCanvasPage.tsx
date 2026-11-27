@@ -19,11 +19,8 @@ import {
   type SurfacePresentationMode,
   type TileLodTier,
 } from "@modelscript/canvas";
-import {
-  getRotundaScenarioById,
-  ROTUNDA_SHOWCASE_SCENARIOS,
-} from "@modelscript/editor/workbench/vr-rotunda/showcase-catalog.js";
-import { buildRotundaCanvasDocument } from "@modelscript/editor/workbench/vr-rotunda/types.js";
+import { getRotundaScenarioById, ROTUNDA_SHOWCASE_SCENARIOS } from "@modelscript/rotunda/showcase-catalog.js";
+import { buildRotundaCanvasDocument } from "@modelscript/rotunda/types.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { renderLiveWebTileContent } from "../components/canvas/LivePolyglotTileRenderer";

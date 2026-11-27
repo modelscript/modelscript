@@ -1817,25 +1817,25 @@ export declare enum SyntaxKind {
   QualifiedName = 478,
   START = 479,
   _START = 479,
-  MetaClassificationTestOperator = 667,
-  CastOperator = 668,
-  MetaCastOperator = 669,
-  LiteralInfinity = 704,
-  DECIMALVALUE = 708,
-  DECIMAL_VALUE = 708,
-  EXPVALUE = 709,
-  EXP_VALUE = 709,
-  ID = 710,
-  UNRESTRICTEDNAME = 711,
-  UNRESTRICTED_NAME = 711,
-  STRINGVALUE = 712,
-  STRING_VALUE = 712,
-  REGULARCOMMENT = 713,
-  REGULAR_COMMENT = 713,
-  MLNOTE = 714,
-  ML_NOTE = 714,
-  SLNOTE = 715,
-  SL_NOTE = 715,
+  MetaClassificationTestOperator = 669,
+  CastOperator = 670,
+  MetaCastOperator = 671,
+  LiteralInfinity = 706,
+  DECIMALVALUE = 710,
+  DECIMAL_VALUE = 710,
+  EXPVALUE = 711,
+  EXP_VALUE = 711,
+  ID = 712,
+  UNRESTRICTEDNAME = 713,
+  UNRESTRICTED_NAME = 713,
+  STRINGVALUE = 714,
+  STRING_VALUE = 714,
+  REGULARCOMMENT = 715,
+  REGULAR_COMMENT = 715,
+  MLNOTE = 716,
+  ML_NOTE = 716,
+  SLNOTE = 717,
+  SL_NOTE = 717,
   EOF = 1023,
 }
 
@@ -3091,7 +3091,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is MetadataTypingNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const MetadataBodyUsageMember: {
@@ -3304,7 +3304,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is OwnedFeatureTypingNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     ownedRelatedElement(node: SyntaxNode | null | undefined): SyntaxNode | null;
     ownedRelatedElementList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -6072,7 +6072,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ReferenceTypingNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const RelationalExpression: {
@@ -6313,7 +6313,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is InvocationExpressionNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     argument(node: SyntaxNode | null | undefined): SyntaxNode | null;
     argumentList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -6324,7 +6324,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ConstructorExpressionNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     result(node: SyntaxNode | null | undefined): SyntaxNode | null;
     resultList(node: SyntaxNode | null | undefined): SyntaxNode[];

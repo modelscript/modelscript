@@ -13,6 +13,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { resolveCstNameSpan } from "../services/workspace-manager.js";
 import { findCstNodesByType, type CstNodeLike, type CstTreeLike } from "../utils/ast-utils.js";
+import type { Tree } from "../utils/cst-facade.js";
 import {
   extractLeafSymbolName,
   extractWordAtOffset,
@@ -29,6 +30,7 @@ import {
   type NumericSpan,
 } from "../utils/lexical-utils.js";
 import { getAlmCodeActions } from "./almHover.js";
+import { getWasmCstReferences } from "./wasm-cst-intelligence.js";
 
 function extractSysmlNodeName(node: CstNodeLike | null | undefined): string | undefined {
   const identNode = findCstNodesByType(node, "identification")[0] ?? findCstNodesByType(node, "identifier")[0];
@@ -839,7 +841,20 @@ export function registerWorkspaceFeaturesProvider(
     if (!unifiedIndex) {
       unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
     }
-    if (!unifiedIndex?.symbols) return [];
+    const cstReferencesFallback = () => {
+      try {
+        const cached = documentTrees.get(params.textDocument.uri);
+        const tree = cached?.tree;
+        if (tree && "rootNode" in tree && tree.rootNode) {
+          return getWasmCstReferences(tree as unknown as Tree, params.textDocument.uri, params.position);
+        }
+      } catch {
+        // CST references fallback unavailable
+      }
+      return [];
+    };
+
+    if (!unifiedIndex?.symbols) return cstReferencesFallback();
     let adjOffset = offset;
     if (
       adjOffset > 0 &&
@@ -850,7 +865,7 @@ export function registerWorkspaceFeaturesProvider(
     }
     const { token: word, start: ws, end: we } = extractWordAtOffset(text, adjOffset);
     if (ws >= we || offset < ws || offset > we) {
-      return [];
+      return cstReferencesFallback();
     }
 
     let targetEntry: SymbolEntryLike | null = null;
@@ -867,7 +882,7 @@ export function registerWorkspaceFeaturesProvider(
       }
     }
 
-    if (!targetEntry) return [];
+    if (!targetEntry) return cstReferencesFallback();
 
     if (targetEntry.kind === "Class" && word !== targetEntry.name) {
       const child = Array.from(unifiedIndex.symbols.values() as Iterable<SymbolEntryLike>).find(
@@ -949,7 +964,7 @@ export function registerWorkspaceFeaturesProvider(
       }
     }
 
-    return results;
+    return results.length > 0 ? results : cstReferencesFallback();
   });
 
   connection.onPrepareRename?.((params) => {

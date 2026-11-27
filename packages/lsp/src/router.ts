@@ -25,7 +25,7 @@ import { registerInlayHintProvider } from "./providers/inlayHintProvider.js";
 import { registerSemanticTokensProvider } from "./providers/semanticTokensProvider.js";
 import { registerSignatureHelpProvider } from "./providers/signatureHelpProvider.js";
 import { registerWorkspaceFeaturesProvider } from "./providers/workspaceFeaturesProvider.js";
-import { globalLanguageRegistry } from "./registry/index.js";
+import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
 
 /**
  * Registers all core LSP language feature providers (semantic tokens, completion,
@@ -58,7 +58,12 @@ export function registerAllLspProviders(context: LspContext): void {
     (langOrUri) => parserService.ensureLanguageParserLoaded(langOrUri),
   );
 
-  registerCompletionProvider(connection, documents, validationService.documentLSPBridges);
+  registerCompletionProvider(
+    connection,
+    documents,
+    validationService.documentLSPBridges,
+    documentManager.documentTrees,
+  );
 
   registerHoverProvider(connection, documents, validationService, context);
 

@@ -20,6 +20,7 @@ import {
 } from "@modelscript/diagram/climate-raster";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -159,10 +160,14 @@ export class ClimateRasterPanel extends BaseWebviewPanel {
     svgMarkup: string,
     diagnostics: ReturnType<typeof lintClimateRaster>,
   ): string {
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Climate & Forecast Raster Visualizer</title>
   <style>
@@ -286,7 +291,7 @@ export class ClimateRasterPanel extends BaseWebviewPanel {
     <div class="params-card">
       <div style="display: flex; flex-direction: column;">
         <label for="colormapSelect">Scientific Colormap</label>
-        <select id="colormapSelect" onchange="onColormapChange(this.value)">
+        <select id="colormapSelect">
           <option value="coolwarm" ${this._colormap === "coolwarm" ? "selected" : ""}>Coolwarm (Diverging)</option>
           <option value="turbo" ${this._colormap === "turbo" ? "selected" : ""}>Turbo (Rainbow Multi-hue)</option>
           <option value="viridis" ${this._colormap === "viridis" ? "selected" : ""}>Viridis (Perceptually Uniform)</option>
@@ -296,7 +301,7 @@ export class ClimateRasterPanel extends BaseWebviewPanel {
       </div>
 
       <div class="checkbox-row">
-        <input type="checkbox" id="graticuleCheck" ${this._showGraticule ? "checked" : ""} onchange="onGraticuleToggle(this.checked)">
+        <input type="checkbox" id="graticuleCheck" ${this._showGraticule ? "checked" : ""}>
         <label for="graticuleCheck" style="margin: 0; cursor: pointer;">Show Coordinate Graticule & Equator</label>
       </div>
 
@@ -335,7 +340,7 @@ export class ClimateRasterPanel extends BaseWebviewPanel {
                 .map(
                   (d) => `
                 <div class="diag-item ${d.severity === "error" ? "diag-error" : d.severity === "warning" ? "diag-warn" : "diag-info"}">
-                  <strong>[${d.code}]</strong> ${escapeXml(d.message)}
+                  <strong>[${escapeXml(d.code)}]</strong> ${escapeXml(d.message)}
                 </div>`,
                 )
                 .join("")}
@@ -347,16 +352,16 @@ export class ClimateRasterPanel extends BaseWebviewPanel {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    function onColormapChange(val) {
-      vscode.postMessage({ command: 'setColormap', colormap: val });
-    }
+    document.getElementById('colormapSelect').addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'setColormap', colormap: e.target.value });
+    });
 
-    function onGraticuleToggle(val) {
-      vscode.postMessage({ command: 'toggleGraticule', showGraticule: val });
-    }
+    document.getElementById('graticuleCheck').addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'toggleGraticule', showGraticule: e.target.checked });
+    });
   </script>
 </body>
 </html>`;

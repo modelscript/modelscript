@@ -463,7 +463,7 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
     name: "Ansatz AI Assistant",
     description:
       "Enable hybrid AI copilot in Ansatz (local WebGPU/Prompt API, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
-    defaultValue: false,
+    defaultValue: true,
     category: "developer",
     maturity: "beta",
     allowedRoles: ["admin", "beta_tester"],

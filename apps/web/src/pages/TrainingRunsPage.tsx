@@ -84,10 +84,10 @@ function fmtPct(v: number | null | undefined, digits = 1): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PageContainer = styled.div`
-  max-width: 1260px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 24px 20px 64px;
-  color: var(--ms-text-1, #e6edf3);
+  padding: 20px 20px 56px;
+  color: var(--color-text-primary);
 `;
 
 const HeaderRow = styled.div`
@@ -101,16 +101,16 @@ const HeaderRow = styled.div`
 
 const PageTitle = styled.h1`
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--ms-text-heading, var(--ms-text-1, #f0f6fc));
+  color: var(--color-text-heading);
 `;
 
 const Subtitle = styled.p`
   margin: 4px 0 0;
   font-size: 13px;
-  color: var(--ms-text-2, #8b949e);
+  color: var(--color-text-muted);
 `;
 
 const ButtonRow = styled.div`
@@ -126,40 +126,43 @@ const ActionButton = styled.button<{ $variant?: "primary" | "secondary" | "succe
   gap: 6px;
   padding: 7px 13px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid
     ${(p) =>
       p.$variant === "primary"
-        ? "var(--ms-brand, #38bdf8)"
+        ? "var(--ms-brand)"
         : p.$variant === "success"
-          ? "rgba(52, 211, 153, 0.55)"
+          ? "var(--status-verified-border)"
           : p.$variant === "warn"
-            ? "rgba(251, 191, 36, 0.55)"
+            ? "var(--status-warning-border)"
             : p.$variant === "danger"
-              ? "rgba(248, 113, 113, 0.55)"
-              : "var(--ms-border, #30363d)"};
+              ? "var(--status-danger-border)"
+              : "var(--color-border-default)"};
   background: ${(p) =>
     p.$variant === "primary"
-      ? "linear-gradient(135deg, #0284c7, #6366f1)"
+      ? "var(--ms-brand)"
       : p.$variant === "success"
-        ? "rgba(16, 185, 129, 0.16)"
+        ? "var(--status-verified-bg)"
         : p.$variant === "warn"
-          ? "rgba(245, 158, 11, 0.16)"
+          ? "var(--status-warning-bg)"
           : p.$variant === "danger"
-            ? "rgba(239, 68, 68, 0.16)"
-            : "var(--ms-bg-elv, #161b22)"};
+            ? "var(--status-danger-bg)"
+            : "var(--color-bg-surface)"};
   color: ${(p) =>
     p.$variant === "primary"
-      ? "#ffffff"
+      ? "var(--ms-brand-contrast, #ffffff)"
       : p.$variant === "success"
-        ? "#34d399"
+        ? "var(--status-verified-fg)"
         : p.$variant === "warn"
-          ? "#fbbf24"
+          ? "var(--status-warning-fg)"
           : p.$variant === "danger"
-            ? "#f87171"
-            : "var(--ms-text-1, #e6edf3)"};
+            ? "var(--status-danger-fg)"
+            : "var(--color-text-primary)"};
+  &:hover:not(:disabled) {
+    opacity: ${(p) => (p.$variant === "primary" ? 0.92 : 1)};
+  }
   &:disabled {
     opacity: 0.45;
     cursor: not-allowed;
@@ -172,22 +175,25 @@ const NavLinkButton = styled(Link)`
   gap: 6px;
   padding: 7px 12px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
-  color: var(--ms-text-1, #e6edf3);
-  border: 1px solid var(--ms-border, #30363d);
-  background: var(--ms-bg-elv, #161b22);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-surface);
   &:hover {
-    border-color: var(--ms-brand, #38bdf8);
+    text-decoration: none;
+    border-color: var(--ms-brand);
+    background: var(--surface-row-hover);
   }
 `;
 
 const SectionCard = styled.section`
   padding: 16px 18px;
   border-radius: 12px;
-  border: 1px solid var(--ms-border, #30363d);
-  background: var(--ms-bg-elv, #161b22);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   margin-bottom: 16px;
 `;
 

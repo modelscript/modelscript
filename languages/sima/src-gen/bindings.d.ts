@@ -1628,7 +1628,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is LineCardNode;
     id(node: SyntaxNode | null | undefined): SyntaxNode | null;
     idList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     fairlead(node: SyntaxNode | null | undefined): SyntaxNode | null;
     fairleadList(node: SyntaxNode | null | undefined): SyntaxNode[];

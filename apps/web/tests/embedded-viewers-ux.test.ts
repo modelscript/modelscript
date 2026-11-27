@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
+import { extractCadComponents, parseSourceCadVariables } from "@modelscript/cad-viewer/parse-cad-annotations.js";
 import { renderKinematicDiagramSvg } from "@modelscript/diagram/kinematic-diagram-builder";
 import { renderOlgaSchematicSvg } from "@modelscript/diagram/olga-diagram-builder";
 import { renderPscadSvg } from "@modelscript/diagram/pscad-diagram-builder";
@@ -15,10 +16,6 @@ import {
   parseSimulinkTextToSystem,
   renderSimulinkSvg,
 } from "@modelscript/diagram/simulink-diagram-builder";
-import {
-  extractCadComponents,
-  parseSourceCadVariables,
-} from "../../../packages/editor/src/workbench/cad-viewer/parse-cad-annotations.js";
 import { applyLspTextEditsToString } from "../../../packages/editor/src/workbench/util/text-edits.js";
 import { resolveThumbnailUrls } from "../src/components/artifacts/card/utils.js";
 import { adaptSvgMarkupForTheme } from "../src/components/artifacts/svg-theme.js";
@@ -697,7 +694,7 @@ Model {
         "CadStepViewer must support localClippingEnabled section planes and 3D surface point coordinate probing",
       );
 
-      const ansatzCadDir = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer");
+      const ansatzCadDir = path.resolve(import.meta.dirname, "../../../packages/cad-viewer/src");
       const ansatzCadSrc = ["CadViewer.tsx", "CadCommandIsland.tsx"]
         .map((f) => fs.readFileSync(path.join(ansatzCadDir, f), "utf8"))
         .join("\n");
@@ -836,7 +833,7 @@ end DoublePendulum3D;
 
     it("wires procedural meshes, quaternion transforms, and 3D preview tabs across CadViewer, Ansatz, and Post-Artifact Viewers", () => {
       const cadViewerSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/cad-viewer/src/CadViewer.tsx"),
         "utf8",
       );
       assert.ok(
@@ -847,7 +844,7 @@ end DoublePendulum3D;
       );
 
       const instancedSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/InstancedCadAssembly.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/cad-viewer/src/InstancedCadAssembly.tsx"),
         "utf8",
       );
       assert.ok(

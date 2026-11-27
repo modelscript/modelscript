@@ -7,6 +7,9 @@
  * (`getCplexLpDocumentSymbols`), and hover information (`getCplexLpHover`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintCplexLp } from "./lints/index.js";
 import { parseCplexLp } from "./parser/lp-parser.js";
 
@@ -82,19 +85,55 @@ const KEYWORD_DOCS: Record<string, string> = {
   end: "**End** — Terminates the CPLEX LP / LINDO model specification.",
 };
 
+interface CplexLpCstLine {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  tokens: CstNodeLike[];
+}
+
+function buildCplexLpCstLineMap(content: string, cstTree?: { rootNode?: unknown } | null): Map<number, CplexLpCstLine> {
+  const byRow = new Map<number, CplexLpCstLine>();
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("cplex-lp", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+  if (!rootNode) return byRow;
+
+  for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+    const lineText = cstLineText(content, tokens);
+    const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const startCol = first?.startPosition?.column ?? 0;
+    const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+    byRow.set(row, { row, text: lineText, startCol, endCol, tokens });
+  }
+  return byRow;
+}
+
 /**
  * Validates a CPLEX LP / LINDO document and returns LSP diagnostics.
  */
-export function validateCplexLp(content: string, _uri = "model.lp"): LspDiagnostic[] {
+export function validateCplexLp(
+  content: string,
+  _uri = "model.lp",
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   const model = parseCplexLp(content);
   const diags = lintCplexLp(model);
-  const lines = content.split(/\r?\n/);
+  const lineMap = buildCplexLpCstLineMap(content, cstTree);
 
   return diags.map((d) => {
     const lineIdx = d.location ? Math.max(0, d.location.line - 1) : 0;
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = d.location ? Math.max(0, d.location.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const lineEntry = lineMap.get(lineIdx);
+    const startChar = d.location ? Math.max(0, d.location.column - 1) : (lineEntry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, lineEntry?.endCol ?? startChar + 1);
 
     return {
       range: {
@@ -112,16 +151,19 @@ export function validateCplexLp(content: string, _uri = "model.lp"): LspDiagnost
 /**
  * Extracts hierarchical LSP document symbols (objective, constraints, variables, SOS).
  */
-export function getCplexLpDocumentSymbols(content: string): LspDocumentSymbol[] {
+export function getCplexLpDocumentSymbols(
+  content: string,
+  cstTree?: { rootNode?: unknown } | null,
+): LspDocumentSymbol[] {
   const model = parseCplexLp(content);
-  const lines = content.split(/\r?\n/);
+  const lineMap = buildCplexLpCstLineMap(content, cstTree);
 
   const makeLineRange = (line1Based: number | undefined): LspRange => {
     const idx = line1Based ? Math.max(0, line1Based - 1) : 0;
-    const len = (lines[idx] ?? "").length;
+    const endCol = lineMap.get(idx)?.endCol ?? 1;
     return {
       start: { line: idx, character: 0 },
-      end: { line: idx, character: Math.max(1, len) },
+      end: { line: idx, character: Math.max(1, endCol) },
     };
   };
 
@@ -167,20 +209,31 @@ export function getCplexLpDocumentSymbols(content: string): LspDocumentSymbol[] 
 /**
  * Provides Markdown hover documentation for keywords, variables, and constraints.
  */
-export function getCplexLpHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (lineText === undefined) return null;
+export function getCplexLpHover(
+  content: string,
+  position: LspPosition,
+  cstTree?: { rootNode?: unknown } | null,
+): LspHover | null {
+  const lineMap = buildCplexLpCstLineMap(content, cstTree);
+  const lineEntry = lineMap.get(position.line);
+  if (!lineEntry) return null;
 
-  // Find word around position.character
+  let word = "";
   let start = position.character;
   let end = position.character;
-  const isWordChar = (ch: string | undefined): boolean => Boolean(ch && /[A-Za-z0-9_.#$@%&~-]/.test(ch));
-
-  while (start > 0 && isWordChar(lineText[start - 1])) start--;
-  while (end < lineText.length && isWordChar(lineText[end])) end++;
-
-  const word = lineText.slice(start, end);
+  for (const tok of lineEntry.tokens) {
+    const t = tok as CstNodeLike & { endPosition?: { column: number } };
+    const tokText = (t.text ?? "").trim();
+    if (!tokText) continue;
+    const tStart = t.startPosition?.column ?? 0;
+    const tEnd = t.endPosition?.column ?? tStart + tokText.length;
+    if (position.character >= tStart && position.character <= tEnd) {
+      word = tokText;
+      start = tStart;
+      end = tEnd;
+      break;
+    }
+  }
   if (!word) return null;
 
   const range: LspRange = {

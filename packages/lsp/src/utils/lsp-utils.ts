@@ -79,8 +79,7 @@ export function symbolEntryToLocation(
     uri.startsWith("file://")
   ) {
     try {
-      const globalReq = (globalThis as { require?: unknown }).require;
-      const req = nodeRequire ?? (typeof globalReq === "function" ? (globalReq as NodeRequireFn) : null);
+      const req = nodeRequire;
       if (typeof req === "function") {
         const fs = req("node:fs") as NodeFsLike | null;
         const { fileURLToPath } = req("node:url") as NodeUrlLike;

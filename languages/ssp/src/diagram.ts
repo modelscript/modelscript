@@ -9,14 +9,14 @@
  */
 
 import {
-  appendChildSplice,
-  removeElementSplice,
-  setAttributeSplice,
-  type Splice,
-  type XmlAttribute,
-  type XmlElement,
-} from "@modelscript/dsl/xml";
-import { parseSspXmlDocument } from "./parser/wasm-loader.js";
+  CstDocumentSession,
+  CstTransaction,
+  CstXmlAdapter,
+  encodeXmlAttrValue,
+  type CstIncrementalParser,
+} from "@modelscript/dsl/unparser";
+import type { SyntaxNode } from "@modelscript/dsl/utils";
+import { getSspWasmParser } from "./parser/wasm-loader.js";
 import { parseSsd } from "./ssd-parser.js";
 import type { SspComponent, SspConnector, SspConnectorType, SspSystem } from "./types.js";
 
@@ -29,47 +29,14 @@ function sspMatchName(actual: string, expected: string): boolean {
   return actual === expected || sspLocalName(actual) === sspLocalName(expected);
 }
 
-function findXmlElement(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement | null {
-  if (!root) return null;
-  if (predicate(root)) return root;
-  for (const child of root.children) {
-    const found = findXmlElement(child, predicate);
-    if (found) return found;
+export function createSspCstSession(xml: string, uri = "file:///SystemStructure.ssd"): CstDocumentSession {
+  let parser: CstIncrementalParser | null = null;
+  try {
+    parser = getSspWasmParser() as unknown as CstIncrementalParser;
+  } catch {
+    parser = null;
   }
-  return null;
-}
-
-function findAllXmlElements(root: XmlElement | null, predicate: (el: XmlElement) => boolean): XmlElement[] {
-  const result: XmlElement[] = [];
-  if (!root) return result;
-  if (predicate(root)) result.push(root);
-  for (const child of root.children) {
-    result.push(...findAllXmlElements(child, predicate));
-  }
-  return result;
-}
-
-function computeLineStarts(text: string): number[] {
-  const starts = [0];
-  for (let i = 0; i < text.length; i++) {
-    if (text[i] === "\n") starts.push(i + 1);
-  }
-  return starts;
-}
-
-function offsetToPosition(offset: number, lineStarts: number[]): { line: number; character: number } {
-  let low = 0;
-  let high = lineStarts.length - 1;
-  while (low <= high) {
-    const mid = (low + high) >> 1;
-    if (lineStarts[mid]! <= offset) {
-      low = mid + 1;
-    } else {
-      high = mid - 1;
-    }
-  }
-  const line = high;
-  return { line, character: offset - lineStarts[line]! };
+  return new CstDocumentSession({ uri, text: xml, parser, xmlFallback: true });
 }
 
 export interface SspTextEdit {
@@ -174,6 +141,11 @@ export function buildSspDiagramData(input: SspSystem | string) {
       portItems.push({
         id: conn.name,
         group: "in",
+        direction: "in",
+        connectorType: conn.type,
+        portSignature: {
+          variables: [{ name: "value", type: conn.type, flowKind: "signal", direction: "in" }],
+        },
         args: { x: 0, y: py, angle: 180 },
         attrs: {
           text: { text: labelText, fill: "#334155", fontSize: 10 },
@@ -194,6 +166,11 @@ export function buildSspDiagramData(input: SspSystem | string) {
       portItems.push({
         id: conn.name,
         group: "out",
+        direction: "out",
+        connectorType: conn.type,
+        portSignature: {
+          variables: [{ name: "value", type: conn.type, flowKind: "signal", direction: "out" }],
+        },
         args: { x: width, y: py, angle: 0 },
         attrs: {
           text: { text: labelText, fill: "#334155", fontSize: 10 },
@@ -383,6 +360,19 @@ export function buildSspDiagramData(input: SspSystem | string) {
           {
             id: conn.name,
             group: portSide,
+            direction: conn.kind === "input" ? "in" : conn.kind === "output" ? "out" : "inout",
+            connectorType: conn.type,
+            portSignature: {
+              isInsideConnector: true,
+              variables: [
+                {
+                  name: "value",
+                  type: conn.type,
+                  flowKind: "signal",
+                  direction: conn.kind === "input" ? "in" : conn.kind === "output" ? "out" : "inout",
+                },
+              ],
+            },
             args: { x: isInput ? width : 0, y: height / 2, angle: isInput ? 0 : 180 },
             markup: {
               tagName: "circle",
@@ -559,69 +549,67 @@ export interface SspDiagramEditAction extends SspDiagramEditItem {
 }
 
 /**
- * Apply a batch of interactive diagram edit actions to a `SystemStructure.ssd` XML document.
+ * CST-backed interactive diagram edit planner operating directly on a live {@link CstDocumentSession}.
+ * Uses {@link CstTransaction} + {@link CstXmlAdapter} for surgical, error-tolerant SSP `.ssd` edits.
  */
-export function applySspDiagramEdits(
-  xml: string,
-  actions: SspDiagramEditAction[],
+export function applySspDiagramEditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<SspDiagramEditAction>,
   parsedSystem?: SspSystem,
 ): SspTextEdit[] {
-  const system = parsedSystem ?? parseSsd(xml);
-  const xmlDoc = parseSspXmlDocument(xml);
-  const lineStarts = computeLineStarts(xml);
-  const edits: SspTextEdit[] = [];
-  const pendingAppends = new Map<XmlElement, string[]>();
+  const xml = session.text;
+  const root = session.rootNode;
+  let system: SspSystem | null = parsedSystem ?? null;
+  if (!system) {
+    try {
+      system = parseSsd(xml);
+    } catch {
+      system = null;
+    }
+  }
 
-  const spliceToEdit = (splice: Splice): SspTextEdit => ({
-    range: {
-      start: offsetToPosition(splice.start, lineStarts),
-      end: offsetToPosition(splice.end, lineStarts),
-    },
-    newText: splice.text,
-  });
+  const tx = new CstTransaction(session);
 
-  const queueAppend = (parent: XmlElement | null, snippet: string) => {
+  const getAttr = (el: SyntaxNode, name: string): string | undefined =>
+    CstXmlAdapter.getAttribute(el, name, xml)?.value;
+
+  const findFirstByLocalName = (localName: string): SyntaxNode | null =>
+    root ? (CstXmlAdapter.findElements(root, xml, (_n, tag) => sspMatchName(tag, localName))[0] ?? null) : null;
+
+  const findAllByLocalName = (localName: string): SyntaxNode[] =>
+    root ? CstXmlAdapter.findElements(root, xml, (_n, tag) => sspMatchName(tag, localName)) : [];
+
+  const appendToParent = (parent: SyntaxNode | null, snippet: string): void => {
     const trimmed = snippet.trim();
     if (!trimmed) return;
     if (parent) {
-      let list = pendingAppends.get(parent);
-      if (!list) {
-        list = [];
-        pendingAppends.set(parent, list);
-      }
-      list.push(trimmed);
+      CstXmlAdapter.appendChild(tx, parent, trimmed);
     } else {
-      const eof = offsetToPosition(xml.length, lineStarts);
-      edits.push({
-        range: { start: eof, end: eof },
-        newText: `${xml.endsWith("\n") ? "" : "\n"}${trimmed}\n`,
-      });
+      tx.insertAt(xml.length, `${xml.endsWith("\n") ? "" : "\n"}${trimmed}\n`);
     }
   };
-
-  const getAttr = (el: XmlElement, name: string): string | undefined =>
-    el.attributes.find((a) => a.name === name)?.value;
 
   const parseEndpointRef = (ref: string): { element: string; connector: string } => {
     const dotIdx = ref.indexOf(".");
     if (dotIdx !== -1) {
       return { element: ref.slice(0, dotIdx), connector: ref.slice(dotIdx + 1) };
     }
-    const isBoundary = system.connectors?.some((c) => c.name === ref);
+    const isBoundary = system?.connectors?.some((c) => c.name === ref) ?? false;
     if (isBoundary) {
       return { element: "", connector: ref };
     }
     return { element: ref, connector: "y" };
   };
 
-  const findConnectionElement = (source: string, target: string): XmlElement | null => {
-    if (!xmlDoc.root) return null;
+  const findConnectionElement = (source: string, target: string): SyntaxNode | null => {
+    if (!root) return null;
     const src = parseEndpointRef(source);
     const tgt = parseEndpointRef(target);
-    const norm = (s: string | undefined): string => (!s || s === system.name ? "" : s);
+    const sysName = system?.name ?? "";
+    const norm = (s: string | undefined): string => (!s || s === sysName ? "" : s);
     const srcEl = norm(src.element);
     const tgtEl = norm(tgt.element);
-    for (const el of findAllXmlElements(xmlDoc.root, (e) => sspMatchName(e.name, "Connection"))) {
+    for (const el of findAllByLocalName("Connection")) {
       if (
         norm(getAttr(el, "startElement")) === srcEl &&
         (getAttr(el, "startConnector") ?? "") === src.connector &&
@@ -634,20 +622,21 @@ export function applySspDiagramEdits(
     return null;
   };
 
-  const findComponentElement = (name: string): XmlElement | null =>
-    findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "Component") && getAttr(el, "name") === name);
+  const findComponentElement = (name: string): SyntaxNode | null =>
+    findAllByLocalName("Component").find((el) => getAttr(el, "name") === name) ?? null;
 
-  const sysEl = findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "System"));
+  const sysEl = findFirstByLocalName("System");
 
   const upsertComponentGeometry = (
-    cmp: SspComponent,
+    compName: string,
     x: number,
     y: number,
     width: number,
     height: number,
     rotation?: number,
+    fallbackRotation?: number,
   ) => {
-    const cmpEl = findComponentElement(cmp.name);
+    const cmpEl = findComponentElement(compName);
     if (!cmpEl) return;
 
     const x1 = Math.round(x);
@@ -657,18 +646,30 @@ export function applySspDiagramEdits(
     const rotAttr =
       rotation !== undefined && rotation !== 0
         ? ` rotation="${Math.round(rotation)}"`
-        : cmp.geometry?.rotation
-          ? ` rotation="${cmp.geometry.rotation}"`
+        : fallbackRotation
+          ? ` rotation="${fallbackRotation}"`
           : "";
     const geomTag = `<ssd:ElementGeometry x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"${rotAttr} />`;
 
-    const geomEl = cmpEl.children.find((ch) => sspMatchName(ch.name, "ElementGeometry"));
+    const geomEl = CstXmlAdapter.getChildElements(cmpEl).find((ch) =>
+      sspMatchName(CstXmlAdapter.getTagName(ch, xml) ?? "", "ElementGeometry"),
+    );
     if (geomEl) {
-      edits.push(spliceToEdit({ start: geomEl.start, end: geomEl.end, text: geomTag }));
+      CstXmlAdapter.replaceElement(tx, geomEl, geomTag);
     } else {
-      queueAppend(cmpEl, geomTag);
+      appendToParent(cmpEl, geomTag);
     }
   };
+
+  const createdCompNames = new Set<string>(
+    (system?.components ?? [])
+      .map((c) => c.name)
+      .concat(
+        findAllByLocalName("Component")
+          .map((el) => getAttr(el, "name"))
+          .filter((n): n is string => Boolean(n)),
+      ),
+  );
 
   for (const rawAction of actions) {
     const actionType = rawAction.type ?? rawAction.action;
@@ -676,25 +677,31 @@ export function applySspDiagramEdits(
     if (actionType === "move") {
       const items = action.items || (action.name ? [action] : []);
       for (const item of items) {
-        const cmp = system.components.find((c) => c.name === item.name);
-        if (cmp) {
-          upsertComponentGeometry(
-            cmp,
-            item.x ?? 0,
-            item.y ?? 0,
-            item.width ?? (cmp.geometry ? Math.abs(cmp.geometry.x2 - cmp.geometry.x1) : 180),
-            item.height ?? (cmp.geometry ? Math.abs(cmp.geometry.y2 - cmp.geometry.y1) : 100),
-            item.rotation,
-          );
-        }
+        if (!item.name) continue;
+        const cmp = system?.components.find((c) => c.name === item.name);
+        upsertComponentGeometry(
+          item.name,
+          item.x ?? 0,
+          item.y ?? 0,
+          item.width ?? (cmp?.geometry ? Math.abs(cmp.geometry.x2 - cmp.geometry.x1) : 180),
+          item.height ?? (cmp?.geometry ? Math.abs(cmp.geometry.y2 - cmp.geometry.y1) : 100),
+          item.rotation,
+          cmp?.geometry?.rotation,
+        );
       }
     } else if (actionType === "resize" || actionType === "rotate") {
       const item = action.item ?? (action.name ? action : undefined);
-      if (item) {
-        const cmp = system.components.find((c) => c.name === item.name);
-        if (cmp) {
-          upsertComponentGeometry(cmp, item.x ?? 0, item.y ?? 0, item.width ?? 180, item.height ?? 100, item.rotation);
-        }
+      if (item?.name) {
+        const cmp = system?.components.find((c) => c.name === item.name);
+        upsertComponentGeometry(
+          item.name,
+          item.x ?? 0,
+          item.y ?? 0,
+          item.width ?? 180,
+          item.height ?? 100,
+          item.rotation,
+          cmp?.geometry?.rotation,
+        );
       }
     } else if (actionType === "connect") {
       const src =
@@ -705,55 +712,47 @@ export function applySspDiagramEdits(
         action.targetPort !== undefined
           ? { element: action.targetComponent || "", connector: action.targetPort }
           : parseEndpointRef(action.target ?? "");
-      const startElAttr = src.element ? `startElement="${src.element}" ` : "";
-      const endElAttr = tgt.element ? `endElement="${tgt.element}" ` : "";
+      const startElAttr = src.element ? `startElement="${encodeXmlAttrValue(src.element)}" ` : "";
+      const endElAttr = tgt.element ? `endElement="${encodeXmlAttrValue(tgt.element)}" ` : "";
       let connSnippet: string;
       if (Array.isArray(action.points) && action.points.length > 2) {
         const interior = action.points.slice(1, -1);
         const px = interior.map((p: { x: number; y: number }) => Math.round(p.x)).join(" ");
         const py = interior.map((p: { x: number; y: number }) => Math.round(p.y)).join(" ");
         connSnippet =
-          `<ssd:Connection ${startElAttr}startConnector="${src.connector}" ${endElAttr}endConnector="${tgt.connector}">\n` +
+          `<ssd:Connection ${startElAttr}startConnector="${encodeXmlAttrValue(src.connector)}" ${endElAttr}endConnector="${encodeXmlAttrValue(tgt.connector)}">\n` +
           `  <ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />\n` +
           `</ssd:Connection>`;
       } else {
-        connSnippet = `<ssd:Connection ${startElAttr}startConnector="${src.connector}" ${endElAttr}endConnector="${tgt.connector}" />`;
+        connSnippet = `<ssd:Connection ${startElAttr}startConnector="${encodeXmlAttrValue(src.connector)}" ${endElAttr}endConnector="${encodeXmlAttrValue(tgt.connector)}" />`;
       }
 
-      const connsEl = findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "Connections"));
+      const connsEl = findFirstByLocalName("Connections");
       if (connsEl) {
-        queueAppend(connsEl, connSnippet);
+        appendToParent(connsEl, connSnippet);
       } else {
-        queueAppend(sysEl, `<ssd:Connections>\n  ${connSnippet.replace(/\n/g, "\n  ")}\n</ssd:Connections>`);
+        appendToParent(sysEl, `<ssd:Connections>\n  ${connSnippet.replace(/\n/g, "\n  ")}\n</ssd:Connections>`);
       }
     } else if (actionType === "disconnect") {
       const connEl = findConnectionElement(action.source ?? "", action.target ?? "");
       if (connEl) {
-        edits.push(spliceToEdit(removeElementSplice(connEl, xml)));
+        CstXmlAdapter.deleteElement(tx, connEl);
       }
     } else if (actionType === "moveEdge") {
       for (const edge of action.edges || []) {
         const connEl = findConnectionElement(edge.source, edge.target);
         if (connEl && Array.isArray(edge.points)) {
-          const startElement = getAttr(connEl, "startElement") ?? "";
-          const endElement = getAttr(connEl, "endElement") ?? "";
-          const startConnector = getAttr(connEl, "startConnector") ?? "";
-          const endConnector = getAttr(connEl, "endConnector") ?? "";
-          const startElAttr = startElement ? `startElement="${startElement}" ` : "";
-          const endElAttr = endElement ? `endElement="${endElement}" ` : "";
           const interior = edge.points.length > 2 ? edge.points.slice(1, -1) : edge.points;
           const px = interior.map((p: { x: number; y: number }) => Math.round(p.x)).join(" ");
           const py = interior.map((p: { x: number; y: number }) => Math.round(p.y)).join(" ");
-          const geomEl = connEl.children.find((ch) => sspMatchName(ch.name, "ConnectionGeometry"));
-          if (geomEl && !connEl.selfClosing) {
-            const geomTag = `<ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />`;
-            edits.push(spliceToEdit({ start: geomEl.start, end: geomEl.end, text: geomTag }));
+          const geomTag = `<ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />`;
+          const geomEl = CstXmlAdapter.getChildElements(connEl).find((ch) =>
+            sspMatchName(CstXmlAdapter.getTagName(ch, xml) ?? "", "ConnectionGeometry"),
+          );
+          if (geomEl && !CstXmlAdapter.isSelfClosing(connEl, xml)) {
+            CstXmlAdapter.replaceElement(tx, geomEl, geomTag);
           } else {
-            const replacement =
-              `<ssd:Connection ${startElAttr}startConnector="${startConnector}" ${endElAttr}endConnector="${endConnector}">\n` +
-              `        <ssd:ConnectionGeometry pointsX="${px}" pointsY="${py}" />\n` +
-              `      </ssd:Connection>`;
-            edits.push(spliceToEdit({ start: connEl.start, end: connEl.end, text: replacement }));
+            CstXmlAdapter.appendChild(tx, connEl, geomTag);
           }
         }
       }
@@ -762,12 +761,12 @@ export function applySspDiagramEdits(
         /[^a-zA-Z0-9_]/g,
         "_",
       );
-      const existingNames = new Set(system.components.map((c) => c.name));
       let uniqueName = baseName;
       let counter = 1;
-      while (existingNames.has(uniqueName)) {
+      while (createdCompNames.has(uniqueName)) {
         uniqueName = `${baseName}_${counter++}`;
       }
+      createdCompNames.add(uniqueName);
       const x1 = Math.round(action.x ?? 160);
       const y1 = Math.round(action.y ?? 100);
       const x2 = x1 + 180;
@@ -775,7 +774,7 @@ export function applySspDiagramEdits(
       const fmuSource =
         action.className && action.className.endsWith(".fmu") ? action.className : `resources/${uniqueName}.fmu`;
       const compSnippet =
-        `<ssd:Component name="${uniqueName}" type="application/x-fmu-sharedlibrary" source="${fmuSource}">\n` +
+        `<ssd:Component name="${encodeXmlAttrValue(uniqueName)}" type="application/x-fmu-sharedlibrary" source="${encodeXmlAttrValue(fmuSource)}">\n` +
         `  <ssd:Connectors>\n` +
         `    <ssd:Connector name="u" kind="input"><ssc:Real /></ssd:Connector>\n` +
         `    <ssd:Connector name="y" kind="output"><ssc:Real /></ssd:Connector>\n` +
@@ -783,39 +782,39 @@ export function applySspDiagramEdits(
         `  <ssd:ElementGeometry x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />\n` +
         `</ssd:Component>`;
 
-      const elsEl = findXmlElement(xmlDoc.root, (el) => sspMatchName(el.name, "Elements"));
+      const elsEl = findFirstByLocalName("Elements");
       if (elsEl) {
-        queueAppend(elsEl, compSnippet);
+        appendToParent(elsEl, compSnippet);
       } else {
-        queueAppend(sysEl, `<ssd:Elements>\n  ${compSnippet.replace(/\n/g, "\n  ")}\n</ssd:Elements>`);
+        appendToParent(sysEl, `<ssd:Elements>\n  ${compSnippet.replace(/\n/g, "\n  ")}\n</ssd:Elements>`);
       }
     } else if (actionType === "deleteComponents") {
       const toDelete = new Set<string>(action.names || []);
-      for (const cmpEl of findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Component"))) {
+      for (const cmpEl of findAllByLocalName("Component")) {
         const name = getAttr(cmpEl, "name");
         if (name && toDelete.has(name)) {
-          edits.push(spliceToEdit(removeElementSplice(cmpEl, xml)));
+          CstXmlAdapter.deleteElement(tx, cmpEl);
         }
       }
-      for (const connEl of findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Connection"))) {
+      for (const connEl of findAllByLocalName("Connection")) {
         const s = getAttr(connEl, "startElement") ?? "";
         const e = getAttr(connEl, "endElement") ?? "";
         if (toDelete.has(s) || toDelete.has(e)) {
-          edits.push(spliceToEdit(removeElementSplice(connEl, xml)));
+          CstXmlAdapter.deleteElement(tx, connEl);
         }
       }
     } else if (actionType === "updateName") {
       const newName = action.newName ?? "";
       const cmpEl = action.oldName ? findComponentElement(action.oldName) : null;
       if (cmpEl) {
-        edits.push(spliceToEdit(setAttributeSplice(cmpEl, "name", newName, xml)));
+        CstXmlAdapter.setAttribute(tx, cmpEl, "name", newName);
       }
-      for (const connEl of findAllXmlElements(xmlDoc.root, (el) => sspMatchName(el.name, "Connection"))) {
+      for (const connEl of findAllByLocalName("Connection")) {
         if (getAttr(connEl, "startElement") === action.oldName) {
-          edits.push(spliceToEdit(setAttributeSplice(connEl, "startElement", newName, xml)));
+          CstXmlAdapter.setAttribute(tx, connEl, "startElement", newName);
         }
         if (getAttr(connEl, "endElement") === action.oldName) {
-          edits.push(spliceToEdit(setAttributeSplice(connEl, "endElement", newName, xml)));
+          CstXmlAdapter.setAttribute(tx, connEl, "endElement", newName);
         }
       }
     } else if (actionType === "updateParameter" || actionType === "updateProperty") {
@@ -826,56 +825,65 @@ export function applySspDiagramEdits(
       if (paramName === "source" || paramName === "type") {
         const cmpEl = findComponentElement(targetName);
         if (cmpEl) {
-          edits.push(spliceToEdit(setAttributeSplice(cmpEl, paramName, paramVal, xml)));
+          CstXmlAdapter.setAttribute(tx, cmpEl, paramName, paramVal);
         }
         continue;
       }
 
-      // Check existing inline SSV parameter bindings via XML CST
-      let paramValueAttr: XmlAttribute | null = null;
-      let paramValueParent: XmlElement | null = null;
-      for (const el of findAllXmlElements(xmlDoc.root, (e) => sspMatchName(e.name, "Parameter"))) {
+      // Check existing inline SSV parameter bindings via healthy CST
+      let paramValueParent: SyntaxNode | null = null;
+      for (const el of findAllByLocalName("Parameter")) {
         const pName = getAttr(el, "name");
         if (pName === paramName || pName === `${targetName}.${paramName}`) {
-          for (const ch of el.children) {
-            const vAttr = ch.attributes.find((a) => a.name === "value");
-            if (vAttr) {
-              paramValueAttr = vAttr;
+          for (const ch of CstXmlAdapter.getChildElements(el)) {
+            if (CstXmlAdapter.getAttribute(ch, "value", xml)) {
               paramValueParent = ch;
               break;
             }
           }
-          if (paramValueAttr) break;
+          if (paramValueParent) break;
         }
       }
 
       if (paramValueParent) {
-        edits.push(spliceToEdit(setAttributeSplice(paramValueParent, "value", paramVal, xml)));
+        CstXmlAdapter.setAttribute(tx, paramValueParent, "value", paramVal);
       } else {
         const bindingXml =
           `<ssd:ParameterBindings>\n` +
-          `  <ssd:ParameterBinding prefix="${targetName}">\n` +
+          `  <ssd:ParameterBinding prefix="${encodeXmlAttrValue(targetName)}">\n` +
           `    <ssd:ParameterValues>\n` +
           `      <ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues" version="1.0" name="Parameters">\n` +
           `        <ssv:Parameters>\n` +
-          `          <ssv:Parameter name="${paramName}">\n` +
-          `            <ssv:Real value="${paramVal}" />\n` +
+          `          <ssv:Parameter name="${encodeXmlAttrValue(paramName)}">\n` +
+          `            <ssv:Real value="${encodeXmlAttrValue(paramVal)}" />\n` +
           `          </ssv:Parameter>\n` +
           `        </ssv:Parameters>\n` +
           `      </ssv:ParameterSet>\n` +
           `    </ssd:ParameterValues>\n` +
           `  </ssd:ParameterBinding>\n` +
           `</ssd:ParameterBindings>`;
-        queueAppend(sysEl, bindingXml);
+        appendToParent(sysEl, bindingXml);
       }
     }
   }
 
-  for (const [parent, snippets] of pendingAppends) {
-    edits.push(spliceToEdit(appendChildSplice(parent, snippets.join("\n"), xml)));
-  }
+  return tx.commit().edits;
+}
 
-  return edits;
+/**
+ * Apply a batch of interactive diagram edit actions to a `SystemStructure.ssd` XML document.
+ */
+export function applySspDiagramEdits(
+  xml: string,
+  actions: SspDiagramEditAction[],
+  parsedSystem?: SspSystem,
+): SspTextEdit[] {
+  const session = createSspCstSession(xml);
+  try {
+    return applySspDiagramEditsOnSession(session, actions, parsedSystem);
+  } finally {
+    session.dispose();
+  }
 }
 
 /**

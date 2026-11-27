@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  computeMinimalTextEdit,
   deduplicateAndSort,
   getHostDocumentText,
   type ComponentPropertyData,
@@ -16,6 +15,303 @@ import {
   type PropertyFieldConfig,
   type DiagramTextEdit as TextEdit,
 } from "@modelscript/diagram/protocol";
+import { CstDocumentSession, CstSessionCache, CstTransaction, type CstTextEdit } from "@modelscript/dsl/unparser";
+
+interface SpiceLineSpan {
+  startOffset: number;
+  endOffset: number;
+  eolEndOffset: number;
+  text: string;
+  bodyEndOffset: number;
+  commentStartOffset: number;
+  tokens: Array<{ text: string; startOffset: number; endOffset: number }>;
+}
+
+function indexSpiceLines(source: string): SpiceLineSpan[] {
+  const out: SpiceLineSpan[] = [];
+  let pos = 0;
+  while (pos <= source.length) {
+    const nl = source.indexOf("\n", pos);
+    const rawEnd = nl === -1 ? source.length : nl;
+    const lineEnd = rawEnd > pos && source[rawEnd - 1] === "\r" ? rawEnd - 1 : rawEnd;
+    const eolEnd = nl === -1 ? source.length : nl + 1;
+    const text = source.slice(pos, lineEnd);
+    const semiIdx = text.indexOf(";");
+    const bodyEndOffset = semiIdx !== -1 ? pos + semiIdx : lineEnd;
+    const commentStartOffset = semiIdx !== -1 ? pos + semiIdx : -1;
+
+    const tokens: Array<{ text: string; startOffset: number; endOffset: number }> = [];
+    const trimmed = text.trim();
+    if (trimmed.length > 0 && !trimmed.startsWith("*") && !trimmed.startsWith(".")) {
+      let i = pos;
+      while (i < bodyEndOffset) {
+        while (i < bodyEndOffset && (source[i] === " " || source[i] === "\t")) i++;
+        if (i >= bodyEndOffset) break;
+        const tStart = i;
+        while (i < bodyEndOffset && source[i] !== " " && source[i] !== "\t") i++;
+        tokens.push({ text: source.slice(tStart, i), startOffset: tStart, endOffset: i });
+      }
+    }
+
+    out.push({
+      startOffset: pos,
+      endOffset: lineEnd,
+      eolEndOffset: eolEnd,
+      text,
+      bodyEndOffset,
+      commentStartOffset,
+      tokens,
+    });
+    if (nl === -1) break;
+    pos = nl + 1;
+  }
+  return out;
+}
+
+/**
+ * Surgical transaction-backed SPICE diagram edit planner operating directly on a live
+ * {@link CstDocumentSession}. Emits exact token-level `CstTextEdit[]` without line-array
+ * re-serialization or whole-file diffing; untouched lines and comments stay verbatim.
+ */
+export function planSpiceEditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<DiagramApplyEditsParams["actions"][number]>,
+  pinCountLookup?: ReadonlyMap<string, number>,
+): { edits: CstTextEdit[]; hasStructural: boolean } {
+  const text = session.text;
+  const lineSpans = indexSpiceLines(text);
+  const tx = new CstTransaction(session);
+  let hasStructural = false;
+
+  const stripCmp = (n: string): string => (n.startsWith("comp_") ? n.slice(5) : n.startsWith("cmp_") ? n.slice(4) : n);
+  const stripPortRef = (rawRef: string): { comp: string; pin: number } => {
+    const parts = rawRef.split(":");
+    const comp = stripCmp(parts[0] ?? rawRef);
+    const m = /(\d+)/.exec(parts[1] ?? "");
+    return { comp, pin: m ? Number(m[1]) : 0 };
+  };
+  const parsePinIdx = (port?: string, fallbackPin = 0): number => {
+    if (!port) return fallbackPin;
+    const m = /(\d+)/.exec(port);
+    return m ? Number(m[1]) : fallbackPin;
+  };
+  const findCompLine = (compName: string): SpiceLineSpan | undefined => {
+    const target = compName.toLowerCase();
+    return lineSpans.find((l) => l.tokens[0]?.text.toLowerCase() === target);
+  };
+  const getPinCount = (compName: string, tokens: SpiceLineSpan["tokens"]): number => {
+    const known = pinCountLookup?.get(compName.toLowerCase());
+    if (known !== undefined && known > 0) return known;
+    const prefix = compName[0]?.toUpperCase() ?? "";
+    if (prefix === "M") return Math.min(4, Math.max(2, tokens.length - 2));
+    if (prefix === "Q") return Math.min(3, Math.max(2, tokens.length - 2));
+    return Math.min(2, Math.max(1, tokens.length - 2));
+  };
+
+  let allocatedNetNum = 0;
+  for (const l of lineSpans) {
+    for (let i = 1; i < l.tokens.length; i++) {
+      const tok = l.tokens[i]?.text;
+      if (!tok) continue;
+      const m = /^(\d+)$/.exec(tok) || /^n(\d+)$/i.exec(tok);
+      if (m) allocatedNetNum = Math.max(allocatedNetNum, Number(m[1]));
+    }
+  }
+  const allocateNextNet = (): string => `n${++allocatedNetNum}`;
+
+  // Track in-flight pin-net mutations within one batch so reconnect sees updated nets cleanly
+  const pinNetOverrides = new Map<string, string>();
+  const pinKey = (comp: string, pin: number) => `${comp.toLowerCase()}#${pin}`;
+
+  const getPinToken = (compName: string, pinIdx: number) => {
+    const line = findCompLine(compName);
+    if (!line) return null;
+    const pinCount = getPinCount(compName, line.tokens);
+    const clampedPin = Math.max(0, Math.min(pinIdx, Math.max(0, pinCount - 1)));
+    const tok = line.tokens[1 + clampedPin];
+    if (!tok) return null;
+    const current = pinNetOverrides.get(pinKey(compName, clampedPin)) ?? tok.text;
+    return { tok, clampedPin, current };
+  };
+
+  const setCompPinNet = (compName: string, pinIdx: number, nextNet: string): void => {
+    const info = getPinToken(compName, pinIdx);
+    if (!info || info.current === nextNet) return;
+    pinNetOverrides.set(pinKey(compName, info.clampedPin), nextNet);
+    tx.replaceRange(info.tok.startOffset, info.tok.endOffset, nextNet);
+  };
+
+  for (const action of actions) {
+    if (action.type === "move") {
+      for (const item of action.items) {
+        const line = findCompLine(stripCmp(item.name));
+        if (!line) continue;
+        const tag = `@pos(${Math.round(item.x)}, ${Math.round(item.y)})`;
+        const existingPos = /@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i.exec(line.text);
+        if (existingPos) {
+          tx.replaceRange(
+            line.startOffset + existingPos.index,
+            line.startOffset + existingPos.index + existingPos[0].length,
+            tag,
+          );
+        } else {
+          let trimEnd = line.endOffset;
+          while (trimEnd > line.startOffset && (text[trimEnd - 1] === " " || text[trimEnd - 1] === "\t")) trimEnd--;
+          tx.replaceRange(trimEnd, line.endOffset, line.commentStartOffset !== -1 ? ` ${tag}` : ` ; ${tag}`);
+        }
+      }
+    } else if (action.type === "deleteComponents") {
+      const toDelete = new Set(action.names.map((n) => stripCmp(n).toLowerCase()));
+      for (const line of lineSpans) {
+        const name = line.tokens[0]?.text.toLowerCase();
+        if (name && toDelete.has(name)) {
+          tx.deleteRange(line.startOffset, line.eolEndOffset);
+          hasStructural = true;
+        }
+      }
+    } else if (action.type === "connect") {
+      const src = stripPortRef(action.source);
+      const tgt = stripPortRef(action.target);
+      const srcPin = parsePinIdx(action.sourcePort, src.pin);
+      const tgtPin = parsePinIdx(action.targetPort, tgt.pin);
+      const srcInfo = getPinToken(src.comp, srcPin);
+      const tgtInfo = getPinToken(tgt.comp, tgtPin);
+      if (srcInfo && tgtInfo) {
+        const isNamedNet = (n: string) => n !== "0" && !n.startsWith("nc_");
+        const sharedNet = isNamedNet(srcInfo.current)
+          ? srcInfo.current
+          : isNamedNet(tgtInfo.current)
+            ? tgtInfo.current
+            : allocateNextNet();
+        setCompPinNet(src.comp, srcPin, sharedNet);
+        setCompPinNet(tgt.comp, tgtPin, sharedNet);
+        hasStructural = true;
+      }
+    } else if (action.type === "disconnect") {
+      const src = stripPortRef(action.source);
+      const tgt = stripPortRef(action.target);
+      const srcPin = parsePinIdx(action.sourcePort, src.pin);
+      const tgtPin = parsePinIdx(action.targetPort, tgt.pin);
+      const srcInfo = getPinToken(src.comp, srcPin);
+      const tgtInfo = getPinToken(tgt.comp, tgtPin);
+      if (srcInfo && tgtInfo && srcInfo.current === tgtInfo.current) {
+        setCompPinNet(tgt.comp, tgtPin, `nc_${tgt.comp}_${tgtPin + 1}`);
+        hasStructural = true;
+      }
+    } else if (action.type === "reconnect") {
+      const oldSrc = stripPortRef(action.oldSource);
+      const oldTgt = stripPortRef(action.oldTarget);
+      const oldSrcPin = parsePinIdx(action.oldSourcePort, oldSrc.pin);
+      const oldTgtPin = parsePinIdx(action.oldTargetPort, oldTgt.pin);
+      const oldSrcInfo = getPinToken(oldSrc.comp, oldSrcPin);
+      const oldTgtInfo = getPinToken(oldTgt.comp, oldTgtPin);
+      if (oldSrcInfo && oldTgtInfo && oldSrcInfo.current === oldTgtInfo.current) {
+        setCompPinNet(oldTgt.comp, oldTgtPin, `nc_${oldTgt.comp}_${oldTgtPin + 1}`);
+        hasStructural = true;
+      }
+      const newSrc = stripPortRef(action.newSource);
+      const newTgt = stripPortRef(action.newTarget);
+      const newSrcPin = parsePinIdx(action.newSourcePort, newSrc.pin);
+      const newTgtPin = parsePinIdx(action.newTargetPort, newTgt.pin);
+      const newSrcInfo = getPinToken(newSrc.comp, newSrcPin);
+      const newTgtInfo = getPinToken(newTgt.comp, newTgtPin);
+      if (newSrcInfo && newTgtInfo) {
+        const isNamedNet = (n: string) => n !== "0" && !n.startsWith("nc_");
+        const sharedNet = isNamedNet(newSrcInfo.current)
+          ? newSrcInfo.current
+          : isNamedNet(newTgtInfo.current)
+            ? newTgtInfo.current
+            : allocateNextNet();
+        setCompPinNet(newSrc.comp, newSrcPin, sharedNet);
+        setCompPinNet(newTgt.comp, newTgtPin, sharedNet);
+        hasStructural = true;
+      }
+    } else if (action.type === "updateName") {
+      const oldN = stripCmp(action.oldName);
+      const newN = stripCmp(action.newName);
+      const line = findCompLine(oldN);
+      if (line && line.tokens[0]) {
+        tx.replaceRange(line.tokens[0].startOffset, line.tokens[0].endOffset, newN);
+        hasStructural = true;
+      }
+    } else if (action.type === "updateParameter" || action.type === "updateProperty") {
+      const compName = stripCmp(action.name);
+      const key = action.type === "updateParameter" ? action.parameter : action.key;
+      const valStr = String(action.value ?? "").trim();
+      const line = findCompLine(compName);
+      if (line && valStr) {
+        const keyLower = key.toLowerCase();
+        const kvTok = line.tokens.find((t) => {
+          const eq = t.text.indexOf("=");
+          return eq > 0 && t.text.slice(0, eq).toLowerCase() === keyLower;
+        });
+        if (kvTok) {
+          const eq = kvTok.text.indexOf("=");
+          tx.replaceRange(kvTok.startOffset + eq + 1, kvTok.endOffset, valStr);
+        } else if (keyLower === "value" || keyLower === "model") {
+          let valIdx = line.tokens.length - 1;
+          while (valIdx > 1 && line.tokens[valIdx]?.text.includes("=")) valIdx--;
+          const targetTok = valIdx >= 2 ? line.tokens[valIdx] : undefined;
+          if (targetTok) {
+            tx.replaceRange(targetTok.startOffset, targetTok.endOffset, valStr);
+          }
+        } else {
+          let insertAt = line.bodyEndOffset;
+          while (insertAt > line.startOffset && (text[insertAt - 1] === " " || text[insertAt - 1] === "\t")) {
+            insertAt--;
+          }
+          tx.insertAt(insertAt, ` ${key}=${valStr}`);
+        }
+      }
+    } else if (action.type === "addComponent") {
+      const rawCls = action.className.trim();
+      const short = (
+        rawCls.includes(":")
+          ? rawCls.slice(rawCls.lastIndexOf(":") + 1)
+          : rawCls.includes(".")
+            ? rawCls.slice(rawCls.lastIndexOf(".") + 1)
+            : rawCls
+      ).toUpperCase();
+      const nativeMap: Record<string, { prefix: string; defaultVal: string }> = {
+        R: { prefix: "R", defaultVal: "1k" },
+        RESISTOR: { prefix: "R", defaultVal: "1k" },
+        C: { prefix: "C", defaultVal: "1u" },
+        CAPACITOR: { prefix: "C", defaultVal: "1u" },
+        L: { prefix: "L", defaultVal: "1m" },
+        INDUCTOR: { prefix: "L", defaultVal: "1m" },
+        V: { prefix: "V", defaultVal: "DC 5" },
+        VOLTAGESOURCE: { prefix: "V", defaultVal: "DC 5" },
+        I: { prefix: "I", defaultVal: "DC 1m" },
+        CURRENTSOURCE: { prefix: "I", defaultVal: "DC 1m" },
+      };
+      const spec = nativeMap[short];
+      if (spec) {
+        let idx = 1;
+        let devName = action.name?.trim() || `${spec.prefix}${idx}`;
+        if (!action.name?.trim()) {
+          while (findCompLine(devName)) {
+            idx++;
+            devName = `${spec.prefix}${idx}`;
+          }
+        }
+        const posSuffix =
+          typeof action.x === "number" &&
+          Number.isFinite(action.x) &&
+          typeof action.y === "number" &&
+          Number.isFinite(action.y)
+            ? ` ; @pos(${Math.round(action.x)}, ${Math.round(action.y)})`
+            : "";
+        const endLine = lineSpans.find((l) => l.tokens[0]?.text.toUpperCase() === ".END");
+        const insertOffset = endLine ? endLine.startOffset : text.length;
+        const prefixNl = !endLine && text.length > 0 && !text.endsWith("\n") ? "\n" : "";
+        tx.insertAt(insertOffset, `${prefixNl}${devName} 0 0 ${spec.defaultVal}${posSuffix}\n`);
+        hasStructural = true;
+      }
+    }
+  }
+
+  return { edits: tx.commit().edits, hasStructural };
+}
 
 function getUnifiedIndexFromDeps(backends: DiagramBackendHost): unknown {
   return (
@@ -26,6 +322,7 @@ function getUnifiedIndexFromDeps(backends: DiagramBackendHost): unknown {
 }
 
 export function createSpiceDiagramBackend(backends: DiagramBackendHost): DiagramBackend {
+  const sessionCache = new CstSessionCache(16);
   const createDropBatchState = () => backends.crossLanguageDrop?.createDropBatchState?.() ?? {};
   const mergeCoincidentInsertEdits = (edits: TextEdit[]) =>
     backends.crossLanguageDrop?.mergeCoincidentInsertEdits?.(edits) ?? edits;
@@ -197,102 +494,9 @@ export function createSpiceDiagramBackend(backends: DiagramBackendHost): Diagram
         if (text === null || text === undefined) return { seq: params.seq, edits: [], renderHint: "none" };
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const batchState = createDropBatchState();
-        const eol = text.includes("\r\n") ? "\r\n" : "\n";
         const addEdits: TextEdit[] = [];
-        const lines = text.split(/\r?\n/);
+        const nonAddActions: DiagramApplyEditsParams["actions"] = [];
         let hasStructural = false;
-        let textMutated = false;
-
-        const stripCmp = (n: string): string =>
-          n.startsWith("comp_") ? n.slice(5) : n.startsWith("cmp_") ? n.slice(4) : n;
-        const stripPortRef = (rawRef: string): { comp: string; pin: number } => {
-          const parts = rawRef.split(":");
-          const comp = stripCmp(parts[0] ?? rawRef);
-          const m = /(\d+)/.exec(parts[1] ?? "");
-          return { comp, pin: m ? Number(m[1]) : 0 };
-        };
-        const parsePinIdx = (port?: string, fallbackPin = 0): number => {
-          if (!port) return fallbackPin;
-          const m = /(\d+)/.exec(port);
-          return m ? Number(m[1]) : fallbackPin;
-        };
-        const findCompLineIdx = (compName: string): number => {
-          const target = compName.toLowerCase();
-          return lines.findIndex((l) => {
-            const t = l.trim();
-            if (!t || t.startsWith("*") || t.startsWith(".")) return false;
-            return t.split(/\s+/)[0]?.toLowerCase() === target;
-          });
-        };
-        const splitBodyComment = (line: string): { body: string; comment: string } => {
-          const semiIdx = line.indexOf(";");
-          return {
-            body: semiIdx !== -1 ? line.slice(0, semiIdx).trimEnd() : line.trimEnd(),
-            comment: semiIdx !== -1 ? ` ${line.slice(semiIdx)}` : "",
-          };
-        };
-        let pinCountByComp: Map<string, number> | null = null;
-        const getPinCount = async (compName: string, tokens: string[]): Promise<number> => {
-          if (!pinCountByComp) {
-            pinCountByComp = new Map();
-            try {
-              const { parseSpice } = await import("@modelscript/spice");
-              const ckt = parseSpice(text);
-              for (const cmp of ckt.components) {
-                pinCountByComp.set(cmp.name.toLowerCase(), cmp.nodes.length);
-              }
-            } catch {
-              // ignore parse failure; use fallback
-            }
-          }
-          const known = pinCountByComp.get(compName.toLowerCase());
-          if (known !== undefined && known > 0) return known;
-          const prefix = compName[0]?.toUpperCase() ?? "";
-          if (prefix === "M") return Math.min(4, Math.max(2, tokens.length - 2));
-          if (prefix === "Q") return Math.min(3, Math.max(2, tokens.length - 2));
-          return Math.min(2, Math.max(1, tokens.length - 2));
-        };
-        const allocateNextNet = (): string => {
-          let maxN = 0;
-          for (const l of lines) {
-            const t = l.trim();
-            if (!t || t.startsWith("*") || t.startsWith(".")) continue;
-            const { body } = splitBodyComment(t);
-            for (const tok of body.split(/\s+/).slice(1)) {
-              const m = /^(\d+)$/.exec(tok) || /^n(\d+)$/i.exec(tok);
-              if (m) maxN = Math.max(maxN, Number(m[1]));
-            }
-          }
-          return `n${maxN + 1}`;
-        };
-        const setCompPinNet = async (compName: string, pinIdx: number, nextNet?: string): Promise<string | null> => {
-          const idx = findCompLineIdx(compName);
-          if (idx === -1) return null;
-          const { body, comment } = splitBodyComment(lines[idx] ?? "");
-          const tokens = body.trim().split(/\s+/);
-          const pinCount = await getPinCount(compName, tokens);
-          const clampedPin = Math.max(0, Math.min(pinIdx, Math.max(0, pinCount - 1)));
-          const tokIdx = 1 + clampedPin;
-          const prevNet = tokens[tokIdx];
-          if (prevNet === undefined) return null;
-          if (nextNet !== undefined && nextNet !== prevNet) {
-            tokens[tokIdx] = nextNet;
-            lines[idx] = `${tokens.join(" ")}${comment}`;
-            textMutated = true;
-          }
-          return prevNet;
-        };
-        const upsertPosOnLine = (line: string, x: number, y: number): string => {
-          const tag = `@pos(${Math.round(x)}, ${Math.round(y)})`;
-          if (/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i.test(line)) {
-            return line.replace(/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i, tag);
-          }
-          const semiIdx = line.indexOf(";");
-          if (semiIdx !== -1) {
-            return `${line.trimEnd()} ${tag}`;
-          }
-          return `${line.trimEnd()} ; ${tag}`;
-        };
 
         for (const action of params.actions) {
           if (action.type === "addComponent") {
@@ -305,127 +509,31 @@ export function createSpiceDiagramBackend(backends: DiagramBackendHost): Diagram
             });
             addEdits.push(...edits);
             if (edits.length > 0) hasStructural = true;
-          } else if (action.type === "move") {
-            for (const item of action.items) {
-              const idx = findCompLineIdx(stripCmp(item.name));
-              if (idx !== -1) {
-                lines[idx] = upsertPosOnLine(lines[idx] ?? "", item.x, item.y);
-                textMutated = true;
-              }
-            }
-          } else if (action.type === "deleteComponents") {
-            const toDelete = new Set(action.names.map((n) => stripCmp(n).toLowerCase()));
-            for (let i = lines.length - 1; i >= 0; i--) {
-              const t = (lines[i] ?? "").trim();
-              if (!t || t.startsWith("*") || t.startsWith(".")) continue;
-              const name = t.split(/\s+/)[0]?.toLowerCase();
-              if (name && toDelete.has(name)) {
-                lines.splice(i, 1);
-                textMutated = true;
-                hasStructural = true;
-              }
-            }
-          } else if (action.type === "connect") {
-            const src = stripPortRef(action.source);
-            const tgt = stripPortRef(action.target);
-            const srcPin = parsePinIdx(action.sourcePort, src.pin);
-            const tgtPin = parsePinIdx(action.targetPort, tgt.pin);
-            const srcNet = await setCompPinNet(src.comp, srcPin);
-            const tgtNet = await setCompPinNet(tgt.comp, tgtPin);
-            if (srcNet !== null && tgtNet !== null) {
-              const isNamedNet = (n: string) => n !== "0" && !n.startsWith("nc_");
-              const sharedNet = isNamedNet(srcNet) ? srcNet : isNamedNet(tgtNet) ? tgtNet : allocateNextNet();
-              await setCompPinNet(src.comp, srcPin, sharedNet);
-              await setCompPinNet(tgt.comp, tgtPin, sharedNet);
-              hasStructural = true;
-            }
-          } else if (action.type === "disconnect") {
-            const src = stripPortRef(action.source);
-            const tgt = stripPortRef(action.target);
-            const srcPin = parsePinIdx(action.sourcePort, src.pin);
-            const tgtPin = parsePinIdx(action.targetPort, tgt.pin);
-            const srcNet = await setCompPinNet(src.comp, srcPin);
-            const tgtNet = await setCompPinNet(tgt.comp, tgtPin);
-            if (srcNet !== null && tgtNet !== null && srcNet === tgtNet) {
-              await setCompPinNet(tgt.comp, tgtPin, `nc_${tgt.comp}_${tgtPin + 1}`);
-              hasStructural = true;
-            }
-          } else if (action.type === "reconnect") {
-            const oldSrc = stripPortRef(action.oldSource);
-            const oldTgt = stripPortRef(action.oldTarget);
-            const oldSrcPin = parsePinIdx(action.oldSourcePort, oldSrc.pin);
-            const oldTgtPin = parsePinIdx(action.oldTargetPort, oldTgt.pin);
-            const oldSrcNet = await setCompPinNet(oldSrc.comp, oldSrcPin);
-            const oldTgtNet = await setCompPinNet(oldTgt.comp, oldTgtPin);
-            if (oldSrcNet !== null && oldTgtNet !== null && oldSrcNet === oldTgtNet) {
-              await setCompPinNet(oldTgt.comp, oldTgtPin, `nc_${oldTgt.comp}_${oldTgtPin + 1}`);
-              hasStructural = true;
-            }
-            const newSrc = stripPortRef(action.newSource);
-            const newTgt = stripPortRef(action.newTarget);
-            const newSrcPin = parsePinIdx(action.newSourcePort, newSrc.pin);
-            const newTgtPin = parsePinIdx(action.newTargetPort, newTgt.pin);
-            const newSrcNet = await setCompPinNet(newSrc.comp, newSrcPin);
-            const newTgtNet = await setCompPinNet(newTgt.comp, newTgtPin);
-            if (newSrcNet !== null && newTgtNet !== null) {
-              const isNamedNet = (n: string) => n !== "0" && !n.startsWith("nc_");
-              const sharedNet = isNamedNet(newSrcNet)
-                ? newSrcNet
-                : isNamedNet(newTgtNet)
-                  ? newTgtNet
-                  : allocateNextNet();
-              await setCompPinNet(newSrc.comp, newSrcPin, sharedNet);
-              await setCompPinNet(newTgt.comp, newTgtPin, sharedNet);
-              hasStructural = true;
-            }
-          } else if (action.type === "updateName") {
-            const oldN = stripCmp(action.oldName);
-            const newN = stripCmp(action.newName);
-            const idx = findCompLineIdx(oldN);
-            if (idx !== -1) {
-              lines[idx] = (lines[idx] ?? "").replace(
-                new RegExp(`^(\\s*)${oldN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\b)`),
-                `$1${newN}$2`,
-              );
-              textMutated = true;
-              hasStructural = true;
-            }
-          } else if (action.type === "updateParameter" || action.type === "updateProperty") {
-            const compName = stripCmp(action.name);
-            const key = action.type === "updateParameter" ? action.parameter : action.key;
-            const valStr = String(action.value ?? "").trim();
-            const idx = findCompLineIdx(compName);
-            if (idx !== -1 && valStr) {
-              const { body, comment } = splitBodyComment(lines[idx] ?? "");
-              const escKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-              const paramRe = new RegExp(`(\\b${escKey}\\s*=\\s*)([^\\s;]+)`, "i");
-              if (paramRe.test(body)) {
-                lines[idx] = body.replace(paramRe, `$1${valStr}`) + comment;
-                textMutated = true;
-              } else if (key.toLowerCase() === "value" || key.toLowerCase() === "model") {
-                const tokens = body.trim().split(/\s+/);
-                // Replace the last non-key=val positional token (after component name and nodes)
-                let valIdx = tokens.length - 1;
-                while (valIdx > 1 && (tokens[valIdx] ?? "").includes("=")) valIdx--;
-                if (valIdx >= 2) {
-                  tokens[valIdx] = valStr;
-                  lines[idx] = tokens.join(" ") + comment;
-                  textMutated = true;
-                }
-              } else {
-                lines[idx] = `${body} ${key}=${valStr}${comment}`;
-                textMutated = true;
-              }
-            }
+          } else {
+            nonAddActions.push(action);
           }
         }
 
         const allEdits: TextEdit[] = [...addEdits];
-        if (textMutated) {
-          const textEdit = computeMinimalTextEdit(text, lines.join(eol));
-          if (textEdit) {
-            allEdits.push(textEdit);
+        if (nonAddActions.length > 0) {
+          let pinCountLookup: Map<string, number> | undefined;
+          if (nonAddActions.some((a) => a.type === "connect" || a.type === "disconnect" || a.type === "reconnect")) {
+            try {
+              const { parseSpice } = await import("@modelscript/spice");
+              const ckt = parseSpice(text);
+              pinCountLookup = new Map(ckt.components.map((c) => [c.name.toLowerCase(), c.nodes.length]));
+            } catch {
+              // ignore parse failure; use prefix fallback
+            }
           }
+          const session = sessionCache.getOrUpdate(
+            params.uri,
+            text,
+            () => new CstDocumentSession({ uri: params.uri, text }),
+          );
+          const planned = planSpiceEditsOnSession(session, nonAddActions, pinCountLookup);
+          allEdits.push(...planned.edits);
+          if (planned.hasStructural) hasStructural = true;
         }
 
         return {

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { CadComponentTree, countCadFeatureNodes, type CadComponentTreeProps } from "@modelscript/cad-viewer";
+import type { DiagramData } from "@modelscript/diagram/protocol";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -16,7 +18,6 @@ import { ActionList, ActionMenu, Button, IconButton, TextInput } from "@primer/r
 import React, { useRef, useState } from "react";
 import { useEditorCapabilities as useCapabilities } from "../../host";
 import Spinner from "../../internal/Spinner";
-import { CadComponentTree, countCadFeatureNodes, type CadComponentTreeProps } from "../cad-viewer";
 import ComponentList from "../ComponentList";
 import { getLanguageInfo } from "../constants";
 import {
@@ -30,6 +31,7 @@ import {
 import TreeWidget from "../Tree";
 import { getFileIconPath } from "../util/file-icons";
 import type { Translations } from "../util/i18n";
+import type { DiagramNode } from "../util/lsp-bridge";
 import { VariablesTree } from "../VariablesTree";
 import { AnsatzResizeHandle } from "./AnsatzResizeHandle";
 
@@ -57,15 +59,13 @@ export interface AnsatzLeftSidebarProps {
   onTreeHighlight: (name: string | null) => void;
   contextVersion: number;
   language: string | null;
-  diagramData: {
-    nodes?: Array<{
-      id?: string;
-      shape?: string;
-      properties?: { classKind?: string; [key: string]: unknown };
-      [key: string]: unknown;
-    }>;
-    [key: string]: unknown;
-  } | null;
+  diagramData:
+    | DiagramData
+    | {
+        nodes?: DiagramNode[] | undefined;
+        [key: string]: unknown;
+      }
+    | null;
   selectedComponent: string | null;
   onSelectComponent: (name: string | null) => void;
   simulationVariables: string[] | undefined;
@@ -92,6 +92,20 @@ export interface AnsatzLeftSidebarProps {
       StopTime?: number;
       Interval?: number;
       Tolerance?: number;
+    };
+    dae?: {
+      experiment?: {
+        startTime?: number;
+        stopTime?: number;
+        interval?: number;
+        tolerance?: number;
+        solver?: string;
+        numberOfIntervals?: number;
+        StartTime?: number;
+        StopTime?: number;
+        Interval?: number;
+        Tolerance?: number;
+      };
     };
     [key: string]: unknown;
   } | null;
@@ -1169,7 +1183,7 @@ export const AnsatzLeftSidebar: React.FC<AnsatzLeftSidebarProps> = ({
                   />
                 ) : (
                   <SimulationExperimentSettings
-                    experiment={cachedSimulator?.dae?.experiment}
+                    experiment={cachedSimulator?.dae?.experiment ?? cachedSimulator?.experiment}
                     overrides={experimentOverrides}
                     onChange={onExperimentOverrideChange}
                     onReset={onExperimentOverrideReset}
@@ -1197,7 +1211,7 @@ export const AnsatzLeftSidebar: React.FC<AnsatzLeftSidebarProps> = ({
       {!isNarrow && (
         <AnsatzResizeHandle
           orientation="vertical"
-          ariaLabel={translations.collapseTree || "Resize sidebar"}
+          ariaLabel={translations.toggleTree || "Resize sidebar"}
           ariaValueNow={treeWidth}
           ariaValueMin={200}
           ariaValueMax={600}

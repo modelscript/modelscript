@@ -11,103 +11,48 @@
 
 import * as vscode from "vscode";
 import { LanguageClient } from "vscode-languageclient/browser";
-import { BrowserBroker } from "./browser-broker";
-import { BrowserHistorian } from "./browser-historian";
-import { FmuBrowserParticipant } from "./fmu-browser-participant";
-import { LspSimulatorParticipant } from "./lsp-simulator-participant";
-import { SimulationPanel } from "./simulation-panel";
+import type { BrowserBroker } from "./browser-broker";
+import type { BrowserHistorian } from "./browser-historian";
+import { CosimLocalEngine, type ParticipantInfo, type SessionInfo } from "./cosim-local-engine";
 import { isFeatureEnabled } from "./utils/config.js";
 import { getNonce } from "./utils/nonce.js";
 
-/** Common interface for both Modelica (LSP) and FMU (browser) participants. */
-interface BrowserParticipant {
-  readonly id: string;
-  readonly modelName: string;
-  readonly allValues: Record<string, number>;
-  getVariables(): { name: string; causality: string }[];
-  initialize(startTime: number, stopTime: number, stepSize: number): Promise<void>;
-  doStep(currentTime: number, stepSize: number): Promise<void>;
-  getOutputs(): Promise<Map<string, number>>;
-  setInputs(values: Map<string, number>): Promise<void>;
-  terminate(): Promise<void>;
-}
-
-interface SessionInfo {
-  id: string;
-  state: string;
-  masterAlgorithm?: string | undefined;
-  participants: number;
-}
-
-interface ParticipantInfo {
-  id: string;
-  modelName: string;
-  type: string;
-  variables: number;
-}
-
-/** A variable coupling: one output feeds one input. */
-interface LocalCoupling {
-  from: { participantId: string; variableName: string };
-  to: { participantId: string; variableName: string };
-}
-
-/** In-memory session state for local mode. */
-interface LocalSession {
-  id: string;
-  state: "created" | "running" | "completed" | "error";
-  masterAlgorithm?: string | undefined;
-  participants: LocalParticipant[];
-  couplings: LocalCoupling[];
-  startTime: number;
-  stopTime: number;
-  stepSize: number;
-  realtimeFactor: number;
-}
-
-/** In-memory participant state for local mode. */
-interface LocalParticipant {
-  id: string;
-  modelName: string;
-  uri: string;
-  type: string;
-  variables: number;
-  /** Backing participant (LSP-based Modelica or browser-based FMU). */
-  participant: BrowserParticipant;
-}
-
-export class CosimViewProvider implements vscode.WebviewViewProvider {
+export class CosimViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   static readonly viewType = "modelscript.cosimPanel";
 
   private view?: vscode.WebviewView | undefined;
   private disposables: vscode.Disposable[] = [];
   private healthPollTimer?: ReturnType<typeof setInterval> | undefined;
+  private fastPollTimer?: ReturnType<typeof setInterval> | undefined;
+  private fastPollStopTimer?: ReturnType<typeof setTimeout> | undefined;
 
-  // ── Local mode state ──
-  private localMode = false;
-  private localBroker: BrowserBroker | null = null;
-  private localHistorian: BrowserHistorian | null = null;
-  private localSessions = new Map<string, LocalSession>();
-  private localSimTimers = new Map<string, ReturnType<typeof setInterval>>();
+  private readonly localEngine: CosimLocalEngine;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly client: LanguageClient,
-  ) {}
+  ) {
+    this.localEngine = new CosimLocalEngine(this.client, (msg) => this.postMessage(msg));
+  }
 
   /** Whether browser-local mode is active. */
   get isLocalMode(): boolean {
-    return this.localMode;
+    return this.localEngine.isLocalMode;
   }
 
   /** The browser broker instance (when local mode is active). */
   get broker(): BrowserBroker | null {
-    return this.localBroker;
+    return this.localEngine.broker;
   }
 
   /** The browser historian instance (when local mode is active). */
   get historian(): BrowserHistorian | null {
-    return this.localHistorian;
+    return this.localEngine.historian;
+  }
+
+  /** Publish an SSP archive, creating local FMU participants for each component and wiring them together. */
+  public async localPublishSsp(sessionId: string): Promise<void> {
+    return this.localEngine.localPublishSsp(sessionId);
   }
 
   resolveWebviewView(
@@ -115,6 +60,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void {
+    this.stopHealthPoll();
+    this.stopFastInfraPoll();
+    for (const d of this.disposables) d.dispose();
+    this.disposables = [];
+
     this.view = webviewView;
 
     webviewView.webview.options = {
@@ -126,18 +76,24 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
     // Handle messages from the webview
     webviewView.webview.onDidReceiveMessage(
-      async (msg: { type: string; [key: string]: unknown }) => {
+      async (msg: unknown) => {
         await this.handleWebviewMessage(msg);
       },
       undefined,
       this.disposables,
     );
 
-    webviewView.onDidDispose(() => {
-      this.stopHealthPoll();
-      for (const d of this.disposables) d.dispose();
-      this.disposables = [];
-    });
+    this.disposables.push(
+      webviewView.onDidDispose(() => {
+        this.stopHealthPoll();
+        this.stopFastInfraPoll();
+        for (const d of this.disposables) d.dispose();
+        this.disposables = [];
+        if (this.view === webviewView) {
+          this.view = undefined;
+        }
+      }),
+    );
 
     if (typeof webviewView.onDidChangeVisibility === "function") {
       this.disposables.push(
@@ -167,6 +123,16 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  /** Dispose all timers, listeners, and local runtime state. */
+  dispose(): void {
+    this.stopHealthPoll();
+    this.stopFastInfraPoll();
+    this.localEngine.dispose();
+    for (const d of this.disposables) d.dispose();
+    this.disposables = [];
+    this.view = undefined;
+  }
+
   /** Refresh the panel UI. */
   refresh(): void {
     void this.checkHealth();
@@ -193,9 +159,38 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private stopFastInfraPoll(): void {
+    if (this.fastPollTimer) {
+      clearInterval(this.fastPollTimer);
+      this.fastPollTimer = undefined;
+    }
+    if (this.fastPollStopTimer) {
+      clearTimeout(this.fastPollStopTimer);
+      this.fastPollStopTimer = undefined;
+    }
+  }
+
+  private getSessionId(msg: Record<string, unknown>): string | null {
+    const id = msg["sessionId"];
+    return typeof id === "string" && id.trim().length > 0 ? id : null;
+  }
+
+  private validateEndpointUrl(raw: unknown, allowedProtocols: readonly string[]): string | null {
+    if (typeof raw !== "string") return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      const parsed = new URL(trimmed);
+      if (!allowedProtocols.includes(parsed.protocol)) return null;
+      return trimmed;
+    } catch {
+      return null;
+    }
+  }
+
   private async checkHealth(): Promise<void> {
     // If local mode is active, report local status
-    if (this.localMode) {
+    if (this.localEngine.isLocalMode) {
       this.postMessage({
         type: "healthUpdate",
         api: false,
@@ -232,20 +227,26 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
   // ── Message Handling ──
 
-  private async handleWebviewMessage(msg: { type: string; [key: string]: unknown }): Promise<void> {
+  private async handleWebviewMessage(rawMsg: unknown): Promise<void> {
+    if (!rawMsg || typeof rawMsg !== "object") return;
+    const msg = rawMsg as Record<string, unknown>;
+    if (typeof msg["type"] !== "string") return;
+
     const apiUrl = this.getApiUrl();
 
-    switch (msg.type) {
+    switch (msg["type"]) {
       case "refresh":
         this.refresh();
         break;
 
       case "enableLocal":
-        this.enableLocalMode();
+        this.localEngine.enable();
+        void this.checkHealth();
         break;
 
       case "disableLocal":
-        this.disableLocalMode();
+        this.localEngine.disable();
+        void this.checkHealth();
         break;
 
       case "startInfra":
@@ -262,9 +263,22 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 
       case "updateConfig": {
         const config = vscode.workspace.getConfiguration("modelscript.cosim");
-        if (msg["apiUrl"]) await config.update("apiUrl", msg["apiUrl"] as string, vscode.ConfigurationTarget.Global);
-        if (msg["mqttWsUrl"])
-          await config.update("mqttWsUrl", msg["mqttWsUrl"] as string, vscode.ConfigurationTarget.Global);
+        if (msg["apiUrl"] !== undefined) {
+          const validApiUrl = this.validateEndpointUrl(msg["apiUrl"], ["http:", "https:"]);
+          if (!validApiUrl) {
+            this.postMessage({ type: "error", message: "Invalid API URL. Must use http:// or https://." });
+            break;
+          }
+          await config.update("apiUrl", validApiUrl, vscode.ConfigurationTarget.Global);
+        }
+        if (msg["mqttWsUrl"] !== undefined) {
+          const validMqttUrl = this.validateEndpointUrl(msg["mqttWsUrl"], ["ws:", "wss:"]);
+          if (!validMqttUrl) {
+            this.postMessage({ type: "error", message: "Invalid MQTT WebSocket URL. Must use ws:// or wss://." });
+            break;
+          }
+          await config.update("mqttWsUrl", validMqttUrl, vscode.ConfigurationTarget.Global);
+        }
         this.postMessage({
           type: "config",
           apiUrl: this.getApiUrl(),
@@ -275,8 +289,8 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "createSession": {
-        if (this.localMode) {
-          this.localCreateSession(msg);
+        if (this.localEngine.isLocalMode) {
+          this.localEngine.localCreateSession(msg);
           break;
         }
         try {
@@ -309,20 +323,24 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "fetchSessions":
-        if (this.localMode) {
-          this.localFetchSessions();
+        if (this.localEngine.isLocalMode) {
+          this.localEngine.localFetchSessions();
         } else {
           await this.fetchSessions();
         }
         break;
 
       case "startSession": {
-        if (this.localMode) {
-          this.localStartSession(msg["sessionId"] as string);
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          void this.localEngine.localStartSession(sessionId);
           break;
         }
         try {
-          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}/start`, { method: "POST" });
+          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${encodeURIComponent(sessionId)}/start`, {
+            method: "POST",
+          });
           if (resp.ok) {
             void this.fetchSessions();
           } else {
@@ -336,12 +354,16 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "stopSession": {
-        if (this.localMode) {
-          this.localStopSession(msg["sessionId"] as string);
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          this.localEngine.localStopSession(sessionId);
           break;
         }
         try {
-          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}/stop`, { method: "POST" });
+          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${encodeURIComponent(sessionId)}/stop`, {
+            method: "POST",
+          });
           if (resp.ok) {
             void this.fetchSessions();
           } else {
@@ -355,9 +377,9 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "hardwareConnected": {
-        const protocol = (msg["protocol"] as string) ?? "slcan";
-        const baudRate = (msg["baudRate"] as number) ?? 500000;
-        const portName = (msg["portName"] as string) ?? "Serial Device";
+        const protocol = typeof msg["protocol"] === "string" ? msg["protocol"] : "slcan";
+        const baudRate = typeof msg["baudRate"] === "number" ? msg["baudRate"] : 500000;
+        const portName = typeof msg["portName"] === "string" ? msg["portName"] : "Serial Device";
         vscode.window.showInformationMessage(
           `Soft HIL: Connected to ${portName} (${protocol.toUpperCase()} @ ${baudRate} baud).`,
         );
@@ -377,12 +399,14 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "deleteSession": {
-        if (this.localMode) {
-          this.localDeleteSession(msg["sessionId"] as string);
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          this.localEngine.localDeleteSession(sessionId);
           break;
         }
         try {
-          await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}`, { method: "DELETE" });
+          await fetch(`${apiUrl}/api/v1/cosim/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
           void this.fetchSessions();
         } catch (e) {
           this.postMessage({ type: "error", message: `Failed to delete session: ${e}` });
@@ -391,39 +415,59 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "publishModel": {
-        if (this.localMode) {
-          this.localPublishModel(msg["sessionId"] as string);
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          this.localEngine.localPublishModel(sessionId);
           break;
         }
-        await this.publishCurrentModel(msg["sessionId"] as string);
+        await this.publishCurrentModel(sessionId);
         break;
       }
 
       case "publishFmu": {
-        if (this.localMode) {
-          await this.localPublishFmu(msg["sessionId"] as string);
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          await this.localEngine.localPublishFmu(sessionId);
+        }
+        break;
+      }
+
+      case "publishSsp": {
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          await this.localEngine.localPublishSsp(sessionId);
         }
         break;
       }
 
       case "publishCosimModel": {
-        if (this.localMode) {
-          await this.localPublishCosimModel(msg["sessionId"] as string);
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          await this.localEngine.localPublishCosimModel(sessionId);
         }
         break;
       }
 
       case "addFmuParticipant": {
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
         try {
-          const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${msg["sessionId"]}/participants/fmu`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fmuId: msg["fmuId"] }),
-          });
+          const resp = await fetch(
+            `${apiUrl}/api/v1/cosim/sessions/${encodeURIComponent(sessionId)}/participants/fmu`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fmuId: msg["fmuId"] }),
+            },
+          );
           if (resp.ok) {
             const data = await resp.json();
             this.postMessage({ type: "participantAdded", data });
-            void this.fetchSessionParticipants(msg["sessionId"] as string);
+            void this.fetchSessionParticipants(sessionId);
           } else {
             const err = await resp.text();
             this.postMessage({ type: "error", message: `Failed to add FMU: ${err}` });
@@ -434,13 +478,16 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
         break;
       }
 
-      case "fetchParticipants":
-        if (this.localMode) {
-          this.localFetchParticipants(msg["sessionId"] as string);
+      case "fetchParticipants": {
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          this.localEngine.localFetchParticipants(sessionId);
         } else {
-          await this.fetchSessionParticipants(msg["sessionId"] as string);
+          await this.fetchSessionParticipants(sessionId);
         }
         break;
+      }
 
       case "openLivePlot": {
         await vscode.commands.executeCommand("modelscript.cosimOpenLivePlot", msg["sessionId"], msg["participantId"]);
@@ -448,9 +495,11 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "addCoupling": {
-        if (this.localMode) {
-          this.localAddCoupling(
-            msg["sessionId"] as string,
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          this.localEngine.localAddCoupling(
+            sessionId,
             msg["fromParticipantId"] as string,
             msg["fromVariable"] as string,
             msg["toParticipantId"] as string,
@@ -461,8 +510,10 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
       }
 
       case "createCosimWrapper": {
-        if (this.localMode) {
-          await this.localCreateCosimWrapper(msg["sessionId"] as string);
+        const sessionId = this.getSessionId(msg);
+        if (!sessionId) break;
+        if (this.localEngine.isLocalMode) {
+          await this.localEngine.localCreateCosimWrapper(sessionId);
         }
         break;
       }
@@ -500,7 +551,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   private async fetchSessionParticipants(sessionId: string): Promise<void> {
     const apiUrl = this.getApiUrl();
     try {
-      const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${sessionId}/participants`);
+      const resp = await fetch(`${apiUrl}/api/v1/cosim/sessions/${encodeURIComponent(sessionId)}/participants`);
       if (resp.ok) {
         const data = (await resp.json()) as { participants: ParticipantInfo[] };
         this.postMessage({ type: "participantList", sessionId, participants: data.participants });
@@ -511,419 +562,6 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
   }
 
   // ── Publish Model ──
-
-  /** Publish the active Modelica model as a local participant (lazy — initialized on session start). */
-  private localPublishModel(sessionId: string): void {
-    const session = this.localSessions.get(sessionId);
-    if (!session) {
-      this.postMessage({ type: "error", message: "Session not found." });
-      return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      vscode.window.showWarningMessage("Open a model file to publish as a participant.");
-      return;
-    }
-
-    const uri = editor.document.uri.toString();
-    const fileName =
-      editor.document.uri.path
-        .split("/")
-        .pop()
-        ?.replace(/\.[^.]+$/, "") ?? "Model";
-    const participantId = `local-p-${Date.now().toString(36)}`;
-
-    const lspParticipant = new LspSimulatorParticipant(this.client, participantId, fileName, uri);
-
-    const localParticipant: LocalParticipant = {
-      id: participantId,
-      modelName: fileName,
-      uri,
-      type: editor.document.languageId || "modelscript",
-      variables: 0, // Will be populated after initialization
-      participant: lspParticipant,
-    };
-
-    session.participants.push(localParticipant);
-
-    vscode.window.showInformationMessage(`Enrolled "${fileName}" as participant "${participantId}".`);
-    this.localFetchSessions();
-    this.localFetchParticipants(sessionId);
-  }
-
-  /** Publish an FMU model description XML file as a local FMU participant. */
-  private async localPublishFmu(sessionId: string): Promise<void> {
-    const session = this.localSessions.get(sessionId);
-    if (!session) {
-      this.postMessage({ type: "error", message: "Session not found." });
-      return;
-    }
-
-    // Find .fmu.xml or .xml files in the workspace
-    const uris = await vscode.window.showOpenDialog({
-      canSelectMany: false,
-      filters: { "FMU Model Description": ["xml"] },
-      title: "Select FMU modelDescription.xml",
-    });
-
-    if (!uris || uris.length === 0) return;
-
-    try {
-      const fileUri = uris[0]!;
-      const data = await vscode.workspace.fs.readFile(fileUri);
-      const xmlContent = new TextDecoder().decode(data);
-      const fileName = fileUri.path.split("/").pop()?.replace(".xml", "").replace(".fmu", "") ?? "FMU";
-      const participantId = `local-fmu-${Date.now().toString(36)}`;
-
-      const fmuParticipant = new FmuBrowserParticipant(participantId, xmlContent);
-
-      const localParticipant: LocalParticipant = {
-        id: participantId,
-        modelName: fmuParticipant.modelName || fileName,
-        uri: fileUri.toString(),
-        type: "fmu",
-        variables: 0,
-        participant: fmuParticipant,
-      };
-
-      session.participants.push(localParticipant);
-
-      vscode.window.showInformationMessage(
-        `Enrolled FMU "${fmuParticipant.modelName}" as participant "${participantId}".`,
-      );
-      this.localFetchSessions();
-      this.localFetchParticipants(sessionId);
-    } catch (e) {
-      this.postMessage({ type: "error", message: `Failed to load FMU: ${e}` });
-    }
-  }
-
-  /** Publish an SSP archive, creating local FMU participants for each component and wiring them together. */
-  public async localPublishSsp(sessionId: string): Promise<void> {
-    const session = this.localSessions.get(sessionId);
-    if (!session) {
-      this.postMessage({ type: "error", message: "Session not found." });
-      return;
-    }
-
-    const uris = await vscode.window.showOpenDialog({
-      canSelectMany: false,
-      filters: { "SSP Archive": ["ssp"] },
-      title: "Select SSP Archive",
-    });
-
-    if (!uris || uris.length === 0) return;
-
-    try {
-      const fileUri = uris[0]!;
-      const data = await vscode.workspace.fs.readFile(fileUri);
-      const sspBytes = new Uint8Array(data);
-
-      const { unzipSync } = await import("fflate");
-      const { parseSsd } = await import("./ssp-parser");
-
-      const unzipped = unzipSync(sspBytes);
-      const ssdData = unzipped["SystemStructure.ssd"];
-      if (!ssdData) throw new Error("SystemStructure.ssd missing from archive.");
-
-      const xml = new TextDecoder().decode(ssdData);
-      const ssp = parseSsd(xml);
-
-      if (ssp.components.length === 0) {
-        throw new Error("SSP archive contains no components.");
-      }
-
-      const compIdMap = new Map<string, string>();
-
-      // Add each component as a participant
-      for (const comp of ssp.components) {
-        if (!comp.source) continue;
-
-        const fmuData = unzipped[comp.source];
-        if (!fmuData) {
-          vscode.window.showWarningMessage(`SSP component ${comp.name} missing FMU source: ${comp.source}`);
-          continue;
-        }
-
-        const participantId = `ssp-${comp.name}-${Date.now().toString(36)}`;
-        compIdMap.set(comp.name, participantId);
-
-        const fmuParticipant = new FmuBrowserParticipant(participantId, fmuData);
-
-        const localParticipant: LocalParticipant = {
-          id: participantId,
-          modelName: comp.name,
-          uri: `${fileUri.toString()}#${comp.name}`,
-          type: "ssp",
-          variables: 0,
-          participant: fmuParticipant,
-        };
-
-        session.participants.push(localParticipant);
-      }
-
-      // Add couplings
-      for (const conn of ssp.connections) {
-        const fromId = compIdMap.get(conn.startElement);
-        const toId = compIdMap.get(conn.endElement);
-        if (fromId && toId) {
-          session.couplings.push({
-            from: { participantId: fromId, variableName: conn.startConnector },
-            to: { participantId: toId, variableName: conn.endConnector },
-          });
-        }
-      }
-
-      vscode.window.showInformationMessage(`Enrolled SSP "${ssp.name}" with ${ssp.components.length} components.`);
-      this.localFetchSessions();
-      this.localFetchParticipants(sessionId);
-    } catch (e) {
-      this.postMessage({ type: "error", message: `Failed to load SSP: ${e}` });
-    }
-  }
-
-  /** Publish a co-simulation wrapper model: extract participants and couplings from connect equations. */
-  private async localPublishCosimModel(sessionId: string): Promise<void> {
-    const session = this.localSessions.get(sessionId);
-    if (!session) {
-      this.postMessage({ type: "error", message: "Session not found." });
-      return;
-    }
-
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      vscode.window.showWarningMessage("Open a co-simulation wrapper model to publish.");
-      return;
-    }
-
-    const text = editor.document.getText();
-    const uri = editor.document.uri.toString();
-
-    try {
-      // Call the LSP to extract the co-simulation graph
-      const result = (await this.client.sendRequest("modelscript/extractCosimGraph", { uri, text })) as {
-        ok: boolean;
-        participants?: { id: string; type: string; className: string; fileName?: string | undefined }[] | undefined;
-        couplings?:
-          | {
-              from: { participantId: string; variable: string };
-              to: { participantId: string; variable: string };
-            }[]
-          | undefined;
-        error?: string | undefined;
-      };
-
-      if (!result.ok || !result.participants) {
-        this.postMessage({
-          type: "error",
-          message: `Failed to extract co-sim graph: ${result.error ?? "unknown error"}`,
-        });
-        return;
-      }
-
-      if (result.participants.length === 0) {
-        vscode.window.showWarningMessage("No components found in the wrapper model.");
-        return;
-      }
-
-      // Clear existing participants and couplings
-      session.participants = [];
-      session.couplings = [];
-
-      // Resolve the workspace folder for relative file paths
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
-
-      // Create participants
-      for (const p of result.participants) {
-        const participantId = `cosim-${p.id}-${Date.now().toString(36)}`;
-
-        // Auto-detect participant type: check if there's a matching .fmu or .xml file in the workspace
-        let isFmu = p.type === "fmu";
-        let fmuFileName = p.fileName;
-
-        if (!isFmu && workspaceFolder) {
-          // First check for .fmu archive (preferred — contains model.json for real simulation)
-          const fmuCandidateUri = vscode.Uri.joinPath(workspaceFolder, `${p.className}.fmu`);
-          try {
-            await vscode.workspace.fs.stat(fmuCandidateUri);
-            isFmu = true;
-            fmuFileName = `${p.className}.fmu`;
-          } catch {
-            // Check for .xml model description (passthrough mode)
-            const xmlCandidateUri = vscode.Uri.joinPath(workspaceFolder, `${p.className}.xml`);
-            try {
-              const data = await vscode.workspace.fs.readFile(xmlCandidateUri);
-              const xmlContent = new TextDecoder().decode(data);
-              if (xmlContent.includes("fmiModelDescription")) {
-                isFmu = true;
-                fmuFileName = `${p.className}.xml`;
-              }
-            } catch {
-              // No matching FMU file — treat as Modelica
-            }
-          }
-        }
-
-        if (isFmu && fmuFileName) {
-          if (workspaceFolder) {
-            const fmuUri = vscode.Uri.joinPath(workspaceFolder, fmuFileName);
-            try {
-              const data = await vscode.workspace.fs.readFile(fmuUri);
-
-              // Pass raw bytes for .fmu files, decoded string for .xml files
-              const fmuParticipant = fmuFileName.endsWith(".fmu")
-                ? new FmuBrowserParticipant(participantId, new Uint8Array(data))
-                : new FmuBrowserParticipant(participantId, new TextDecoder().decode(data));
-
-              session.participants.push({
-                id: participantId,
-                modelName: fmuParticipant.modelName || p.className,
-                uri: fmuFileName,
-                type: "fmu",
-                variables: 0,
-                participant: fmuParticipant,
-              });
-            } catch {
-              this.postMessage({ type: "error", message: `FMU file not found: ${fmuFileName}` });
-              continue;
-            }
-          }
-        } else {
-          // Find the document URI for this Modelica class
-          // Convention: class name matches filename (e.g., Controller → Controller.mo)
-          const moFileName = `${p.className}.mo`;
-          let moUri = uri; // Default to the wrapper model's URI
-
-          if (workspaceFolder) {
-            const candidateUri = vscode.Uri.joinPath(workspaceFolder, moFileName);
-            try {
-              await vscode.workspace.fs.stat(candidateUri);
-              moUri = candidateUri.toString();
-            } catch {
-              // File not found — fall back to wrapper URI
-            }
-          }
-
-          const lspParticipant = new LspSimulatorParticipant(this.client, participantId, p.className, moUri);
-          session.participants.push({
-            id: participantId,
-            modelName: p.className,
-            uri: moUri,
-            type: "modelica",
-            variables: 0,
-            participant: lspParticipant,
-          });
-        }
-      }
-
-      // Map original component IDs to generated participant IDs
-      const idMap = new Map<string, string>();
-      for (const p of result.participants) {
-        const found = session.participants.find((sp) => sp.modelName === p.className);
-        if (found) {
-          idMap.set(p.id, found.id);
-        }
-      }
-
-      // Set couplings (translating from original component IDs to participant IDs)
-      if (result.couplings) {
-        for (const c of result.couplings) {
-          const fromId = idMap.get(c.from.participantId);
-          const toId = idMap.get(c.to.participantId);
-          if (fromId && toId) {
-            session.couplings.push({
-              from: { participantId: fromId, variableName: c.from.variable },
-              to: { participantId: toId, variableName: c.to.variable },
-            });
-          }
-        }
-      }
-
-      const nParticipants = session.participants.length;
-      const nCouplings = session.couplings.length;
-      vscode.window.showInformationMessage(
-        `Co-sim graph: ${nParticipants} participant(s), ${nCouplings} coupling(s) extracted.`,
-      );
-
-      this.localFetchSessions();
-      this.localFetchParticipants(sessionId);
-    } catch (e) {
-      this.postMessage({ type: "error", message: `Failed to publish co-sim model: ${e}` });
-    }
-  }
-
-  /** Create a Modelica wrapper model from the session's FMU participants and open it in the editor. */
-  private async localCreateCosimWrapper(sessionId: string): Promise<void> {
-    const session = this.localSessions.get(sessionId);
-    if (!session) {
-      this.postMessage({ type: "error", message: "Session not found." });
-      return;
-    }
-
-    if (session.participants.length === 0) {
-      vscode.window.showWarningMessage("No participants in session. Add FMUs first.");
-      return;
-    }
-
-    try {
-      // Build FMU descriptors from session participants
-      const fmus = session.participants.map((p) => ({
-        className: p.modelName,
-        instanceName: p.modelName.charAt(0).toLowerCase() + p.modelName.slice(1),
-        fileName: p.type === "fmu" ? (p.uri.split("/").pop() ?? `${p.modelName}.fmu`) : `${p.modelName}.mo`,
-      }));
-
-      // Build connections from session couplings
-      const connections = session.couplings.map((c) => {
-        const fromP = session.participants.find((p) => p.id === c.from.participantId);
-        const toP = session.participants.find((p) => p.id === c.to.participantId);
-        const fromName = fromP
-          ? fromP.modelName.charAt(0).toLowerCase() + fromP.modelName.slice(1)
-          : c.from.participantId;
-        const toName = toP ? toP.modelName.charAt(0).toLowerCase() + toP.modelName.slice(1) : c.to.participantId;
-        return {
-          source: `${fromName}.${c.from.variableName}`,
-          target: `${toName}.${c.to.variableName}`,
-        };
-      });
-
-      // Call LSP to generate the wrapper model source
-      const result = (await this.client.sendRequest("modelscript/createCosimWrapper", {
-        modelName: "CosimWrapper",
-        fmus,
-        connections,
-      })) as { ok: boolean; source?: string | undefined; error?: string | undefined };
-
-      if (!result.ok || !result.source) {
-        this.postMessage({
-          type: "error",
-          message: `Failed to generate wrapper: ${result.error ?? "unknown error"}`,
-        });
-        return;
-      }
-
-      // Write the wrapper file to the workspace
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri;
-      if (!workspaceFolder) {
-        vscode.window.showWarningMessage("No workspace folder open.");
-        return;
-      }
-
-      const wrapperUri = vscode.Uri.joinPath(workspaceFolder, "CosimWrapper.mo");
-      await vscode.workspace.fs.writeFile(wrapperUri, new TextEncoder().encode(result.source));
-
-      // Open the file in the editor
-      const doc = await vscode.workspace.openTextDocument(wrapperUri);
-      await vscode.window.showTextDocument(doc);
-
-      vscode.window.showInformationMessage(
-        `Created wrapper model "CosimWrapper.mo" with ${fmus.length} FMU(s). Open the Diagram view to wire ports.`,
-      );
-    } catch (e) {
-      this.postMessage({ type: "error", message: `Failed to create wrapper: ${e}` });
-    }
-  }
 
   private async publishCurrentModel(sessionId: string): Promise<void> {
     const editor = vscode.window.activeTextEditor;
@@ -971,272 +609,13 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
     }
 
     // Start checking health more frequently until services are up
-    const fastPoll = setInterval(async () => {
-      await this.checkHealth();
+    this.stopFastInfraPoll();
+    this.fastPollTimer = setInterval(() => {
+      void this.checkHealth();
     }, 3_000);
-
-    setTimeout(() => clearInterval(fastPoll), 60_000);
-  }
-
-  // ── Local Mode ──
-
-  private enableLocalMode(): void {
-    this.localMode = true;
-    this.localBroker = new BrowserBroker();
-    this.localHistorian = new BrowserHistorian();
-    void this.checkHealth();
-    this.localFetchSessions();
-    vscode.window.showInformationMessage("Browser-local mode enabled. MQTT and historian are running in-memory.");
-  }
-
-  private disableLocalMode(): void {
-    // Stop all running local simulations
-    for (const [id, timer] of this.localSimTimers) {
-      clearInterval(timer);
-      this.localSimTimers.delete(id);
-    }
-
-    this.localMode = false;
-    this.localBroker?.dispose();
-    this.localBroker = null;
-    this.localHistorian?.dispose();
-    this.localHistorian = null;
-    this.localSessions.clear();
-    void this.checkHealth();
-    this.postMessage({ type: "sessionList", sessions: [] });
-    vscode.window.showInformationMessage("Browser-local mode disabled.");
-  }
-
-  private localCreateSession(msg: Record<string, unknown>): void {
-    const id = `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-    const session: LocalSession = {
-      id,
-      state: "created",
-      masterAlgorithm: (msg["masterAlgorithm"] as string) ?? "gauss-seidel",
-      participants: [],
-      couplings: [],
-      startTime: (msg["startTime"] as number) ?? 0,
-      stopTime: (msg["stopTime"] as number) ?? 10,
-      stepSize: (msg["stepSize"] as number) ?? 0.01,
-      realtimeFactor: (msg["realtimeFactor"] as number) ?? 1,
-    };
-    this.localSessions.set(id, session);
-    this.postMessage({
-      type: "sessionCreated",
-      session: { id, state: session.state, masterAlgorithm: session.masterAlgorithm },
-    });
-    this.localFetchSessions();
-  }
-
-  private localFetchSessions(): void {
-    const sessions = [...this.localSessions.values()].map((s) => ({
-      id: s.id,
-      state: s.state,
-      masterAlgorithm: s.masterAlgorithm,
-      participants: s.participants.length,
-    }));
-    this.postMessage({ type: "sessionList", sessions });
-  }
-
-  /** Start co-simulation by running a Gauss-Seidel orchestrator loop. */
-  private async localStartSession(sessionId: string): Promise<void> {
-    const session = this.localSessions.get(sessionId);
-    if (!session) return;
-
-    if (session.participants.length === 0) {
-      this.postMessage({ type: "error", message: "No participants enrolled. Publish a model first." });
-      return;
-    }
-
-    session.state = "running";
-    this.localFetchSessions();
-
-    const { startTime, stopTime, stepSize, realtimeFactor } = session;
-    const participants = session.participants;
-
-    try {
-      // ── Phase 1: Initialize all participants via LSP ──
-      await Promise.all(participants.map((p) => p.participant.initialize(startTime, stopTime, stepSize)));
-
-      // Update variable counts after init
-      for (const p of participants) {
-        p.variables = p.participant.getVariables().length;
-      }
-      this.localFetchParticipants(sessionId);
-
-      // ── Phase 2: Step loop (Gauss-Seidel) ──
-      const wallClockStart = performance.now();
-      const simTimeStart = startTime;
-      let t = startTime;
-      let aborted = false;
-
-      // Store abort handle so localStopSession can break the loop
-      const abortRef = { aborted: false };
-      this.localSimTimers.set(sessionId, { [Symbol.toPrimitive]: () => 0, abortRef } as unknown as ReturnType<
-        typeof setInterval
-      >);
-
-      while (t < stopTime - 1e-15 && !abortRef.aborted) {
-        const effectiveH = Math.min(stepSize, stopTime - t);
-
-        // ── Apply couplings (output → input) ──
-        const allOutputs = new Map<string, Map<string, number>>();
-        for (const p of participants) {
-          const outputs = await p.participant.getOutputs();
-          allOutputs.set(p.id, outputs);
-        }
-
-        // Route coupled values
-        for (const coupling of session.couplings) {
-          const sourceOutputs = allOutputs.get(coupling.from.participantId);
-          if (!sourceOutputs) continue;
-          const value = sourceOutputs.get(coupling.from.variableName);
-          if (value === undefined) continue;
-
-          const targetParticipant = participants.find((p) => p.id === coupling.to.participantId);
-          if (targetParticipant) {
-            await targetParticipant.participant.setInputs(new Map([[coupling.to.variableName, value]]));
-          }
-        }
-
-        // ── Step all participants ──
-        for (const p of participants) {
-          await p.participant.doStep(t, effectiveH);
-        }
-
-        const time = t + effectiveH;
-
-        // ── Publish results ──
-        for (const p of participants) {
-          const allValues = p.participant.allValues;
-          for (const [variable, value] of Object.entries(allValues)) {
-            const topic = `cosim/sessions/${sessionId}/participants/${p.id}/data`;
-            const payload = JSON.stringify({ time, variable, value });
-            this.localBroker?.publish(topic, payload);
-            this.localHistorian?.record(sessionId, p.id, variable, value, time);
-            SimulationPanel.postLiveDataPoint(`${p.modelName}.${variable}`, time, value);
-          }
-        }
-
-        t += effectiveH;
-
-        // ── Emit progress to webview ──
-        this.postMessage({
-          type: "simulationProgress",
-          sessionId,
-          currentTime: t,
-          startTime,
-          stopTime,
-        });
-
-        // Real-time pacing
-        if (realtimeFactor > 0) {
-          const simElapsed = t - simTimeStart;
-          const wallTargetMs = (simElapsed / realtimeFactor) * 1000;
-          const wallElapsedMs = performance.now() - wallClockStart;
-          const waitMs = wallTargetMs - wallElapsedMs;
-          if (waitMs > 1) {
-            await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
-          }
-        }
-      }
-
-      aborted = abortRef.aborted;
-
-      // ── Phase 3: Terminate ──
-      await Promise.allSettled(participants.map((p) => p.participant.terminate()));
-      this.localSimTimers.delete(sessionId);
-
-      session.state = aborted ? "completed" : "completed";
-      this.localFetchSessions();
-    } catch (e) {
-      session.state = "error";
-      this.localFetchSessions();
-      this.postMessage({ type: "error", message: `Co-simulation failed: ${e}` });
-
-      // Best-effort terminate
-      await Promise.allSettled(participants.map((p) => p.participant.terminate())).catch(() => undefined);
-    }
-  }
-
-  /** Add a variable coupling between two participants. */
-  private localAddCoupling(
-    sessionId: string,
-    fromParticipantId: string,
-    fromVariable: string,
-    toParticipantId: string,
-    toVariable: string,
-  ): void {
-    const session = this.localSessions.get(sessionId);
-    if (!session) return;
-
-    session.couplings.push({
-      from: { participantId: fromParticipantId, variableName: fromVariable },
-      to: { participantId: toParticipantId, variableName: toVariable },
-    });
-
-    this.postMessage({
-      type: "couplingAdded",
-      sessionId,
-      couplings: session.couplings,
-    });
-  }
-
-  private localStopSession(sessionId: string): void {
-    const session = this.localSessions.get(sessionId);
-    if (!session) return;
-
-    // Signal the orchestrator loop to stop
-    const timerEntry = this.localSimTimers.get(sessionId);
-    if (timerEntry) {
-      // For async orchestrator: set abort flag
-      const abortRef = (timerEntry as unknown as { abortRef?: { aborted: boolean } | undefined }).abortRef;
-      if (abortRef) {
-        abortRef.aborted = true;
-      } else {
-        clearInterval(timerEntry);
-      }
-      this.localSimTimers.delete(sessionId);
-    }
-
-    session.state = "completed";
-    this.localFetchSessions();
-  }
-
-  private localDeleteSession(sessionId: string): void {
-    const timer = this.localSimTimers.get(sessionId);
-    if (timer) {
-      const abortRef = (timer as unknown as { abortRef?: { aborted: boolean } | undefined }).abortRef;
-      if (abortRef) {
-        abortRef.aborted = true;
-      } else {
-        clearInterval(timer);
-      }
-      this.localSimTimers.delete(sessionId);
-    }
-
-    this.localSessions.delete(sessionId);
-    this.localHistorian?.clear(sessionId);
-    this.localFetchSessions();
-  }
-
-  private localFetchParticipants(sessionId: string): void {
-    const session = this.localSessions.get(sessionId);
-    if (!session) {
-      this.postMessage({ type: "participantList", sessionId, participants: [] });
-      this.postMessage({ type: "couplingList", sessionId, couplings: [] });
-      return;
-    }
-    this.postMessage({
-      type: "participantList",
-      sessionId,
-      participants: session.participants,
-    });
-    this.postMessage({
-      type: "couplingList",
-      sessionId,
-      couplings: session.couplings,
-    });
+    this.fastPollStopTimer = setTimeout(() => {
+      this.stopFastInfraPoll();
+    }, 60_000);
   }
 
   /** Detect if the active editor contains a co-simulation wrapper model. */
@@ -1279,7 +658,7 @@ export class CosimViewProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self' ${webview.cspSource} http: https: ws: wss: data: blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
   <title>Co-Simulation</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }

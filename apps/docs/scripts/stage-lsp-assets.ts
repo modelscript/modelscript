@@ -88,9 +88,8 @@ if (cleanPublic) {
 const outDir = stageToDist
   ? path.join(docsRoot, "docs", ".vitepress", "dist", "lsp", "server", "dist")
   : path.join(publicLspDir, "server", "dist");
-const workersOutDir = path.join(outDir, "workers");
 
-fs.mkdirSync(workersOutDir, { recursive: true });
+fs.mkdirSync(outDir, { recursive: true });
 
 let copiedCount = 0;
 let skippedCount = 0;
@@ -120,10 +119,9 @@ function copyIfChanged(src: string, dest: string): boolean {
   return true;
 }
 
-copyIfChanged(path.join(repoRoot, "packages/lsp/dist/browserServerMain.js"), path.join(outDir, "browserServerMain.js"));
 copyIfChanged(
-  path.join(repoRoot, "packages/lsp/dist/workers/indexer.worker.js"),
-  path.join(workersOutDir, "indexer.worker.js"),
+  path.join(repoRoot, "packages/lsp/dist/browser/browserServerMain.js"),
+  path.join(outDir, "browserServerMain.js"),
 );
 copyIfChanged(path.join(repoRoot, "packages/runtime/build/release.wasm"), path.join(outDir, "release.wasm"));
 copyIfChanged(

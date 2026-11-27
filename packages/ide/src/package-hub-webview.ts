@@ -1,0 +1,2595 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import * as vscode from "vscode";
+import { HUB_DOMAIN_FILTERS, HUB_GALLERY_COMPONENTS, type HubComponentItem } from "./component-hub-catalog.js";
+import { DiagramEditorProvider } from "./diagram-editor-provider.js";
+import {
+  type AnsatzPackageSummary,
+  type AnsatzStreamComponentsParams,
+  type AnsatzStreamComponentsResult,
+  type AnsatzStreamedComponentItem,
+  CURATED_LIBRARIES,
+  ensureParentLibraryInstalled,
+  getEffectiveInstalledDependencies,
+  isBlockedByAirgap,
+  type LspClientLike,
+  registerSessionRegistryDependencies,
+  searchAnsatzPackages,
+  sessionInstalledPackages,
+} from "./package-installer-service.js";
+import { getRegistryUrl } from "./utils/config.js";
+import { getNonce } from "./utils/nonce.js";
+
+let activePackageHubPanel: vscode.WebviewPanel | undefined;
+let lastActiveModelUri: string | undefined;
+
+export function recordActiveModelUri(uriStr?: string | undefined): void {
+  if (!uriStr) return;
+  if (
+    uriStr.startsWith("output:") ||
+    uriStr.startsWith("vscode:") ||
+    uriStr.startsWith("debug:") ||
+    uriStr.endsWith("/package.json")
+  ) {
+    return;
+  }
+  lastActiveModelUri = uriStr;
+}
+
+export function findTargetModelOrDiagramUri(): string | undefined {
+  const activeDoc = vscode.window.activeTextEditor?.document?.uri?.toString();
+  if (activeDoc && !activeDoc.endsWith("/package.json") && !activeDoc.startsWith("output:")) {
+    return activeDoc;
+  }
+
+  const visibleEditors = (vscode.window as { visibleTextEditors?: readonly vscode.TextEditor[] | undefined })
+    .visibleTextEditors;
+  if (Array.isArray(visibleEditors)) {
+    for (const ed of visibleEditors) {
+      const u = ed?.document?.uri?.toString();
+      if (u && !u.endsWith("/package.json") && !u.startsWith("output:")) {
+        return u;
+      }
+    }
+  }
+
+  const tabGroups = (vscode.window as { tabGroups?: { all?: readonly { tabs?: readonly unknown[] }[] } | undefined })
+    .tabGroups;
+  if (tabGroups && Array.isArray(tabGroups.all)) {
+    for (const group of tabGroups.all) {
+      if (!Array.isArray(group.tabs)) continue;
+      for (const rawTab of group.tabs) {
+        const input = (
+          rawTab as { input?: { uri?: vscode.Uri | undefined; viewType?: string | undefined } | undefined }
+        )?.input;
+        if (input?.uri) {
+          const u = input.uri.toString();
+          if (!u.endsWith("/package.json") && !u.startsWith("output:")) {
+            return u;
+          }
+        }
+      }
+    }
+  }
+
+  return lastActiveModelUri;
+}
+
+function stripSvgPatternRepeatedly(input: string, pattern: RegExp): string {
+  let prev: string;
+  let curr = input;
+  do {
+    prev = curr;
+    curr = curr.replace(pattern, "");
+  } while (curr !== prev);
+  return curr;
+}
+
+const SAFE_SVG_HREF_RE = /^(?:#[A-Za-z0-9_.:-]+|data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\s]+)$/i;
+
+export function sanitizeHubSvg(rawSvg: string | undefined | null): string | undefined {
+  if (typeof rawSvg !== "string") return undefined;
+  const openMatch = /<svg\b/i.exec(rawSvg);
+  if (!openMatch) return undefined;
+  const closeIdx = rawSvg.toLowerCase().lastIndexOf("</svg>");
+  if (closeIdx === -1 || closeIdx < openMatch.index) return undefined;
+
+  let cleaned = rawSvg.slice(openMatch.index, closeIdx + "</svg>".length);
+  let prev: string;
+  let iterations = 0;
+  do {
+    prev = cleaned;
+    cleaned = stripSvgPatternRepeatedly(
+      cleaned,
+      /<(script|foreignObject|iframe|object|embed|applet|style|link|meta|base|form|animate|animateTransform|animateMotion|set|handler)\b[^>]*>[\s\S]*?<\/\1[^>]*>/gi,
+    );
+    cleaned = stripSvgPatternRepeatedly(
+      cleaned,
+      /<\/?(?:script|foreignObject|iframe|object|embed|applet|style|link|meta|base|form|animate|animateTransform|animateMotion|set|handler)\b[^>]*>/gi,
+    );
+    cleaned = stripSvgPatternRepeatedly(cleaned, /(?:[\s/]+)on[a-z0-9_-]*\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi);
+    cleaned = cleaned.replace(
+      /(?:[\s/]+)(?:xlink:)?href\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+      (full, dQuoted?: string, sQuoted?: string, unquoted?: string) => {
+        const val = (dQuoted ?? sQuoted ?? unquoted ?? "").trim();
+        return SAFE_SVG_HREF_RE.test(val) ? full : "";
+      },
+    );
+    iterations++;
+  } while (cleaned !== prev && iterations < 30);
+  cleaned = cleaned.trim();
+  return /^<svg\b/i.test(cleaned) && /<\/svg>$/i.test(cleaned) ? cleaned : undefined;
+}
+
+/**
+ * Streams placeable schematic components + sanitized inline `iconSvg` across all published packages
+ * in the Ansatz registry (`GET /components?includeSvg=1`). Returns `fromRegistry: false` when offline/airgapped.
+ */
+export async function fetchAnsatzRegistryComponents(
+  params: AnsatzStreamComponentsParams = {},
+  signal?: AbortSignal,
+): Promise<AnsatzStreamComponentsResult> {
+  const limit = params.limit ?? 72;
+  const offset = params.offset ?? 0;
+  const baseUrl = getRegistryUrl().replace(/\/+$/, "");
+  if (isBlockedByAirgap(baseUrl)) {
+    return {
+      total: 0,
+      offset,
+      limit,
+      hasMore: false,
+      items: [],
+      availablePackages: [],
+      availableSubpackages: [],
+      packageDependencies: {},
+      fromRegistry: false,
+    };
+  }
+
+  const search = new URLSearchParams();
+  if (params.q && params.q.trim()) search.set("q", params.q.trim());
+  if (params.domain && params.domain !== "all") search.set("domain", params.domain);
+  if (params.packageName && params.packageName !== "all") search.set("package", params.packageName);
+  if (params.subpackage && params.subpackage !== "all") {
+    search.set("subpackage", params.subpackage.replace(/\s*[·›]\s*/g, "."));
+  }
+  search.set("limit", String(limit));
+  search.set("offset", String(offset));
+  if (params.includeSvg !== false) {
+    search.set("includeSvg", "1");
+  }
+
+  try {
+    const resp = await fetch(`${baseUrl}/components?${search.toString()}`, signal ? { signal } : undefined);
+    if (!resp.ok) {
+      return {
+        total: 0,
+        offset,
+        limit,
+        hasMore: false,
+        items: [],
+        availablePackages: [],
+        availableSubpackages: [],
+        packageDependencies: {},
+        fromRegistry: false,
+      };
+    }
+
+    const body = (await resp.json()) as {
+      total?: number | undefined;
+      offset?: number | undefined;
+      limit?: number | undefined;
+      hasMore?: boolean | undefined;
+      components?: AnsatzStreamedComponentItem[] | undefined;
+      items?: AnsatzStreamedComponentItem[] | undefined;
+      availablePackages?: { name: string; version: string; count: number }[] | undefined;
+      availableSubpackages?: { id: string; label: string; count: number }[] | undefined;
+      packageDependencies?: Record<string, Record<string, string>> | undefined;
+    };
+
+    const rawItems = Array.isArray(body.components) ? body.components : Array.isArray(body.items) ? body.items : [];
+    const items: AnsatzStreamedComponentItem[] = rawItems.map((entry) => ({
+      ...entry,
+      iconSvg: sanitizeHubSvg(entry.iconSvg),
+    }));
+
+    const deps =
+      body.packageDependencies && typeof body.packageDependencies === "object" ? body.packageDependencies : {};
+    registerSessionRegistryDependencies(deps);
+
+    return {
+      total: typeof body.total === "number" ? body.total : items.length,
+      offset: typeof body.offset === "number" ? body.offset : offset,
+      limit: typeof body.limit === "number" ? body.limit : limit,
+      hasMore: Boolean(body.hasMore),
+      items,
+      availablePackages: Array.isArray(body.availablePackages) ? body.availablePackages : [],
+      availableSubpackages: Array.isArray(body.availableSubpackages) ? body.availableSubpackages : [],
+      packageDependencies: deps,
+      fromRegistry: true,
+    };
+  } catch (err) {
+    if ((err as { name?: string })?.name === "AbortError") {
+      throw err;
+    }
+    return {
+      total: 0,
+      offset,
+      limit,
+      hasMore: false,
+      items: [],
+      availablePackages: [],
+      availableSubpackages: [],
+      packageDependencies: {},
+      fromRegistry: false,
+    };
+  }
+}
+
+interface CatalogComponentSnapshot {
+  fqn: string;
+  name: string;
+  kind: string;
+  packageName: string;
+  description?: string | undefined;
+  language?: string | undefined;
+  hasIcon?: boolean | undefined;
+}
+
+async function postInstalledPackages(panel: vscode.WebviewPanel, lspClient?: LspClientLike): Promise<void> {
+  const deps = await getEffectiveInstalledDependencies(lspClient);
+  await panel.webview.postMessage({
+    command: "setInstalled",
+    dependencies: deps,
+  });
+}
+
+export async function notifyActivePackageHubInstalledChanged(lspClient?: LspClientLike): Promise<void> {
+  if (activePackageHubPanel) {
+    await postInstalledPackages(activePackageHubPanel, lspClient);
+  }
+}
+
+async function postCatalogComponents(panel: vscode.WebviewPanel, lspClient?: LspClientLike): Promise<void> {
+  if (!lspClient?.sendRequest) return;
+  try {
+    const resp = await lspClient.sendRequest<
+      { components?: CatalogComponentSnapshot[] | undefined } | CatalogComponentSnapshot[]
+    >("modelscript/getComponentCatalog", {});
+    const components = Array.isArray(resp) ? resp : Array.isArray(resp?.components) ? resp.components : [];
+    if (components.length > 0) {
+      await panel.webview.postMessage({
+        command: "setCatalogComponents",
+        components,
+      });
+    }
+  } catch {
+    // Curated catalog remains active if LSP is still starting
+  }
+}
+
+async function postRemoteLibraries(panel: vscode.WebviewPanel): Promise<void> {
+  try {
+    const pkgs = await searchAnsatzPackages("");
+    if (Array.isArray(pkgs) && pkgs.length > 0) {
+      await panel.webview.postMessage({
+        command: "setRemotePackages",
+        packages: pkgs,
+      });
+    }
+  } catch {
+    // Offline / airgapped: curated + workspace packages remain active
+  }
+}
+
+async function postStreamedComponents(
+  panel: vscode.WebviewPanel,
+  params: AnsatzStreamComponentsParams,
+  reset: boolean,
+): Promise<void> {
+  const res = await fetchAnsatzRegistryComponents(params);
+  if (!res.fromRegistry) return;
+  const icons: Record<string, string> = {};
+  for (const item of res.items) {
+    if (item.iconSvg) {
+      icons[item.fqn] = item.iconSvg;
+    }
+  }
+  await panel.webview.postMessage({
+    command: "registryComponentsChunk",
+    items: res.items,
+    total: res.total,
+    hasMore: res.hasMore,
+    offset: res.offset,
+    reset,
+    availableSubpackages: res.availableSubpackages,
+    icons,
+  });
+}
+
+async function placeComponentIntoWorkspace(
+  payload: {
+    fqn: string;
+    shortName: string;
+    kind: string;
+    declarationSnippet: string;
+    packageName?: string | undefined;
+    packageVersion?: string | undefined;
+  },
+  lspClient?: LspClientLike,
+): Promise<{ ok: boolean; autoInstalled: boolean; message: string }> {
+  const autoInstalled = await ensureParentLibraryInstalled(payload.packageName, payload.packageVersion, lspClient);
+  const installSuffix = autoInstalled && payload.packageName ? ` (auto-mounted ${payload.packageName})` : "";
+  const targetUri = findTargetModelOrDiagramUri();
+
+  // 1. Try structured diagram/model placement via LSP diagram.applyEdits when targeting a diagram-capable model
+  if (targetUri && lspClient?.sendRequest && /\.(?:mo|ms|msim|sysml|kerml|ssd|pscx)$/i.test(targetUri)) {
+    try {
+      const response = await lspClient.sendRequest<{
+        edits?:
+          | {
+              range: {
+                start: { line: number; character: number };
+                end: { line: number; character: number };
+              };
+              newText: string;
+            }[]
+          | undefined;
+      }>("modelscript/diagram.applyEdits", {
+        uri: targetUri,
+        seq: 0,
+        actions: [{ type: "addComponent", className: payload.fqn, x: 0, y: 0 }],
+      });
+      const edits = response?.edits;
+      if (edits && edits.length > 0) {
+        const workspaceEdit = new vscode.WorkspaceEdit();
+        const parsedUri = vscode.Uri.parse(targetUri);
+        for (const edit of edits) {
+          const range = new vscode.Range(
+            edit.range.start.line,
+            edit.range.start.character,
+            edit.range.end.line,
+            edit.range.end.character,
+          );
+          workspaceEdit.replace(parsedUri, range, edit.newText);
+        }
+        await vscode.workspace.applyEdit(workspaceEdit);
+        setTimeout(() => {
+          void vscode.commands.executeCommand("modelscript.autoLayout");
+        }, 350);
+        const msg = `Placed ${payload.shortName} into ${targetUri.split("/").pop() || "model"}${installSuffix}.`;
+        void vscode.window.showInformationMessage(msg);
+        return { ok: true, autoInstalled, message: msg };
+      }
+    } catch {
+      // Fall back to direct text snippet insertion below
+    }
+  }
+
+  // 2. Fallback: Insert declaration snippet into open text document
+  if (targetUri) {
+    try {
+      const parsedUri = vscode.Uri.parse(targetUri);
+      const doc = await vscode.workspace.openTextDocument(parsedUri);
+      const text = doc.getText();
+      const lines = text.split("\n");
+      let insertLine = 0;
+      const activeEditor = vscode.window.activeTextEditor;
+      if (activeEditor && activeEditor.document.uri.toString() === targetUri && activeEditor.selection) {
+        insertLine = activeEditor.selection.active.line;
+      } else {
+        // Insert cleanly before `equation`, `algorithm`, or closing `end <Model>;`
+        const eqIdx = lines.findIndex((l) => /^\s*(?:equation|algorithm)\b/.test(l));
+        const endIdx = lines.findIndex((l, idx) => idx > 0 && /^\s*end\s+[A-Za-z0-9_']+\s*;/.test(l));
+        if (eqIdx > 0) insertLine = eqIdx;
+        else if (endIdx > 0) insertLine = endIdx;
+        else insertLine = lines.length;
+      }
+      const wsEdit = new vscode.WorkspaceEdit();
+      wsEdit.insert(parsedUri, new vscode.Position(insertLine, 0), `  ${payload.declarationSnippet}\n`);
+      await vscode.workspace.applyEdit(wsEdit);
+      const msg = `Inserted ${payload.shortName} into ${targetUri.split("/").pop() || "document"}${installSuffix}.`;
+      void vscode.window.showInformationMessage(msg);
+      return { ok: true, autoInstalled, message: msg };
+    } catch {
+      // Fall through to clipboard fallback
+    }
+  }
+
+  // 3. No open model file yet — copy declaration snippet to clipboard if available
+  const clipboard = (vscode as unknown as { env?: { clipboard?: { writeText?: (t: string) => Promise<void> } } }).env
+    ?.clipboard;
+  if (clipboard?.writeText) {
+    try {
+      await clipboard.writeText(payload.declarationSnippet);
+    } catch {
+      // Ignore clipboard failure
+    }
+  }
+  const msg = autoInstalled
+    ? `Mounted ${payload.packageName} and copied '${payload.declarationSnippet}' (open a model or diagram to place directly).`
+    : `Copied '${payload.declarationSnippet}' — open a model or schematic diagram to place components directly.`;
+  void vscode.window.showInformationMessage(msg);
+  return { ok: true, autoInstalled, message: msg };
+}
+
+export function openAnsatzPackageHub(
+  _context: vscode.ExtensionContext,
+  lspClient?: LspClientLike,
+  initialPackageName?: string,
+): vscode.WebviewPanel {
+  recordActiveModelUri(vscode.window.activeTextEditor?.document?.uri?.toString());
+
+  if (activePackageHubPanel) {
+    activePackageHubPanel.reveal(vscode.ViewColumn.One);
+    void postInstalledPackages(activePackageHubPanel, lspClient);
+    void postCatalogComponents(activePackageHubPanel, lspClient);
+    void postRemoteLibraries(activePackageHubPanel);
+    void postStreamedComponents(activePackageHubPanel, { limit: 72, offset: 0, includeSvg: true }, true);
+    if (initialPackageName) {
+      void activePackageHubPanel.webview.postMessage({
+        command: "inspectPackage",
+        name: initialPackageName,
+      });
+    }
+    return activePackageHubPanel;
+  }
+
+  const panel = vscode.window.createWebviewPanel(
+    "modelscript.packageHub",
+    "Component & Library Hub",
+    vscode.ViewColumn.One,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [],
+    },
+  );
+
+  activePackageHubPanel = panel;
+  panel.onDidDispose(() => {
+    activePackageHubPanel = undefined;
+  });
+
+  // Render synchronously with session cache first so panel.webview.html is populated immediately,
+  // then hydrate live mounted libraries, local LSP catalog, and live Ansatz Registry stream.
+  const initialDeps: Record<string, string> = {};
+  for (const [k, v] of sessionInstalledPackages.entries()) {
+    initialDeps[k] = v;
+  }
+  panel.webview.html = renderPackageHubHtml(
+    CURATED_LIBRARIES,
+    HUB_GALLERY_COMPONENTS,
+    initialDeps,
+    initialPackageName,
+    panel.webview.cspSource,
+  );
+  void postInstalledPackages(panel, lspClient);
+  void postCatalogComponents(panel, lspClient);
+  void postRemoteLibraries(panel);
+  void postStreamedComponents(panel, { limit: 72, offset: 0, includeSvg: true }, true);
+
+  panel.webview.onDidReceiveMessage(async (message: Record<string, unknown>) => {
+    const cmd = typeof message["command"] === "string" ? message["command"] : "";
+    const reqId = typeof message["requestId"] === "string" ? message["requestId"] : undefined;
+
+    switch (cmd) {
+      case "install": {
+        const name = typeof message["name"] === "string" ? message["name"] : "";
+        const version = typeof message["version"] === "string" ? message["version"] : "latest";
+        const ok = await vscode.commands.executeCommand<boolean>("modelscript.registry.install", name, version);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
+        await panel.webview.postMessage({
+          command: "actionComplete",
+          requestId: reqId,
+          ok: ok !== false,
+          message: ok !== false ? `Mounted ${name}@${version} in workspace.` : `Failed to mount ${name}.`,
+        });
+        break;
+      }
+      case "switchVersion": {
+        const name = typeof message["name"] === "string" ? message["name"] : "";
+        await vscode.commands.executeCommand("modelscript.libraryView.switchVersion", name);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
+        await panel.webview.postMessage({
+          command: "actionComplete",
+          requestId: reqId,
+          ok: true,
+        });
+        break;
+      }
+      case "uninstall": {
+        const name = typeof message["name"] === "string" ? message["name"] : "";
+        await vscode.commands.executeCommand("modelscript.libraryView.removePackage", name);
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
+        await panel.webview.postMessage({
+          command: "actionComplete",
+          requestId: reqId,
+          ok: true,
+          message: `Removed ${name} from workspace.`,
+        });
+        break;
+      }
+      case "placeComponent": {
+        const fqn = typeof message["fqn"] === "string" ? message["fqn"] : "";
+        const shortName = typeof message["shortName"] === "string" ? message["shortName"] : fqn;
+        const kind = typeof message["kind"] === "string" ? message["kind"] : "model";
+        const declarationSnippet =
+          typeof message["declarationSnippet"] === "string" ? message["declarationSnippet"] : `${fqn} comp1;`;
+        const packageName = typeof message["packageName"] === "string" ? message["packageName"] : undefined;
+        const packageVersion = typeof message["packageVersion"] === "string" ? message["packageVersion"] : undefined;
+        if (!fqn) break;
+        const result = await placeComponentIntoWorkspace(
+          { fqn, shortName, kind, declarationSnippet, packageName, packageVersion },
+          lspClient,
+        );
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
+        await panel.webview.postMessage({
+          command: "actionComplete",
+          requestId: reqId,
+          ok: result.ok,
+          message: result.message,
+        });
+        break;
+      }
+      case "dragStartComponent": {
+        const fqn = typeof message["fqn"] === "string" ? message["fqn"] : "";
+        const kind = typeof message["kind"] === "string" ? message["kind"] : "model";
+        const iconSvg = sanitizeHubSvg(typeof message["iconSvg"] === "string" ? message["iconSvg"] : undefined);
+        const packageName = typeof message["packageName"] === "string" ? message["packageName"] : undefined;
+        const packageVersion = typeof message["packageVersion"] === "string" ? message["packageVersion"] : undefined;
+        if (!fqn) break;
+        if (packageName) {
+          void ensureParentLibraryInstalled(packageName, packageVersion, lspClient).then((installed) => {
+            if (installed) {
+              void postInstalledPackages(panel, lspClient);
+              void postCatalogComponents(panel, lspClient);
+            }
+          });
+        }
+        DiagramEditorProvider.instance?.postToActiveWebviews({
+          type: "startPlacement",
+          isDrag: true,
+          className: fqn,
+          classKind: kind,
+          iconSvg,
+        });
+        break;
+      }
+      case "dragEndComponent": {
+        DiagramEditorProvider.instance?.postToActiveWebviews({ type: "dragEnd" });
+        break;
+      }
+      case "fetchIcons": {
+        const classNames = Array.isArray(message["classNames"])
+          ? (message["classNames"] as unknown[]).filter((x): x is string => typeof x === "string")
+          : [];
+        if (classNames.length === 0 || !lspClient?.sendRequest) break;
+        const icons: Record<string, string> = {};
+        try {
+          const batch = await lspClient.sendRequest<Record<string, string | null>>("modelscript/getClassIcons", {
+            classNames: classNames.slice(0, 80),
+          });
+          if (batch && typeof batch === "object") {
+            for (const [k, v] of Object.entries(batch)) {
+              const safeSvg = sanitizeHubSvg(v);
+              if (safeSvg) {
+                icons[k] = safeSvg;
+              }
+            }
+          }
+        } catch {
+          await Promise.all(
+            classNames.slice(0, 24).map(async (cls) => {
+              try {
+                const svg = await lspClient.sendRequest!<string | null>("modelscript/getClassIcon", {
+                  className: cls,
+                });
+                const safeSvg = sanitizeHubSvg(svg);
+                if (safeSvg) {
+                  icons[cls] = safeSvg;
+                }
+              } catch {
+                // Ignore missing icon
+              }
+            }),
+          );
+        }
+        if (Object.keys(icons).length > 0) {
+          await panel.webview.postMessage({
+            command: "iconsLoaded",
+            icons,
+          });
+        }
+        break;
+      }
+      case "searchLive": {
+        const query = typeof message["query"] === "string" ? message["query"].trim() : "";
+        if (query.length < 2) break;
+        type LiveClassItem = {
+          name: string;
+          compositeName: string;
+          classKind: string;
+          description?: string | undefined;
+          language?: string | undefined;
+        };
+        const [liveClassesResp, livePackages] = await Promise.all([
+          lspClient?.sendRequest
+            ? lspClient
+                .sendRequest<{ results?: LiveClassItem[] | undefined } | LiveClassItem[]>("modelscript/searchClasses", {
+                  query,
+                  limit: 48,
+                })
+                .catch(() => [])
+            : Promise.resolve([]),
+          searchAnsatzPackages(query).catch(() => []),
+        ]);
+        const liveClasses = Array.isArray(liveClassesResp)
+          ? liveClassesResp
+          : Array.isArray(liveClassesResp?.results)
+            ? liveClassesResp.results
+            : [];
+        await panel.webview.postMessage({
+          command: "liveSearchResults",
+          query,
+          classes: liveClasses,
+          packages: Array.isArray(livePackages) ? livePackages : [],
+        });
+        break;
+      }
+      case "copyText": {
+        const text = typeof message["text"] === "string" ? message["text"] : "";
+        const clipboard = (vscode as unknown as { env?: { clipboard?: { writeText?: (t: string) => Promise<void> } } })
+          .env?.clipboard;
+        if (text && clipboard?.writeText) {
+          await clipboard.writeText(text);
+        }
+        break;
+      }
+      case "importZip": {
+        await vscode.commands.executeCommand("modelscript.libraryView.importZip");
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
+        break;
+      }
+      case "openModelHub": {
+        await vscode.commands.executeCommand("modelscript.openModelGallery");
+        break;
+      }
+      case "importUrl": {
+        const passedUrl = typeof message["url"] === "string" ? message["url"].trim() : undefined;
+        if (passedUrl) {
+          await vscode.commands.executeCommand("modelscript.libraryView.importUrl", passedUrl, true);
+        } else {
+          await vscode.commands.executeCommand("modelscript.libraryView.importUrl");
+        }
+        await Promise.all([postInstalledPackages(panel, lspClient), postCatalogComponents(panel, lspClient)]);
+        await panel.webview.postMessage({
+          command: "actionComplete",
+          requestId: reqId,
+          ok: true,
+        });
+        break;
+      }
+      case "streamRegistryComponents": {
+        const query = typeof message["query"] === "string" ? message["query"] : undefined;
+        const domain = typeof message["domain"] === "string" ? message["domain"] : undefined;
+        const packageName = typeof message["packageName"] === "string" ? message["packageName"] : undefined;
+        const subpackage = typeof message["subpackage"] === "string" ? message["subpackage"] : undefined;
+        const offset = typeof message["offset"] === "number" ? message["offset"] : 0;
+        const reset = message["reset"] !== false;
+        await postStreamedComponents(
+          panel,
+          {
+            q: query,
+            domain,
+            packageName: packageName || undefined,
+            subpackage: subpackage || undefined,
+            limit: 72,
+            offset,
+            includeSvg: true,
+          },
+          reset,
+        );
+        break;
+      }
+      case "refresh": {
+        await Promise.all([
+          postInstalledPackages(panel, lspClient),
+          postCatalogComponents(panel, lspClient),
+          postRemoteLibraries(panel),
+          postStreamedComponents(panel, { limit: 72, offset: 0, includeSvg: true }, true),
+        ]);
+        break;
+      }
+    }
+  });
+
+  return panel;
+}
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export function renderPackageHubHtml(
+  packages: AnsatzPackageSummary[],
+  components: HubComponentItem[],
+  installedDeps: Record<string, string>,
+  initialPackageName?: string,
+  cspSource?: string,
+): string {
+  const nonce = getNonce();
+  const safeCspSource = cspSource ? `${cspSource.replace(/["';\r\n]/g, "")} ` : "";
+  const safeJson = (val: unknown) =>
+    JSON.stringify(val)
+      .replace(/</g, "\\u003c")
+      .replace(/>/g, "\\u003e")
+      .replace(/&/g, "\\u0026")
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${safeCspSource}data: https:; style-src ${safeCspSource}'unsafe-inline'; script-src 'nonce-${nonce}'; font-src ${safeCspSource}data:; base-uri 'none'; form-action 'none';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Component &amp; Library Hub</title>
+  <style>
+    :root {
+      --bg: var(--vscode-editor-background, #18181b);
+      --surface: var(--vscode-sideBar-background, #1e1e22);
+      --card-bg: var(--vscode-editorWidget-background, #1e1e22);
+      --stage-bg: rgba(127, 140, 160, 0.06);
+      --fg: var(--vscode-editor-foreground, #f4f4f5);
+      --muted: var(--vscode-descriptionForeground, #a1a1aa);
+      --border: var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+      --border-strong: rgba(34, 211, 238, 0.45);
+      --accent: var(--vscode-button-background, #0891b2);
+      --accent-hover: var(--vscode-button-hoverBackground, #0e7490);
+      --accent-fg: var(--vscode-button-foreground, #ffffff);
+      --input-bg: var(--vscode-input-background, #0e0e10);
+      --input-fg: var(--vscode-input-foreground, #e6edf3);
+      --input-border: var(--vscode-input-border, rgba(128, 138, 152, 0.3));
+      --success: #2ea043;
+      --success-bg: rgba(46, 160, 67, 0.14);
+      --warning: #d29922;
+      --danger: #f85149;
+    }
+    body.vscode-light {
+      --stage-bg: #f8fafc;
+      --border: rgba(15, 23, 42, 0.12);
+      --input-border: rgba(15, 23, 42, 0.18);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      background: var(--bg);
+      color: var(--fg);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    /* Header & Segmented Switcher */
+    .hub-header {
+      padding: 14px 20px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      flex-shrink: 0;
+    }
+    .header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand-emblem {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #2563eb, #4f46e5);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-title {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--muted);
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .segmented {
+      display: inline-flex;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .seg-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: background 0.12s, color 0.12s;
+    }
+    .seg-btn:hover { color: var(--fg); }
+    .seg-btn.active {
+      background: var(--accent);
+      color: var(--accent-fg);
+      font-weight: 600;
+    }
+    .seg-count {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(128, 138, 152, 0.2);
+      color: inherit;
+    }
+    .seg-btn.active .seg-count {
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    /* Unified Search & Filter Controls */
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .search-wrap {
+      flex: 1;
+      min-width: 220px;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .search-svg {
+      position: absolute;
+      left: 10px;
+      width: 14px;
+      height: 14px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .search-input {
+      width: 100%;
+      background: var(--input-bg);
+      color: var(--input-fg);
+      border: 1px solid var(--input-border);
+      border-radius: 6px;
+      padding: 7px 30px 7px 32px;
+      font-size: 12.5px;
+      outline: none;
+    }
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+    .clear-btn {
+      position: absolute;
+      right: 7px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      display: none;
+    }
+    .clear-btn.visible { display: inline-block; }
+    .clear-btn:hover { color: var(--fg); }
+
+    .pill-toggle {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .pill-toggle:hover { color: var(--fg); border-color: var(--border-strong); }
+    .pill-toggle.active {
+      background: rgba(37, 99, 235, 0.14);
+      color: #60a5fa;
+      border-color: rgba(59, 130, 246, 0.5);
+      font-weight: 600;
+    }
+    body.vscode-light .pill-toggle.active { color: #1d4ed8; }
+
+    /* Domain Pills */
+    .domain-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      padding-bottom: 1px;
+    }
+    .domain-bar::-webkit-scrollbar { display: none; }
+    .domain-pill {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 11.5px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.12s;
+    }
+    .domain-pill svg { width: 13px; height: 13px; flex-shrink: 0; }
+    .domain-pill:hover { color: var(--fg); border-color: var(--border-strong); }
+    .domain-pill.active {
+      background: var(--accent);
+      color: var(--accent-fg);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Main Workspace & Grids */
+    .workspace-body {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+    .scroll-pane {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 18px 20px 28px;
+    }
+    .comp-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .comp-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.14s, transform 0.12s;
+    }
+    .comp-card:hover {
+      border-color: var(--border-strong);
+    }
+    .comp-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .comp-stage {
+      height: 92px;
+      background-color: var(--stage-bg);
+      background-image: radial-gradient(rgba(128, 138, 152, 0.22) 1px, transparent 1px);
+      background-size: 12px 12px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px;
+    }
+    .comp-stage svg {
+      max-width: 108px;
+      max-height: 68px;
+      width: auto;
+      height: auto;
+      color: var(--fg);
+    }
+    .stage-kind {
+      position: absolute;
+      top: 6px;
+      left: 7px;
+      font-size: 9.5px;
+      font-family: var(--vscode-editor-font-family, monospace);
+      color: var(--muted);
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+    }
+    .stage-pkg {
+      position: absolute;
+      top: 6px;
+      right: 7px;
+      font-size: 9.5px;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 1px 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .stage-pkg.mounted {
+      color: var(--success);
+      border-color: rgba(46, 160, 67, 0.4);
+      background: var(--success-bg);
+    }
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .comp-body {
+      padding: 10px 12px 11px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      flex: 1;
+    }
+    .comp-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--fg);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .comp-summary {
+      font-size: 11.5px;
+      color: var(--muted);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: 32px;
+    }
+    .comp-ports {
+      font-size: 10.5px;
+      font-family: var(--vscode-editor-font-family, monospace);
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 1px;
+    }
+    .comp-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      padding-top: 7px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Library Grid */
+    .lib-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 12px;
+    }
+    .lib-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.14s;
+    }
+    .lib-card:hover { border-color: var(--border-strong); }
+    .lib-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .lib-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+      min-width: 0;
+    }
+    .lib-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--fg);
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 0;
+      text-align: left;
+    }
+    .lib-name:hover { color: #60a5fa; text-decoration: underline; }
+    .tag {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--bg);
+      white-space: nowrap;
+    }
+    .tag.verified {
+      color: var(--success);
+      border-color: rgba(46, 160, 67, 0.35);
+      background: var(--success-bg);
+    }
+    .lib-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .ver-select {
+      background: var(--input-bg);
+      color: var(--input-fg);
+      border: 1px solid var(--input-border);
+      border-radius: 5px;
+      padding: 4px 7px;
+      font-size: 11px;
+      outline: none;
+      cursor: pointer;
+    }
+    .lib-desc {
+      font-size: 12px;
+      line-height: 1.48;
+      color: var(--muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: 35px;
+    }
+    .lib-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .link-btn {
+      background: none;
+      border: none;
+      color: #60a5fa;
+      font-size: 11.5px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 0;
+    }
+    body.vscode-light .link-btn { color: #2563eb; }
+    .link-btn:hover { text-decoration: underline; }
+
+    /* Buttons */
+    .btn {
+      background: var(--accent);
+      color: var(--accent-fg);
+      border: 1px solid transparent;
+      border-radius: 5px;
+      padding: 5px 11px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      white-space: nowrap;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.65; cursor: default; }
+    .btn.secondary {
+      background: var(--bg);
+      color: var(--fg);
+      border-color: var(--border);
+    }
+    .btn.secondary:hover:not(:disabled) { border-color: var(--border-strong); }
+    .btn.installed-pill {
+      background: var(--success-bg);
+      color: var(--success);
+      border-color: rgba(46, 160, 67, 0.4);
+      cursor: default;
+    }
+    .btn.ghost-danger {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border);
+      padding: 5px 8px;
+    }
+    .btn.ghost-danger:hover:not(:disabled) {
+      color: var(--danger);
+      border-color: rgba(248, 81, 73, 0.45);
+    }
+    .btn.full { flex: 1; }
+
+    /* Component Bottom Inspector */
+    .comp-inspector {
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 11px 20px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-shrink: 0;
+      flex-wrap: wrap;
+    }
+    .comp-inspector.open { display: flex; }
+    .insp-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+    .insp-thumb {
+      width: 56px;
+      height: 42px;
+      border-radius: 6px;
+      background: var(--stage-bg);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      flex-shrink: 0;
+    }
+    .insp-thumb svg { max-width: 46px; max-height: 32px; color: var(--fg); }
+    .insp-meta { min-width: 0; flex: 1; }
+    .insp-fqn {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 11.5px;
+      color: var(--fg);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .insp-code {
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 8px;
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 520px;
+    }
+
+    /* Package Drawer */
+    .drawer {
+      width: 380px;
+      max-width: 45vw;
+      border-left: 1px solid var(--border);
+      background: var(--surface);
+      display: none;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .drawer.open { display: flex; }
+    .drawer-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .drawer-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .drawer-comp-row {
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--card-bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    /* Import View */
+    .import-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+      max-width: 820px;
+      margin: 12px auto;
+    }
+    .import-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .import-icon-box {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: rgba(37, 99, 235, 0.14);
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Status Toast */
+    .toast {
+      position: fixed;
+      bottom: 16px;
+      right: 20px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-strong);
+      color: var(--fg);
+      padding: 9px 14px;
+      border-radius: 7px;
+      font-size: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      display: none;
+      align-items: center;
+      gap: 8px;
+      z-index: 50;
+      max-width: 440px;
+    }
+    .toast.visible { display: flex; }
+    .empty-state {
+      text-align: center;
+      padding: 52px 20px;
+      color: var(--muted);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header class="hub-header">
+    <div class="header-row">
+      <div class="brand">
+        <div class="brand-emblem">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M8 1.5L14 5v6l-6 3.5L2 11V5l6-3.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <circle cx="8" cy="8" r="2" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="brand-title">Component &amp; Library Hub</span>
+        <span class="brand-sub" id="mounted-summary">0 mounted</span>
+      </div>
+
+      <div class="segmented" role="tablist" aria-label="Hub Mode">
+        <button class="seg-btn active" data-action="set-mode" data-mode="components" id="mode-components">
+          Components <span class="seg-count" id="count-components">0</span>
+        </button>
+        <button class="seg-btn" data-action="set-mode" data-mode="libraries" id="mode-libraries">
+          Libraries <span class="seg-count" id="count-libraries">0</span>
+        </button>
+        <button class="seg-btn" data-action="set-mode" data-mode="import" id="mode-import">
+          Import
+        </button>
+      </div>
+    </div>
+
+    <div class="toolbar-row" id="toolbar-row">
+      <div class="search-wrap">
+        <svg class="search-svg" viewBox="0 0 16 16" fill="none">
+          <circle cx="7" cy="7" r="4.8" stroke="currentColor" stroke-width="1.5"/>
+          <path d="M10.6 10.6L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <input
+          type="text"
+          class="search-input"
+          id="search-input"
+          placeholder="Search schematic components, classes, or libraries (e.g., resistor, pid, pump, mosfet, ur5)..."
+        />
+        <button class="clear-btn" id="clear-search-btn" data-action="clear-search" title="Clear search">✕</button>
+      </div>
+
+      <button class="pill-toggle" id="pkg-filter-chip" data-action="clear-pkg-filter" style="display: none;"></button>
+      <button class="pill-toggle" id="mounted-only-btn" data-action="toggle-mounted-only">Mounted only</button>
+      <button class="pill-toggle" id="sort-toggle-btn" data-action="cycle-sort" style="display: none;">Sort: Popular</button>
+      <button class="pill-toggle" data-action="open-model-hub" title="Open visual model gallery with schematic diagrams">Open Model…</button>
+    </div>
+
+    <div class="domain-bar" id="domain-bar"></div>
+    <div class="domain-bar" id="subpkg-bar" style="display: none; padding-top: 4px;"></div>
+  </header>
+
+  <div class="workspace-body">
+    <div class="scroll-pane" id="scroll-pane"></div>
+
+    <aside class="drawer" id="pkg-drawer">
+      <div class="drawer-head">
+        <div>
+          <div style="font-size: 14px; font-weight: 600;" id="drawer-title"></div>
+          <div style="font-size: 11px; color: var(--muted);" id="drawer-sub"></div>
+        </div>
+        <button class="btn secondary" data-action="close-drawer" style="padding: 3px 8px;">✕</button>
+      </div>
+      <div class="drawer-tabs">
+        <button class="pill-toggle active" data-action="set-drawer-tab" data-tab="components" id="dtab-components">Components</button>
+        <button class="pill-toggle" data-action="set-drawer-tab" data-tab="dependencies" id="dtab-dependencies">Dependencies</button>
+        <button class="pill-toggle" data-action="set-drawer-tab" data-tab="about" id="dtab-about">About</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </aside>
+  </div>
+
+  <footer class="comp-inspector" id="comp-inspector"></footer>
+  <div class="toast" id="hub-toast"></div>
+
+  <script nonce="${nonce}">
+    (function () {
+      const vscode = acquireVsCodeApi();
+      const DOMAINS = ${safeJson(HUB_DOMAIN_FILTERS)};
+      const BASE_COMPONENTS = ${safeJson(components)};
+      const BASE_PACKAGES = ${safeJson(packages)};
+      const INITIAL_PKG = ${safeJson(initialPackageName || "")};
+      const PAGE_SIZE = 72;
+
+      let installedDeps = ${safeJson(installedDeps)};
+      let catalogClasses = [];
+      let remotePackages = [];
+      let streamedComponents = [];
+      let registryTotal = null;
+      let registryHasMore = false;
+      let registryOffset = 0;
+      let registrySubpackages = [];
+      let isStreamingRegistry = false;
+      let livePackages = [];
+      let liveClasses = [];
+      let cachedAllComps = null;
+      let liveIcons = {};
+      let requestedIcons = new Set();
+
+      let currentMode = INITIAL_PKG ? "libraries" : "components";
+      let currentDomain = "all";
+      let packageFilter = "";
+      let subpackageFilter = "";
+      let mountedOnly = false;
+      let librarySort = "popular";
+      let visibleLimit = PAGE_SIZE;
+      let selectedCompId = BASE_COMPONENTS[0] ? BASE_COMPONENTS[0].id : "";
+      let inspectingPkgName = INITIAL_PKG || "";
+      let drawerTab = "components";
+      let selectedVersions = {};
+      let busyRequests = new Map();
+      let copiedId = "";
+      let toastTimer = null;
+      let searchDebounce = null;
+      let streamDebounce = null;
+
+      function triggerRegistryStream(reset) {
+        if (mountedOnly) {
+          registryHasMore = false;
+          isStreamingRegistry = false;
+          return;
+        }
+        const q = (document.getElementById("search-input")?.value || "").trim();
+        const nextOffset = reset ? 0 : registryOffset;
+        isStreamingRegistry = true;
+        vscode.postMessage({
+          command: "streamRegistryComponents",
+          query: q,
+          domain: currentDomain,
+          packageName: packageFilter,
+          subpackage: subpackageFilter,
+          offset: nextOffset,
+          reset: Boolean(reset),
+        });
+      }
+
+      function esc(str) {
+        return String(str || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function sanitizeSvg(rawSvg) {
+        if (typeof rawSvg !== "string") return "";
+        const openMatch = /<svg\\b/i.exec(rawSvg);
+        if (!openMatch) return "";
+        const closeIdx = rawSvg.toLowerCase().lastIndexOf("</svg>");
+        if (closeIdx === -1 || closeIdx < openMatch.index) return "";
+        let cleaned = rawSvg.slice(openMatch.index, closeIdx + 6);
+        let prev = "";
+        let iter = 0;
+        while (cleaned !== prev && iter < 20) {
+          prev = cleaned;
+          cleaned = cleaned
+            .replace(/<(script|foreignObject|iframe|object|embed|applet|style|link|meta|base|form|animate|animateTransform|animateMotion|set|handler)\\b[^>]*>[\\s\\S]*?<\\/\\1[^>]*>/gi, "")
+            .replace(/<\\/?(?:script|foreignObject|iframe|object|embed|applet|style|link|meta|base|form|animate|animateTransform|animateMotion|set|handler)\\b[^>]*>/gi, "")
+            .replace(/(?:[\\s/]+)on[a-z0-9_-]*\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)/gi, "")
+            .replace(/(?:[\\s/]+)(?:xlink:)?href\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))/gi, (full, dq, sq, uq) => {
+              const val = String(dq ?? sq ?? uq ?? "").trim();
+              return /^(?:#[A-Za-z0-9_.:-]+|data:image\\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\\s]+)$/i.test(val) ? full : "";
+            });
+          iter++;
+        }
+        cleaned = cleaned.trim();
+        return /^<svg\\b/i.test(cleaned) && /<\\/svg>$/i.test(cleaned) ? cleaned : "";
+      }
+
+      function showToast(msg) {
+        if (!msg) return;
+        const el = document.getElementById("hub-toast");
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.add("visible");
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove("visible"), 3600);
+      }
+
+      function getInstalledVersion(pkgName) {
+        if (!pkgName) return "";
+        const target = pkgName.toLowerCase();
+        for (const [k, v] of Object.entries(installedDeps)) {
+          if (k.toLowerCase() === target) return v;
+        }
+        return "";
+      }
+
+      function resetVisibleWindow() {
+        visibleLimit = PAGE_SIZE;
+        const pane = document.getElementById("scroll-pane");
+        if (pane) pane.scrollTop = 0;
+      }
+
+      function normalizeLiveSvg(svg) {
+        let out = sanitizeSvg(svg);
+        if (!out) return "";
+        const vb = out.match(/viewBox\\s*=\\s*(["'])([-\\d.]+)\\s+([-\\d.]+)\\s+([-\\d.]+)\\s+([-\\d.]+)\\1/);
+        if (vb) {
+          const vx = parseFloat(vb[2]);
+          const vy = parseFloat(vb[3]);
+          const vw = parseFloat(vb[4]);
+          const vh = parseFloat(vb[5]);
+          if (vw > 0 && vh > 0 && (vx < 0 || vy < 0)) {
+            const px = +(vw * 0.05).toFixed(2);
+            const py = +(vh * 0.05).toFixed(2);
+            out = out.replace(vb[0], 'viewBox="' + (vx - px) + " " + (vy - py) + " " + (vw + px * 2) + " " + (vh + py * 2) + '"');
+          }
+        }
+        const isDark = !document.body.classList.contains("vscode-light");
+        if (isDark) {
+          out = out
+            .replace(/stroke=(["'])(?:#000000|#000|black|rgb\\(0,\\s*0,\\s*0\\))\\1/gi, 'stroke="#e2e8f0"')
+            .replace(/fill=(["'])(?:#000000|#000|black|rgb\\(0,\\s*0,\\s*0\\))\\1/gi, 'fill="#e2e8f0"');
+        }
+        return out;
+      }
+
+      function inferDomain(fqn, lang) {
+        const s = (fqn + " " + (lang || "")).toLowerCase();
+        if (s.includes("electrical") || s.includes("magnetic") || s.includes("spice") || s.includes("analog")) return "electrical";
+        if (s.includes("mechanics") || s.includes("rotational") || s.includes("translational") || s.includes("planar")) return "mechanics";
+        if (s.includes("fluid") || s.includes("thermal") || s.includes("heat") || s.includes("buildings") || s.includes("epanet") || s.includes("swmm")) return "fluids-thermal";
+        if (s.includes("blocks") || s.includes("complexblocks") || s.includes("stategraph") || s.includes("control") || s.includes("pid")) return "control";
+        if (s.includes("ieee") || s.includes("psse") || s.includes("opendss") || s.includes("grid")) return "power-grids";
+        if (s.includes("robot") || s.includes("urdf") || s.includes("step")) return "robotics-cad";
+        return "systems";
+      }
+
+      function extractSubpkg(fqn) {
+        const parts = String(fqn || "").split(".");
+        if (parts.length < 3) return "";
+        if (parts[0] === "Modelica" && parts.length >= 4) {
+          return parts[1] + " · " + parts[2];
+        }
+        return parts[0] + " · " + parts[1];
+      }
+
+      function buildFallbackSchematic(shortName, kind, category) {
+        const dom = DOMAINS.find(d => d.id === category) || DOMAINS[0];
+        const accent = dom.accent || "#3b82f6";
+        const label = esc(shortName.replace(/[^A-Za-z0-9]/g, "").slice(0, 5).toUpperCase() || "CMP");
+        return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 56" fill="none">' +
+          '<line x1="6" y1="28" x2="18" y2="28" stroke="' + accent + '" stroke-width="2.2"/>' +
+          '<rect x="18" y="12" width="44" height="32" rx="4" stroke="currentColor" stroke-width="2" fill="rgba(59,130,246,0.10)"/>' +
+          '<text x="40" y="32" text-anchor="middle" font-size="10.5" font-weight="700" font-family="monospace" fill="currentColor">' + label + "</text>" +
+          '<line x1="62" y1="28" x2="74" y2="28" stroke="' + accent + '" stroke-width="2.2"/>' +
+          "</svg>";
+      }
+
+      function getAllPackages() {
+        const seen = new Set();
+        const merged = [];
+        for (const p of [...BASE_PACKAGES, ...remotePackages, ...livePackages]) {
+          const key = p.name.toLowerCase();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(p);
+        }
+        // Include any dynamically mounted custom/imported libraries
+        for (const [depName, depVer] of Object.entries(installedDeps)) {
+          if (!seen.has(depName.toLowerCase())) {
+            seen.add(depName.toLowerCase());
+            merged.push({
+              name: depName,
+              latestVersion: depVer,
+              versions: [depVer],
+              description: "Mounted workspace library package.",
+              domainId: inferDomain(depName, ""),
+              language: "Modelica",
+              verified: false,
+            });
+          }
+        }
+        return merged;
+      }
+
+      function getAllComponents() {
+        if (cachedAllComps) return cachedAllComps;
+        const ordered = [];
+        const indexByFqn = new Map();
+
+        for (const base of BASE_COMPONENTS) {
+          indexByFqn.set(base.fqn.toLowerCase(), ordered.length);
+          ordered.push(base);
+        }
+
+        for (const item of catalogClasses) {
+          const fqn = item.fqn;
+          if (!fqn || indexByFqn.has(fqn.toLowerCase())) continue;
+          const kind = (item.kind || "model").toLowerCase();
+          const rootPkg = item.packageName || fqn.split(".")[0] || "Modelica";
+          const cat = inferDomain(fqn, item.language);
+          const shortName = item.name || fqn.split(".").pop() || fqn;
+          const parts = fqn.split(".");
+          const subPath = parts.length > 2 ? parts.slice(1, -1).join(" · ") : rootPkg;
+          const baseIdent = shortName.replace(/[^A-Za-z0-9_]/g, "") || "comp";
+          const instName = baseIdent.charAt(0).toLowerCase() + baseIdent.slice(1, 14) + "1";
+          indexByFqn.set(fqn.toLowerCase(), ordered.length);
+          ordered.push({
+            id: "cat-" + fqn,
+            shortName,
+            fqn,
+            kind,
+            category: cat,
+            packageName: rootPkg,
+            packageVersion: getInstalledVersion(rootPkg) || (rootPkg === "Modelica" ? "4.1.0" : "latest"),
+            summary: item.description || (subPath + " (" + kind + ")"),
+            portsAndParams: parts.length > 2 ? parts.slice(0, -1).join(".") : fqn,
+            declarationSnippet: fqn + " " + instName + ";",
+            keywords: [shortName.toLowerCase(), fqn.toLowerCase(), subPath.toLowerCase()],
+            schematicSvg: buildFallbackSchematic(shortName, kind, cat),
+          });
+        }
+
+        if (!mountedOnly) {
+          for (const reg of streamedComponents) {
+            const fqn = reg.fqn;
+            if (!fqn) continue;
+            const key = fqn.toLowerCase();
+            if (indexByFqn.has(key)) {
+              if (reg.packageName && String(reg.packageName).startsWith("@")) {
+                const idx = indexByFqn.get(key);
+                const prev = ordered[idx];
+                if (prev && !String(prev.packageName).startsWith("@")) {
+                  ordered[idx] = Object.assign({}, prev, {
+                    packageName: reg.packageName,
+                    packageVersion: reg.packageVersion || prev.packageVersion,
+                  });
+                }
+              }
+              continue;
+            }
+            const kind = (reg.kind || "model").toLowerCase();
+            const pkgName = reg.packageName || fqn.split(".")[0] || "Modelica";
+            const cat = DOMAINS.some(d => d.id === reg.domain) ? reg.domain : inferDomain(fqn, reg.language);
+            const shortName = reg.name || fqn.split(".").pop() || fqn;
+            const parts = fqn.split(".");
+            const subPath = parts.length > 2 ? parts.slice(1, -1).join(" · ") : pkgName;
+            const baseIdent = shortName.replace(/[^A-Za-z0-9_]/g, "") || "comp";
+            const instName = baseIdent.charAt(0).toLowerCase() + baseIdent.slice(1, 14) + "1";
+            indexByFqn.set(key, ordered.length);
+            ordered.push({
+              id: "reg-" + pkgName + "-" + fqn,
+              shortName,
+              fqn,
+              kind,
+              category: cat,
+              packageName: pkgName,
+              packageVersion: reg.packageVersion || getInstalledVersion(pkgName) || "1.0.0",
+              summary: reg.description || (subPath + " (" + kind + ")"),
+              portsAndParams: parts.length > 2 ? parts.slice(0, -1).join(".") : (kind + " · " + pkgName),
+              declarationSnippet: fqn + " " + instName + ";",
+              keywords: [shortName.toLowerCase(), fqn.toLowerCase(), pkgName.toLowerCase(), subPath.toLowerCase()],
+              schematicSvg: liveIcons[fqn] || buildFallbackSchematic(shortName, kind, cat),
+            });
+          }
+        }
+
+        for (const cls of liveClasses) {
+          const fqn = cls.compositeName || cls.name;
+          if (!fqn || indexByFqn.has(fqn.toLowerCase())) continue;
+          const kind = (cls.classKind || "model").toLowerCase();
+          if (kind === "package" || kind === "file" || kind === "folder") continue;
+          indexByFqn.set(fqn.toLowerCase(), ordered.length);
+          const rootPkg = fqn.split(".")[0] || "Workspace";
+          const cat = inferDomain(fqn, cls.language);
+          const shortName = cls.name || fqn.split(".").pop() || fqn;
+          const instName = shortName.replace(/[^A-Za-z0-9_]/g, "").slice(0, 12).toLowerCase() + "1";
+          ordered.push({
+            id: "live-" + fqn,
+            shortName,
+            fqn,
+            kind,
+            category: cat,
+            packageName: rootPkg,
+            packageVersion: getInstalledVersion(rootPkg) || "latest",
+            summary: cls.description || ("Indexed " + kind + " from " + rootPkg),
+            portsAndParams: fqn,
+            declarationSnippet: fqn + " " + instName + ";",
+            keywords: [shortName.toLowerCase(), fqn.toLowerCase()],
+            schematicSvg: buildFallbackSchematic(shortName, kind, cat),
+          });
+        }
+
+        cachedAllComps = ordered;
+        return cachedAllComps;
+      }
+
+      function getBaseFilteredComponents() {
+        const q = (document.getElementById("search-input")?.value || "").trim().toLowerCase();
+        return getAllComponents().filter(c => {
+          if (packageFilter && c.packageName.toLowerCase() !== packageFilter.toLowerCase()) return false;
+          if (mountedOnly && !getInstalledVersion(c.packageName)) return false;
+          if (currentDomain !== "all" && c.category !== currentDomain) return false;
+          if (q) {
+            const hay = (c.shortName + " " + c.fqn + " " + c.summary + " " + c.packageName + " " + (c.keywords || []).join(" ")).toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function getFilteredComponents(baseComps) {
+        const list = baseComps || getBaseFilteredComponents();
+        if (!subpackageFilter) return list;
+        return list.filter(c => extractSubpkg(c.fqn) === subpackageFilter);
+      }
+
+      function getFilteredPackages() {
+        const q = (document.getElementById("search-input")?.value || "").trim().toLowerCase();
+        const matchingPkgFromComps = new Set();
+        if (q) {
+          for (const c of getAllComponents()) {
+            if (c.shortName.toLowerCase().includes(q) || c.fqn.toLowerCase().includes(q)) {
+              matchingPkgFromComps.add(c.packageName.toLowerCase());
+            }
+          }
+        }
+        const list = getAllPackages().filter(p => {
+          if (mountedOnly && !getInstalledVersion(p.name)) return false;
+          if (currentDomain !== "all") {
+            const domId = p.domainId || inferDomain(p.name + " " + (p.domains || []).join(" "), p.language);
+            if (domId !== currentDomain) return false;
+          }
+          if (q) {
+            const compNames = (p.components || []).map(c => c.name).join(" ");
+            const hay = (p.name + " " + (p.description || "") + " " + (p.language || "") + " " + compNames).toLowerCase();
+            if (!hay.includes(q) && !matchingPkgFromComps.has(p.name.toLowerCase())) return false;
+          }
+          return true;
+        });
+
+        if (librarySort === "name") {
+          list.sort((a, b) => a.name.localeCompare(b.name));
+        } else {
+          list.sort((a, b) => (b.totalDownloads || 0) - (a.totalDownloads || 0));
+        }
+        return list;
+      }
+
+      function requestMissingIcons(comps) {
+        const toFetch = [];
+        for (const c of comps) {
+          if (!requestedIcons.has(c.fqn) && !liveIcons[c.fqn] && (c.packageName === "Modelica" || getInstalledVersion(c.packageName))) {
+            requestedIcons.add(c.fqn);
+            toFetch.push(c.fqn);
+            if (toFetch.length >= 80) break;
+          }
+        }
+        if (toFetch.length > 0) {
+          vscode.postMessage({ command: "fetchIcons", classNames: toFetch });
+        }
+      }
+
+      function renderDomainBar(baseComps) {
+        const bar = document.getElementById("domain-bar");
+        if (bar) {
+          bar.style.display = currentMode === "import" ? "none" : "flex";
+          bar.innerHTML = DOMAINS.map(d =>
+            '<button class="domain-pill ' + (currentDomain === d.id ? "active" : "") + '" data-action="set-domain" data-domain="' + esc(d.id) + '">' +
+              '<svg viewBox="0 0 16 16" fill="none">' + d.svgInner + "</svg>" +
+              "<span>" + esc(d.label) + "</span>" +
+            "</button>"
+          ).join("");
+        }
+
+        const subBar = document.getElementById("subpkg-bar");
+        if (!subBar) return;
+        if (currentMode !== "components" || (currentDomain === "all" && !packageFilter)) {
+          subBar.style.display = "none";
+          subBar.textContent = "";
+          return;
+        }
+        const counts = new Map();
+        for (const c of baseComps) {
+          const g = extractSubpkg(c.fqn);
+          if (g) counts.set(g, (counts.get(g) || 0) + 1);
+        }
+        if (!mountedOnly && Array.isArray(registrySubpackages)) {
+          for (const rs of registrySubpackages) {
+            const lbl = String(rs.id || rs.label || "").replace(/\\./g, " · ");
+            if (lbl && typeof rs.count === "number" && rs.count > (counts.get(lbl) || 0)) {
+              counts.set(lbl, rs.count);
+            }
+          }
+        }
+        const topGroups = Array.from(counts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10);
+        if (topGroups.length <= 1) {
+          subBar.style.display = "none";
+          subBar.textContent = "";
+          return;
+        }
+        subBar.style.display = "flex";
+        subBar.innerHTML = topGroups.map(([label, cnt]) =>
+          '<button class="domain-pill ' + (subpackageFilter === label ? "active" : "") + '" data-action="set-subpkg" data-subpkg="' + esc(label) + '" style="font-size: 11px; padding: 3px 9px;">' +
+            "<span>" + esc(label) + "</span>" +
+            '<span style="opacity: 0.7; font-family: monospace; font-size: 10px;">' + esc(cnt) + "</span>" +
+          "</button>"
+        ).join("");
+      }
+
+      function renderHeaderMeta(filteredComps, filteredPkgs) {
+        const mountedCount = Object.keys(installedDeps).length;
+        const sumEl = document.getElementById("mounted-summary");
+        if (sumEl) sumEl.textContent = mountedCount + " mounted";
+
+        const totalAvailable = Math.max(
+          filteredComps.length,
+          !mountedOnly && typeof registryTotal === "number" ? registryTotal : 0
+        );
+        document.getElementById("count-components").textContent = Number(totalAvailable).toLocaleString();
+        document.getElementById("count-libraries").textContent = String(filteredPkgs.length);
+
+        ["components", "libraries", "import"].forEach(m => {
+          document.getElementById("mode-" + m)?.classList.toggle("active", currentMode === m);
+        });
+
+        const toolbar = document.getElementById("toolbar-row");
+        if (toolbar) toolbar.style.display = currentMode === "import" ? "none" : "flex";
+
+        const q = document.getElementById("search-input")?.value || "";
+        document.getElementById("clear-search-btn")?.classList.toggle("visible", q.length > 0);
+
+        const pkgChip = document.getElementById("pkg-filter-chip");
+        if (pkgChip) {
+          if (currentMode === "components" && packageFilter) {
+            pkgChip.style.display = "inline-flex";
+            pkgChip.className = "pill-toggle active";
+            pkgChip.textContent = "Package: " + packageFilter + " ✕";
+          } else {
+            pkgChip.style.display = "none";
+          }
+        }
+
+        const mountedBtn = document.getElementById("mounted-only-btn");
+        if (mountedBtn) {
+          mountedBtn.classList.toggle("active", mountedOnly);
+          mountedBtn.textContent = currentMode === "libraries"
+            ? "Installed (" + mountedCount + ")"
+            : "Mounted only";
+        }
+
+        const sortBtn = document.getElementById("sort-toggle-btn");
+        if (sortBtn) {
+          sortBtn.style.display = currentMode === "libraries" ? "inline-flex" : "none";
+          sortBtn.textContent = librarySort === "popular" ? "Sort: Popular" : "Sort: A–Z";
+        }
+      }
+
+      function renderComponentsPane(filteredComps) {
+        const pane = document.getElementById("scroll-pane");
+        if (!pane) return;
+        if (filteredComps.length === 0) {
+          pane.innerHTML =
+            '<div class="empty-state">' +
+              '<div style="font-size: 14px; font-weight: 600; color: var(--fg);">No matching components</div>' +
+              '<div>Try clearing filters or searching another engineering term (e.g., resistor, pid, pump, revolute).</div>' +
+              '<button class="btn secondary" data-action="reset-filters">Reset Filters</button>' +
+            "</div>";
+          return;
+        }
+
+        const visibleSlice = filteredComps.slice(0, visibleLimit);
+        requestMissingIcons(visibleSlice);
+
+        const totalShownPool = Math.max(
+          filteredComps.length,
+          !mountedOnly && typeof registryTotal === "number" ? registryTotal : 0
+        );
+        const hasMoreItems = visibleSlice.length < filteredComps.length || (!mountedOnly && registryHasMore);
+        const moreFooter = hasMoreItems
+          ? '<div style="margin-top: 14px; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted);">' +
+              "<span>Showing <strong>" + visibleSlice.length.toLocaleString() + "</strong> of <strong>" + totalShownPool.toLocaleString() + "</strong> schematic components</span>" +
+              '<button class="btn secondary" data-action="load-more-comps">' + (isStreamingRegistry ? "Streaming…" : "Show more (+" + Math.min(PAGE_SIZE, Math.max(PAGE_SIZE, totalShownPool - visibleSlice.length)) + ")") + "</button>" +
+            "</div>"
+          : "";
+
+        pane.innerHTML = '<div class="comp-grid">' + visibleSlice.map(c => {
+          const mountedVer = getInstalledVersion(c.packageName);
+          const svgMarkup = sanitizeSvg(liveIcons[c.fqn] || c.schematicSvg);
+          const isSelected = selectedCompId === c.id;
+          const isPlacing = busyRequests.has("place:" + c.fqn);
+          const isCopied = copiedId === c.id;
+          return (
+            '<div class="comp-card ' + (isSelected ? "selected" : "") + '" draggable="true" data-action="select-comp" data-comp-id="' + esc(c.id) + '">' +
+              '<div class="comp-stage">' +
+                '<span class="stage-kind">' + esc(c.kind) + "</span>" +
+                '<span class="stage-pkg ' + (mountedVer ? "mounted" : "") + '">' +
+                  '<span class="dot"></span>' + esc(c.packageName) +
+                "</span>" +
+                svgMarkup +
+              "</div>" +
+              '<div class="comp-body">' +
+                '<div class="comp-title" title="' + esc(c.fqn) + '">' + esc(c.shortName) + "</div>" +
+                '<div class="comp-summary">' + esc(c.summary) + "</div>" +
+                '<div class="comp-ports">' + esc(c.portsAndParams) + "</div>" +
+                '<div class="comp-actions">' +
+                  '<button class="btn full" data-action="place-comp" data-comp-id="' + esc(c.id) + '" ' + (isPlacing ? "disabled" : "") + ">" +
+                    (isPlacing ? "Placing..." : (mountedVer ? "Place" : "Place + Mount")) +
+                  "</button>" +
+                  '<button class="btn secondary" data-action="copy-comp" data-comp-id="' + esc(c.id) + '" title="Copy declaration snippet">' +
+                    (isCopied ? "✓" : "Copy") +
+                  "</button>" +
+                "</div>" +
+              "</div>" +
+            "</div>"
+          );
+        }).join("") + "</div>" + moreFooter;
+      }
+
+      function renderLibrariesPane(filteredPkgs) {
+        const pane = document.getElementById("scroll-pane");
+        if (!pane) return;
+        if (filteredPkgs.length === 0) {
+          const rawQ = (document.getElementById("search-input")?.value || "").trim();
+          pane.innerHTML =
+            '<div class="empty-state">' +
+              '<div style="font-size: 14px; font-weight: 600; color: var(--fg);">No matching libraries</div>' +
+              (rawQ
+                ? '<div>Install <strong>' + esc(rawQ) + '</strong> directly from Ansatz or reset filters.</div>' +
+                  '<button class="btn" data-action="install-pkg" data-pkg="' + esc(rawQ) + '" data-ver="latest">+ Add ' + esc(rawQ) + "</button>"
+                : '<div>No libraries match the active filters.</div>') +
+              '<button class="btn secondary" data-action="reset-filters">Reset Filters</button>' +
+            "</div>";
+          return;
+        }
+
+        const allComps = getAllComponents();
+        const pkgCounts = new Map();
+        for (const c of allComps) {
+          const key = c.packageName.toLowerCase();
+          pkgCounts.set(key, (pkgCounts.get(key) || 0) + 1);
+        }
+
+        pane.innerHTML = '<div class="lib-grid">' + filteredPkgs.map(pkg => {
+          const installedVer = getInstalledVersion(pkg.name);
+          const versions = Array.isArray(pkg.versions) && pkg.versions.length > 0
+            ? pkg.versions
+            : [pkg.latestVersion || installedVer || "1.0.0"];
+          const chosenVer = selectedVersions[pkg.name] || installedVer || versions[0];
+          const isBusy = busyRequests.has("pkg:" + pkg.name);
+          const showcaseCount = pkgCounts.get(pkg.name.toLowerCase()) || 0;
+
+          const verOptions = versions.map((v, idx) =>
+            '<option value="' + esc(v) + '" ' + (v === chosenVer ? "selected" : "") + ">v" + esc(v) + (idx === 0 ? " (latest)" : "") + "</option>"
+          ).join("");
+
+          let actionHtml = "";
+          if (isBusy) {
+            actionHtml = '<button class="btn" disabled>Working...</button>';
+          } else if (installedVer) {
+            if (installedVer === chosenVer) {
+              actionHtml =
+                '<span class="btn installed-pill">✓ Installed</span>' +
+                '<button class="btn ghost-danger" data-action="uninstall-pkg" data-pkg="' + esc(pkg.name) + '" title="Remove from workspace">Remove</button>';
+            } else {
+              actionHtml =
+                '<button class="btn secondary" data-action="install-pkg" data-pkg="' + esc(pkg.name) + '" data-ver="' + esc(chosenVer) + '">Switch to v' + esc(chosenVer) + "</button>";
+            }
+          } else {
+            actionHtml =
+              '<button class="btn" data-action="install-pkg" data-pkg="' + esc(pkg.name) + '" data-ver="' + esc(chosenVer) + '">+ Add Library</button>';
+          }
+
+          return (
+            '<div class="lib-card">' +
+              '<div class="lib-top">' +
+                '<div class="lib-title-wrap">' +
+                  '<button class="lib-name" data-action="open-drawer" data-pkg="' + esc(pkg.name) + '">' + esc(pkg.name) + "</button>" +
+                  (pkg.language ? '<span class="tag">' + esc(pkg.language) + "</span>" : "") +
+                  (pkg.verified ? '<span class="tag verified">Verified</span>' : "") +
+                "</div>" +
+                '<div class="lib-controls">' +
+                  '<select class="ver-select" data-action="select-ver" data-pkg="' + esc(pkg.name) + '">' + verOptions + "</select>" +
+                  actionHtml +
+                "</div>" +
+              "</div>" +
+              '<p class="lib-desc">' + esc(pkg.description || "Engineering library package.") + "</p>" +
+              '<div class="lib-footer">' +
+                '<span>' +
+                  esc(pkg.license || "Standard") +
+                  (pkg.totalDownloads ? " · " + Number(pkg.totalDownloads).toLocaleString() + " installs" : "") +
+                "</span>" +
+                '<div style="display: flex; align-items: center; gap: 12px;">' +
+                  (showcaseCount > 0
+                    ? '<button class="link-btn" data-action="browse-pkg-comps" data-pkg="' + esc(pkg.name) + '">Browse ' + showcaseCount.toLocaleString() + " components →</button>"
+                    : "") +
+                  '<button class="link-btn" data-action="open-drawer" data-pkg="' + esc(pkg.name) + '">Details</button>' +
+                "</div>" +
+              "</div>" +
+            "</div>"
+          );
+        }).join("") + "</div>";
+      }
+
+      function renderImportPane() {
+        const pane = document.getElementById("scroll-pane");
+        if (!pane) return;
+        pane.innerHTML =
+          '<div class="import-grid">' +
+            '<div class="import-card">' +
+              '<div class="import-icon-box">' +
+                '<svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5A1.5 1.5 0 014 3h3l1.5 1.5H12A1.5 1.5 0 0113.5 6v5.5A1.5 1.5 0 0112 13H4a1.5 1.5 0 01-1.5-1.5v-7z" stroke="currentColor" stroke-width="1.4"/></svg>' +
+              "</div>" +
+              '<div style="font-size: 14px; font-weight: 600;">Local .zip Library Archive</div>' +
+              '<p style="font-size: 12px; color: var(--muted); line-height: 1.5;">Mount a local Modelica (.mo), SysML v2 (.sysml), SPICE, or multi-file package archive directly into the workspace VFS.</p>' +
+              '<div style="margin-top: auto; padding-top: 6px;">' +
+                '<button class="btn" data-action="import-zip">Choose .zip Archive...</button>' +
+              "</div>" +
+            "</div>" +
+            '<div class="import-card">' +
+              '<div class="import-icon-box">' +
+                '<svg width="20" height="20" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.8" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 8h11M8 2.2c1.8 1.8 1.8 9.8 0 11.6M8 2.2c-1.8 1.8-1.8 9.8 0 11.6" stroke="currentColor" stroke-width="1.3"/></svg>' +
+              "</div>" +
+              '<div style="font-size: 14px; font-weight: 600;">Remote Archive URL / GitHub Release</div>' +
+              '<p style="font-size: 12px; color: var(--muted); line-height: 1.5;">Paste an HTTPS .zip release URL to fetch, index, and mount into Libraries.</p>' +
+              '<div style="display: flex; gap: 6px; margin-top: auto; padding-top: 6px;">' +
+                '<input type="url" class="search-input" id="import-url-input" placeholder="https://github.com/org/lib/archive/refs/tags/v1.0.0.zip" style="padding-left: 10px;" />' +
+                '<button class="btn" data-action="submit-import-url">Mount URL</button>' +
+              "</div>" +
+            "</div>" +
+          "</div>";
+      }
+
+      function renderInspector(filteredComps) {
+        const bar = document.getElementById("comp-inspector");
+        if (!bar) return;
+        if (currentMode !== "components" || filteredComps.length === 0) {
+          bar.classList.remove("open");
+          return;
+        }
+        const comp = getAllComponents().find(c => c.id === selectedCompId) || filteredComps[0];
+        if (!comp) {
+          bar.classList.remove("open");
+          return;
+        }
+        selectedCompId = comp.id;
+        const mountedVer = getInstalledVersion(comp.packageName);
+        const svgMarkup = sanitizeSvg(liveIcons[comp.fqn] || comp.schematicSvg);
+        const isPlacing = busyRequests.has("place:" + comp.fqn);
+
+        bar.classList.add("open");
+        bar.innerHTML =
+          '<div class="insp-left">' +
+            '<div class="insp-thumb">' + svgMarkup + "</div>" +
+            '<div class="insp-meta">' +
+              '<div class="insp-fqn">' + esc(comp.fqn) +
+                ' <span style="font-weight: 400; color: var(--muted);">· ' +
+                  esc(comp.packageName) + (mountedVer ? " v" + esc(mountedVer) + " (Mounted)" : " (Auto-mounts on Place)") +
+                "</span>" +
+              "</div>" +
+              '<div class="insp-code">' + esc(comp.declarationSnippet) + "</div>" +
+            "</div>" +
+          "</div>" +
+          '<div style="display: flex; align-items: center; gap: 8px;">' +
+            '<button class="btn secondary" data-action="filter-to-pkg" data-pkg="' + esc(comp.packageName) + '">Filter ' + esc(comp.packageName) + "</button>" +
+            '<button class="btn secondary" data-action="copy-comp" data-comp-id="' + esc(comp.id) + '">' + (copiedId === comp.id ? "✓ Copied" : "Copy Snippet") + "</button>" +
+            '<button class="btn" data-action="place-comp" data-comp-id="' + esc(comp.id) + '" ' + (isPlacing ? "disabled" : "") + ">" +
+              (isPlacing ? "Placing..." : "Place in Model") +
+            "</button>" +
+          "</div>";
+      }
+
+      function renderDrawer() {
+        const drawer = document.getElementById("pkg-drawer");
+        if (!drawer) return;
+        const pkg = inspectingPkgName
+          ? getAllPackages().find(p => p.name.toLowerCase() === inspectingPkgName.toLowerCase())
+          : null;
+        if (!pkg || currentMode === "import") {
+          drawer.classList.remove("open");
+          return;
+        }
+        drawer.classList.add("open");
+        document.getElementById("drawer-title").textContent = pkg.name;
+        document.getElementById("drawer-sub").textContent =
+          (pkg.language || "Modelica") + " · " + (pkg.license || "Standard License");
+
+        ["components", "dependencies", "about"].forEach(t => {
+          document.getElementById("dtab-" + t)?.classList.toggle("active", drawerTab === t);
+        });
+
+        const body = document.getElementById("drawer-body");
+        if (!body) return;
+
+        if (drawerTab === "components") {
+          const galleryMatches = getAllComponents().filter(c => c.packageName.toLowerCase() === pkg.name.toLowerCase());
+          const summaryList = pkg.components || [];
+          if (galleryMatches.length === 0 && summaryList.length === 0) {
+            body.innerHTML = '<div style="color: var(--muted); font-size: 12px;">Mount this library to browse all classes in the sidebar tree.</div>';
+            return;
+          }
+          if (galleryMatches.length > 0) {
+            const previewRows = galleryMatches.slice(0, 80);
+            const moreBtn = galleryMatches.length > 80
+              ? '<button class="btn secondary" data-action="browse-pkg-comps" data-pkg="' + esc(pkg.name) + '" style="margin-top: 6px; width: 100%;">Browse all ' + galleryMatches.length.toLocaleString() + " components in gallery →</button>"
+              : "";
+            body.innerHTML = previewRows.map(c =>
+              '<div class="drawer-comp-row">' +
+                '<div style="min-width: 0;">' +
+                  '<div style="font-size: 12px; font-weight: 600;">' + esc(c.shortName) + "</div>" +
+                  '<div style="font-size: 10.5px; color: var(--muted); font-family: monospace; overflow: hidden; text-overflow: ellipsis;">' + esc(c.fqn) + "</div>" +
+                "</div>" +
+                '<button class="btn secondary" data-action="place-comp" data-comp-id="' + esc(c.id) + '">Place</button>' +
+              "</div>"
+            ).join("") + moreBtn;
+          } else {
+            body.innerHTML = summaryList.map(c =>
+              '<div class="drawer-comp-row">' +
+                '<div>' +
+                  '<div style="font-size: 12px; font-weight: 600;">' + esc(c.name) + "</div>" +
+                  '<div style="font-size: 11px; color: var(--muted);">' + esc(c.description || c.kind) + "</div>" +
+                "</div>" +
+              "</div>"
+            ).join("");
+          }
+        } else if (drawerTab === "dependencies") {
+          const deps = pkg.dependencies ? Object.entries(pkg.dependencies) : [];
+          body.innerHTML =
+            '<div style="font-size: 11.5px; color: var(--muted); margin-bottom: 6px;">Peer dependencies are automatically mounted or version-bumped when needed.</div>' +
+            (deps.length > 0
+              ? deps.map(([k, v]) =>
+                  '<div class="drawer-comp-row"><strong>' + esc(k) + '</strong><span class="tag">' + esc(v) + "</span></div>"
+                ).join("")
+              : '<div style="color: var(--muted); font-size: 12px;">Standalone library (no peer dependencies).</div>');
+        } else {
+          body.innerHTML =
+            '<div style="font-size: 12px; line-height: 1.55; color: var(--fg);">' + esc(pkg.readme || pkg.description || "") + "</div>" +
+            '<div style="margin-top: 10px; padding: 10px; border-radius: 6px; border: 1px solid var(--border); font-size: 11.5px; color: var(--muted);">' +
+              "Verified Ansatz package archive · Deterministic VFS symbol indexing" +
+            "</div>";
+        }
+      }
+
+      function renderAll() {
+        const baseComps = getBaseFilteredComponents();
+        const filteredComps = getFilteredComponents(baseComps);
+        const filteredPkgs = getFilteredPackages();
+        renderDomainBar(baseComps);
+        renderHeaderMeta(filteredComps, filteredPkgs);
+        if (currentMode === "components") {
+          renderComponentsPane(filteredComps);
+        } else if (currentMode === "libraries") {
+          renderLibrariesPane(filteredPkgs);
+        } else {
+          renderImportPane();
+        }
+        renderInspector(filteredComps);
+        renderDrawer();
+      }
+
+      function sendTracked(key, payload) {
+        const requestId = key + ":" + Date.now();
+        busyRequests.set(key, requestId);
+        renderAll();
+        vscode.postMessage(Object.assign({}, payload, { requestId }));
+      }
+
+      const scrollPane = document.getElementById("scroll-pane");
+      if (scrollPane) {
+        scrollPane.addEventListener("scroll", () => {
+          if (currentMode !== "components") return;
+          const total = getFilteredComponents().length;
+          if (scrollPane.scrollTop + scrollPane.clientHeight >= scrollPane.scrollHeight - 300) {
+            if (visibleLimit < total) {
+              visibleLimit += PAGE_SIZE;
+              renderAll();
+            }
+            if (!mountedOnly && registryHasMore && visibleLimit >= total - 36 && !isStreamingRegistry) {
+              triggerRegistryStream(false);
+            }
+          }
+        });
+      }
+
+      // Delegated Click Handler (strictly CSP-safe, zero inline onclick attributes)
+      document.addEventListener("click", (e) => {
+        const target = e.target instanceof Element ? e.target.closest("[data-action]") : null;
+        if (!target) return;
+        const action = target.getAttribute("data-action");
+
+        if (action === "set-mode") {
+          currentMode = target.getAttribute("data-mode") || "components";
+          renderAll();
+        } else if (action === "set-domain") {
+          currentDomain = target.getAttribute("data-domain") || "all";
+          subpackageFilter = "";
+          resetVisibleWindow();
+          renderAll();
+          triggerRegistryStream(true);
+        } else if (action === "set-subpkg") {
+          const nextSub = target.getAttribute("data-subpkg") || "";
+          subpackageFilter = subpackageFilter === nextSub ? "" : nextSub;
+          resetVisibleWindow();
+          renderAll();
+          triggerRegistryStream(true);
+        } else if (action === "load-more-comps") {
+          visibleLimit += PAGE_SIZE;
+          const total = getFilteredComponents().length;
+          if (!mountedOnly && registryHasMore && visibleLimit >= total - 36 && !isStreamingRegistry) {
+            triggerRegistryStream(false);
+          }
+          renderAll();
+        } else if (action === "clear-search") {
+          const inp = document.getElementById("search-input");
+          if (inp) { inp.value = ""; inp.focus(); }
+          liveClasses = [];
+          cachedAllComps = null;
+          resetVisibleWindow();
+          renderAll();
+          triggerRegistryStream(true);
+        } else if (action === "clear-pkg-filter") {
+          packageFilter = "";
+          subpackageFilter = "";
+          resetVisibleWindow();
+          renderAll();
+          triggerRegistryStream(true);
+        } else if (action === "filter-to-pkg") {
+          packageFilter = target.getAttribute("data-pkg") || "";
+          subpackageFilter = "";
+          currentMode = "components";
+          resetVisibleWindow();
+          renderAll();
+          triggerRegistryStream(true);
+        } else if (action === "browse-pkg-comps") {
+          packageFilter = target.getAttribute("data-pkg") || "";
+          subpackageFilter = "";
+          currentDomain = "all";
+          currentMode = "components";
+          inspectingPkgName = "";
+          resetVisibleWindow();
+          renderAll();
+          triggerRegistryStream(true);
+        } else if (action === "toggle-mounted-only") {
+          mountedOnly = !mountedOnly;
+          cachedAllComps = null;
+          resetVisibleWindow();
+          renderAll();
+          if (!mountedOnly) {
+            triggerRegistryStream(true);
+          }
+        } else if (action === "cycle-sort") {
+          librarySort = librarySort === "popular" ? "name" : "popular";
+          renderAll();
+        } else if (action === "reset-filters") {
+          currentDomain = "all";
+          packageFilter = "";
+          subpackageFilter = "";
+          mountedOnly = false;
+          const inp = document.getElementById("search-input");
+          if (inp) inp.value = "";
+          cachedAllComps = null;
+          resetVisibleWindow();
+          renderAll();
+          triggerRegistryStream(true);
+        } else if (action === "select-comp") {
+          selectedCompId = target.getAttribute("data-comp-id") || "";
+          renderAll();
+        } else if (action === "place-comp") {
+          e.stopPropagation();
+          const compId = target.getAttribute("data-comp-id") || "";
+          const comp = getAllComponents().find(c => c.id === compId);
+          if (!comp) return;
+          selectedCompId = comp.id;
+          sendTracked("place:" + comp.fqn, {
+            command: "placeComponent",
+            fqn: comp.fqn,
+            shortName: comp.shortName,
+            kind: comp.kind,
+            declarationSnippet: comp.declarationSnippet,
+            packageName: comp.packageName,
+            packageVersion: comp.packageVersion,
+          });
+        } else if (action === "copy-comp") {
+          e.stopPropagation();
+          const compId = target.getAttribute("data-comp-id") || "";
+          const comp = getAllComponents().find(c => c.id === compId);
+          if (!comp) return;
+          copiedId = comp.id;
+          vscode.postMessage({ command: "copyText", text: comp.declarationSnippet });
+          showToast("Copied: " + comp.declarationSnippet);
+          renderAll();
+          setTimeout(() => { if (copiedId === comp.id) { copiedId = ""; renderAll(); } }, 1500);
+        } else if (action === "install-pkg") {
+          const pkgName = target.getAttribute("data-pkg") || "";
+          const ver = target.getAttribute("data-ver") || "latest";
+          if (!pkgName) return;
+          sendTracked("pkg:" + pkgName, { command: "install", name: pkgName, version: ver });
+        } else if (action === "uninstall-pkg") {
+          const pkgName = target.getAttribute("data-pkg") || "";
+          if (!pkgName) return;
+          sendTracked("pkg:" + pkgName, { command: "uninstall", name: pkgName });
+        } else if (action === "open-drawer") {
+          inspectingPkgName = target.getAttribute("data-pkg") || "";
+          renderAll();
+        } else if (action === "close-drawer") {
+          inspectingPkgName = "";
+          renderAll();
+        } else if (action === "set-drawer-tab") {
+          drawerTab = target.getAttribute("data-tab") || "components";
+          renderDrawer();
+        } else if (action === "open-model-hub") {
+          vscode.postMessage({ command: "openModelHub" });
+        } else if (action === "import-zip") {
+          vscode.postMessage({ command: "importZip" });
+        } else if (action === "submit-import-url") {
+          const urlInp = document.getElementById("import-url-input");
+          const rawUrl = urlInp ? urlInp.value.trim() : "";
+          if (!rawUrl) {
+            vscode.postMessage({ command: "importUrl" });
+            return;
+          }
+          sendTracked("import:url", { command: "importUrl", url: rawUrl });
+        }
+      });
+
+      document.addEventListener("change", (e) => {
+        const target = e.target instanceof HTMLSelectElement ? e.target : null;
+        if (!target) return;
+        if (target.getAttribute("data-action") === "select-ver") {
+          const pkgName = target.getAttribute("data-pkg") || "";
+          if (pkgName) {
+            selectedVersions[pkgName] = target.value;
+            renderAll();
+          }
+        }
+      });
+
+      const searchInput = document.getElementById("search-input");
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          resetVisibleWindow();
+          renderAll();
+          const q = searchInput.value.trim();
+          if (searchDebounce) clearTimeout(searchDebounce);
+          if (streamDebounce) clearTimeout(streamDebounce);
+          streamDebounce = setTimeout(() => {
+            triggerRegistryStream(true);
+          }, 140);
+          if (q.length >= 2) {
+            searchDebounce = setTimeout(() => {
+              vscode.postMessage({ command: "searchLive", query: q });
+            }, 180);
+          } else {
+            liveClasses = [];
+            cachedAllComps = null;
+          }
+        });
+      }
+
+      document.addEventListener("keydown", (e) => {
+        if ((e.key === "/" || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k")) && document.activeElement !== searchInput) {
+          e.preventDefault();
+          searchInput?.focus();
+        } else if (e.key === "Escape" && inspectingPkgName) {
+          inspectingPkgName = "";
+          renderAll();
+        }
+      });
+
+      // Drag-to-Canvas / Drag-to-Editor support
+      document.addEventListener("dragstart", (e) => {
+        const card = e.target instanceof Element ? e.target.closest(".comp-card") : null;
+        if (!card || !e.dataTransfer) return;
+        const compId = card.getAttribute("data-comp-id") || "";
+        const comp = getAllComponents().find(c => c.id === compId);
+        if (!comp) return;
+        const svgMarkup = liveIcons[comp.fqn] || comp.schematicSvg;
+        const payload = JSON.stringify({
+          className: comp.fqn,
+          classKind: comp.kind,
+          iconSvg: svgMarkup,
+          isDrag: true,
+        });
+        e.dataTransfer.effectAllowed = "copy";
+        e.dataTransfer.setData("application/json", payload);
+        e.dataTransfer.setData("application/vnd.modelscript.classname", comp.fqn);
+        e.dataTransfer.setData("application/vnd.modelscript.iconsvg", svgMarkup);
+        e.dataTransfer.setData("text/plain", comp.declarationSnippet);
+        vscode.postMessage({
+          command: "dragStartComponent",
+          fqn: comp.fqn,
+          kind: comp.kind,
+          iconSvg: svgMarkup,
+          packageName: comp.packageName,
+          packageVersion: comp.packageVersion,
+        });
+      });
+
+      document.addEventListener("dragend", () => {
+        vscode.postMessage({ command: "dragEndComponent" });
+      });
+
+      window.addEventListener("message", (event) => {
+        const msg = event.data || {};
+        if (msg.command === "setInstalled") {
+          installedDeps = msg.dependencies || {};
+          cachedAllComps = null;
+          renderAll();
+        } else if (msg.command === "setCatalogComponents") {
+          catalogClasses = Array.isArray(msg.components) ? msg.components : [];
+          cachedAllComps = null;
+          renderAll();
+        } else if (msg.command === "setRemotePackages") {
+          remotePackages = Array.isArray(msg.packages) ? msg.packages : [];
+          renderAll();
+        } else if (msg.command === "registryComponentsChunk") {
+          isStreamingRegistry = false;
+          const incoming = Array.isArray(msg.items) ? msg.items : [];
+          if (msg.icons && typeof msg.icons === "object") {
+            for (const [k, svg] of Object.entries(msg.icons)) {
+              const norm = normalizeLiveSvg(svg);
+              if (norm) liveIcons[k] = norm;
+            }
+          }
+          if (msg.reset) {
+            streamedComponents = incoming;
+            registryOffset = incoming.length;
+            if (Array.isArray(msg.availableSubpackages)) {
+              registrySubpackages = msg.availableSubpackages;
+            }
+          } else {
+            const seen = new Set(streamedComponents.map(x => String(x.fqn || "").toLowerCase()));
+            for (const item of incoming) {
+              const k = String(item.fqn || "").toLowerCase();
+              if (k && !seen.has(k)) {
+                seen.add(k);
+                streamedComponents.push(item);
+              }
+            }
+            registryOffset += incoming.length;
+          }
+          if (typeof msg.total === "number") {
+            registryTotal = msg.total;
+          }
+          registryHasMore = Boolean(msg.hasMore);
+          cachedAllComps = null;
+          renderAll();
+        } else if (msg.command === "inspectPackage") {
+          inspectingPkgName = msg.name || "";
+          currentMode = "libraries";
+          renderAll();
+        } else if (msg.command === "iconsLoaded" && msg.icons) {
+          for (const [k, svg] of Object.entries(msg.icons)) {
+            const norm = normalizeLiveSvg(svg);
+            if (norm) liveIcons[k] = norm;
+          }
+          renderAll();
+        } else if (msg.command === "liveSearchResults") {
+          const curQ = (document.getElementById("search-input")?.value || "").trim();
+          if (curQ && msg.query === curQ) {
+            liveClasses = Array.isArray(msg.classes) ? msg.classes : [];
+            livePackages = Array.isArray(msg.packages) ? msg.packages : [];
+            cachedAllComps = null;
+            renderAll();
+          }
+        } else if (msg.command === "actionComplete") {
+          for (const [k, reqId] of busyRequests.entries()) {
+            if (!msg.requestId || reqId === msg.requestId) {
+              busyRequests.delete(k);
+            }
+          }
+          if (msg.message) showToast(msg.message);
+          renderAll();
+        }
+      });
+
+      renderAll();
+    })();
+  </script>
+</body>
+</html>`;
+}

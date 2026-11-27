@@ -6,14 +6,12 @@
  */
 
 import { Editor, loader, type Theme } from "@monaco-editor/react";
-import debounce from "lodash/debounce";
 import * as monaco from "monaco-editor";
 import { editor, type IDisposable } from "monaco-editor";
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import styledImport from "styled-components";
 import { useEditorModelingPreferences as useModelingPreferences } from "../host";
 import { ensureMonacoThemesDefined, getMonacoThemeName } from "../internal/monaco-theme";
+import { notifyCstWorkerDeltas, notifyCstWorkerOpen } from "./util/cst-edit-client";
 import {
   buildHypergraphMonacoDecorations,
   buildPerturbationGutterDecorations,
@@ -40,156 +38,190 @@ import {
   type ZonotopePendingOverride,
 } from "./util/zonotope-workbench-state";
 
-const styled: typeof styledImport =
-  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
+const CodeEditorContainer: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      width: "100%",
+      height: "100%",
+      minHeight: 0,
+      position: "relative",
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-const CodeEditorContainer = styled.div`
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-  position: relative;
-`;
+const EditorSurfaceWrapper: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      flex: 1,
+      minHeight: 0,
+      width: "100%",
+      position: "relative",
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-const EditorSurfaceWrapper = styled.div`
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  position: relative;
-`;
+const ZonotopeConstraintBar: React.FC<React.FormHTMLAttributes<HTMLFormElement>> = ({ style, ...rest }) => (
+  <form
+    style={{
+      display: "flex",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: "8px",
+      padding: "6px 10px",
+      background: "var(--surface-panel, rgba(15, 23, 42, 0.95))",
+      borderBottom: "1px solid rgba(56, 189, 248, 0.35)",
+      color: "var(--color-text-primary, #e2e8f0)",
+      fontSize: "12px",
+      flexShrink: 0,
+      zIndex: 6,
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-const ZonotopeConstraintBar = styled.form`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--surface-panel, rgba(15, 23, 42, 0.95));
-  border-bottom: 1px solid rgba(56, 189, 248, 0.35);
-  color: var(--color-text-primary, #e2e8f0);
-  font-size: 12px;
-  flex-shrink: 0;
-  z-index: 6;
-`;
+const ZonotopeConstraintInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+  function ZonotopeConstraintInput({ className, style, ...rest }, ref) {
+    return (
+      <input
+        ref={ref}
+        className={className ? `ms-zonotope-constraint-input ${className}` : "ms-zonotope-constraint-input"}
+        style={{
+          flex: 1,
+          minWidth: "180px",
+          height: "26px",
+          padding: "0 8px",
+          borderRadius: "5px",
+          border: "1px solid rgba(56, 189, 248, 0.45)",
+          background: "rgba(15, 23, 42, 0.72)",
+          color: "#f8fafc",
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+          fontSize: "12px",
+          outline: "none",
+          ...style,
+        }}
+        {...rest}
+      />
+    );
+  },
+);
 
-const ZonotopeConstraintInput = styled.input`
-  flex: 1;
-  min-width: 180px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 5px;
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  background: rgba(15, 23, 42, 0.72);
-  color: #f8fafc;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  outline: none;
+const ZonotopeMiniButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ className, style, ...rest }) => (
+  <button
+    className={className ? `ms-zonotope-mini-btn ${className}` : "ms-zonotope-mini-btn"}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "26px",
+      padding: "0 9px",
+      borderRadius: "5px",
+      border: "1px solid rgba(148, 163, 184, 0.32)",
+      background: "rgba(56, 189, 248, 0.16)",
+      color: "#e0f2fe",
+      fontSize: "11px",
+      fontWeight: 600,
+      cursor: "pointer",
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-  &:focus {
-    border-color: #38bdf8;
-    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.45);
-  }
-`;
+const ScramblePreviewBanner: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: "6px",
+      padding: "8px 12px",
+      background: "var(--surface-panel, rgba(15, 23, 42, 0.96))",
+      borderBottom: "1px solid rgba(52, 211, 153, 0.4)",
+      color: "var(--color-text-primary, #e2e8f0)",
+      fontSize: "12px",
+      flexShrink: 0,
+      zIndex: 6,
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-const ZonotopeMiniButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 26px;
-  padding: 0 9px;
-  border-radius: 5px;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(56, 189, 248, 0.16);
-  color: #e0f2fe;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
+const ScrambleCodePre: React.FC<React.HTMLAttributes<HTMLPreElement>> = ({ style, ...rest }) => (
+  <pre
+    style={{
+      margin: 0,
+      padding: "8px 10px",
+      maxHeight: "150px",
+      overflow: "auto",
+      borderRadius: "6px",
+      border: "1px solid rgba(148, 163, 184, 0.2)",
+      background: "rgba(2, 6, 23, 0.72)",
+      color: "#cbd5e1",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      fontSize: "11.5px",
+      lineHeight: 1.45,
+      whiteSpace: "pre",
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-  &:hover {
-    background: rgba(56, 189, 248, 0.28);
-  }
-`;
+const MobileAccessoryBar: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ className, style, ...rest }) => (
+  <div
+    className={className ? `ms-mobile-accessory-bar ${className}` : "ms-mobile-accessory-bar"}
+    style={{
+      alignItems: "center",
+      gap: "5px",
+      padding: "5px 8px",
+      background: "var(--surface-panel, rgba(14, 20, 36, 0.96))",
+      borderBottom: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08))",
+      overflowX: "auto",
+      scrollbarWidth: "none",
+      WebkitOverflowScrolling: "touch",
+      flexShrink: 0,
+      zIndex: 5,
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-const ScramblePreviewBanner = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 8px 12px;
-  background: var(--surface-panel, rgba(15, 23, 42, 0.96));
-  border-bottom: 1px solid rgba(52, 211, 153, 0.4);
-  color: var(--color-text-primary, #e2e8f0);
-  font-size: 12px;
-  flex-shrink: 0;
-  z-index: 6;
-`;
-
-const ScrambleCodePre = styled.pre`
-  margin: 0;
-  padding: 8px 10px;
-  max-height: 150px;
-  overflow: auto;
-  border-radius: 6px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(2, 6, 23, 0.72);
-  color: #cbd5e1;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11.5px;
-  line-height: 1.45;
-  white-space: pre;
-`;
-
-const MobileAccessoryBar = styled.div`
-  display: none;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 8px;
-  background: var(--surface-panel, rgba(14, 20, 36, 0.96));
-  border-bottom: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  flex-shrink: 0;
-  z-index: 5;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
-
-  @media (max-width: 767px), (pointer: coarse) {
-    display: flex;
-  }
-`;
-
-const AccessoryKeyButton = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 30px;
-  min-width: 32px;
-  padding: 0 8px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.14));
-  background: var(--color-bg-elevated, rgba(255, 255, 255, 0.06));
-  color: var(--color-text-primary, #f8fafc);
-  font-family: var(--font-mono, "JetBrains Mono", monospace);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  flex-shrink: 0;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  transition:
-    background 0.12s ease,
-    border-color 0.12s ease;
-
-  &:active {
-    background: var(--color-accent-subtle, rgba(56, 189, 248, 0.18));
-    border-color: var(--color-accent-primary, #38bdf8);
-    color: var(--color-accent-primary, #38bdf8);
-  }
-`;
+const AccessoryKeyButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ className, style, ...rest }) => (
+  <button
+    className={className ? `ms-accessory-key-btn ${className}` : "ms-accessory-key-btn"}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      height: "30px",
+      minWidth: "32px",
+      padding: "0 8px",
+      borderRadius: "6px",
+      border: "1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.14))",
+      background: "var(--color-bg-elevated, rgba(255, 255, 255, 0.06))",
+      color: "var(--color-text-primary, #f8fafc)",
+      fontFamily: 'var(--font-mono, "JetBrains Mono", monospace)',
+      fontSize: "12px",
+      fontWeight: 600,
+      whiteSpace: "nowrap",
+      cursor: "pointer",
+      flexShrink: 0,
+      userSelect: "none",
+      WebkitTapHighlightColor: "transparent",
+      transition: "background 0.12s ease, border-color 0.12s ease",
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
 interface QuickSymbol {
   label: string;
@@ -220,22 +252,51 @@ const MOBILE_ENGINEERING_SYMBOLS: QuickSymbol[] = [
 if (!self.MonacoEnvironment) {
   self.MonacoEnvironment = {
     getWorker: function () {
-      return new editorWorker();
+      return new Worker(new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url), {
+        type: "module",
+      });
     },
   };
   loader.config({ monaco });
 }
 
+interface DebouncedFunction<TArgs extends unknown[]> {
+  (...args: TArgs): void;
+  cancel: () => void;
+}
+
+function debounce<TArgs extends unknown[]>(fn: (...args: TArgs) => void, waitMs: number): DebouncedFunction<TArgs> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const debounced = (...args: TArgs): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, waitMs);
+  };
+  debounced.cancel = (): void => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  return debounced;
+}
+
+const MONACO_CANCEL_GUARD_SYMBOL = Symbol.for("modelscript.editor.monacoCancelGuard");
+
 if (typeof window !== "undefined") {
-  const win = window as unknown as {
+  const win = window as Window & {
     monaco?: typeof monaco;
-    __monacoCancellationFilterInstalled__?: boolean;
   };
   win.monaco = monaco;
 
   // Suppress benign Monaco internal cancellation errors (e.g. WordHighlighter / Delayer cancellation on model swap)
-  if (!win.__monacoCancellationFilterInstalled__) {
-    win.__monacoCancellationFilterInstalled__ = true;
+  const globalState = globalThis as Record<symbol, boolean | undefined>;
+  if (!globalState[MONACO_CANCEL_GUARD_SYMBOL]) {
+    globalState[MONACO_CANCEL_GUARD_SYMBOL] = true;
     window.addEventListener("unhandledrejection", (event) => {
       const reason = event.reason;
       if (
@@ -346,15 +407,41 @@ export interface CodeEditorHandle {
 
 export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((props, ref) => {
   const { preferences: modelingPrefs } = useModelingPreferences();
-  const editorFontSize = modelingPrefs.editorFontSize ?? modelingPrefs.fontSize ?? 14;
-  const editorTabSize = modelingPrefs.editorTabSize ?? modelingPrefs.tabSize ?? 2;
-  const editorWordWrap = modelingPrefs.editorWordWrap ?? modelingPrefs.wordWrap ?? "on";
-  const editorLineNumbers = modelingPrefs.editorLineNumbers ?? modelingPrefs.lineNumbers ?? "on";
+  const editorFontSize =
+    typeof modelingPrefs.editorFontSize === "number"
+      ? modelingPrefs.editorFontSize
+      : typeof modelingPrefs.fontSize === "number"
+        ? modelingPrefs.fontSize
+        : 14;
+  const editorTabSize =
+    typeof modelingPrefs.editorTabSize === "number"
+      ? modelingPrefs.editorTabSize
+      : typeof modelingPrefs.tabSize === "number"
+        ? modelingPrefs.tabSize
+        : 2;
+  const rawWordWrap = modelingPrefs.editorWordWrap ?? modelingPrefs.wordWrap;
+  const editorWordWrap: "on" | "off" | "wordWrapColumn" | "bounded" =
+    rawWordWrap === "on" || rawWordWrap === "off" || rawWordWrap === "wordWrapColumn" || rawWordWrap === "bounded"
+      ? rawWordWrap
+      : "on";
+  const rawLineNumbers = modelingPrefs.editorLineNumbers ?? modelingPrefs.lineNumbers;
+  const editorLineNumbers: editor.LineNumbersType =
+    rawLineNumbers === "on" ||
+    rawLineNumbers === "off" ||
+    rawLineNumbers === "relative" ||
+    rawLineNumbers === "interval"
+      ? rawLineNumbers
+      : "on";
   const editorMinimap = props.hideMinimap
     ? false
-    : (modelingPrefs.editorMinimap ?? modelingPrefs.minimapEnabled ?? true);
-  const bracketPairColorization = modelingPrefs.bracketPairColorization ?? true;
-  const lintOnType = modelingPrefs.lintOnType ?? true;
+    : typeof modelingPrefs.editorMinimap === "boolean"
+      ? modelingPrefs.editorMinimap
+      : typeof modelingPrefs.minimapEnabled === "boolean"
+        ? modelingPrefs.minimapEnabled
+        : true;
+  const bracketPairColorization =
+    typeof modelingPrefs.bracketPairColorization === "boolean" ? modelingPrefs.bracketPairColorization : true;
+  const lintOnType = typeof modelingPrefs.lintOnType === "boolean" ? modelingPrefs.lintOnType : true;
 
   const [editorMounted, setEditorMounted] = useState(false);
   const [hypergraphRecord, setHypergraphRecord] = useState<AnsatzRelationalHypergraphRecord | null>(null);
@@ -550,7 +637,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
   }, [props.externalErrors?.join("||"), props.externalMarkers, props.uri]);
 
   // ── Handler: editor mounted ──
-  const handleEditorDidMount = (ed: editor.ICodeEditor) => {
+  const handleEditorDidMount = (ed: editor.IStandaloneCodeEditor) => {
     editorRef.current = ed;
     setEditorMounted(true);
     props.setEditor(ed);
@@ -577,7 +664,26 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       const value = ed.getValue();
       lastValueRef.current = value;
       didOpen(uriRef.current, value, languageIdRef.current);
+      if (model) {
+        notifyCstWorkerOpen(uriRef.current, languageIdRef.current, value, model.getVersionId());
+      }
     }
+
+    // Stream O(1) incremental Monaco content deltas directly into the Dedicated CST Edit Worker
+    ed.onDidChangeModelContent((e) => {
+      const m = ed.getModel();
+      if (!m || !e.changes || e.changes.length === 0) return;
+      notifyCstWorkerDeltas(
+        uriRef.current,
+        languageIdRef.current,
+        e.changes.map((c) => ({
+          rangeOffset: c.rangeOffset,
+          rangeLength: c.rangeLength,
+          text: c.text,
+        })),
+        m.getVersionId(),
+      );
+    });
 
     // ── Viewport tracking: send visible line ranges to LSP ──
     const sendVisibleRanges = debounce(() => {

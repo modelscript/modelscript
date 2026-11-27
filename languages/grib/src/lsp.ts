@@ -7,6 +7,9 @@
  * keyword/parameter hover documentation (`getGribHover`), and completions (`getGribCompletions`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getGribSchemasFromLibraries, lookupGribSchema } from "./catalog/library-package-adapter.js";
 import { lintGribDocument } from "./lints/index.js";
 import { parseGribDescriptor } from "./parser/text-parser.js";
@@ -81,6 +84,71 @@ const SECTION_DOCS: Record<string, string> = {
   "7777": "**7777** (End Section, Section 5): Mandatory 4-octet trailer terminating every WMO GRIB Edition 1 message.",
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface GribCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildGribCstIndex(content: string): GribCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("grib", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
+function gribLineRange(cstIndex: GribCstIndex, lineZeroBased: number, fallbackLen = 3): LspRange {
+  const safeLine = Math.max(0, lineZeroBased);
+  const entry = cstIndex.byRow.get(safeLine);
+  const startChar = entry?.startCol ?? 0;
+  const endChar = entry ? entry.endCol : fallbackLen;
+  return {
+    start: { line: safeLine, character: startChar },
+    end: { line: safeLine, character: endChar },
+  };
+}
+
 /**
  * Validates textual GRIB1 descriptor content and returns LSP diagnostics.
  */
@@ -100,16 +168,25 @@ export function validateGrib(content: string, uri?: string): LspDiagnostic[] {
     ];
   }
 
-  return lintGribDocument(doc).map((d) => ({
-    range: {
-      start: { line: Math.max(0, d.line - 1), character: Math.max(0, d.column - 1) },
-      end: { line: Math.max(0, d.endLine - 1), character: Math.max(0, d.endColumn - 1) },
-    },
-    severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-    code: d.code,
-    source: "grib-linter",
-    message: d.message,
-  }));
+  const cstIndex = buildGribCstIndex(content);
+  return lintGribDocument(doc).map((d) => {
+    const startLine = Math.max(0, d.line - 1);
+    const endLine = Math.max(startLine, d.endLine - 1);
+    const startEntry = cstIndex.byRow.get(startLine);
+    const endEntry = cstIndex.byRow.get(endLine);
+    const startChar = d.column > 1 ? d.column - 1 : (startEntry?.startCol ?? 0);
+    const endChar = d.endColumn > 1 ? d.endColumn - 1 : Math.max(startChar + 1, endEntry?.endCol ?? startChar + 1);
+    return {
+      range: {
+        start: { line: startLine, character: startChar },
+        end: { line: endLine, character: endChar },
+      },
+      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+      code: d.code,
+      source: "grib-linter",
+      message: d.message,
+    };
+  });
 }
 
 /**
@@ -117,24 +194,24 @@ export function validateGrib(content: string, uri?: string): LspDiagnostic[] {
  */
 export function getGribDocumentSymbols(content: string, uri?: string): LspDocumentSymbol[] {
   const doc = parseGribDescriptor(content, uri);
+  const cstIndex = buildGribCstIndex(content);
   const symbols: LspDocumentSymbol[] = [];
 
   for (const msg of doc.messages) {
     const startLine = Math.max(0, (msg.span?.startLine ?? 1) - 1);
     const endLine = Math.max(startLine, (msg.span?.endLine ?? startLine + 1) - 1);
+    const startEntry = cstIndex.byRow.get(startLine);
+    const endEntry = cstIndex.byRow.get(endLine);
     const range: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: endLine, character: 0 },
+      start: { line: startLine, character: startEntry?.startCol ?? 0 },
+      end: { line: endLine, character: endEntry?.endCol ?? 0 },
     };
 
     const children: LspDocumentSymbol[] = [];
 
     if (msg.pds) {
       const pLine = Math.max(0, (msg.pds.span?.startLine ?? startLine + 1) - 1);
-      const pRange: LspRange = {
-        start: { line: pLine, character: 0 },
-        end: { line: pLine, character: 3 },
-      };
+      const pRange = gribLineRange(cstIndex, pLine, 3);
       children.push({
         name: "PDS",
         detail: `${msg.pds.parameterName ?? msg.pds.parameterCode} @ ${msg.pds.levelValue} ${msg.pds.levelName ?? msg.pds.levelType}`,
@@ -146,10 +223,7 @@ export function getGribDocumentSymbols(content: string, uri?: string): LspDocume
 
     if (msg.gds) {
       const gLine = Math.max(0, (msg.gds.span?.startLine ?? startLine + 1) - 1);
-      const gRange: LspRange = {
-        start: { line: gLine, character: 0 },
-        end: { line: gLine, character: 3 },
-      };
+      const gRange = gribLineRange(cstIndex, gLine, 3);
       children.push({
         name: "GDS",
         detail: `${msg.gds.ni}x${msg.gds.nj} (${msg.gds.la1}..${msg.gds.la2}, ${msg.gds.lo1}..${msg.gds.lo2})`,
@@ -161,10 +235,7 @@ export function getGribDocumentSymbols(content: string, uri?: string): LspDocume
 
     if (msg.bms) {
       const mLine = Math.max(0, (msg.bms.span?.startLine ?? startLine + 1) - 1);
-      const mRange: LspRange = {
-        start: { line: mLine, character: 0 },
-        end: { line: mLine, character: 3 },
-      };
+      const mRange = gribLineRange(cstIndex, mLine, 3);
       children.push({
         name: "BMS",
         detail: `${msg.bms.bitmap.length} bits`,
@@ -176,10 +247,7 @@ export function getGribDocumentSymbols(content: string, uri?: string): LspDocume
 
     if (msg.bds) {
       const bLine = Math.max(0, (msg.bds.span?.startLine ?? startLine + 1) - 1);
-      const bRange: LspRange = {
-        start: { line: bLine, character: 0 },
-        end: { line: bLine, character: 3 },
-      };
+      const bRange = gribLineRange(cstIndex, bLine, 3);
       children.push({
         name: "BDS",
         detail: `${msg.bds.values.length} values (${msg.bds.bitsPerValue} bits/val)`,
@@ -194,7 +262,7 @@ export function getGribDocumentSymbols(content: string, uri?: string): LspDocume
       detail: `Edition ${msg.indicator.edition}`,
       kind: LspSymbolKind.Module,
       range,
-      selectionRange: range,
+      selectionRange: gribLineRange(cstIndex, startLine, 4),
       children,
     });
   }
@@ -206,12 +274,16 @@ export function getGribDocumentSymbols(content: string, uri?: string): LspDocume
  * Provides markdown hover documentation for GRIB1 sections, WMO Table 2 parameters, and Table 3 levels.
  */
 export function getGribHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (line === undefined) return null;
+  const cstIndex = buildGribCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
 
-  let start = position.character;
-  let end = position.character;
+  const line = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > line.length) return null;
+
+  let start = relChar;
+  let end = relChar;
   while (start > 0 && /[A-Za-z0-9_]/.test(line[start - 1]!)) start--;
   while (end < line.length && /[A-Za-z0-9_]/.test(line[end]!)) end++;
 
@@ -220,8 +292,8 @@ export function getGribHover(content: string, position: LspPosition): LspHover |
 
   const upper = token.toUpperCase();
   const range: LspRange = {
-    start: { line: position.line, character: start },
-    end: { line: position.line, character: end },
+    start: { line: position.line, character: entry.startCol + start },
+    end: { line: position.line, character: entry.startCol + end },
   };
 
   if (SECTION_DOCS[upper]) {

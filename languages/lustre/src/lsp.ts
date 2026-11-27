@@ -5,6 +5,9 @@
  * diagnostics, document symbols, hover documentation, and keyword/stdlib completions.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { LUSTRE_OPERATOR_SPECS } from "./catalog/lustre-std-schemas.js";
 import { formatClock, lintLustre } from "./lints/index.js";
 import { parseLustre } from "./parser/lustre-parser.js";
@@ -197,19 +200,62 @@ export function getLustreDocumentSymbols(content: string): LspDocumentSymbol[] {
   return symbols;
 }
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+function buildLustreCstLineMap(content: string): Map<number, CstLineEntry> {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("lustre", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+    }
+  }
+  return byRow;
+}
+
 /**
  * Provides Markdown hover information at a cursor position for Lustre keywords, stdlib operators,
  * nodes, constants, and stream variables.
  */
 export function getLustreHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line] ?? "";
-  if (!lineText) return null;
+  const byRow = buildLustreCstLineMap(content);
+  const entry = byRow.get(position.line);
+  if (!entry) return null;
+
+  const lineText = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > lineText.length) return null;
 
   // Check for `->` operator under cursor
   if (
-    (lineText[position.character] === "-" && lineText[position.character + 1] === ">") ||
-    (lineText[position.character] === ">" && lineText[position.character - 1] === "-")
+    (lineText[relChar] === "-" && lineText[relChar + 1] === ">") ||
+    (lineText[relChar] === ">" && lineText[relChar - 1] === "-")
   ) {
     return {
       contents: {
@@ -220,16 +266,16 @@ export function getLustreHover(content: string, position: LspPosition): LspHover
     };
   }
 
-  let start = position.character;
-  let end = position.character;
+  let start = relChar;
+  let end = relChar;
   while (start > 0 && /[A-Za-z0-9_]/.test(lineText[start - 1]!)) start--;
   while (end < lineText.length && /[A-Za-z0-9_]/.test(lineText[end]!)) end++;
   const word = lineText.slice(start, end);
   if (!word) return null;
 
   const hoverRange: LspRange = {
-    start: { line: position.line, character: start },
-    end: { line: position.line, character: end },
+    start: { line: position.line, character: entry.startCol + start },
+    end: { line: position.line, character: entry.startCol + end },
   };
 
   if (KEYWORD_DOCS[word]) {

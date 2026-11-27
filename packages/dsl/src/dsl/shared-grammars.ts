@@ -70,16 +70,26 @@ export function createJsonLanguage(name: string, overrides?: SharedLanguageOverr
 type XmlKey =
   | "Document"
   | "Element"
+  | "TagHead"
   | "EmptyTag"
   | "StartTag"
   | "CloseTag"
+  | "Attribute"
+  | "XmlName"
+  | "AttrValue"
+  | "TextChunk"
   | "Text"
   | "CData"
   | "COMMENT"
   | "PROCESSING_INSTRUCTION";
 
 /**
- * Shared conflict-free XML engineering document grammar rules (ReqIF, URDF, SBML, CellML, SSP, SCL, etc.).
+ * Shared conflict-free XML engineering document grammar rules (ReqIF, URDF, SBML, CellML, SSP, SCL, PSCAD, etc.).
+ *
+ * Uses factored `TagHead` (`<`, `XmlName`, `repeat(Attribute)`) and non-overlapping `Text` atoms so
+ * `StartTag`, `EmptyTag`, `Attribute`, and `Text` are 100% LR(1) conflict-free with zero maximal-munch
+ * interference from `Text`, promoting every XML attribute name and value to a first-class CST node for
+ * surgical `CstUnparser` edits and localized error recovery.
  */
 export const xmlRules = {
   Document: ($): RuleLike<string> => repeat($.Element),
@@ -92,12 +102,15 @@ export const xmlRules = {
         field("endName", $.CloseTag),
       ),
     ),
-  EmptyTag: (): RuleLike<string> =>
-    /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*\/>/,
-  StartTag: (): RuleLike<string> =>
-    /<[A-Za-z_:][A-Za-z0-9_.:-]*([ \t\r\n]+[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*=[ \t\r\n]*("[^"]*"|'[^']*'))*[ \t\r\n]*>/,
-  CloseTag: (): RuleLike<string> => /<\/[A-Za-z_:][A-Za-z0-9_.:-]*[ \t\r\n]*>/,
-  Text: (): RuleLike<string> => /[^<\s][^<]*/,
+  TagHead: ($): RuleLike<string> => seq("<", field("name", $.XmlName), repeat(field("attr", $.Attribute))),
+  EmptyTag: ($): RuleLike<string> => seq($.TagHead, "/>"),
+  StartTag: ($): RuleLike<string> => seq($.TagHead, ">"),
+  CloseTag: ($): RuleLike<string> => seq("</", field("name", $.XmlName), ">"),
+  Attribute: ($): RuleLike<string> => seq(field("name", $.XmlName), "=", field("value", $.AttrValue)),
+  XmlName: (): RuleLike<string> => /[A-Za-z_:][A-Za-z0-9_.:-]*/,
+  AttrValue: (): RuleLike<string> => /"[^"<]*"|'[^'<]*'/,
+  TextChunk: (): RuleLike<string> => /[^<>"'=/\s]+/,
+  Text: ($): RuleLike<string> => choice($.TextChunk, $.XmlName, $.AttrValue, "=", ">", "/>", "/", '"', "'"),
   CData: (): RuleLike<string> => /<!\[CDATA\[([^\]]|\][^\]]|\]\][^>])*\]\]>/,
   COMMENT: (): RuleLike<string> => /<!--([^-]|-[^-])*-->/,
   PROCESSING_INSTRUCTION: (): RuleLike<string> => /<\?([a-zA-Z_:][a-zA-Z0-9_.:-]*|\s)([^?]|\?[^>])*\?>/,

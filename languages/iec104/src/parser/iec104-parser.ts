@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @modelscript/iec104 — Parser for IEC 60870-5-104 Station Profiles (JSON / line-based config).
+ * @modelscript/iec104 — Parser for IEC 60870-5-104 Station Profiles (JSON / WASM CST config).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync, type SyntaxNode } from "@modelscript/iec104/wasm-parser";
 import type { Iec104InformationObject, Iec104StationProfile, Iec104TypeId } from "../types.js";
+
+function getIec104WasmParser(): ReturnType<typeof createWasmParserSync>["parser"] {
+  return getOrLoadLanguageWasmParser("iec104", import.meta.url, createWasmParserSync);
+}
 
 const VALID_TYPE_IDS = new Set<string>([
   "M_SP_NA_1",
@@ -19,8 +25,81 @@ const VALID_TYPE_IDS = new Set<string>([
   "C_SE_NC_1",
 ]);
 
+interface CstRowToken {
+  type: string;
+  text: string;
+  row: number;
+}
+
+function collectCstTokensByRow(rootNode: SyntaxNode): Map<number, CstRowToken[]> {
+  const byRow = new Map<number, CstRowToken[]>();
+  const stack: SyntaxNode[] = [rootNode];
+
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const t = node.type;
+    if (t === "DeckIdentifier" || t === "DeckNumber" || t === "DeckString" || t === "DeckPunct") {
+      const row = node.startPosition.row;
+      let list = byRow.get(row);
+      if (!list) {
+        list = [];
+        byRow.set(row, list);
+      }
+      list.push({ type: t, text: node.text, row });
+      continue;
+    }
+
+    const kids = node.children;
+    for (let i = kids.length - 1; i >= 0; i--) {
+      stack.push(kids[i]!);
+    }
+  }
+
+  return byRow;
+}
+
+function unquoteToken(raw: string): string {
+  if (raw.length >= 2 && ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'")))) {
+    return raw.slice(1, -1);
+  }
+  return raw;
+}
+
+function stripCommentTokens(rowTokens: CstRowToken[]): CstRowToken[] {
+  const out: CstRowToken[] = [];
+  for (const tok of rowTokens) {
+    if (tok.type === "DeckPunct" && (tok.text.startsWith("#") || tok.text.startsWith("//"))) {
+      break;
+    }
+    out.push(tok);
+  }
+  return out;
+}
+
 /**
- * Parse an IEC 60870-5-104 station profile from JSON or key-value text.
+ * Extracts `key = value` pairs from a slice of CST tokens on a single row.
+ * Handles card-deck maximal-munch punctuation tokens such as `=-` or `=+` in `deadband=-1`.
+ */
+function parseKeyValuePairs(rowTokens: CstRowToken[], startIndex: number): Map<string, string> {
+  const kvs = new Map<string, string>();
+  let i = startIndex;
+  while (i < rowTokens.length) {
+    const keyTok = rowTokens[i]!;
+    const eqTok = rowTokens[i + 1];
+    const valTok = rowTokens[i + 2];
+    if (eqTok && eqTok.type === "DeckPunct" && eqTok.text.startsWith("=") && valTok) {
+      const signPrefix = eqTok.text.length > 1 ? eqTok.text.slice(1) : "";
+      kvs.set(keyTok.text, signPrefix + unquoteToken(valTok.text));
+      i += 3;
+      continue;
+    }
+    i++;
+  }
+  return kvs;
+}
+
+/**
+ * Parse an IEC 60870-5-104 station profile from JSON or WASM CST key-value text.
  */
 export function parseIec104(source: string): Iec104StationProfile {
   const trimmed = source.trim();
@@ -53,7 +132,7 @@ export function parseIec104(source: string): Iec104StationProfile {
     };
   }
 
-  // Line-oriented .iec104 text format:
+  // Parse .iec104 text via compiled WASM CST (cardDeckRules):
   // station <name> ca=<num> oa=<num> port=2404 k=12 w=8
   // point <ioa> <typeId> <name> [units=kV] [scale=1.0] [deadband=0.1]
   let stationName = "IEC104_RTU";
@@ -68,19 +147,33 @@ export function parseIec104(source: string): Iec104StationProfile {
   let t3 = 20;
   const points: Iec104InformationObject[] = [];
 
-  for (const rawLine of source.split(/\r?\n/)) {
-    const line = rawLine
-      .replace(/#.*$/, "")
-      .replace(/\/\/.*$/, "")
-      .trim();
-    if (!line) continue;
-    const parts = line.split(/\s+/);
-    const cmd = parts[0]?.toLowerCase();
+  const parser = getIec104WasmParser();
+  const tree = parser.parse(source);
+  if (!tree?.rootNode) {
+    return {
+      id: stationName,
+      stationName,
+      commonAddress,
+      originatorAddress,
+      apci: { port, k, w, t0, t1, t2, t3 },
+      points,
+    };
+  }
+
+  const byRow = collectCstTokensByRow(tree.rootNode);
+  const sortedRows = Array.from(byRow.keys()).sort((a, b) => a - b);
+
+  for (const row of sortedRows) {
+    const tokens = stripCommentTokens(byRow.get(row)!);
+    if (tokens.length === 0) continue;
+    const cmd = tokens[0]!.text.toLowerCase();
 
     if (cmd === "station") {
-      stationName = parts[1] ?? stationName;
-      for (const tok of parts.slice(2)) {
-        const [kvKey, kvVal] = tok.split("=");
+      if (tokens[1]) {
+        stationName = unquoteToken(tokens[1].text);
+      }
+      const kvs = parseKeyValuePairs(tokens, 2);
+      for (const [kvKey, kvVal] of kvs) {
         const n = Number(kvVal);
         if (!Number.isFinite(n)) continue;
         if (kvKey === "ca") commonAddress = n;
@@ -93,17 +186,19 @@ export function parseIec104(source: string): Iec104StationProfile {
         else if (kvKey === "t2") t2 = n;
         else if (kvKey === "t3") t3 = n;
       }
-    } else if (cmd === "point" && parts.length >= 4) {
-      const ioa = Number(parts[1]);
-      const typeId = (VALID_TYPE_IDS.has(parts[2]!) ? parts[2]! : "M_ME_NC_1") as Iec104TypeId;
-      const name = parts[3]!;
+    } else if (cmd === "point" && tokens.length >= 4) {
+      const ioa = Number(tokens[1]!.text);
+      const rawType = unquoteToken(tokens[2]!.text);
+      const typeId = (VALID_TYPE_IDS.has(rawType) ? rawType : "M_ME_NC_1") as Iec104TypeId;
+      const name = unquoteToken(tokens[3]!.text);
       let units: string | undefined;
       let scale: number | undefined;
       let offset: number | undefined;
       let deadband: number | undefined;
       let initialValue: number | undefined;
-      for (const tok of parts.slice(4)) {
-        const [kvKey, kvVal] = tok.split("=");
+
+      const kvs = parseKeyValuePairs(tokens, 4);
+      for (const [kvKey, kvVal] of kvs) {
         if (kvKey === "units") units = kvVal;
         else if (kvKey === "scale") scale = Number(kvVal);
         else if (kvKey === "offset") offset = Number(kvVal);

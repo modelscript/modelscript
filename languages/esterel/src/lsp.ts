@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { ESTEREL_PATTERN_SPECS, lookupEsterelPatternSchema } from "./catalog/index.js";
 import { lintEsterel } from "./lints/index.js";
 import { parseEsterel } from "./parser/esterel-parser.js";
@@ -103,21 +106,61 @@ const KEYWORD_DOCS: Record<string, string> = {
   run: "**`run <Module> [ signal actual / formal ]`** — Instantiates a submodule with optional signal renaming.",
 };
 
+interface EsterelCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+function buildEsterelCstLineMap(content: string): Map<number, EsterelCstLineEntry> {
+  const byRow = new Map<number, EsterelCstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("esterel", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+    }
+    return byRow;
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  return byRow;
+}
+
 /**
  * Validates Esterel source text and returns LSP diagnostics.
  */
 export function validateEsterel(content: string, _uri = "module.strl"): LspDiagnostic[] {
   const diags = lintEsterel(content);
-  const lines = content.split(/\r?\n/);
+  const cstLines = buildEsterelCstLineMap(content);
 
   return diags.map((d) => {
     const lineNum = Math.max(0, d.line - 1);
-    const lt = lines[lineNum] ?? "";
+    const lineEnd = cstLines.get(lineNum)?.endCol ?? 0;
     const startChar = Math.max(0, d.column - 1);
     const endChar =
       d.endLine === d.line && d.endColumn !== undefined
         ? Math.max(startChar + 1, d.endColumn - 1)
-        : Math.min(lt.length, startChar + Math.max(1, d.symbol?.length ?? 1));
+        : Math.min(lineEnd, startChar + Math.max(1, d.symbol?.length ?? 1));
 
     return {
       range: {
@@ -245,9 +288,10 @@ export function getEsterelDocumentSymbols(content: string): LspDocumentSymbol[] 
  * Provides hover documentation for Esterel keywords, declared signals, and stdlib patterns.
  */
 export function getEsterelHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (!lineText) return null;
+  const cstLines = buildEsterelCstLineMap(content);
+  const entry = cstLines.get(position.line);
+  if (!entry) return null;
+  const lineText = " ".repeat(entry.startCol) + entry.text;
 
   // Extract word under cursor
   let start = position.character;

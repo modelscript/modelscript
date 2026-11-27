@@ -293,7 +293,7 @@ function isBdfDocument(text: string, uri?: string): boolean {
 function isFeaCstTree(tree: { rootNode?: CstNodeLike | null } | null | undefined): boolean {
   const root = tree?.rootNode;
   if (!root || root.type !== "SourceFile") return false;
-  return getChildren(root).some((c) => c.type === "KeywordCard" || c.type === "DataLine" || c.type === "CommentLine");
+  return getChildren(root).some((c) => c.type === "KeywordCard" || c.type === "DataToken");
 }
 
 function scanFeaRange(text: string, start: number, end: number, lineIndex: LineIndex, collector: TokenCollector): void {
@@ -423,10 +423,6 @@ export function computeFeaSemanticTokensData(
         }
         return;
       }
-      if (node.type === "CommentLine") {
-        collector.pushNode(node, "comment");
-        return;
-      }
       if (node.type === "EmbeddedExpression") {
         collector.pushNode(node, "variable");
         return;
@@ -442,24 +438,13 @@ export function computeFeaSemanticTokensData(
       if (node.type === "KeywordCard") {
         const children = getChildren(node);
         const first = children[0];
-        const second = children[1];
         if (first?.type === "CARD_HEADER") {
           collector.pushNode(first, "keyword");
           for (let i = 1; i < children.length; i++) visit(children[i], "card");
           return;
         }
-        if (
-          first?.text === "*" &&
-          second?.type === "CARD_NAME" &&
-          typeof first.startIndex === "number" &&
-          typeof second.endIndex === "number"
-        ) {
-          collector.pushOffsetSpan(text, lineIndex, first.startIndex, second.endIndex, "keyword");
-          for (let i = 2; i < children.length; i++) visit(children[i], "card");
-          return;
-        }
       }
-      if (node.type === "CARD_NAME" || node.type === "CARD_HEADER") {
+      if (node.type === "CARD_HEADER") {
         collector.pushNode(node, "keyword");
         return;
       }
@@ -473,9 +458,9 @@ export function computeFeaSemanticTokensData(
         return;
       }
       const nextCtx =
-        node.type === "ParameterAssignment" || node.type === "OptionFlag"
+        node.type === "ParameterAssignment" || node.type === "KeywordScalar"
           ? "card"
-          : node.type === "DataLine" || node.type === "DataItem"
+          : node.type === "DataToken"
             ? "data"
             : ctx;
       const children = getChildren(node);

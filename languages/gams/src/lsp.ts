@@ -7,6 +7,9 @@
  * stdlib operators & GAMSlib archetypes), completions, and go-to-definition.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lookupGamsModelSchema } from "./catalog/library-package-adapter.js";
 import { lintGams } from "./lints/index.js";
 import { parseGams } from "./parser/gams-parser.js";
@@ -101,9 +104,32 @@ function spanToRange(span?: SourceSpan): LspRange {
   };
 }
 
+function getGamsCstLineAt(content: string, row: number): string {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("gams", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row: lineRow, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      if (lineRow === row) {
+        const text = cstLineText(content, tokens);
+        const first = tokens[0] as CstNodeLike | undefined;
+        const startCol = first?.startPosition?.column ?? 0;
+        return " ".repeat(startCol) + text;
+      }
+    }
+    return "";
+  }
+
+  return content.split(/\r?\n/)[row] ?? "";
+}
+
 function wordAtPosition(content: string, pos: LspPosition): string {
-  const lines = content.split(/\r?\n/);
-  const line = lines[pos.line] ?? "";
+  const line = getGamsCstLineAt(content, pos.line);
   let start = pos.character;
   let end = pos.character;
   while (start > 0 && /[A-Za-z0-9_]/.test(line[start - 1] ?? "")) start--;

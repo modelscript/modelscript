@@ -133,6 +133,30 @@ function collectErrors(n: SyntaxNode, out: { start: number; end: number }[]): vo
   for (const c of n.children) collectErrors(c, out);
 }
 
+function collectXmlAttributeNodes(openNode: SyntaxNode): SyntaxNode[] {
+  const out: SyntaxNode[] = [];
+  const walk = (cur: SyntaxNode): void => {
+    if (cur.type === "Attribute") {
+      out.push(cur);
+      return;
+    }
+    if (cur.type === "ERROR") return;
+    const kids = cur.children;
+    if (kids) {
+      for (const c of kids) walk(c);
+    }
+  };
+  walk(openNode);
+  return out;
+}
+
+function findTagHeadNameNode(openNode: SyntaxNode): SyntaxNode | null {
+  const tagHead = openNode.children?.find((c) => c.type === "TagHead") ?? openNode;
+  const byField = typeof tagHead.childForFieldName === "function" ? tagHead.childForFieldName("name") : null;
+  if (byField) return byField;
+  return tagHead.children?.find((c) => c.type === "XmlName") ?? null;
+}
+
 function convert(n: SyntaxNode, source: string, parent: XmlElement | null): XmlElement | null {
   const nodeWithFns = n as unknown as { isMissing?: boolean | (() => boolean) };
   const isMissing = typeof nodeWithFns.isMissing === "function" ? nodeWithFns.isMissing() : n.isMissing;
@@ -141,18 +165,24 @@ function convert(n: SyntaxNode, source: string, parent: XmlElement | null): XmlE
   const openNode = n.childForFieldName("open");
   if (!openNode) return null;
 
-  const openText = openNode.text;
-  if (!openText) return null;
-
-  const trimmedOpen = openText.trimStart();
-  const nameMatch = /^<([A-Za-z_:][A-Za-z0-9_.:-]*)/.exec(trimmedOpen);
-  if (!nameMatch || !nameMatch[1]) {
-    return null;
+  const nameNode = findTagHeadNameNode(openNode);
+  let tagName: string | null = nameNode?.text ?? null;
+  let openPrefixLen = 0;
+  if (!tagName) {
+    const openText = openNode.text;
+    if (!openText) return null;
+    const trimmedOpen = openText.trimStart();
+    const nameMatch = /^<([A-Za-z_:][A-Za-z0-9_.:-]*)/.exec(trimmedOpen);
+    if (!nameMatch || !nameMatch[1]) {
+      return null;
+    }
+    tagName = nameMatch[1];
+    openPrefixLen = nameMatch[0].length;
   }
 
   const closeNode = n.childForFieldName("endName");
   const el: XmlElement = {
-    name: nameMatch[1],
+    name: tagName,
     start: n.startOffset,
     end: n.endOffset,
     openEnd: openNode.endOffset,
@@ -165,40 +195,86 @@ function convert(n: SyntaxNode, source: string, parent: XmlElement | null): XmlE
     parent,
   };
 
-  const attrRe = /([A-Za-z_:][A-Za-z0-9_.:-]*)[ \t\r\n]*=[ \t\r\n]*("([^"]*)"|'([^']*)')/g;
-  attrRe.lastIndex = nameMatch[0].length;
-  let m: RegExpExecArray | null;
-  while ((m = attrRe.exec(openText))) {
-    const base = openNode.startOffset + m.index;
-    const raw = m[3] ?? m[4] ?? "";
-    const valueStart = base + m[0].length - raw.length - 1;
-    el.attributes.push({
-      name: m[1]!,
-      value: decodeEntities(raw),
-      start: base,
-      end: base + m[0].length,
-      valueStart,
-      valueEnd: valueStart + raw.length,
-      quote: m[2]![0]!,
-    });
+  // Prefer structured CST Attribute nodes (`xmlRules` v2); fall back to regex only for legacy v1 WASM parsers
+  const attrNodes = collectXmlAttributeNodes(openNode);
+  if (attrNodes.length > 0 || nameNode !== null) {
+    for (const attrNode of attrNodes) {
+      const aNameNode =
+        (typeof attrNode.childForFieldName === "function" ? attrNode.childForFieldName("name") : null) ??
+        attrNode.children?.find((c) => c.type === "XmlName");
+      const aValNode =
+        (typeof attrNode.childForFieldName === "function" ? attrNode.childForFieldName("value") : null) ??
+        attrNode.children?.find((c) => c.type === "AttrValue");
+      if (!aNameNode || !aValNode) continue;
+      const quoted = aValNode.text;
+      if (quoted.length < 2) continue;
+      const quote = quoted[0]!;
+      const raw = quoted.slice(1, -1);
+      el.attributes.push({
+        name: aNameNode.text,
+        value: decodeEntities(raw),
+        start: attrNode.startOffset,
+        end: attrNode.endOffset,
+        valueStart: aValNode.startOffset + 1,
+        valueEnd: aValNode.endOffset - 1,
+        quote,
+      });
+    }
+  } else {
+    const openText = openNode.text;
+    const attrRe = /([A-Za-z_:][A-Za-z0-9_.:-]*)[ \t\r\n]*=[ \t\r\n]*("([^"]*)"|'([^']*)')/g;
+    attrRe.lastIndex = openPrefixLen;
+    let m: RegExpExecArray | null;
+    while ((m = attrRe.exec(openText))) {
+      const base = openNode.startOffset + m.index;
+      const raw = m[3] ?? m[4] ?? "";
+      const valueStart = base + m[0].length - raw.length - 1;
+      el.attributes.push({
+        name: m[1]!,
+        value: decodeEntities(raw),
+        start: base,
+        end: base + m[0].length,
+        valueStart,
+        valueEnd: valueStart + raw.length,
+        quote: m[2]![0]!,
+      });
+    }
   }
 
+  let textRunStart = -1;
+  let textRunEnd = -1;
+  const flushTextRun = () => {
+    if (textRunStart !== -1 && textRunEnd > textRunStart) {
+      const piece = source.slice(textRunStart, textRunEnd).trim();
+      if (piece.length > 0) {
+        el.text += decodeEntities(piece);
+      }
+    }
+    textRunStart = -1;
+    textRunEnd = -1;
+  };
+
   for (const c of n.childrenForFieldName("children")) {
-    if (c.type === "CData") {
-      el.cdata.push({
-        start: c.startOffset + 9,
-        end: c.endOffset - 3,
-        text: source.slice(c.startOffset + 9, c.endOffset - 3),
-      });
-    } else if (c.type === "Text") {
-      el.text += decodeEntities(c.text.trim());
-    } else if (c.type === "Element") {
-      const child = convert(c, source, el);
-      if (child) {
-        el.children.push(child);
+    if (c.type === "Text") {
+      if (textRunStart === -1) textRunStart = c.startOffset;
+      textRunEnd = c.endOffset;
+    } else {
+      flushTextRun();
+      if (c.type === "CData") {
+        el.cdata.push({
+          start: c.startOffset + 9,
+          end: c.endOffset - 3,
+          text: source.slice(c.startOffset + 9, c.endOffset - 3),
+        });
+      } else if (c.type === "Element") {
+        const child = convert(c, source, el);
+        if (child) {
+          el.children.push(child);
+        }
       }
     }
   }
+  flushTextRun();
   return el;
 }
 

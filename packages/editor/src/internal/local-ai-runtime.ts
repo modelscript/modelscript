@@ -30,8 +30,7 @@ export interface SharedWebLLMEngine {
 }
 
 export type SharedLocalAiEngine =
-  | { kind: "webllm"; engine: SharedWebLLMEngine; model: string }
-  | { kind: "prompt-api"; session: BrowserPromptSession };
+  { kind: "webllm"; engine: SharedWebLLMEngine; model: string } | { kind: "prompt-api"; session: BrowserPromptSession };
 
 interface WebLLMModelCandidate {
   modelId: string;
@@ -113,7 +112,7 @@ async function hasSelfHostedWasm(url: string): Promise<boolean> {
 
 export async function getSharedBrowserBuiltInSession(systemPrompt: string): Promise<BrowserPromptSession | null> {
   if (typeof window === "undefined") return null;
-  const win = window as unknown as WindowWithBuiltInAi;
+  const win = window as Window & WindowWithBuiltInAi;
   const factory = win.ai?.languageModel || win.LanguageModel;
   if (!factory || typeof factory.create !== "function") return null;
 

@@ -2105,7 +2105,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is DeclarationStatementNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declarators(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaratorsList(node: SyntaxNode | null | undefined): SyntaxNode[];

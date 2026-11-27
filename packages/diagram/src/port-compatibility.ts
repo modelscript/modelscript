@@ -24,11 +24,45 @@ export type CanonicalPortDomain =
 
 export type CanonicalPortPolarity = "positive" | "negative" | "input" | "output" | "neutral";
 
+export type DiagramPortFlowKind = "potential" | "flow" | "stream" | "signal";
+
+export type DiagramPortDirection = "in" | "out" | "inout";
+
+export interface DiagramPortVariable {
+  /** Variable name within the connector (e.g. `v`, `i`, `T`, `Q_flow`, or `value` for primitive connectors). */
+  readonly name: string;
+  /** Canonical base type (`Real`, `Integer`, `Boolean`, `String`, or enum/custom type name). */
+  readonly type: string;
+  /** Flow category (`potential`, `flow`, `stream`, or `signal`). */
+  readonly flowKind: DiagramPortFlowKind;
+  /** Causal direction (`in`, `out`, or `inout`). */
+  readonly direction: DiagramPortDirection;
+  /** Optional array dimensions (e.g. `["3"]`, `["m"]`). Omitted for scalars. */
+  readonly dims?: readonly string[] | undefined;
+}
+
+export interface DiagramPortSignature {
+  /** True for Modelica `expandable connector` (bus) ports. */
+  readonly isExpandable?: boolean | undefined;
+  /** True when the port is an inside connector declared directly on the enclosing model (Modelica §9.3). */
+  readonly isInsideConnector?: boolean | undefined;
+  /** Optional outer connector array dimensions (e.g. `PositivePin p[3]` -> `["3"]`). */
+  readonly dims?: readonly string[] | undefined;
+  /** Optional instance-level redeclared packages (e.g. `{ Medium: "Modelica.Media.Water.StandardWater" }`). */
+  readonly redeclarePackages?: Readonly<Record<string, string>> | undefined;
+  /** Flattened leaf variables of the connector (with nested sub-connectors expanded). */
+  readonly variables: readonly DiagramPortVariable[];
+}
+
 export interface ModelScriptPortDescriptor {
   readonly nodeId: string;
   readonly portId: string;
   /** Optional Modelica / SysML2 / ModelScript connector FQN or type (e.g. `Modelica.Electrical.Analog.Interfaces.PositivePin`). */
   readonly connectorType?: string | undefined;
+  /** Optional resolved structural connector signature for full Modelica §9.3 plug-compatibility checking. */
+  readonly portSignature?: DiagramPortSignature | undefined;
+  /** Optional flag indicating an inside connector on the enclosing model (flips causal direction matching vs outside component ports). */
+  readonly isInsideConnector?: boolean | undefined;
   /** Optional explicit physical domain. */
   readonly domain?: CanonicalPortDomain | string | undefined;
   /** Optional port direction / causality (`"in"`, `"out"`, `"inout"`, `"input"`, `"output"`, `"positive"`, `"negative"`). */
@@ -56,6 +90,8 @@ export interface ModelScriptPortCompatibilityResult {
   readonly rule:
     | "self-port"
     | "same-node"
+    | "structural-signature-match"
+    | "structural-signature-mismatch"
     | "connector-type-match"
     | "connector-type-mismatch"
     | "sysml2-conjugation-mismatch"
@@ -298,6 +334,231 @@ function normalizePolarity(direction: string | undefined, fallback?: CanonicalPo
   return fallback ?? "neutral";
 }
 
+function normalizeStructuralBaseType(rawType: string): string {
+  const trimmed = rawType.trim();
+  if (!trimmed) return "";
+  const lower = trimmed.toLowerCase();
+  const leaf = lower.split(".").pop() ?? lower;
+  if (leaf === "real" || leaf === "float" || leaf === "double") return "real";
+  if (leaf === "integer" || leaf === "int") return "integer";
+  if (leaf === "boolean" || leaf === "bool") return "boolean";
+  if (leaf === "string") return "string";
+  return leaf;
+}
+
+function areConcreteDimsCompatible(a?: readonly string[] | undefined, b?: readonly string[] | undefined): boolean {
+  if (!a?.length || !b?.length) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const da = a[i]!.trim();
+    const db = b[i]!.trim();
+    if (!da || !db || da === ":" || db === ":") continue;
+    const na = /^\d+$/.test(da) ? Number(da) : NaN;
+    const nb = /^\d+$/.test(db) ? Number(db) : NaN;
+    if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function areDirectionsConnectable(a: DiagramPortDirection, b: DiagramPortDirection, sameSide = true): boolean {
+  if (a === "inout" || b === "inout") return true;
+  return sameSide ? a !== b : a === b;
+}
+
+function causalityConflictReason(a: DiagramPortDirection, sameSide: boolean, varName?: string): string {
+  const suffix = varName ? ` on '${varName}'` : "";
+  if (sameSide) {
+    return a === "out" ? `Output → Output conflict${suffix}` : `Input → Input conflict${suffix}`;
+  }
+  return a === "in"
+    ? `Inside/outside causality mismatch (Input ↔ Output)${suffix}`
+    : `Inside/outside causality mismatch (Output ↔ Input)${suffix}`;
+}
+
+/**
+ * Evaluates full Modelica §9.3 structural plug-compatibility between two resolved
+ * `DiagramPortSignature` payloads (variable names, flow/stream/potential/signal
+ * prefixes, canonical base types, causal directions, array dimensions, and
+ * expandable bus connectors).
+ *
+ * Returns `null` if neither port is expandable and at least one side has no
+ * resolved variables (allowing callers to fall back to connector-family / domain checks).
+ */
+export function evaluateStructuralPortSignatureCompatibility(
+  source: DiagramPortSignature | undefined,
+  target: DiagramPortSignature | undefined,
+  inferredSourceDomain: CanonicalPortDomain,
+  inferredTargetDomain: CanonicalPortDomain,
+  sameSide = Boolean(source?.isInsideConnector) === Boolean(target?.isInsideConnector),
+): ModelScriptPortCompatibilityResult | null {
+  if (!source && !target) return null;
+
+  // Modelica §9.1.3: expandable (bus) connectors accept connections with any connector/signal.
+  if (source?.isExpandable || target?.isExpandable) {
+    return {
+      compatible: true,
+      inferredSourceDomain,
+      inferredTargetDomain,
+      rule: "structural-signature-match",
+    };
+  }
+
+  if (!source || !target) return null;
+  if (source.variables.length === 0 || target.variables.length === 0) return null;
+
+  // Check outer connector array dimensions when both sides have explicit concrete sizes.
+  if (!areConcreteDimsCompatible(source.dims, target.dims)) {
+    return {
+      compatible: false,
+      reason: `Connector array dimension mismatch: [${source.dims?.join(", ")}] ↔ [${target.dims?.join(", ")}]`,
+      inferredSourceDomain,
+      inferredTargetDomain,
+      rule: "structural-signature-mismatch",
+    };
+  }
+
+  // Check instance-level redeclared packages (e.g. Modelica.Fluid `redeclare package Medium = ...`)
+  if (source.redeclarePackages && target.redeclarePackages) {
+    for (const [pkgKey, srcPkgRaw] of Object.entries(source.redeclarePackages)) {
+      const tgtPkgRaw = target.redeclarePackages[pkgKey];
+      if (!srcPkgRaw || !tgtPkgRaw) continue;
+      const srcNormPkg = srcPkgRaw.trim().toLowerCase();
+      const tgtNormPkg = tgtPkgRaw.trim().toLowerCase();
+      if (!srcNormPkg || !tgtNormPkg) continue;
+      if (srcNormPkg.includes("partialmedium") || tgtNormPkg.includes("partialmedium")) continue;
+      const srcLeaf = srcNormPkg.split(".").pop() ?? srcNormPkg;
+      const tgtLeaf = tgtNormPkg.split(".").pop() ?? tgtNormPkg;
+      if (srcNormPkg !== tgtNormPkg && srcLeaf !== tgtLeaf) {
+        return {
+          compatible: false,
+          reason: `Incompatible ${pkgKey}: ${srcPkgRaw.split(".").pop() ?? srcPkgRaw} ↔ ${tgtPkgRaw.split(".").pop() ?? tgtPkgRaw}`,
+          inferredSourceDomain,
+          inferredTargetDomain,
+          rule: "structural-signature-mismatch",
+        };
+      }
+    }
+  }
+
+  // Single-variable causal primitive connectors (e.g. RealInput ↔ RealOutput, BooleanInput ↔ BooleanOutput)
+  if (
+    source.variables.length === 1 &&
+    target.variables.length === 1 &&
+    source.variables[0]!.flowKind === "signal" &&
+    target.variables[0]!.flowKind === "signal"
+  ) {
+    const lv = source.variables[0]!;
+    const rv = target.variables[0]!;
+    const lt = normalizeStructuralBaseType(lv.type);
+    const rt = normalizeStructuralBaseType(rv.type);
+    if (lt && rt && lt !== rt) {
+      return {
+        compatible: false,
+        reason: `Signal type mismatch: ${lv.type} ↔ ${rv.type}`,
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "structural-signature-mismatch",
+      };
+    }
+    if (!areDirectionsConnectable(lv.direction, rv.direction, sameSide)) {
+      return {
+        compatible: false,
+        reason: causalityConflictReason(lv.direction, sameSide),
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "causality-conflict",
+      };
+    }
+    if (!areConcreteDimsCompatible(lv.dims, rv.dims)) {
+      return {
+        compatible: false,
+        reason: `Signal dimension mismatch: [${lv.dims?.join(", ")}] ↔ [${rv.dims?.join(", ")}]`,
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "structural-signature-mismatch",
+      };
+    }
+    return {
+      compatible: true,
+      inferredSourceDomain,
+      inferredTargetDomain,
+      rule: "structural-signature-match",
+    };
+  }
+
+  // Structured connectors (Modelica §9.3): identical variable set (name, flow/stream prefix, base type, causality, dims)
+  if (source.variables.length !== target.variables.length) {
+    return {
+      compatible: false,
+      reason: `Incompatible connector structure: ${source.variables.length} variables ↔ ${target.variables.length} variables`,
+      inferredSourceDomain,
+      inferredTargetDomain,
+      rule: "structural-signature-mismatch",
+    };
+  }
+
+  const rhsByName = new Map(target.variables.map((v) => [v.name, v]));
+  for (const lv of source.variables) {
+    const rv = rhsByName.get(lv.name);
+    if (!rv) {
+      return {
+        compatible: false,
+        reason: `Connector variable '${lv.name}' has no matching counterpart`,
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "structural-signature-mismatch",
+      };
+    }
+    if (lv.flowKind !== rv.flowKind) {
+      return {
+        compatible: false,
+        reason: `Flow/stream prefix mismatch on '${lv.name}': ${lv.flowKind} ↔ ${rv.flowKind}`,
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "structural-signature-mismatch",
+      };
+    }
+    const lt = normalizeStructuralBaseType(lv.type);
+    const rt = normalizeStructuralBaseType(rv.type);
+    if (lt && rt && lt !== rt) {
+      return {
+        compatible: false,
+        reason: `Variable type mismatch on '${lv.name}': ${lv.type} ↔ ${rv.type}`,
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "structural-signature-mismatch",
+      };
+    }
+    if (!areDirectionsConnectable(lv.direction, rv.direction, sameSide)) {
+      return {
+        compatible: false,
+        reason: causalityConflictReason(lv.direction, sameSide, lv.name),
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "causality-conflict",
+      };
+    }
+    if (!areConcreteDimsCompatible(lv.dims, rv.dims)) {
+      return {
+        compatible: false,
+        reason: `Dimension mismatch on '${lv.name}': [${lv.dims?.join(", ")}] ↔ [${rv.dims?.join(", ")}]`,
+        inferredSourceDomain,
+        inferredTargetDomain,
+        rule: "structural-signature-mismatch",
+      };
+    }
+  }
+
+  return {
+    compatible: true,
+    inferredSourceDomain,
+    inferredTargetDomain,
+    rule: "structural-signature-match",
+  };
+}
+
 /**
  * Evaluates whether two diagram ports are type- and plug-compatible according to
  * ModelScript's unified connector semantics. Used identically by both the 2D
@@ -335,6 +596,22 @@ export function evaluateModelScriptPortCompatibility(
     };
   }
 
+  // 0. Full structural plug-compatibility when resolved connector signatures are present
+  const srcInside = Boolean(source.isInsideConnector ?? source.portSignature?.isInsideConnector);
+  const tgtInside = Boolean(target.isInsideConnector ?? target.portSignature?.isInsideConnector);
+  const sameSide = srcInside === tgtInside;
+
+  const structuralResult = evaluateStructuralPortSignatureCompatibility(
+    source.portSignature,
+    target.portSignature,
+    dA,
+    dB,
+    sameSide,
+  );
+  if (structuralResult) {
+    return structuralResult;
+  }
+
   // 1. Explicit connector type comparison (Modelica / SysML2 / ModelScript)
   if (srcNorm && tgtNorm) {
     const familiesMatch =
@@ -352,9 +629,10 @@ export function evaluateModelScriptPortCompatibility(
       };
     }
 
-    // SysML v2 conjugation guard when both ports explicitly specify conjugation on same custom port type
+    // SysML v1/v2 / MagicDraw conjugation guard when both ports explicitly specify conjugation on same custom port type
+    const langLower = options.languageId?.toLowerCase() ?? "";
     if (
-      options.languageId?.toLowerCase() === "sysml2" &&
+      (langLower === "sysml2" || langLower === "sysml" || langLower === "magicdraw") &&
       typeof source.isConjugated === "boolean" &&
       typeof target.isConjugated === "boolean" &&
       source.isConjugated === target.isConjugated &&
@@ -362,7 +640,7 @@ export function evaluateModelScriptPortCompatibility(
     ) {
       return {
         compatible: false,
-        reason: "SysML v2 requires complementary conjugated (~) and non-conjugated ports",
+        reason: "SysML requires complementary conjugated (~) and non-conjugated ports",
         inferredSourceDomain: dA,
         inferredTargetDomain: dB,
         rule: "sysml2-conjugation-mismatch",

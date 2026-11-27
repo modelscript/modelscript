@@ -22,9 +22,9 @@ export const kicadGrammar = language({
 
     SExpr: ($) => seq("(", field("head", $.HeadSymbol), repeat(field("item", $.Item)), ")"),
 
-    HeadSymbol: ($) => semanticToken("keyword", $.Symbol),
+    HeadSymbol: ($) => semanticToken("function", $.Symbol),
 
-    Item: ($) => choice($.SExpr, $.StringLiteral, $.NumberLiteral, $.Symbol),
+    Item: ($) => choice($.SExpr, $.StringLiteral, $.NumberLiteral, semanticToken("parameter", $.Symbol)),
 
     StringLiteral: () => semanticToken("string", /"(?:[^"\\]|\\.)*"/),
 

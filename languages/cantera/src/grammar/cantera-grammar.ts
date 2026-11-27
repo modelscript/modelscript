@@ -8,14 +8,21 @@
  * enabling compilation into native WebAssembly GLR parse tables and linear-memory CST.
  */
 
-import { choice, field, language, optional, repeat, repeat1, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, repeat, repeat1, semanticToken, seq } from "@modelscript/dsl";
 
 export const canteraGrammar = language({
   name: "Cantera",
   word: ($) => $.Identifier,
   extras: ($) => [/[ \t\r\n]+/, $.CommentLine],
   lsp: {
-    folding: ["CtiDirective", "YamlSection", "YamlSequenceItem"],
+    folding: [
+      "CtiDirective",
+      "YamlSection",
+      "YamlSequenceItem",
+      "YamlMapping",
+      "ListLiteral",
+      { rule: "CommentLine", kind: "comment", defaultCollapsed: true },
+    ],
     outline: ["CtiDirective", "YamlSection"],
   },
   rules: {
@@ -26,11 +33,14 @@ export const canteraGrammar = language({
     CtiDocument: ($) => repeat1($.CtiDirective),
 
     // Legacy CTI directive: ideal_gas(...), species(...), reaction(...)
-    CtiDirective: ($) => seq(field("directiveName", $.Identifier), "(", $.GroupBody, ")"),
+    CtiDirective: ($) => seq(semanticToken("function", field("directiveName", $.Identifier)), "(", $.GroupBody, ")"),
 
     // Modern Cantera YAML key-value / block-header entries
     YamlSection: ($) =>
-      choice(seq(field("sectionKey", $.YamlKey), field("value", $.LineValue)), field("sectionKey", $.YamlKey)),
+      choice(
+        seq(semanticToken("property", field("sectionKey", $.YamlKey)), field("value", $.LineValue)),
+        semanticToken("property", field("sectionKey", $.YamlKey)),
+      ),
 
     YamlSequenceItem: ($) => choice(seq("-", $.YamlSection), seq("-", $.LineValue)),
 
@@ -57,12 +67,12 @@ export const canteraGrammar = language({
     GroupBody: ($) => repeat(choice($.ValueAtom, $.YamlKey, ":", ",", "=", "-")),
 
     // Terminals
-    DocMarker: () => /---|\.\.\./,
-    YamlKey: () => /[a-zA-Z_][a-zA-Z0-9_.+-]*:/,
-    ReactionOp: () => /<=>|<=|=>|<->|->|\+|\//,
-    CommentLine: () => /(?:#|\/\/)[^\r\n]*/,
-    Identifier: () => /[a-zA-Z_][a-zA-Z0-9_.+-]*/,
-    StringLiteral: () => /"([^"\\\r\n]|\\.)*"|'([^'\\\r\n]|\\.)*'/,
-    NumberLiteral: () => /[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?/,
+    DocMarker: () => semanticToken("keyword", /---|\.\.\./),
+    YamlKey: () => semanticToken("property", /[a-zA-Z_][a-zA-Z0-9_.+-]*:/),
+    ReactionOp: () => semanticToken("operator", /<=>|<=|=>|<->|->|\+|\//),
+    CommentLine: () => semanticToken("comment", /(?:#|\/\/)[^\r\n]*/),
+    Identifier: () => semanticToken("variable", /[a-zA-Z_][a-zA-Z0-9_.+-]*/),
+    StringLiteral: () => semanticToken("string", /"([^"\\\r\n]|\\.)*"|'([^'\\\r\n]|\\.)*'/),
+    NumberLiteral: () => semanticToken("number", /[-+]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?/),
   },
 });

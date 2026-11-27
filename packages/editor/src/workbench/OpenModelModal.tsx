@@ -249,18 +249,21 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
         const curatedFqns = new Set(CURATED_OPEN_MODELS.map((c) => c.fqn).filter(Boolean));
         const results: DynamicSearchModel[] = [];
         for (const r of resp?.results ?? []) {
-          const kindLower = (r.kind || "").toLowerCase();
+          const ext = r as { kind?: string | undefined; description?: string | undefined };
+          const resolvedKind = ext.kind || r.classKind || "";
+          const kindLower = resolvedKind.toLowerCase();
           if (kindLower !== "model" && kindLower !== "block" && kindLower !== "class") continue;
-          if (curatedFqns.has(r.compositeName)) continue;
-          const rootPkg = r.compositeName.split(".")[0] || "Workspace";
+          const fqn = r.compositeName || r.name;
+          if (!fqn || curatedFqns.has(fqn)) continue;
+          const rootPkg = fqn.split(".")[0] || "Workspace";
           results.push({
-            id: `dyn:${r.compositeName}`,
+            id: `dyn:${fqn}`,
             title: r.name,
-            fqn: r.compositeName,
+            fqn,
             kind: kindLower,
-            category: inferModelDomain(r.compositeName, "modelica"),
+            category: inferModelDomain(fqn, "modelica"),
             packageName: rootPkg,
-            summary: r.description || `${r.kind} in ${r.compositeName}`,
+            summary: ext.description || `${resolvedKind} in ${fqn}`,
           });
           if (results.length >= 12) break;
         }
@@ -874,7 +877,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
             >
               <SegmentedControl.Button selected={mode === "gallery"}>Examples &amp; Libraries</SegmentedControl.Button>
               <SegmentedControl.Button selected={mode === "workspace"}>
-                Current Workspace{documentModels.length > 0 ? ` (${documentModels.length})` : ""}
+                {`Current Workspace${documentModels.length > 0 ? ` (${documentModels.length})` : ""}`}
               </SegmentedControl.Button>
               <SegmentedControl.Button selected={mode === "local"}>Local File / Link</SegmentedControl.Button>
             </SegmentedControl>

@@ -5,6 +5,9 @@
  * diagnostics, documentSymbols, hover, and completion.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getSimscriptSchemasFromLibraries, lookupSimscriptModelSchema } from "./catalog/library-package-adapter.js";
 import { lintSimscript } from "./lints/index.js";
 import { parseSimscript } from "./parser/simscript-parser.js";
@@ -146,9 +149,72 @@ const SIMSCRIPT_KEYWORDS: Array<{ label: string; detail: string; doc: string }> 
   { label: "END", detail: "Block terminator", doc: "Terminates PREAMBLE, MAIN, PROCESS, EVENT, or ROUTINE." },
 ];
 
-function lineRange(lineNum: number, lineText: string, symbol?: string): LspRange {
+interface SimscriptCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface SimscriptCstIndex {
+  byRow: Map<number, SimscriptCstLine>;
+  rootRange: LspRange;
+}
+
+function buildSimscriptCstIndex(content: string): SimscriptCstIndex {
+  const byRow = new Map<number, SimscriptCstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("simscript", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  const rootRange: LspRange = {
+    start: { line: 0, character: 0 },
+    end: { line: lastRow, character: Math.max(1, lastEndCol) },
+  };
+  return { byRow, rootRange };
+}
+
+function lineRange(lineNum: number, entry: SimscriptCstLine | undefined, symbol?: string): LspRange {
   const zeroLine = Math.max(0, lineNum - 1);
-  if (symbol) {
+  const lineText = entry?.colLine ?? "";
+  if (symbol && lineText) {
     const idx = lineText.toUpperCase().indexOf(symbol.toUpperCase());
     if (idx >= 0) {
       return {
@@ -157,11 +223,10 @@ function lineRange(lineNum: number, lineText: string, symbol?: string): LspRange
       };
     }
   }
-  const firstNonSpace = lineText.search(/\S/);
-  const startChar = firstNonSpace >= 0 ? firstNonSpace : 0;
+  const startChar = entry?.startCol ?? 0;
   return {
     start: { line: zeroLine, character: startChar },
-    end: { line: zeroLine, character: Math.max(startChar + 1, lineText.trimEnd().length) },
+    end: { line: zeroLine, character: Math.max(startChar + 1, entry?.endCol ?? startChar + 1) },
   };
 }
 
@@ -172,13 +237,13 @@ export function validateSimscript(content: string, _uri: string = "model.sim"): 
   try {
     const model = parseSimscript(content);
     const diags = lintSimscript(model);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildSimscriptCstIndex(content);
 
     return diags.map((d) => {
       const lineNum = d.line ?? 1;
-      const lt = lines[Math.max(0, lineNum - 1)] ?? "";
+      const entry = cstIndex.byRow.get(Math.max(0, lineNum - 1));
       return {
-        range: lineRange(lineNum, lt, d.symbol),
+        range: lineRange(lineNum, entry, d.symbol),
         severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
         code: d.id,
         source: "modelscript-simscript",
@@ -204,13 +269,13 @@ export function validateSimscript(content: string, _uri: string = "model.sim"): 
 export function getSimscriptDocumentSymbols(content: string, _uri: string = "model.sim"): LspDocumentSymbol[] {
   try {
     const model = parseSimscript(content);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildSimscriptCstIndex(content);
     const children: LspDocumentSymbol[] = [];
 
     // Preamble entities, processes, resources, sets, stats
     for (const ent of model.preamble.entities) {
-      const lt = lines[Math.max(0, ent.span.line - 1)] ?? "";
-      const range = lineRange(ent.span.line, lt, ent.name);
+      const entry = cstIndex.byRow.get(Math.max(0, ent.span.line - 1));
+      const range = lineRange(ent.span.line, entry, ent.name);
       const kind =
         ent.kind === "resource"
           ? LspSymbolKind.Struct
@@ -230,8 +295,8 @@ export function getSimscriptDocumentSymbols(content: string, _uri: string = "mod
     }
 
     for (const st of model.preamble.stats) {
-      const lt = lines[Math.max(0, st.span.line - 1)] ?? "";
-      const range = lineRange(st.span.line, lt, st.statName);
+      const entry = cstIndex.byRow.get(Math.max(0, st.span.line - 1));
+      const range = lineRange(st.span.line, entry, st.statName);
       children.push({
         name: st.statName,
         detail: `${st.kind} ${st.measure} OF ${st.target}`,
@@ -242,8 +307,8 @@ export function getSimscriptDocumentSymbols(content: string, _uri: string = "mod
     }
 
     if (model.main) {
-      const lt = lines[Math.max(0, model.main.span.line - 1)] ?? "";
-      const range = lineRange(model.main.span.line, lt, "MAIN");
+      const entry = cstIndex.byRow.get(Math.max(0, model.main.span.line - 1));
+      const range = lineRange(model.main.span.line, entry, "MAIN");
       children.push({
         name: "MAIN",
         detail: `Entry routine (${model.main.statements.length} statements)`,
@@ -254,8 +319,8 @@ export function getSimscriptDocumentSymbols(content: string, _uri: string = "mod
     }
 
     for (const proc of model.processes.values()) {
-      const lt = lines[Math.max(0, proc.span.line - 1)] ?? "";
-      const range = lineRange(proc.span.line, lt, proc.name);
+      const entry = cstIndex.byRow.get(Math.max(0, proc.span.line - 1));
+      const range = lineRange(proc.span.line, entry, proc.name);
       children.push({
         name: `PROCESS ${proc.name}`,
         detail: `${proc.statements.length} statements`,
@@ -266,8 +331,8 @@ export function getSimscriptDocumentSymbols(content: string, _uri: string = "mod
     }
 
     for (const ev of model.events.values()) {
-      const lt = lines[Math.max(0, ev.span.line - 1)] ?? "";
-      const range = lineRange(ev.span.line, lt, ev.name);
+      const entry = cstIndex.byRow.get(Math.max(0, ev.span.line - 1));
+      const range = lineRange(ev.span.line, entry, ev.name);
       children.push({
         name: `EVENT ${ev.name}`,
         detail: `${ev.statements.length} statements`,
@@ -278,8 +343,8 @@ export function getSimscriptDocumentSymbols(content: string, _uri: string = "mod
     }
 
     for (const rt of model.routines.values()) {
-      const lt = lines[Math.max(0, rt.span.line - 1)] ?? "";
-      const range = lineRange(rt.span.line, lt, rt.name);
+      const entry = cstIndex.byRow.get(Math.max(0, rt.span.line - 1));
+      const range = lineRange(rt.span.line, entry, rt.name);
       children.push({
         name: `ROUTINE ${rt.name}`,
         detail: `${rt.statements.length} statements`,
@@ -294,8 +359,8 @@ export function getSimscriptDocumentSymbols(content: string, _uri: string = "mod
         name: model.name,
         detail: `Resources: ${model.preamble.entities.filter((e) => e.kind === "resource").length} | Processes: ${model.processes.size} | Events: ${model.events.size}`,
         kind: LspSymbolKind.Package,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: cstIndex.rootRange,
+        selectionRange: cstIndex.rootRange,
         children: children.length > 0 ? children : undefined,
       },
     ];
@@ -323,8 +388,8 @@ export function getSimscriptHover(
 ): LspHover | undefined {
   try {
     const model = parseSimscript(content);
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
+    const cstIndex = buildSimscriptCstIndex(content);
+    const line = cstIndex.byRow.get(position.line)?.colLine ?? "";
     const word = wordAtPosition(line, position.character).toUpperCase();
     if (!word) return undefined;
 
@@ -391,8 +456,8 @@ export function getSimscriptCompletions(
   const items: LspCompletionItem[] = [];
   const seen = new Set<string>();
 
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line] ?? "";
+  const cstIndex = buildSimscriptCstIndex(content);
+  const line = cstIndex.byRow.get(position.line)?.colLine ?? "";
   const prefix = wordAtPosition(line, position.character).toUpperCase();
 
   function add(item: LspCompletionItem): void {

@@ -11,7 +11,7 @@ import {
   type ResolvedStepPairing,
   type SpoolKinematicsSpec,
 } from "@modelscript/cad";
-import type { CadComponent } from "../cad-viewer";
+import type { CadComponent } from "@modelscript/cad-viewer";
 import type {
   CompileStepFromSourcesAnsatzParams,
   CompileStepFromSourcesAnsatzResult,

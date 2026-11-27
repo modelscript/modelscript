@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import {
+  CstDocumentSession,
+  CstTransaction,
+  type CstIncrementalParser,
+  type CstTextEdit,
+} from "@modelscript/dsl/unparser";
 import type { UnifiedWorkspace } from "@modelscript/runtime";
 import { findCompanionPsseDyr, findCompanionPsseRaw } from "./builtins.js";
 import { lowerPsseToDae } from "./dae/psse-to-dae.js";
@@ -20,6 +26,7 @@ import { DYR_MODEL_SCHEMAS, isLikelyDyrContent, parseDyr } from "./parser/dyr-pa
 import { applyDyrCstParameterUpdates } from "./parser/dyr-serializer.js";
 import { parseRaw, writeRaw } from "./parser/raw-parser.js";
 import { parseSeq } from "./parser/seq-parser.js";
+import { getPsseWasmParser } from "./parser/wasm-loader.js";
 import { psseToModelica } from "./projections/psse-to-modelica.js";
 import { psseToEmtNetlist } from "./projections/psse-to-pscad.js";
 import { resolveDyrModelSchema } from "./schema/index.js";
@@ -2162,6 +2169,269 @@ function formatTransformerRecord(t: TransformerRecord): string {
  * AC Branch (`branch_<i>_<j>_<ckt>` or `line_<i>_<j>_<ckt>`), and Transformer (`xfmr_<i>_<j>_<ckt>`) records
  * via surgical CST record spans without wiping comments or unrelated sections.
  */
+function upsertLineTrailingCommentTag(
+  tx: CstTransaction,
+  lineStartOffset: number,
+  lineEndOffset: number,
+  tagRegex: RegExp,
+  formattedTag: string,
+): void {
+  const source = tx.session.text;
+  const lineSlice = source.slice(lineStartOffset, lineEndOffset);
+  const existing = tagRegex.exec(lineSlice);
+  if (existing) {
+    tx.replaceRange(
+      lineStartOffset + existing.index,
+      lineStartOffset + existing.index + existing[0].length,
+      formattedTag,
+    );
+    return;
+  }
+  let inSingle = false;
+  let inDouble = false;
+  let hasSlash = false;
+  for (let i = 0; i < lineSlice.length; i++) {
+    const ch = lineSlice[i]!;
+    if (ch === "'" && !inDouble) inSingle = !inSingle;
+    else if (ch === '"' && !inSingle) inDouble = !inDouble;
+    else if (ch === "/" && !inSingle && !inDouble) {
+      hasSlash = true;
+      break;
+    }
+  }
+  let trimEnd = lineEndOffset;
+  while (trimEnd > lineStartOffset && (source[trimEnd - 1] === " " || source[trimEnd - 1] === "\t")) {
+    trimEnd--;
+  }
+  tx.replaceRange(trimEnd, lineEndOffset, hasSlash ? ` ${formattedTag}` : ` / ${formattedTag}`);
+}
+
+export function createPsseCstSession(text: string, uri = "file:///case.raw"): CstDocumentSession {
+  let parser: CstIncrementalParser | null = null;
+  try {
+    parser = getPsseWasmParser() as unknown as CstIncrementalParser;
+  } catch {
+    parser = null;
+  }
+  return new CstDocumentSession({ uri, text, parser });
+}
+
+/**
+ * Surgically plans CST column-level edits for a single PSS/E `.raw` entity update onto `tx`
+ * without re-serializing untouched columns, Rev 34/35 trailing fields, or user comments.
+ */
+export function planPsseWritebackIntoTransaction(
+  tx: CstTransaction,
+  cellId: string,
+  changes: Record<string, unknown>,
+  psseCase: PsseCase,
+  cstDoc: PsseCstDocument,
+): boolean {
+  const sourceText = tx.session.text;
+  const num = (v: unknown, fallback: number): number => {
+    const parsed = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const posX = "x" in changes ? Math.round(num(changes["x"], 0)) : undefined;
+  const posY = "y" in changes ? Math.round(num(changes["y"], 0)) : undefined;
+
+  const patchLineFields = (
+    span: SourceSpan | undefined,
+    lineDelta: number,
+    colUpdates: Array<[number, string]>,
+  ): boolean => {
+    if (!span || span.startOffset === undefined || span.endOffset === undefined) return false;
+    const row = tx.session.offsetToPosition(span.startOffset).line + lineDelta;
+    const cstLine = cstDoc.byRow.get(row);
+    if (!cstLine) return false;
+    const fields = extractFieldsFromCstTokens(cstLine.tokens, sourceText, "delimited");
+    for (const [colIdx, val] of colUpdates) {
+      const f = fields[colIdx];
+      if (!f || f.tokenType === "empty") return false;
+      tx.replaceRange(f.startOffset, f.endOffset, val);
+    }
+    return true;
+  };
+
+  const applyFirstLineTags = (span: SourceSpan | undefined, orient?: number): void => {
+    if (!span || span.startOffset === undefined || span.endOffset === undefined) return;
+    let firstLineEnd = span.startOffset;
+    while (firstLineEnd < span.endOffset && sourceText[firstLineEnd] !== "\n" && sourceText[firstLineEnd] !== "\r") {
+      firstLineEnd++;
+    }
+    if (posX !== undefined && posY !== undefined) {
+      upsertLineTrailingCommentTag(
+        tx,
+        span.startOffset,
+        firstLineEnd,
+        /@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i,
+        `@pos(${posX}, ${posY})`,
+      );
+    }
+    if (orient !== undefined) {
+      upsertLineTrailingCommentTag(
+        tx,
+        span.startOffset,
+        firstLineEnd,
+        /@orient\(\s*-?\d+(?:\.\d+)?\s*\)/i,
+        `@orient(${orient})`,
+      );
+    }
+  };
+
+  if (cellId.startsWith("bus_")) {
+    const busId = parseInt(cellId.slice(4), 10);
+    const bus = psseCase.buses.get(busId);
+    if (!bus?.span) return false;
+    const cols: Array<[number, string]> = [];
+    if (typeof changes["name"] === "string") cols.push([1, `'${changes["name"].padEnd(12)}'`]);
+    if ("baseKv" in changes) cols.push([2, num(changes["baseKv"], bus.baseKv).toFixed(3)]);
+    if ("ide" in changes) cols.push([3, String(Math.round(num(changes["ide"], bus.ide)))]);
+    if ("vm" in changes) cols.push([7, num(changes["vm"], bus.vm).toFixed(4)]);
+    if ("va" in changes) cols.push([8, num(changes["va"], bus.va).toFixed(4)]);
+    const orient = "orientation" in changes ? (Math.round(num(changes["orientation"], 0)) === 90 ? 90 : 0) : undefined;
+    if (cols.length > 0 && !patchLineFields(bus.span, 0, cols)) return false;
+    applyFirstLineTags(bus.span, orient);
+    return cols.length > 0 || orient !== undefined || (posX !== undefined && posY !== undefined);
+  }
+
+  if (cellId.startsWith("gen_")) {
+    const parts = cellId.split("_");
+    const busId = parseInt(parts[1] ?? "0", 10);
+    const ckt = parts[2]?.trim();
+    const gen = psseCase.generators.find((g) => g.i === busId && (!ckt || g.id.trim() === ckt));
+    if (!gen?.span) return false;
+    const cols: Array<[number, string]> = [];
+    if ("pg" in changes) cols.push([2, num(changes["pg"], gen.pg).toFixed(3)]);
+    if ("qg" in changes) cols.push([3, num(changes["qg"], gen.qg).toFixed(3)]);
+    if ("qt" in changes) cols.push([4, num(changes["qt"], gen.qt).toFixed(3)]);
+    if ("qb" in changes) cols.push([5, num(changes["qb"], gen.qb).toFixed(3)]);
+    if ("vs" in changes) cols.push([6, num(changes["vs"], gen.vs).toFixed(4)]);
+    if ("mbase" in changes) cols.push([8, num(changes["mbase"], gen.mbase).toFixed(2)]);
+    const stVal = changes["stat"] ?? changes["status"] ?? changes["st"];
+    if (stVal !== undefined) cols.push([14, String(Math.round(num(stVal, gen.stat)))]);
+    if (cols.length > 0 && !patchLineFields(gen.span, 0, cols)) return false;
+    applyFirstLineTags(gen.span);
+    return cols.length > 0 || (posX !== undefined && posY !== undefined);
+  }
+
+  if (cellId.startsWith("load_")) {
+    const parts = cellId.split("_");
+    const busId = parseInt(parts[1] ?? "0", 10);
+    const ckt = parts[2]?.trim();
+    const load = psseCase.loads.find((l) => l.i === busId && (!ckt || l.id.trim() === ckt));
+    if (!load?.span) return false;
+    const cols: Array<[number, string]> = [];
+    const stVal = changes["status"] ?? changes["stat"] ?? changes["st"];
+    if (stVal !== undefined) cols.push([2, String(Math.round(num(stVal, load.status)))]);
+    if ("pl" in changes) cols.push([5, num(changes["pl"], load.pl).toFixed(3)]);
+    if ("ql" in changes) cols.push([6, num(changes["ql"], load.ql).toFixed(3)]);
+    if ("ip" in changes) cols.push([7, num(changes["ip"], load.ip).toFixed(3)]);
+    if ("iq" in changes) cols.push([8, num(changes["iq"], load.iq).toFixed(3)]);
+    if ("yp" in changes) cols.push([9, num(changes["yp"], load.yp).toFixed(3)]);
+    if ("yq" in changes) cols.push([10, num(changes["yq"], load.yq).toFixed(3)]);
+    if (cols.length > 0 && !patchLineFields(load.span, 0, cols)) return false;
+    applyFirstLineTags(load.span);
+    return cols.length > 0 || (posX !== undefined && posY !== undefined);
+  }
+
+  if (cellId.startsWith("shunt_")) {
+    const parts = cellId.split("_");
+    const busId = parseInt(parts[1] ?? "0", 10);
+    const ckt = parts[2]?.trim();
+    const shunt = psseCase.fixedShunts.find((s) => s.i === busId && (!ckt || s.id.trim() === ckt));
+    if (!shunt?.span) return false;
+    const cols: Array<[number, string]> = [];
+    const stVal = changes["status"] ?? changes["stat"] ?? changes["st"];
+    if (stVal !== undefined) cols.push([2, String(Math.round(num(stVal, shunt.status)))]);
+    if ("gl" in changes) cols.push([3, num(changes["gl"], shunt.gl).toFixed(3)]);
+    if ("bl" in changes || "bMvar" in changes) {
+      cols.push([4, num(changes["bl"] ?? changes["bMvar"], shunt.bl).toFixed(3)]);
+    }
+    if (cols.length > 0 && !patchLineFields(shunt.span, 0, cols)) return false;
+    applyFirstLineTags(shunt.span);
+    return cols.length > 0 || (posX !== undefined && posY !== undefined);
+  }
+
+  if (cellId.startsWith("swshunt_")) {
+    const parts = cellId.split("_");
+    const busId = parseInt(parts[1] ?? "0", 10);
+    const sw = psseCase.switchedShunts.find((s) => s.i === busId);
+    if (!sw?.span) return false;
+    const cols: Array<[number, string]> = [];
+    const stVal = changes["stat"] ?? changes["status"] ?? changes["st"];
+    if (stVal !== undefined) cols.push([3, String(Math.round(num(stVal, sw.stat)))]);
+    if ("vswhi" in changes) cols.push([4, num(changes["vswhi"], sw.vswhi).toFixed(4)]);
+    if ("vswlo" in changes) cols.push([5, num(changes["vswlo"], sw.vswlo).toFixed(4)]);
+    if ("binit" in changes || "bMvar" in changes) {
+      cols.push([9, num(changes["binit"] ?? changes["bMvar"], sw.binit).toFixed(3)]);
+    }
+    if (cols.length > 0 && !patchLineFields(sw.span, 0, cols)) return false;
+    applyFirstLineTags(sw.span);
+    return cols.length > 0 || (posX !== undefined && posY !== undefined);
+  }
+
+  if (cellId.startsWith("line_") || cellId.startsWith("branch_")) {
+    const parts = cellId.split("_");
+    const iBus = parseInt(parts[1] ?? "0", 10);
+    const jBus = parseInt(parts[2] ?? "0", 10);
+    const ckt = parts[3]?.trim();
+    const br = psseCase.branches.find((b) => b.i === iBus && Math.abs(b.j) === jBus && (!ckt || b.ckt.trim() === ckt));
+    if (!br?.span) return false;
+    const cols: Array<[number, string]> = [];
+    if ("r" in changes) cols.push([3, num(changes["r"], br.r).toFixed(5)]);
+    if ("x" in changes) cols.push([4, num(changes["x"], br.x).toFixed(5)]);
+    if ("b" in changes) cols.push([5, num(changes["b"], br.b).toFixed(5)]);
+    if ("rateA" in changes) cols.push([6, num(changes["rateA"], br.rateA).toFixed(2)]);
+    if ("rateB" in changes) cols.push([7, num(changes["rateB"], br.rateB).toFixed(2)]);
+    if ("rateC" in changes) cols.push([8, num(changes["rateC"], br.rateC).toFixed(2)]);
+    const stVal = changes["st"] ?? changes["status"] ?? changes["stat"];
+    if (stVal !== undefined) cols.push([13, String(Math.round(num(stVal, br.st)))]);
+    if (cols.length > 0 && !patchLineFields(br.span, 0, cols)) return false;
+    applyFirstLineTags(br.span);
+    return cols.length > 0 || (posX !== undefined && posY !== undefined);
+  }
+
+  if (cellId.startsWith("xfmr_")) {
+    const parts = cellId.split("_");
+    const iBus = parseInt(parts[1] ?? "0", 10);
+    const jBus = parseInt(parts[2] ?? "0", 10);
+    const ckt = parts[3]?.trim();
+    const xf = psseCase.transformers.find((x) => x.i === iBus && x.j === jBus && (!ckt || x.ckt.trim() === ckt));
+    if (!xf?.span) return false;
+    const line0Cols: Array<[number, string]> = [];
+    const line1Cols: Array<[number, string]> = [];
+    const line2Cols: Array<[number, string]> = [];
+    const line3Cols: Array<[number, string]> = [];
+    if (typeof changes["name"] === "string") line0Cols.push([10, `'${changes["name"].padEnd(12)}'`]);
+    const stVal = changes["stat"] ?? changes["status"] ?? changes["st"];
+    if (stVal !== undefined) line0Cols.push([11, String(Math.round(num(stVal, xf.stat)))]);
+    if ("r12" in changes) line1Cols.push([0, num(changes["r12"], xf.r12).toFixed(5)]);
+    if ("x12" in changes) line1Cols.push([1, num(changes["x12"], xf.x12).toFixed(5)]);
+    if ("sbase12" in changes) line1Cols.push([2, num(changes["sbase12"], xf.sbase12).toFixed(2)]);
+    if ("windv1" in changes) line2Cols.push([0, num(changes["windv1"], xf.windv1).toFixed(5)]);
+    if ("ang1" in changes) line2Cols.push([2, num(changes["ang1"], xf.ang1).toFixed(3)]);
+    if ("rata1" in changes) line2Cols.push([3, num(changes["rata1"], xf.rata1).toFixed(2)]);
+    if ("windv2" in changes) line3Cols.push([0, num(changes["windv2"], xf.windv2).toFixed(5)]);
+
+    if (line0Cols.length > 0 && !patchLineFields(xf.span, 0, line0Cols)) return false;
+    if (line1Cols.length > 0 && !patchLineFields(xf.span, 1, line1Cols)) return false;
+    if (line2Cols.length > 0 && !patchLineFields(xf.span, 2, line2Cols)) return false;
+    if (line3Cols.length > 0 && !patchLineFields(xf.span, 3, line3Cols)) return false;
+    applyFirstLineTags(xf.span);
+    return (
+      line0Cols.length > 0 ||
+      line1Cols.length > 0 ||
+      line2Cols.length > 0 ||
+      line3Cols.length > 0 ||
+      (posX !== undefined && posY !== undefined)
+    );
+  }
+
+  return false;
+}
+
 export function applyPsseDiagramWriteback(
   sourceText: string,
   cellId: string,
@@ -2178,6 +2448,22 @@ export function applyPsseDiagramWriteback(
     }
     return applyDyrCstParameterUpdates(sourceText, { busNumber, id, model }, updates);
   }
+
+  // Fast surgical CST column-level writeback (preserves untouched columns, Rev 34/35 fields, and comments)
+  const session = createPsseCstSession(sourceText);
+  try {
+    const psseCase = parseRaw(sourceText);
+    const cstDoc = parsePsseCstDocument(sourceText, session.tree);
+    const tx = new CstTransaction(session);
+    if (planPsseWritebackIntoTransaction(tx, cellId, changes, psseCase, cstDoc)) {
+      return tx.commit().applyToString(sourceText);
+    }
+  } catch {
+    // Fall back to whole-record serialization below if the line was truncated/malformed
+  } finally {
+    session.dispose();
+  }
+
   const psseCase = parseRaw(sourceText);
   const num = (v: unknown, fallback: number): number => {
     const parsed = typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
@@ -2193,7 +2479,6 @@ export function applyPsseDiagramWriteback(
     if (/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i.test(lineText)) {
       return lineText.replace(/@pos\(\s*-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?\s*\)/i, tag);
     }
-    // Check if the line already has a `/` trailing comment outside quotes
     let inSingle = false;
     let inDouble = false;
     for (let i = 0; i < lineText.length; i++) {
@@ -2366,6 +2651,367 @@ export function applyPsseDiagramWriteback(
   }
 
   return writeRaw(psseCase);
+}
+
+/**
+ * Pure CST transaction planner for optimistic PSS/E `.raw` diagram edits (`move`, `resize`, `rotate`,
+ * `toggleDisable`, `updateProperty`, `updateParameter`, `updateName`, `moveEdge`).
+ * Returns surgical `CstTextEdit[]` directly from a live {@link CstDocumentSession} with zero whole-file diffing.
+ */
+export function planPsseOptimisticEditsOnSession(
+  session: CstDocumentSession,
+  batchedChanges: ReadonlyMap<string, Record<string, unknown>>,
+  edgeUpdates: ReadonlyArray<{ key: string; ptsStr: string }>,
+): CstTextEdit[] | null {
+  const sourceText = session.text;
+  if (isLikelyDyrContent(sourceText)) return null;
+  const psseCase = parseRaw(sourceText);
+  const cstDoc = parsePsseCstDocument(sourceText, session.tree);
+  const tx = new CstTransaction(session);
+
+  for (const [cellId, changes] of batchedChanges) {
+    if (!planPsseWritebackIntoTransaction(tx, cellId, changes, psseCase, cstDoc)) {
+      return null;
+    }
+  }
+
+  for (const { key, ptsStr } of edgeUpdates) {
+    if (!ptsStr) continue;
+    const lineText = `@! @edge ${key} vertices=${ptsStr}`;
+    let replaced = false;
+    for (const cstLine of cstDoc.lines) {
+      const trimmed = cstLine.line.trim();
+      if (trimmed.startsWith("@!") && trimmed.includes("@edge")) {
+        const toks = trimmed.split(/\s+/);
+        if (toks[1]?.toLowerCase() === "@edge" && toks[2] === key) {
+          tx.replaceRange(cstLine.startOffset, cstLine.endOffset, lineText);
+          replaced = true;
+          break;
+        }
+      }
+    }
+    if (!replaced) {
+      const sep = sourceText.endsWith("\n") || sourceText.length === 0 ? "" : "\n";
+      tx.insertAt(sourceText.length, `${sep}${lineText}\n`);
+    }
+  }
+
+  return tx.commit().edits;
+}
+
+/**
+ * Pure CST transaction planner for PSS/E `.raw` structural diagram edits
+ * (`deleteComponents`, `connect`, `disconnect`, `reconnect`).
+ * Emits exact surgical `CstTextEdit[]` directly from a live {@link CstDocumentSession}
+ * with zero whole-file diffing.
+ */
+export function planPsseStructuralEditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<{
+    type: string;
+    names?: string[] | undefined;
+    source?: string | undefined;
+    target?: string | undefined;
+    id?: string | undefined;
+    edgeId?: string | undefined;
+    oldSource?: string | undefined;
+    oldTarget?: string | undefined;
+    newSource?: string | undefined;
+    newTarget?: string | undefined;
+    className?: string | undefined;
+    x?: number | undefined;
+    y?: number | undefined;
+    foreignLanguage?: string | undefined;
+  }>,
+): CstTextEdit[] | null {
+  const sourceText = session.text;
+  if (isLikelyDyrContent(sourceText)) return null;
+  if (
+    actions.length === 0 ||
+    !actions.every(
+      (a) =>
+        a.type === "deleteComponents" ||
+        a.type === "connect" ||
+        a.type === "disconnect" ||
+        a.type === "reconnect" ||
+        a.type === "addComponent",
+    )
+  ) {
+    return null;
+  }
+
+  const psseCase = parseRaw(sourceText);
+  const cstDoc = parsePsseCstDocument(sourceText, session.tree);
+  const tx = new CstTransaction(session);
+  const deletedSpans = new Set<string>();
+  const deletedKeys = new Set<string>();
+  const allocatedCktsByPair = new Map<string, Set<string>>();
+
+  const queueDeleteSpan = (span?: SourceSpan) => {
+    if (!span || span.startOffset === undefined || span.endOffset === undefined) return;
+    const key = `${span.startOffset}:${span.endOffset}`;
+    if (deletedSpans.has(key)) return;
+    deletedSpans.add(key);
+    let end = span.endOffset;
+    if (sourceText[end] === "\r") end++;
+    if (sourceText[end] === "\n") end++;
+    tx.deleteRange(span.startOffset, end);
+  };
+
+  const queueDeleteIds = (cellIds: string[]) => {
+    const normalizedIds: string[] = [];
+    for (const id of cellIds) {
+      deletedKeys.add(id);
+      if (id.startsWith("wire_bus_") && id.includes("_to_load_")) {
+        normalizedIds.push(id.slice(id.indexOf("_to_") + 4));
+      } else if (id.startsWith("wire_gen_") && id.includes("_to_bus_")) {
+        normalizedIds.push(id.slice(5, id.indexOf("_to_bus_")));
+      } else if (id.startsWith("wire_bus_") && id.includes("_to_shunt_")) {
+        normalizedIds.push(id.slice(id.indexOf("_to_") + 4));
+      } else if (id.startsWith("wire_bus_") && id.includes("_to_swshunt_")) {
+        normalizedIds.push(id.slice(id.indexOf("_to_") + 4));
+      } else {
+        normalizedIds.push(id);
+      }
+    }
+    for (const n of normalizedIds) deletedKeys.add(n);
+
+    for (const cellId of normalizedIds) {
+      if (cellId.startsWith("bus_")) {
+        const busId = Number.parseInt(cellId.slice(4), 10);
+        queueDeleteSpan(psseCase.buses.get(busId)?.span);
+        for (const l of psseCase.loads) if (l.i === busId) queueDeleteSpan(l.span);
+        for (const g of psseCase.generators) if (g.i === busId) queueDeleteSpan(g.span);
+        for (const s of psseCase.fixedShunts) if (s.i === busId) queueDeleteSpan(s.span);
+        for (const s of psseCase.switchedShunts) if (s.i === busId) queueDeleteSpan(s.span);
+        for (const b of psseCase.branches) if (b.i === busId || Math.abs(b.j) === busId) queueDeleteSpan(b.span);
+        for (const t of psseCase.transformers) {
+          if (t.i === busId || t.j === busId || t.k === busId) queueDeleteSpan(t.span);
+        }
+      } else if (cellId.startsWith("load_")) {
+        const parts = cellId.split("_");
+        const busId = Number.parseInt(parts[1] ?? "0", 10);
+        const ckt = parts[2]?.trim();
+        queueDeleteSpan(psseCase.loads.find((l) => l.i === busId && (!ckt || l.id.trim() === ckt))?.span);
+      } else if (cellId.startsWith("gen_")) {
+        const parts = cellId.split("_");
+        const busId = Number.parseInt(parts[1] ?? "0", 10);
+        const ckt = parts[2]?.trim();
+        queueDeleteSpan(psseCase.generators.find((g) => g.i === busId && (!ckt || g.id.trim() === ckt))?.span);
+      } else if (cellId.startsWith("shunt_")) {
+        const parts = cellId.split("_");
+        const busId = Number.parseInt(parts[1] ?? "0", 10);
+        const ckt = parts[2]?.trim();
+        queueDeleteSpan(psseCase.fixedShunts.find((s) => s.i === busId && (!ckt || s.id.trim() === ckt))?.span);
+      } else if (cellId.startsWith("swshunt_")) {
+        const parts = cellId.split("_");
+        const busId = Number.parseInt(parts[1] ?? "0", 10);
+        queueDeleteSpan(psseCase.switchedShunts.find((s) => s.i === busId)?.span);
+      } else if (cellId.startsWith("branch_") || cellId.startsWith("line_")) {
+        const parts = cellId.split("_");
+        const iBus = Math.abs(Number.parseInt(parts[1] ?? "0", 10));
+        const jBus = Math.abs(Number.parseInt(parts[2] ?? "0", 10));
+        const ckt = parts[3]?.trim();
+        queueDeleteSpan(
+          psseCase.branches.find(
+            (b) =>
+              ((b.i === iBus && Math.abs(b.j) === jBus) || (b.i === jBus && Math.abs(b.j) === iBus)) &&
+              (!ckt || b.ckt.trim() === ckt),
+          )?.span,
+        );
+      } else if (cellId.startsWith("xfmr_")) {
+        const parts = cellId.split("_");
+        const iBus = Math.abs(Number.parseInt(parts[1] ?? "0", 10));
+        const jBus = Math.abs(Number.parseInt(parts[2] ?? "0", 10));
+        const ckt = parts[3]?.trim();
+        queueDeleteSpan(
+          psseCase.transformers.find(
+            (x) =>
+              ((x.i === iBus && (x.j === jBus || x.k === jBus)) || (x.j === iBus && (x.i === jBus || x.k === jBus))) &&
+              (!ckt || x.ckt.trim() === ckt),
+          )?.span,
+        );
+      }
+    }
+  };
+
+  const queueDisconnect = (sourceCellId: string, targetCellId: string, edgeId?: string) => {
+    const directEdgeId =
+      edgeId && isPsseEdgeCellId(edgeId)
+        ? edgeId
+        : isPsseEdgeCellId(sourceCellId)
+          ? sourceCellId
+          : isPsseEdgeCellId(targetCellId)
+            ? targetCellId
+            : undefined;
+    if (directEdgeId) {
+      queueDeleteIds([directEdgeId]);
+      return;
+    }
+    const srcBase = sourceCellId.split(".")[0] ?? sourceCellId;
+    const tgtBase = targetCellId.split(".")[0] ?? targetCellId;
+    if (isPsseAttachedEquipmentId(srcBase) && tgtBase.startsWith("bus_")) {
+      queueDeleteIds([srcBase]);
+      return;
+    }
+    if (isPsseAttachedEquipmentId(tgtBase) && srcBase.startsWith("bus_")) {
+      queueDeleteIds([tgtBase]);
+      return;
+    }
+    const iBus = srcBase.startsWith("bus_") ? Number.parseInt(srcBase.slice(4), 10) : NaN;
+    const jBus = tgtBase.startsWith("bus_") ? Number.parseInt(tgtBase.slice(4), 10) : NaN;
+    if (!Number.isFinite(iBus) || !Number.isFinite(jBus)) return;
+    const toDelete: string[] = [];
+    for (const b of psseCase.branches) {
+      if ((b.i === iBus && Math.abs(b.j) === jBus) || (b.i === jBus && Math.abs(b.j) === iBus)) {
+        toDelete.push(`branch_${b.i}_${Math.abs(b.j)}_${b.ckt.trim() || "1"}`);
+      }
+    }
+    for (const t of psseCase.transformers) {
+      if ((t.i === iBus && t.j === jBus) || (t.i === jBus && t.j === iBus)) {
+        toDelete.push(`xfmr_${t.i}_${t.j}_${t.ckt.trim() || "1"}`);
+      }
+    }
+    if (toDelete.length > 0) queueDeleteIds(toDelete);
+  };
+
+  const branchInsertOffset = findRawSectionInsertOffset(
+    sourceText,
+    /BEGIN (?:NON-TRANSFORMER )?BRANCH/i,
+    /END OF (?:NON-TRANSFORMER )?BRANCH/i,
+  );
+  const newBranchLines: string[] = [];
+
+  const queueConnect = (sourceCellId: string, targetCellId: string) => {
+    const srcBase = sourceCellId.split(".")[0] ?? sourceCellId;
+    const tgtBase = targetCellId.split(".")[0] ?? targetCellId;
+    const iBus = srcBase.startsWith("bus_") ? Number.parseInt(srcBase.slice(4), 10) : NaN;
+    const jBus = tgtBase.startsWith("bus_") ? Number.parseInt(tgtBase.slice(4), 10) : NaN;
+    if (!Number.isFinite(iBus) || !Number.isFinite(jBus) || iBus === jBus) return;
+    const pairKey = `${Math.min(iBus, jBus)}:${Math.max(iBus, jBus)}`;
+    let used = allocatedCktsByPair.get(pairKey);
+    if (!used) {
+      used = new Set(
+        psseCase.branches
+          .filter((b) => (b.i === iBus && Math.abs(b.j) === jBus) || (b.i === jBus && Math.abs(b.j) === iBus))
+          .map((b) => b.ckt.trim()),
+      );
+      allocatedCktsByPair.set(pairKey, used);
+    }
+    let ckt = 1;
+    while (used.has(String(ckt))) ckt++;
+    used.add(String(ckt));
+    const record = `${iBus}, ${jBus}, '${String(ckt).padEnd(2)}', 0.01000, 0.05000, 0.02000, 100.00, 120.00, 140.00, 0.00000, 0.00000, 0.00000, 0.00000, 1, 1, 0.00`;
+    if (branchInsertOffset !== null) {
+      tx.insertAt(branchInsertOffset, `${record}\n`);
+    } else {
+      newBranchLines.push(record);
+    }
+  };
+
+  const busInsertOffset = findRawSectionInsertOffset(sourceText, /BEGIN BUS/i, /END OF BUS/i);
+  const existingBusIds = [...psseCase.buses.keys()];
+  let maxBusId = existingBusIds.length > 0 ? Math.max(...existingBusIds) : 0;
+  const defaultBaseKv =
+    (existingBusIds.length > 0 ? psseCase.buses.get(existingBusIds[existingBusIds.length - 1]!)?.baseKv : undefined) ||
+    230.0;
+
+  for (const act of actions) {
+    if (act.type === "deleteComponents" && Array.isArray(act.names)) {
+      queueDeleteIds(act.names);
+    } else if (act.type === "connect" && act.source && act.target) {
+      queueConnect(act.source, act.target);
+    } else if (act.type === "disconnect" && act.source && act.target) {
+      queueDisconnect(act.source, act.target, act.id);
+    } else if (act.type === "reconnect" && act.oldSource && act.oldTarget && act.newSource && act.newTarget) {
+      queueDisconnect(act.oldSource, act.oldTarget, act.edgeId);
+      queueConnect(act.newSource, act.newTarget);
+    } else if (act.type === "addComponent" && act.className) {
+      const cleanClass = act.className.trim();
+      const lower = cleanClass.toLowerCase();
+      const rx = typeof act.x === "number" && Number.isFinite(act.x) ? Math.round(act.x) : 0;
+      const ry = typeof act.y === "number" && Number.isFinite(act.y) ? Math.round(act.y) : 0;
+      const hasPos =
+        typeof act.x === "number" && Number.isFinite(act.x) && typeof act.y === "number" && Number.isFinite(act.y);
+      const posSuffix = hasPos ? ` / @pos(${rx}, ${ry})` : "";
+
+      if (act.foreignLanguage === "modelica" || act.foreignLanguage === "pscad") {
+        const sep = sourceText.endsWith("\n") || sourceText.length === 0 ? "" : "\n";
+        tx.insertAt(sourceText.length, `${sep}@! @polyglot ${cleanClass} x=${rx} y=${ry}\n`);
+        continue;
+      }
+
+      if (busInsertOffset === null) {
+        // Blank or headerless .raw file: let LSP scaffold full header
+        return null;
+      }
+
+      if (lower === "psse:bus_pq" || lower === "psse:bus_pv" || lower === "psse:bus_slack" || lower === "bus") {
+        const newBusId = ++maxBusId;
+        const ide = lower === "psse:bus_slack" ? 3 : lower === "psse:bus_pv" ? 2 : 1;
+        const record = `${newBusId}, '${`BUS ${newBusId}`.padEnd(12)}', ${defaultBaseKv.toFixed(1)}, ${ide}, 1, 1, 1, 1.0000, 0.0000${posSuffix}`;
+        tx.insertAt(busInsertOffset, `${record}\n`);
+      } else if (lower === "psse:load" || lower === "load") {
+        const loadOffset = findRawSectionInsertOffset(sourceText, /BEGIN LOAD/i, /END OF LOAD/i);
+        if (loadOffset === null) return null;
+        const newBusId = ++maxBusId;
+        const busPos = hasPos ? ` / @pos(${rx}, ${ry - 82})` : "";
+        tx.insertAt(
+          busInsertOffset,
+          `${newBusId}, '${`BUS ${newBusId}`.padEnd(12)}', ${defaultBaseKv.toFixed(1)}, 1, 1, 1, 1, 1.0000, 0.0000${busPos}\n`,
+        );
+        tx.insertAt(loadOffset, `${newBusId}, '1 ', 1, 1, 1, 50.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0${posSuffix}\n`);
+      } else if (lower === "psse:generator" || lower === "generator") {
+        const genOffset = findRawSectionInsertOffset(sourceText, /BEGIN GENERATOR/i, /END OF GENERATOR/i);
+        if (genOffset === null) return null;
+        const newBusId = ++maxBusId;
+        const ide = psseCase.buses.size === 0 ? 3 : 2;
+        const busPos = hasPos ? ` / @pos(${rx}, ${ry + 82})` : "";
+        tx.insertAt(
+          busInsertOffset,
+          `${newBusId}, '${`BUS ${newBusId}`.padEnd(12)}', ${defaultBaseKv.toFixed(1)}, ${ide}, 1, 1, 1, 1.0000, 0.0000${busPos}\n`,
+        );
+        tx.insertAt(
+          genOffset,
+          `${newBusId}, '1 ', 100.000, 0.000, 50.000, -50.000, 1.0000, 0, 100.00, 0.00000, 0.20000, 0.00000, 0.00000, 1.0000, 1, 100.0, 200.000, 0.000${posSuffix}\n`,
+        );
+      } else {
+        // Other specialized PSS/E drops (e.g. missing section terminators, xfmr, shunts) fall back cleanly
+        return null;
+      }
+    }
+  }
+
+  // Strip stale `@! @edge <key> vertices=...` annotations referencing deleted cells/edges
+  if (deletedKeys.size > 0) {
+    for (const cstLine of cstDoc.lines) {
+      const m = /^@!\s*@edge\s+(\S+)\s+vertices=/i.exec(cstLine.line.trim());
+      if (!m) continue;
+      const key = m[1]!;
+      const parts = key.split("__");
+      const matchesDeleted =
+        deletedKeys.has(key) || (parts.length === 2 && (deletedKeys.has(parts[0]!) || deletedKeys.has(parts[1]!)));
+      if (matchesDeleted) {
+        let end = cstLine.endOffset;
+        if (sourceText[end] === "\r") end++;
+        if (sourceText[end] === "\n") end++;
+        tx.deleteRange(cstLine.startOffset, end);
+      }
+    }
+  }
+
+  if (newBranchLines.length > 0) {
+    const block = `0 / BEGIN BRANCH DATA\n${newBranchLines.join("\n")}\n0 / END OF BRANCH DATA\n`;
+    const qMatch = /\n[ \t]*Q[ \t]*\r?\n?$/i.exec(sourceText);
+    if (qMatch) {
+      tx.insertAt(qMatch.index + 1, block);
+    } else {
+      const sep = sourceText.endsWith("\n") || sourceText.length === 0 ? "" : "\n";
+      tx.insertAt(sourceText.length, `${sep}${block}`);
+    }
+  }
+
+  return tx.commit().edits;
 }
 
 function findRawSectionInsertOffset(

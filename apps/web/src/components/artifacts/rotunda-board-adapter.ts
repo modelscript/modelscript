@@ -12,7 +12,7 @@ import {
   ROTUNDA_ENVIRONMENTS,
   type BuildRotundaBoardOptions,
   type RotundaEnvironmentId,
-} from "@modelscript/editor/workbench/vr-rotunda/types.js";
+} from "@modelscript/rotunda/types.js";
 import { parseModelicaParameters } from "../../util/modelica-params";
 
 const VALID_ENVIRONMENTS = new Set<string>(ROTUNDA_ENVIRONMENTS.map((env) => env.id));

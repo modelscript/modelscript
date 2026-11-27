@@ -4,6 +4,7 @@ import { getLanguageInfo } from "@modelscript/editor/workbench/constants";
 import { LanguageToolbarButtons } from "@modelscript/editor/workbench/panels/LanguageToolbarButtons";
 import {
   AlertIcon,
+  BeakerIcon,
   BookmarkIcon,
   CodeIcon,
   ColumnsIcon,
@@ -20,6 +21,7 @@ import {
   ShareIcon,
   SidebarCollapseIcon,
   SidebarExpandIcon,
+  SparkleFillIcon,
   StackIcon,
   SunIcon,
   TableIcon,
@@ -67,6 +69,10 @@ export interface AnsatzEditorNavbarProps {
   onToggleSplit?: () => void;
   isVrMode?: boolean;
   onToggleVrMode?: () => void;
+  showHypergraphOverlay?: boolean;
+  onToggleHypergraphOverlay?: () => void;
+  isAiOpen?: boolean;
+  onToggleAi?: () => void;
   isDirty?: boolean;
   isSimulating?: boolean;
   publishLabel?: string;
@@ -76,7 +82,7 @@ export interface AnsatzEditorNavbarProps {
   onSelectExample: (ex: HeroExample) => void;
   onSelectLang?: (lang: string) => void;
   onSelectDiagramType?: (diagramType: string) => void;
-  onViewChange?: (view: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => void;
+  onViewChange?: (view: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector" | "studio") => void;
   onSimulate?: () => void;
   onOpenInVsCode?: () => void;
   onBrandClick?: () => void;
@@ -107,6 +113,10 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
   onToggleSplit,
   isVrMode = false,
   onToggleVrMode,
+  showHypergraphOverlay = false,
+  onToggleHypergraphOverlay,
+  isAiOpen = false,
+  onToggleAi,
   isDirty: _isDirty = false,
   isSimulating = false,
   runStatus,
@@ -175,7 +185,7 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
           ? "Table"
           : "Inspector";
 
-  type ViewTabId = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "code";
+  type ViewTabId = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "studio" | "code";
   const viewTabs: Array<{
     id: ViewTabId;
     label: string;
@@ -234,6 +244,13 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
     onClick: () => onViewChange?.("inspector"),
   });
   viewTabs.push({
+    id: "studio",
+    label: "AI Studio",
+    icon: BeakerIcon,
+    title: "AI Training, Zonotope Certification, Annotation & DiskANN Studio (⌥7)",
+    onClick: () => onViewChange?.("studio"),
+  });
+  viewTabs.push({
     id: "code",
     label: "Code",
     icon: CodeIcon,
@@ -244,21 +261,23 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
   const isCodeView = currentView === "code";
   const activeTabId: ViewTabId = isCodeView
     ? "code"
-    : currentView === "inspector"
-      ? "inspector"
-      : currentView === "3d" && supports3dView
-        ? "3d"
-        : currentView === "simulation" && supportsSimulation
-          ? "simulation"
-          : supportsDiagram
-            ? hasIconMode && diagramType === "icon"
-              ? "icon"
-              : "diagram"
-            : supports3dView
-              ? "3d"
-              : supportsSimulation
-                ? "simulation"
-                : "inspector";
+    : currentView === "studio"
+      ? "studio"
+      : currentView === "inspector"
+        ? "inspector"
+        : currentView === "3d" && supports3dView
+          ? "3d"
+          : currentView === "simulation" && supportsSimulation
+            ? "simulation"
+            : supportsDiagram
+              ? hasIconMode && diagramType === "icon"
+                ? "icon"
+                : "diagram"
+              : supports3dView
+                ? "3d"
+                : supportsSimulation
+                  ? "simulation"
+                  : "inspector";
 
   const selectedIndex = viewTabs.findIndex((t) => t.id === activeTabId);
   const SplitIcon = splitOrientation === "vertical" ? RowsIcon : ColumnsIcon;
@@ -441,6 +460,30 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
             </SplitToggleButton>
           )}
 
+          {onToggleHypergraphOverlay && (
+            <VrToggleButton
+              type="button"
+              role="button"
+              data-testid="ansatz-zonotope-overlay-toggle"
+              aria-pressed={showHypergraphOverlay}
+              aria-label={
+                showHypergraphOverlay
+                  ? "Hide Zonotope & Hypergraph Annotation Overlay"
+                  : "Show Zonotope & Hypergraph Annotation Overlay"
+              }
+              $active={showHypergraphOverlay}
+              onClick={onToggleHypergraphOverlay}
+              title={
+                showHypergraphOverlay
+                  ? "Hide Zonotope generator ribbon, brushes & hypergraph overlays"
+                  : "Show Zonotope generator ribbon, brushes (Lock/Sync/Inv), 2D/3D tolerance cones & token overlay"
+              }
+            >
+              <BeakerIcon size={13} />
+              <span className="vr-label">Zonotope</span>
+            </VrToggleButton>
+          )}
+
           {onToggleVrMode && (
             <VrToggleButton
               type="button"
@@ -508,6 +551,27 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
               {runStatus?.errors ?? 1} {(runStatus?.errors ?? 1) === 1 ? "error" : "errors"}
             </span>
           </button>
+        )}
+
+        {/* Ansatz AI Copilot Toggle */}
+        {onToggleAi && (
+          <VrToggleButton
+            type="button"
+            role="button"
+            data-testid="ansatz-ai-copilot-toggle"
+            aria-pressed={isAiOpen}
+            aria-label={isAiOpen ? "Close Ansatz AI Copilot" : "Open Ansatz AI Copilot"}
+            $active={isAiOpen}
+            onClick={onToggleAi}
+            title={
+              isAiOpen
+                ? "Close Ansatz AI Copilot (⌥A)"
+                : "Open Ansatz AI Copilot — chat, verify fixes, contribute to DiskANN & escalate to RLHF Arena (⌥A)"
+            }
+          >
+            <SparkleFillIcon size={13} />
+            <span className="vr-label">AI</span>
+          </VrToggleButton>
         )}
 
         {/* Command Palette / Global Search */}
@@ -731,6 +795,22 @@ export const AnsatzEditorNavbar: React.FC<AnsatzEditorNavbarProps> = ({
                   </ActionList.LinkItem>
                   <ActionList.LinkItem as={Link} to="/explore">
                     Explore Community Models
+                  </ActionList.LinkItem>
+                  <ActionList.Divider />
+                  <ActionList.LinkItem as={Link} to="/runs">
+                    AI Training Runs &amp; Triggers
+                  </ActionList.LinkItem>
+                  <ActionList.LinkItem as={Link} to="/datasets">
+                    Datasets &amp; Certification
+                  </ActionList.LinkItem>
+                  <ActionList.LinkItem as={Link} to="/models">
+                    Models &amp; Provenance
+                  </ActionList.LinkItem>
+                  <ActionList.LinkItem as={Link} to="/memory">
+                    Vector Memory (DiskANN)
+                  </ActionList.LinkItem>
+                  <ActionList.LinkItem as={Link} to="/annotate/queue">
+                    RLHF Annotator Queue
                   </ActionList.LinkItem>
                   <ActionList.Divider />
                   <ActionList.LinkItem as={Link} to="/settings">

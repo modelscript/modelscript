@@ -4,6 +4,9 @@
  * Language Server Protocol (LSP) services for NASA SINDA / SINDA-FLUINT thermal networks.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lookupSindaModelSchema } from "./catalog/library-package-adapter.js";
 import { lintSinda } from "./lints/index.js";
 import { parseSindaDeck } from "./parser/deck-parser.js";
@@ -116,19 +119,83 @@ const SINDA_KEYWORDS: Array<{ label: string; detail: string; documentation: stri
   },
 ];
 
+interface SindaCstLine {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  tokens: CstNodeLike[];
+}
+
+function buildSindaCstLineMap(content: string, cstTree?: { rootNode?: unknown } | null): Map<number, SindaCstLine> {
+  const byRow = new Map<number, SindaCstLine>();
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("sinda", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+  if (!rootNode) return byRow;
+
+  for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+    const lineText = cstLineText(content, tokens);
+    const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const startCol = first?.startPosition?.column ?? 0;
+    const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+    byRow.set(row, { row, text: lineText, startCol, endCol, tokens });
+  }
+  return byRow;
+}
+
+function findSindaTokenAtPosition(
+  lineEntry: SindaCstLine,
+  character: number,
+): { word: string; start: number; end: number } | null {
+  for (let i = 0; i < lineEntry.tokens.length; i++) {
+    const tok = lineEntry.tokens[i] as CstNodeLike & { endPosition?: { column: number } };
+    const text = tok.text ?? "";
+    const start = tok.startPosition?.column ?? 0;
+    const end = tok.endPosition?.column ?? start + text.length;
+    if (character >= start && character <= end) {
+      if (text === "-" && i + 1 < lineEntry.tokens.length) {
+        const next = lineEntry.tokens[i + 1] as CstNodeLike & { endPosition?: { column: number } };
+        const nextText = next.text ?? "";
+        const nextStart = next.startPosition?.column ?? end;
+        const nextEnd = next.endPosition?.column ?? nextStart + nextText.length;
+        if (nextStart === end && nextText) {
+          return { word: `-${nextText}`, start, end: nextEnd };
+        }
+      }
+      const trimmed = text.trim();
+      if (trimmed) {
+        return { word: trimmed, start, end };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Validates a SINDA input deck and returns LSP diagnostics.
  */
-export function validateSinda(content: string, _uri: string = "thermal.sin"): LspDiagnostic[] {
+export function validateSinda(
+  content: string,
+  _uri: string = "thermal.sin",
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   const model = parseSindaDeck(content);
   const diags = lintSinda(model);
-  const lines = content.split(/\r?\n/);
+  const lineMap = buildSindaCstLineMap(content, cstTree);
 
   return diags.map((d) => {
     const lineNum = d.line ? Math.max(0, d.line - 1) : 0;
-    const lt = lines[lineNum] ?? "";
-    const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lt.length);
+    const lineEntry = lineMap.get(lineNum);
+    const startChar = d.column ? Math.max(0, d.column - 1) : (lineEntry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, lineEntry?.endCol ?? startChar + 1);
 
     return {
       range: {
@@ -205,18 +272,18 @@ export function getSindaDocumentSymbols(content: string): LspDocumentSymbol[] {
 /**
  * Returns hover documentation for SINDA solver routines, spacecraft materials, or node IDs.
  */
-export function getSindaHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (line === undefined) return null;
+export function getSindaHover(
+  content: string,
+  position: LspPosition,
+  cstTree?: { rootNode?: unknown } | null,
+): LspHover | null {
+  const lineMap = buildSindaCstLineMap(content, cstTree);
+  const lineEntry = lineMap.get(position.line);
+  if (!lineEntry) return null;
 
-  // Extract token under cursor
-  let start = position.character;
-  let end = position.character;
-  while (start > 0 && /[A-Za-z0-9_.-]/.test(line[start - 1]!)) start--;
-  while (end < line.length && /[A-Za-z0-9_.-]/.test(line[end]!)) end++;
-  const word = line.slice(start, end).trim();
-  if (!word) return null;
+  const hit = findSindaTokenAtPosition(lineEntry, position.character);
+  if (!hit) return null;
+  const { word, start, end } = hit;
 
   const range: LspRange = {
     start: { line: position.line, character: start },

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintHdf4 } from "./lints/index.js";
 import { parseHdf4Ddl } from "./parser/ddl-parser.js";
 import { computeSdsStatistics } from "./solver/index.js";
@@ -62,11 +65,68 @@ export interface LspCompletionItem {
   insertText?: string | undefined;
 }
 
-function lineRange(lineIndex: number, lineText: string): LspRange {
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface Hdf4CstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildHdf4CstIndex(content: string): Hdf4CstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("hdf4", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
+function lineRange(cstIndex: Hdf4CstIndex, lineIndex: number): LspRange {
   const safeLine = Math.max(0, lineIndex);
+  const entry = cstIndex.byRow.get(safeLine);
+  const startChar = entry?.startCol ?? 0;
+  const endChar = Math.max(startChar + 1, entry?.endCol ?? 1);
   return {
-    start: { line: safeLine, character: 0 },
-    end: { line: safeLine, character: Math.max(1, lineText.length) },
+    start: { line: safeLine, character: startChar },
+    end: { line: safeLine, character: endChar },
   };
 }
 
@@ -76,14 +136,13 @@ function lineRange(lineIndex: number, lineText: string): LspRange {
 export function validateHdf4(content: string, _uri: string = "dataset.hdf4"): LspDiagnostic[] {
   const doc = parseHdf4Ddl(content);
   const diags = lintHdf4(doc);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildHdf4CstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = d.line ? Math.max(0, d.line - 1) : 0;
-    const lineText = lines[lineIdx] ?? "";
     const severity: 1 | 2 | 3 = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
     return {
-      range: lineRange(lineIdx, lineText),
+      range: lineRange(cstIndex, lineIdx),
       severity,
       code: d.code,
       source: "hdf4",
@@ -97,12 +156,12 @@ export function validateHdf4(content: string, _uri: string = "dataset.hdf4"): Ls
  */
 export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
   const doc = parseHdf4Ddl(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildHdf4CstIndex(content);
   const children: LspDocumentSymbol[] = [];
 
   for (const sds of doc.sdsList) {
     const ln = (sds.location?.line ?? 1) - 1;
-    const rng = lineRange(ln, lines[ln] ?? "");
+    const rng = lineRange(cstIndex, ln);
     const shape = sds.dims.map((d) => d.size).join("x") || "scalar";
     const dtype = HDF4_DATA_TYPE_NAMES[sds.dataType] ?? String(sds.dataType);
     children.push({
@@ -113,7 +172,7 @@ export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
       selectionRange: rng,
       children: sds.dims.map((d) => {
         const dln = (d.location?.line ?? sds.location?.line ?? 1) - 1;
-        const drng = lineRange(dln, lines[dln] ?? "");
+        const drng = lineRange(cstIndex, dln);
         return {
           name: d.name,
           detail: `DIM = ${d.size}`,
@@ -127,7 +186,7 @@ export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const vg of doc.vgroups) {
     const ln = (vg.location?.line ?? 1) - 1;
-    const rng = lineRange(ln, lines[ln] ?? "");
+    const rng = lineRange(cstIndex, ln);
     children.push({
       name: vg.name,
       detail: vg.vgroupClass ? `VGROUP (${vg.vgroupClass})` : "VGROUP",
@@ -139,7 +198,7 @@ export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const vd of doc.vdatas) {
     const ln = (vd.location?.line ?? 1) - 1;
-    const rng = lineRange(ln, lines[ln] ?? "");
+    const rng = lineRange(cstIndex, ln);
     children.push({
       name: vd.name,
       detail: `VDATA (${vd.fields.length} fields, ${vd.records.length} records)`,
@@ -151,7 +210,7 @@ export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const r of doc.rasters) {
     const ln = (r.location?.line ?? 1) - 1;
-    const rng = lineRange(ln, lines[ln] ?? "");
+    const rng = lineRange(cstIndex, ln);
     children.push({
       name: r.name,
       detail: `RASTER8 ${r.width}x${r.height}`,
@@ -163,7 +222,7 @@ export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const p of doc.palettes) {
     const ln = (p.location?.line ?? 1) - 1;
-    const rng = lineRange(ln, lines[ln] ?? "");
+    const rng = lineRange(cstIndex, ln);
     children.push({
       name: p.name,
       detail: `PALETTE (${p.entries.length} bytes)`,
@@ -174,8 +233,8 @@ export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
   }
 
   const fullRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: (lines[lines.length - 1] ?? "").length },
+    start: { line: 0, character: cstIndex.byRow.get(0)?.startCol ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   return [
@@ -184,7 +243,7 @@ export function getHdf4DocumentSymbols(content: string): LspDocumentSymbol[] {
       detail: `HDF4 v${doc.version}`,
       kind: LspSymbolKind.File,
       range: fullRange,
-      selectionRange: lineRange(0, lines[0] ?? ""),
+      selectionRange: lineRange(cstIndex, 0),
       children,
     },
   ];
@@ -208,25 +267,31 @@ const KEYWORD_DOCS: Record<string, string> = {
  * Returns hover documentation for keywords or declared HDF4 objects at a cursor position.
  */
 export function getHdf4Hover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line] ?? "";
-  if (!line) return null;
+  const cstIndex = buildHdf4CstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
 
-  let start = Math.min(position.character, line.length);
+  const line = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > line.length) return null;
+
+  let start = relChar;
   let end = start;
   while (start > 0 && /[A-Za-z0-9_.-]/.test(line[start - 1] ?? "")) start--;
   while (end < line.length && /[A-Za-z0-9_.-]/.test(line[end] ?? "")) end++;
   const word = line.slice(start, end);
   if (!word) return null;
 
+  const hoverRange: LspRange = {
+    start: { line: position.line, character: entry.startCol + start },
+    end: { line: position.line, character: entry.startCol + end },
+  };
+
   const kwDoc = KEYWORD_DOCS[word.toUpperCase()];
   if (kwDoc) {
     return {
       contents: { kind: "markdown", value: kwDoc },
-      range: {
-        start: { line: position.line, character: start },
-        end: { line: position.line, character: end },
-      },
+      range: hoverRange,
     };
   }
 
@@ -248,10 +313,7 @@ export function getHdf4Hover(content: string, position: LspPosition): LspHover |
           .filter(Boolean)
           .join("\n"),
       },
-      range: {
-        start: { line: position.line, character: start },
-        end: { line: position.line, character: end },
-      },
+      range: hoverRange,
     };
   }
 
@@ -262,10 +324,7 @@ export function getHdf4Hover(content: string, position: LspPosition): LspHover |
         kind: "markdown",
         value: `**VGROUP \`${vg.name}\`** (ref=${vg.ref}${vg.vgroupClass ? `, class=\`${vg.vgroupClass}\`` : ""})\n- Members (${vg.members.length}): ${vg.members.map((m) => `\`${m.name}\``).join(", ") || "none"}`,
       },
-      range: {
-        start: { line: position.line, character: start },
-        end: { line: position.line, character: end },
-      },
+      range: hoverRange,
     };
   }
 

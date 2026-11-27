@@ -12,10 +12,10 @@ import CadViewer, {
   type CommitDimensionPayload,
   type CommitFaceTagPayload,
   type GizmoCommitPayload,
-} from "@modelscript/editor/workbench/cad-viewer/CadViewer.js";
-import type { PodSurrogateDataPayload } from "@modelscript/editor/workbench/cad-viewer/SurrogateLiveExplorer.js";
-import { AnimationController } from "@modelscript/editor/workbench/cad-viewer/animation-controller.js";
-import { extractCadComponents } from "@modelscript/editor/workbench/cad-viewer/parse-cad-annotations.js";
+} from "@modelscript/cad-viewer/CadViewer.js";
+import type { PodSurrogateDataPayload } from "@modelscript/cad-viewer/SurrogateLiveExplorer.js";
+import { AnimationController } from "@modelscript/cad-viewer/animation-controller.js";
+import { extractCadComponents } from "@modelscript/cad-viewer/parse-cad-annotations.js";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { registerSharedVsCodeApi } from "./cad-viewer/vr-mode";

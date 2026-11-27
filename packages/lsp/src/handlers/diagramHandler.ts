@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { evaluateModelScriptPortCompatibility } from "@modelscript/diagram";
+import { evaluateModelScriptPortCompatibility, type DiagramPortSignature } from "@modelscript/diagram";
 import { cellsToDiagramData, renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
+import type { SymbolIndex } from "@modelscript/runtime";
 import {
   DiagramApplyEditsParams,
   DiagramDrillDownParams,
@@ -47,14 +48,22 @@ export interface DiagramPreviewItemResult {
 interface WorkspaceIndexFqnLookupLike {
   ensureFQNIndexed?: (fqn: string) => void;
   getFileUriForFQN?: (fqn: string) => string | undefined;
-  getIndex?: () => PreviewSymbolIndexLike | undefined;
-  byName?: Map<string, number[]>;
-  symbols?: Map<number, { name: string; parentId: number | null; resourceId?: string }>;
+  getIndex?: () => SymbolIndex;
+  byName?: SymbolIndex["byName"];
+  symbols?: SymbolIndex["symbols"];
 }
 
-interface PreviewSymbolIndexLike {
-  byName?: Map<string, number[]>;
-  symbols?: Map<number, { name: string; parentId: number | null; resourceId?: string }>;
+function resolveCstRootNode<T>(
+  cachedDocTree: { text?: string; tree?: { rootNode?: unknown } | null } | undefined,
+  sourceText: string,
+  parseFallback: () => { rootNode?: unknown } | null | undefined,
+): T | null {
+  const cachedRoot: unknown = cachedDocTree?.text === sourceText ? cachedDocTree?.tree?.rootNode : undefined;
+  if (cachedRoot) {
+    return cachedRoot as T;
+  }
+  const parsedRoot: unknown = parseFallback()?.rootNode;
+  return parsedRoot ? (parsedRoot as T) : null;
 }
 
 interface ComponentPropertyParamLike {
@@ -69,8 +78,26 @@ interface ComponentPropertyParamLike {
   tab?: string;
 }
 
-export const cadComponentsCache = new Map<string, { version: string; data: unknown[] }>();
-export const diagramPreviewSvgCache = new Map<string, DiagramPreviewItemResult>();
+class BoundedCacheMap<K, V> extends Map<K, V> {
+  constructor(private readonly maxEntries: number) {
+    super();
+  }
+
+  override set(key: K, value: V): this {
+    if (this.has(key)) {
+      this.delete(key);
+    } else if (this.size >= this.maxEntries) {
+      const oldest = this.keys().next().value;
+      if (oldest !== undefined) {
+        this.delete(oldest);
+      }
+    }
+    return super.set(key, value);
+  }
+}
+
+export const cadComponentsCache: Map<string, { version: string; data: unknown[] }> = new BoundedCacheMap(200);
+export const diagramPreviewSvgCache: Map<string, DiagramPreviewItemResult> = new BoundedCacheMap(250);
 export { simpleHash };
 
 const LANGUAGE_PREVIEW_EXT: Record<string, string> = {
@@ -139,7 +166,7 @@ function resolvePreviewUriForItem(context: LspContext, item: DiagramPreviewItemR
   if (item.className) {
     const moIdx = context.workspaceManager.getWorkspaceIndex("modelica") as WorkspaceIndexFqnLookupLike | undefined;
     const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2") as WorkspaceIndexFqnLookupLike | undefined;
-    const uw = context.workspaceManager.unifiedWorkspace as unknown as WorkspaceIndexFqnLookupLike | undefined;
+    const uw: WorkspaceIndexFqnLookupLike | undefined = context.workspaceManager.unifiedWorkspace;
     uw?.ensureFQNIndexed?.(item.className);
     moIdx?.ensureFQNIndexed?.(item.className);
     sysmlIdx?.ensureFQNIndexed?.(item.className);
@@ -150,7 +177,7 @@ function resolvePreviewUriForItem(context: LspContext, item: DiagramPreviewItemR
       sysmlIdx?.getFileUriForFQN?.(item.className);
 
     if (!candidateUri) {
-      const unified: PreviewSymbolIndexLike | undefined = uw?.getIndex?.() ?? moIdx;
+      const unified: SymbolIndex | undefined = uw?.getIndex?.() ?? moIdx?.getIndex?.();
       if (unified?.byName && unified?.symbols) {
         const shortName = item.className.split(".").pop() || item.className;
         const ids = unified.byName.get(item.className) ?? unified.byName.get(shortName);
@@ -159,11 +186,7 @@ function resolvePreviewUriForItem(context: LspContext, item: DiagramPreviewItemR
             const sym = unified.symbols.get(id);
             if (
               sym &&
-              (getCompositeName(
-                sym as unknown as Parameters<typeof getCompositeName>[0],
-                unified as unknown as Parameters<typeof getCompositeName>[1],
-              ) === item.className ||
-                sym.name === item.className) &&
+              (getCompositeName(sym, unified) === item.className || sym.name === item.className) &&
               sym.resourceId
             ) {
               candidateUri = sym.resourceId;
@@ -339,14 +362,7 @@ export function registerDiagramHandlers(context: LspContext) {
       const classInstance = context.workspaceManager.resolveClassInstance(params.uri, params.className);
       if (!classInstance) return null;
 
-      const diagramOps = (
-        globalThis as {
-          modelicaDiagramOps?: {
-            buildComponentProperties?: (cls: unknown, componentName: string) => unknown;
-          };
-        }
-      ).modelicaDiagramOps;
-      const buildProps = diagramOps?.buildComponentProperties;
+      const buildProps = context.diagramService.modelicaDiagramOps?.buildComponentProperties;
       if (typeof buildProps === "function") {
         try {
           return buildProps(classInstance, params.componentName);
@@ -390,16 +406,11 @@ export function registerDiagramHandlers(context: LspContext) {
           try {
             const { extractModelicaCadAnnotationsFromCst } = await import("@modelscript/modelica/document-queries");
             const cachedDocTree = context.documentManager.documentTrees.get(effectiveUri);
-            let rootNode =
-              cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
-                ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractModelicaCadAnnotationsFromCst>[0])
-                : null;
-            if (!rootNode) {
-              const parser = context.parserService.getParser("modelica");
-              const parsed = parser?.parse(sourceText);
-              rootNode =
-                (parsed?.rootNode as unknown as Parameters<typeof extractModelicaCadAnnotationsFromCst>[0]) ?? null;
-            }
+            const rootNode = resolveCstRootNode<Parameters<typeof extractModelicaCadAnnotationsFromCst>[0]>(
+              cachedDocTree,
+              sourceText,
+              () => context.parserService.getParser("modelica")?.parse(sourceText),
+            );
             if (rootNode) {
               const cstEntries = extractModelicaCadAnnotationsFromCst(rootNode, sourceText);
               if (cstEntries.length > 0) {
@@ -449,14 +460,16 @@ export function registerDiagramHandlers(context: LspContext) {
 
         const { buildScadFeatureTreeFromCst, getScadParser } = await import("@modelscript/scad");
         // Reuse the already-parsed WASM GLR CST when the text matches; otherwise parse via WASM GLR parser.
-        let rootNode: Parameters<typeof buildScadFeatureTreeFromCst>[0] | null =
-          cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
-            ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof buildScadFeatureTreeFromCst>[0])
-            : null;
+        let rootNode = resolveCstRootNode<Parameters<typeof buildScadFeatureTreeFromCst>[0]>(
+          cachedDocTree,
+          sourceText,
+          () => null,
+        );
         if (!rootNode) {
           const parser = await getScadParser();
-          const parsed = parser.parse(sourceText);
-          rootNode = (parsed?.rootNode as unknown as Parameters<typeof buildScadFeatureTreeFromCst>[0]) ?? null;
+          rootNode = resolveCstRootNode<Parameters<typeof buildScadFeatureTreeFromCst>[0]>(undefined, sourceText, () =>
+            parser.parse(sourceText),
+          );
         }
         return rootNode ? buildScadFeatureTreeFromCst(rootNode, sourceText) : [];
       } catch (e: unknown) {
@@ -486,29 +499,29 @@ export function registerDiagramHandlers(context: LspContext) {
 
         if (lowerUri.endsWith(".scad")) {
           const { extractScadParametersFromCst, getScadParser } = await import("@modelscript/scad");
-          let rootNode: Parameters<typeof extractScadParametersFromCst>[0] | null =
-            cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
-              ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractScadParametersFromCst>[0])
-              : null;
+          let rootNode = resolveCstRootNode<Parameters<typeof extractScadParametersFromCst>[0]>(
+            cachedDocTree,
+            sourceText,
+            () => null,
+          );
           if (!rootNode) {
             const parser = await getScadParser();
-            const parsed = parser.parse(sourceText);
-            rootNode = (parsed?.rootNode as unknown as Parameters<typeof extractScadParametersFromCst>[0]) ?? null;
+            rootNode = resolveCstRootNode<Parameters<typeof extractScadParametersFromCst>[0]>(
+              undefined,
+              sourceText,
+              () => parser.parse(sourceText),
+            );
           }
           return rootNode ? extractScadParametersFromCst(rootNode, sourceText) : [];
         }
 
         if (lowerUri.endsWith(".mo")) {
           const { extractModelicaParametersFromCst } = await import("@modelscript/modelica/document-queries");
-          let rootNode: Parameters<typeof extractModelicaParametersFromCst>[0] | null =
-            cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
-              ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractModelicaParametersFromCst>[0])
-              : null;
-          if (!rootNode) {
-            const parser = context.parserService.getParser("modelica");
-            const parsed = parser?.parse(sourceText);
-            rootNode = (parsed?.rootNode as unknown as Parameters<typeof extractModelicaParametersFromCst>[0]) ?? null;
-          }
+          const rootNode = resolveCstRootNode<Parameters<typeof extractModelicaParametersFromCst>[0]>(
+            cachedDocTree,
+            sourceText,
+            () => context.parserService.getParser("modelica")?.parse(sourceText),
+          );
           return rootNode ? extractModelicaParametersFromCst(rootNode, sourceText) : [];
         }
 
@@ -541,16 +554,11 @@ export function registerDiagramHandlers(context: LspContext) {
         if (!sourceText.trim()) return { className: null };
 
         const { extractPrimaryModelicaClassNameFromCst } = await import("@modelscript/modelica/document-queries");
-        let rootNode: Parameters<typeof extractPrimaryModelicaClassNameFromCst>[0] | null =
-          cachedDocTree?.text === sourceText && cachedDocTree?.tree?.rootNode
-            ? (cachedDocTree.tree.rootNode as unknown as Parameters<typeof extractPrimaryModelicaClassNameFromCst>[0])
-            : null;
-        if (!rootNode) {
-          const parser = context.parserService.getParser("modelica");
-          const parsed = parser?.parse(sourceText);
-          rootNode =
-            (parsed?.rootNode as unknown as Parameters<typeof extractPrimaryModelicaClassNameFromCst>[0]) ?? null;
-        }
+        const rootNode = resolveCstRootNode<Parameters<typeof extractPrimaryModelicaClassNameFromCst>[0]>(
+          cachedDocTree,
+          sourceText,
+          () => context.parserService.getParser("modelica")?.parse(sourceText),
+        );
         return { className: rootNode ? extractPrimaryModelicaClassNameFromCst(rootNode, sourceText) : null };
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -614,6 +622,10 @@ export function registerDiagramHandlers(context: LspContext) {
             nodeId: params.sourceNode,
             portId: params.sourcePort || "out",
             connectorType: typeof srcPort?.["connectorType"] === "string" ? srcPort["connectorType"] : undefined,
+            portSignature:
+              srcPort?.["portSignature"] && typeof srcPort["portSignature"] === "object"
+                ? (srcPort["portSignature"] as DiagramPortSignature)
+                : undefined,
             domain: typeof srcPort?.["domain"] === "string" ? srcPort["domain"] : undefined,
             direction:
               typeof srcPort?.["direction"] === "string"
@@ -629,6 +641,10 @@ export function registerDiagramHandlers(context: LspContext) {
             nodeId: params.targetNode,
             portId: params.targetPort || "in",
             connectorType: typeof tgtPort?.["connectorType"] === "string" ? tgtPort["connectorType"] : undefined,
+            portSignature:
+              tgtPort?.["portSignature"] && typeof tgtPort["portSignature"] === "object"
+                ? (tgtPort["portSignature"] as DiagramPortSignature)
+                : undefined,
             domain: typeof tgtPort?.["domain"] === "string" ? tgtPort["domain"] : undefined,
             direction:
               typeof tgtPort?.["direction"] === "string"

@@ -10,6 +10,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import type { ValidationService } from "../services/validation-service.js";
+import type { Tree } from "../utils/cst-facade.js";
 import {
   extractCrossDomainLineHints,
   extractLeafSymbolName,
@@ -18,6 +19,7 @@ import {
   parseStepReferenceToken,
 } from "../utils/lexical-utils.js";
 import { symbolEntryToLocation } from "../utils/lsp-utils.js";
+import { getWasmCstDefinition } from "./wasm-cst-intelligence.js";
 
 export interface DefinitionTreeEntryLike {
   text?: string | undefined;
@@ -517,6 +519,17 @@ export function registerDefinitionProvider(
       );
       if (crossLoc) return crossLoc;
 
+      try {
+        const treeEntry = documentTrees.get(params.textDocument.uri);
+        const tree = (treeEntry?.tree ?? treeEntry) as Tree | null | undefined;
+        if (tree && "rootNode" in tree && tree.rootNode) {
+          const cstDef = getWasmCstDefinition(tree, document.uri, params.position);
+          if (cstDef) return cstDef;
+        }
+      } catch {
+        // CST definition fallback unavailable
+      }
+
       return null;
     }
 
@@ -547,6 +560,17 @@ export function registerDefinitionProvider(
 
     if (rawTarget) {
       return symbolEntryToLocation(rawTarget, documentLSPBridges, documentTrees, documents);
+    }
+
+    try {
+      const treeEntry = documentTrees.get(params.textDocument.uri);
+      const tree = (treeEntry?.tree ?? treeEntry) as Tree | null | undefined;
+      if (tree && "rootNode" in tree && tree.rootNode) {
+        const cstDef = getWasmCstDefinition(tree, document.uri, params.position);
+        if (cstDef) return cstDef;
+      }
+    } catch {
+      // CST definition fallback unavailable
     }
 
     return null;

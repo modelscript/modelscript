@@ -995,8 +995,25 @@ export function generateParserTables(
   const maxFieldCursorDepth = Math.max(16, maxSyntheticDepth + 8);
 
   // Section 7: LSP Semantic Highlighting, Folding, Outline & Scope Indexing Tables
-  const tokenTypesMap = new Map<string, number>();
-  const tokenModifiersMap = new Map<string, number>();
+  // Pre-seed with the canonical global LSP legend so every compiled WASM parser emits
+  // directly compatible tokenTypeId / bitmask values without per-language remapping.
+  const CANONICAL_TOKEN_TYPES = [
+    "keyword",
+    "type",
+    "class",
+    "variable",
+    "parameter",
+    "function",
+    "string",
+    "number",
+    "operator",
+    "comment",
+    "namespace",
+    "enumMember",
+  ];
+  const CANONICAL_TOKEN_MODIFIERS = ["declaration", "readonly"];
+  const tokenTypesMap = new Map<string, number>(CANONICAL_TOKEN_TYPES.map((t, i) => [t, i]));
+  const tokenModifiersMap = new Map<string, number>(CANONICAL_TOKEN_MODIFIERS.map((m, i) => [m, i]));
 
   for (const p of sortedProds) {
     if (p.semantics) {
@@ -1009,6 +1026,67 @@ export function generateParserTables(
       }
     }
   }
+
+  // Auto-classify word-like quoted keyword terminals and standard token/literal symbols
+  // when not explicitly overridden by `semanticToken(...)` annotations.
+  const WORD_KEYWORD_LITERAL_RE = /^"[a-zA-Z_][a-zA-Z0-9_-]*"$/;
+  const AUTO_COMMENT_SYMS = new Set([
+    "Comment",
+    "COMMENT",
+    "CommentLine",
+    "LineComment",
+    "BlockComment",
+    "IniComment",
+    "CommentCard",
+    "LINE_COMMENT",
+    "BLOCK_COMMENT",
+    "REGULAR_COMMENT",
+    "ML_NOTE",
+    "SL_NOTE",
+    "comment",
+    "line_comment",
+    "block_comment",
+  ]);
+  const AUTO_STRING_SYMS = new Set([
+    "StringLiteral",
+    "STRING",
+    "DeckString",
+    "IniString",
+    "QuotedString",
+    "LiteralString",
+    "string_literal",
+    "description_string",
+    "STRING_VALUE",
+  ]);
+  const AUTO_NUMBER_SYMS = new Set([
+    "NumberLiteral",
+    "NUMBER",
+    "DeckNumber",
+    "IniNumber",
+    "IntegerLiteral",
+    "Number",
+    "SignedNumber",
+    "INTEGER",
+    "REAL",
+    "UNSIGNED_INTEGER",
+    "UNSIGNED_REAL",
+    "unsigned_integer",
+    "unsigned_real",
+    "LiteralInteger",
+    "LiteralReal",
+  ]);
+  const AUTO_BOOLEAN_SYMS = new Set(["BooleanLiteral", "BOOLEAN", "LiteralBoolean"]);
+  const AUTO_IDENT_SYMS = new Set([
+    "Identifier",
+    "IDENTIFIER",
+    "IDENT",
+    "identifier",
+    "DeckIdentifier",
+    "IniIdentifier",
+    "Name",
+    "ID",
+    "QUALIFIED_IDENT",
+  ]);
 
   const typeSemantics: number[] = new Array(maxSymbolId + 1).fill(-1);
   const typeSemanticData: number[] = [];
@@ -1036,6 +1114,31 @@ export function generateParserTables(
       } else if (existing.type === typeIdx) {
         existing.bitmask |= bitmask;
       }
+    }
+  }
+
+  const addAutoSelfSemantic = (symId: number, tokenTypeName: string) => {
+    let semanticsList = semanticsBySymId.get(symId);
+    if (semanticsList && semanticsList.size > 0) return;
+    if (!semanticsList) {
+      semanticsList = new Map<number, { type: number; bitmask: number }>();
+      semanticsBySymId.set(symId, semanticsList);
+    }
+    semanticsList.set(-1, { type: tokenTypesMap.get(tokenTypeName)!, bitmask: 0 });
+  };
+
+  for (const [symName, symId] of symToInt.entries()) {
+    if (symId < 1 || symId > maxSymbolId) continue;
+    if (WORD_KEYWORD_LITERAL_RE.test(symName) || AUTO_BOOLEAN_SYMS.has(symName)) {
+      addAutoSelfSemantic(symId, "keyword");
+    } else if (AUTO_COMMENT_SYMS.has(symName)) {
+      addAutoSelfSemantic(symId, "comment");
+    } else if (AUTO_STRING_SYMS.has(symName)) {
+      addAutoSelfSemantic(symId, "string");
+    } else if (AUTO_NUMBER_SYMS.has(symName)) {
+      addAutoSelfSemantic(symId, "number");
+    } else if (AUTO_IDENT_SYMS.has(symName)) {
+      addAutoSelfSemantic(symId, "variable");
     }
   }
 
@@ -1082,8 +1185,43 @@ export function generateParserTables(
   }
   code += generateStaticByteArray(typeIsList, "type_is_list");
 
+  const AUTO_FOLDING_NAME_RE =
+    /(?:Def|Definition|Decl|Declaration|Block|Section|Module|Package|Model|Class|Function|Subroutine|Component|Element|Circuit|Subckt|Entity|Rule|Process|System|Architecture|Program|Body|Group|Unit|Device|Card|Table|Header|Data|Equation|Algorithm|Constraint|Requirement|State|Action|Case)$/;
+  const AUTO_OUTLINE_NAME_RE =
+    /(?:Def|Definition|Decl|Declaration|Section|Module|Package|Model|Class|Function|Subroutine|Component|Subckt|Entity|Card|Directive|Requirement|State|Action|Port|Attribute|Part|Constraint|Element|Device|Bus|Line|Generator|Load|Node|Link|Pipe|Tank|Pump|Valve|Block|Rule|Table|Unit|Program)$/;
+
+  // Identify rules whose productions contain block delimiters or have a `name`/`id` field
+  const blockRuleSymIds = new Set<number>();
+  const namedFieldBySymId = new Map<number, number>();
+  const nameFieldId = grammar.fieldToInt?.get("name") ?? 0;
+  const idFieldId = grammar.fieldToInt?.get("id") ?? 0;
+
+  for (const p of sortedProds) {
+    const symId = symToInt.get(p.left) || 0;
+    if (symId < 1 || symId > maxSymbolId) continue;
+    if (p.left.startsWith("_")) continue;
+    const rhs = p.right ?? [];
+    const hasBraces = rhs.includes('"{"') && rhs.includes('"}"');
+    const hasBeginEnd =
+      (rhs.includes('"begin"') && rhs.includes('"end"')) || (rhs.includes('"BEGIN"') && rhs.includes('"END"'));
+    if (hasBraces || hasBeginEnd) {
+      blockRuleSymIds.add(symId);
+    }
+    if (p.fields && !namedFieldBySymId.has(symId)) {
+      for (const f of p.fields) {
+        if (nameFieldId > 0 && f.fieldId === nameFieldId) {
+          namedFieldBySymId.set(symId, nameFieldId);
+          break;
+        }
+        if (idFieldId > 0 && f.fieldId === idFieldId) {
+          namedFieldBySymId.set(symId, idFieldId);
+        }
+      }
+    }
+  }
+
   const typeIsFolding: number[] = new Array(maxSymbolId + 1).fill(0);
-  if (originalGrammar.lsp && originalGrammar.lsp.folding) {
+  if (originalGrammar.lsp && originalGrammar.lsp.folding && originalGrammar.lsp.folding.length > 0) {
     for (const f of originalGrammar.lsp.folding) {
       const ruleName = typeof f === "string" ? f : f.rule;
       const id = symToInt.get(ruleName) || symToInt.get(`"${ruleName}"`);
@@ -1098,14 +1236,32 @@ export function generateParserTables(
         typeIsFolding[id] = mask;
       }
     }
+  } else {
+    for (const [symName, symId] of symToInt.entries()) {
+      if (symId < 1 || symId > maxSymbolId) continue;
+      if (symName.startsWith("_") || symName.startsWith('"') || symName.startsWith("/")) continue;
+      if (AUTO_COMMENT_SYMS.has(symName)) {
+        typeIsFolding[symId] = 1 | (1 << 1); // kind = comment
+      } else if (blockRuleSymIds.has(symId) || AUTO_FOLDING_NAME_RE.test(symName)) {
+        typeIsFolding[symId] = 1;
+      }
+    }
   }
   code += generateStaticArray(typeIsFolding, "type_is_folding");
 
   const typeIsOutline: number[] = new Array(maxSymbolId + 1).fill(0);
-  if (originalGrammar.lsp && originalGrammar.lsp.outline) {
+  if (originalGrammar.lsp && originalGrammar.lsp.outline && originalGrammar.lsp.outline.length > 0) {
     for (const f of originalGrammar.lsp.outline) {
       const id = symToInt.get(f) || symToInt.get(`"${f}"`);
       if (id !== undefined) typeIsOutline[id] = 1;
+    }
+  } else {
+    for (const [symName, symId] of symToInt.entries()) {
+      if (symId < 1 || symId > maxSymbolId) continue;
+      if (symName.startsWith("_") || symName.startsWith('"') || symName.startsWith("/")) continue;
+      if (namedFieldBySymId.has(symId) || AUTO_OUTLINE_NAME_RE.test(symName)) {
+        typeIsOutline[symId] = 1;
+      }
     }
   }
   code += generateStaticArray(typeIsOutline, "type_is_outline");
@@ -1114,7 +1270,7 @@ export function generateParserTables(
   const symbolNameField: number[] = new Array(maxSymbolId + 1).fill(0);
   const symbolIsScope: number[] = new Array(maxSymbolId + 1).fill(0);
 
-  if (originalGrammar.symbols) {
+  if (originalGrammar.symbols && Object.keys(originalGrammar.symbols).length > 0) {
     for (const [ruleName, config] of Object.entries(originalGrammar.symbols)) {
       const id = symToInt.get(ruleName) || symToInt.get(`"${ruleName}"`);
       if (id !== undefined && config) {
@@ -1125,6 +1281,12 @@ export function generateParserTables(
         }
         symbolIsScope[id] = config.scope !== false ? 1 : 0;
       }
+    }
+  } else {
+    for (const [symId, fieldId] of namedFieldBySymId.entries()) {
+      typeIsSymbol[symId] = 1;
+      symbolNameField[symId] = fieldId;
+      symbolIsScope[symId] = blockRuleSymIds.has(symId) ? 1 : 0;
     }
   }
   code += generateStaticArray(typeIsSymbol, "type_is_symbol");

@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { CaeTelemetryPanel, type TelemetryDataPoint } from "@modelscript/cad-viewer/CaeTelemetryPanel.js";
+import {
+  RequirementVerdictCard,
+  type RequirementVerdictPayload,
+} from "@modelscript/cad-viewer/RequirementVerdictCard.js";
+import { SurrogateLiveExplorer, type PodSurrogateDataPayload } from "@modelscript/cad-viewer/SurrogateLiveExplorer.js";
+import { SurrogateTrainDialog } from "@modelscript/cad-viewer/SurrogateTrainDialog.js";
+import { SweepConfigDrawer, type ActiveSweepState } from "@modelscript/cad-viewer/SweepConfigDrawer.js";
 import { ContactShadows, GizmoHelper, GizmoViewport, OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import { BoundaryPicker, type BoundaryActionPayload, type StressProbeMarker } from "./cad-viewer/boundary-picker";
-import { CaeTelemetryPanel, type TelemetryDataPoint } from "./cad-viewer/cae-telemetry-panel";
 import {
   CuttingPlaneVisualizer,
   useCuttingPlane,
@@ -15,10 +22,6 @@ import {
 } from "./cad-viewer/cutting-plane-controller";
 import { FeaMeshRenderer, type FeaMeshPayload } from "./cad-viewer/fea-mesh-renderer";
 import { ProbeTooltip, type ProbeData } from "./cad-viewer/probe-tooltip";
-import { RequirementVerdictCard, type RequirementVerdictPayload } from "./cad-viewer/requirement-verdict-card";
-import { SurrogateLiveExplorer, type PodSurrogateDataPayload } from "./cad-viewer/surrogate-live-explorer";
-import { SurrogateTrainDialog } from "./cad-viewer/surrogate-train-dialog";
-import { SweepConfigDrawer, type ActiveSweepState } from "./cad-viewer/sweep-config-drawer";
 
 const vscode = (
   window as unknown as {

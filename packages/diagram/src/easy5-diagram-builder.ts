@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { DiagramPortSignature } from "./port-compatibility.js";
+
 /**
  * @modelscript/diagram — Boeing / MSC Software EASY5 Schematic & Control Architecture Diagram Builder.
  *
@@ -203,14 +205,29 @@ export function buildEasy5Diagram(model: Easy5ModelLike): Easy5DiagramGraph {
 
   for (const comp of components) {
     const pt = coords.get(comp.id) ?? { x: 100, y: 100 };
-    const portItems: { id: string; group: string; attrs?: Record<string, unknown> }[] = [];
+    const portItems: {
+      id: string;
+      group: string;
+      direction?: string | undefined;
+      domain?: string | undefined;
+      connectorType?: string | undefined;
+      portSignature?: DiagramPortSignature | undefined;
+      attrs?: Record<string, unknown>;
+    }[] = [];
 
     if (comp.ports) {
       for (const [pName, port] of Object.entries(comp.ports)) {
         const isOut = port.kind === "output";
+        const dir = isOut ? "out" : "in";
         portItems.push({
           id: pName,
-          group: isOut ? "out" : "in",
+          group: dir,
+          direction: dir,
+          domain: "signal",
+          connectorType: isOut ? "RealOutput" : "RealInput",
+          portSignature: {
+            variables: [{ name: "value", type: "Real", flowKind: "signal", direction: dir }],
+          },
           attrs: {
             text: { text: pName, fill: "#94a3b8", fontSize: 9 },
           },

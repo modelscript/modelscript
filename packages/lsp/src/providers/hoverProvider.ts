@@ -6,6 +6,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { resolveFeatureFlags, type LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import type { ValidationService } from "../services/validation-service.js";
+import type { Tree } from "../utils/cst-facade.js";
 import {
   extractCrossDomainLineHints,
   extractQualifiedTokenAtOffset,
@@ -15,6 +16,7 @@ import {
   uriBasename,
 } from "../utils/lexical-utils.js";
 import { getAlmExternalHover } from "./almHover.js";
+import { getWasmCstHover } from "./wasm-cst-intelligence.js";
 
 interface HoverSymbolLike {
   id: number;
@@ -632,6 +634,29 @@ export function registerHoverProvider(
             };
           }
         }
+      }
+    }
+
+    if (!hoverContent) {
+      try {
+        const treeEntry = (context?.documentManager?.documentTrees?.get(params.textDocument.uri) ??
+          validationService?.documentManager?.documentTrees?.get(params.textDocument.uri)) as
+          HoverTreeEntryLike | undefined;
+        const tree = (treeEntry?.tree ?? treeEntry) as Tree | null | undefined;
+        if (tree && "rootNode" in tree && tree.rootNode) {
+          const cstHover = getWasmCstHover(tree, text, params.position, pluginForHover?.id ?? document.languageId);
+          if (cstHover) {
+            hoverContent =
+              typeof cstHover.contents === "string"
+                ? cstHover.contents
+                : "value" in cstHover.contents
+                  ? cstHover.contents.value
+                  : "";
+            if (cstHover.range) hoverRange = cstHover.range;
+          }
+        }
+      } catch {
+        // CST hover fallback unavailable
       }
     }
 

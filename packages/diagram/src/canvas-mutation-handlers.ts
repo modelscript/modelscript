@@ -611,7 +611,7 @@ export function attachDiagramMutationHandlers(params: {
             g,
           );
         }
-      }, 500);
+      }, 80);
       edgeUpdateTimers.set(edge.id, timer);
     },
   );

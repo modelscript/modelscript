@@ -59,10 +59,10 @@ describe("Ansatz View Switching Synchronization & Anti-Flicker Architecture", ()
       "AnsatzEditor must track lastNotifiedViewRef to prevent infinite notification loops",
     );
     assert.ok(
-      content.includes(
-        'onActiveViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split")',
+      /onActiveViewChange\?:\s*\n?\s*\|?\s*\(\(view:\s*"diagram"\s*\|\s*"simulation"\s*\|\s*"3d"\s*\|\s*"inspector"(?:\s*\|\s*"studio")?\s*\|\s*"code"\s*\|\s*"split"\)/.test(
+        content,
       ),
-      "onActiveViewChange must support split view in its callback signature",
+      "onActiveViewChange must support split and studio views in its callback signature",
     );
     assert.ok(
       !content.includes(
@@ -162,5 +162,23 @@ describe("Ansatz View Switching Synchronization & Anti-Flicker Architecture", ()
       ansatzContent.includes("windowHeight"),
       "AnsatzEditor must track windowHeight to dynamically detect sufficient vertical space for row splitting",
     );
+  });
+
+  it("exposes top-level AI Studio tab, Zonotope overlay toggle, and AI Copilot toggle in AnsatzEditorNavbar & AnsatzEditorPage", () => {
+    const navbarPath = path.resolve(
+      import.meta.dirname,
+      "../src/pages/ansatz-editor/components/AnsatzEditorNavbar.tsx",
+    );
+    const navbarContent = fs.readFileSync(navbarPath, "utf-8");
+    const pagePath = path.resolve(import.meta.dirname, "../src/pages/AnsatzEditorPage.tsx");
+    const pageContent = fs.readFileSync(pagePath, "utf-8");
+
+    assert.ok(navbarContent.includes('id: "studio"') && navbarContent.includes('label: "AI Studio"'));
+    assert.ok(navbarContent.includes('data-testid="ansatz-zonotope-overlay-toggle"'));
+    assert.ok(navbarContent.includes('data-testid="ansatz-ai-copilot-toggle"'));
+    assert.ok(pageContent.includes("trainingStudioParams.isTrainingStudio"));
+    assert.ok(pageContent.includes("showHypergraphOverlay={showHypergraphOverlay}"));
+    assert.ok(pageContent.includes("isAiOpen={isAiOpen}"));
+    assert.ok(pageContent.includes("trainingStudioContext={trainingStudioParams}"));
   });
 });

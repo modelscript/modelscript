@@ -1,136 +1,78 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  BeakerIcon,
   CodeIcon,
   ColumnsIcon,
   GraphIcon,
   ImageIcon,
   RowsIcon,
   SidebarExpandIcon,
+  SparkleFillIcon,
   StackIcon,
   TableIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
 import { Breadcrumbs, IconButton } from "@primer/react";
 import React from "react";
-import styled from "styled-components";
 import type { AnsatzLanguageInfo } from "../constants";
 import { LanguageToolbarButtons } from "./LanguageToolbarButtons";
 
-const ViewTabsWrapper = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-`;
+const ViewTabsWrapper: React.FC<React.HTMLAttributes<HTMLDivElement>> = ({ style, ...rest }) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      flexShrink: 0,
+      ...style,
+    }}
+    {...rest}
+  />
+);
 
-const TabTrack = styled.div`
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  height: 32px;
-  padding: 3px;
-  box-sizing: border-box;
-  border-radius: 11px;
-  background: var(--bgColor-inset, var(--ms-bg-inset, rgba(15, 23, 42, 0.05)));
-  border: 1px solid var(--borderColor-muted, var(--ms-divider, rgba(15, 23, 42, 0.08)));
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
-`;
+const TabTrack = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(function TabTrack(
+  { style, ...rest },
+  ref,
+) {
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "2px",
+        height: "32px",
+        padding: "3px",
+        boxSizing: "border-box",
+        borderRadius: "11px",
+        background: "var(--bgColor-inset, var(--ms-bg-inset, rgba(15, 23, 42, 0.05)))",
+        border: "1px solid var(--borderColor-muted, var(--ms-divider, rgba(15, 23, 42, 0.08)))",
+        boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.05)",
+        ...style,
+      }}
+      {...rest}
+    />
+  );
+});
 
-const TabIndicator = styled.span`
-  position: absolute;
-  top: 3px;
-  bottom: 3px;
-  left: 0;
-  border-radius: 8px;
-  pointer-events: none;
-  background: var(--ms-bg-elv, var(--bgColor-default, #ffffff));
-  border: 1px solid var(--ms-border, rgba(15, 23, 42, 0.1));
-  box-shadow:
-    0 1px 3px rgba(15, 23, 42, 0.12),
-    0 0 0 1px color-mix(in srgb, var(--ms-brand, #0891b2) 8%, transparent);
-  transition:
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 120ms ease;
+const TabIndicator: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({ className, ...rest }) => (
+  <span className={className ? `ms-sub-header-tab-indicator ${className}` : "ms-sub-header-tab-indicator"} {...rest} />
+);
 
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-  }
-`;
-
-const TabButton = styled.button`
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 100%;
-  padding: 0 11px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--fgColor-muted, var(--ms-text-2));
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  cursor: pointer;
-  user-select: none;
-  transition:
-    color 160ms ease,
-    background-color 160ms ease;
-
-  svg {
-    flex-shrink: 0;
-    opacity: 0.75;
-    transition:
-      color 160ms ease,
-      fill 160ms ease,
-      opacity 160ms ease;
-  }
-
-  &:hover:not([aria-selected="true"]) {
-    color: var(--fgColor-default, var(--ms-text-1));
-    background: var(--ms-surface-hover, rgba(15, 23, 42, 0.05));
-  }
-
-  &:active {
-    transform: scale(0.97);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--ms-brand, #0891b2);
-    outline-offset: 1px;
-  }
-
-  &[aria-selected="true"] {
-    color: var(--fgColor-default, var(--ms-text-1));
-    font-weight: 600;
-  }
-
-  &[aria-selected="true"] svg {
-    color: var(--ms-brand, #0891b2);
-    fill: var(--ms-brand, #0891b2);
-    opacity: 1;
-  }
-
-  @media (max-width: 960px) {
-    padding: 0 8px;
-    gap: 0;
-
-    /* Collapse to icon-only on narrow screens, keep the active tab labelled. */
-    span.tab-label {
-      display: none;
-    }
-    &[aria-selected="true"] span.tab-label {
-      display: inline;
-      margin-left: 6px;
-    }
-  }
-`;
+const TabButton = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(function TabButton(
+  { className, ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      className={className ? `ms-sub-header-tab-btn ${className}` : "ms-sub-header-tab-btn"}
+      {...rest}
+    />
+  );
+});
 
 interface ViewTabListProps {
   tabs: Array<{ id: string; label: string; icon: React.ElementType; title: string; onClick: () => void }>;
@@ -206,42 +148,17 @@ const ViewTabList: React.FC<ViewTabListProps> = ({ tabs, activeIndex, ariaLabel 
   );
 };
 
-const SplitToggleButton = styled.button<{ $active?: boolean }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 9px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  flex-shrink: 0;
-  white-space: nowrap;
-  border: 1px solid ${(p) => (p.$active ? "var(--ms-brand, #0891b2)" : "var(--borderColor-muted, var(--ms-divider))")};
-  background-color: ${(p) =>
-    p.$active
-      ? "color-mix(in srgb, var(--ms-brand, #0891b2) 12%, var(--bgColor-default, #ffffff))"
-      : "var(--bgColor-default, var(--ms-bg, #ffffff))"};
-  color: ${(p) => (p.$active ? "var(--ms-brand, #0891b2)" : "var(--fgColor-muted, var(--ms-text-2))")};
-  transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
+interface SplitToggleButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  $active?: boolean | undefined;
+}
 
-  &:hover:not(:disabled) {
-    background-color: ${(p) =>
-      p.$active
-        ? "color-mix(in srgb, var(--ms-brand, #0891b2) 18%, var(--bgColor-default, #ffffff))"
-        : "var(--ms-surface-hover, rgba(0, 0, 0, 0.04))"};
-    color: ${(p) => (p.$active ? "var(--ms-brand, #0891b2)" : "var(--fgColor-default, var(--ms-text-1))")};
-  }
-
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-  }
-`;
+const SplitToggleButton: React.FC<SplitToggleButtonProps> = ({ $active, className, ...rest }) => (
+  <button
+    data-active={$active ? "true" : "false"}
+    className={className ? `ms-sub-header-split-btn ${className}` : "ms-sub-header-split-btn"}
+    {...rest}
+  />
+);
 
 export interface AnsatzViewSubHeaderProps {
   activeLangInfo: AnsatzLanguageInfo;
@@ -258,12 +175,17 @@ export interface AnsatzViewSubHeaderProps {
   showResultsView: boolean;
   showCadView: boolean;
   showAnalysisView: boolean;
+  isStudioView?: boolean;
   isCodeView: boolean;
   isSplitActive: boolean;
   canSplit?: boolean;
   splitOrientation?: "columns" | "rows";
-  onSelectView: (target: "diagram" | "3d" | "simulation" | "inspector" | "code") => void;
+  onSelectView: (target: "diagram" | "3d" | "simulation" | "inspector" | "studio" | "code") => void;
   onToggleSplit?: () => void;
+  showHypergraphOverlay?: boolean;
+  onToggleHypergraphOverlay?: () => void;
+  isAiOpen?: boolean;
+  onToggleAi?: () => void;
   floating?: boolean;
   leftOffset?: number;
   colorMode?: "dark" | "light";
@@ -284,12 +206,17 @@ export const AnsatzViewSubHeader: React.FC<AnsatzViewSubHeaderProps> = ({
   showResultsView,
   showCadView,
   showAnalysisView,
+  isStudioView = false,
   isCodeView,
   isSplitActive,
   canSplit = true,
   splitOrientation = "columns",
   onSelectView,
   onToggleSplit,
+  showHypergraphOverlay = false,
+  onToggleHypergraphOverlay,
+  isAiOpen = false,
+  onToggleAi,
   floating = false,
   leftOffset = 12,
   colorMode = "light",
@@ -306,7 +233,7 @@ export const AnsatzViewSubHeader: React.FC<AnsatzViewSubHeaderProps> = ({
           ? "Table"
           : "Inspector";
 
-  type ViewTabId = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "code";
+  type ViewTabId = "diagram" | "icon" | "3d" | "simulation" | "inspector" | "studio" | "code";
   const viewTabs: Array<{
     id: ViewTabId;
     label: string;
@@ -365,6 +292,13 @@ export const AnsatzViewSubHeader: React.FC<AnsatzViewSubHeaderProps> = ({
     onClick: () => onSelectView("inspector"),
   });
   viewTabs.push({
+    id: "studio",
+    label: "AI Studio",
+    icon: BeakerIcon,
+    title: "AI Training, Zonotope Certification, Annotation & DiskANN Studio (⌥7)",
+    onClick: () => onSelectView("studio"),
+  });
+  viewTabs.push({
     id: "code",
     label: "Code",
     icon: CodeIcon,
@@ -375,7 +309,9 @@ export const AnsatzViewSubHeader: React.FC<AnsatzViewSubHeaderProps> = ({
   const activeTabId: ViewTabId = isCodeView
     ? "code"
     : showAnalysisView
-      ? "inspector"
+      ? isStudioView
+        ? "studio"
+        : "inspector"
       : showCadView
         ? "3d"
         : showResultsView
@@ -505,7 +441,7 @@ export const AnsatzViewSubHeader: React.FC<AnsatzViewSubHeaderProps> = ({
       <ViewTabsWrapper>
         <LanguageToolbarButtons
           languageId={activeLangInfo.id}
-          activeView={activeTabId}
+          activeView={activeTabId === "studio" ? "inspector" : activeTabId}
           maxPrimary={activeTabId === "icon" ? 6 : 2}
         />
 
@@ -514,6 +450,40 @@ export const AnsatzViewSubHeader: React.FC<AnsatzViewSubHeaderProps> = ({
           activeIndex={selectedIndex !== -1 ? selectedIndex : 0}
           ariaLabel="Workbench View"
         />
+
+        {onToggleHypergraphOverlay && (
+          <SplitToggleButton
+            type="button"
+            role="button"
+            aria-pressed={showHypergraphOverlay}
+            aria-label="Toggle Zonotope & Hypergraph Annotation Overlay"
+            $active={showHypergraphOverlay}
+            onClick={onToggleHypergraphOverlay}
+            title={
+              showHypergraphOverlay
+                ? "Hide Zonotope generator ribbon & hypergraph annotation overlay"
+                : "Show Zonotope generator ribbon, brushes & hypergraph annotation overlay"
+            }
+          >
+            <BeakerIcon size={14} />
+            <span>Zonotope</span>
+          </SplitToggleButton>
+        )}
+
+        {onToggleAi && (
+          <SplitToggleButton
+            type="button"
+            role="button"
+            aria-pressed={isAiOpen}
+            aria-label="Toggle Ansatz AI Copilot"
+            $active={isAiOpen}
+            onClick={onToggleAi}
+            title={isAiOpen ? "Hide Ansatz AI Copilot" : "Open Ansatz AI Copilot"}
+          >
+            <SparkleFillIcon size={14} />
+            <span>AI</span>
+          </SplitToggleButton>
+        )}
 
         {onToggleSplit && (
           <SplitToggleButton

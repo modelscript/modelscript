@@ -34,6 +34,13 @@ import {
   type ZonotopePendingOverride,
   type ZonotopeWorkbenchState,
 } from "../util/zonotope-workbench-state";
+import {
+  AnnotateAndRefineSection,
+  CertifyAndVisualizeSection,
+  DiskAnnCurationAndAttributionSection,
+  TrainAndDispatchSection,
+  type TrainingStudioContextInfo,
+} from "./AnsatzLifecycleStudioSections";
 import { RecipeComposerDagView } from "./RecipeComposerDagView";
 
 export type ComputeDialPreset = "fast-m0" | "auto-escalate" | "certified-m32";
@@ -57,9 +64,10 @@ export interface AnsatzTrainingStudioPanelProps {
   onSelectZonotopeGroup?: ((groupId: number | null) => void) | undefined;
   onClearPendingOverrides?: (() => void) | undefined;
   onWorstCaseXiChange?: ((xiMap: Record<number, number>) => void) | undefined;
+  trainingStudioContext?: TrainingStudioContextInfo | undefined;
 }
 
-type StudioTab = "rlvr" | "dag" | "prose" | "generators" | "diskann" | "debugger";
+type StudioTab = "train" | "certify" | "annotate" | "rlvr" | "dag" | "prose" | "generators" | "diskann" | "debugger";
 type ScrubberSortMode = "m_init_desc" | "dialect_asc";
 
 interface DiskAnnChunkPreview {
@@ -280,9 +288,10 @@ export const AnsatzTrainingStudioPanel: React.FC<AnsatzTrainingStudioPanelProps>
   onSelectZonotopeGroup,
   onClearPendingOverrides,
   onWorstCaseXiChange,
+  trainingStudioContext,
 }) => {
   const isDark = colorMode === "dark";
-  const [activeTab, setActiveTab] = useState<StudioTab>("rlvr");
+  const [activeTab, setActiveTab] = useState<StudioTab>("train");
 
   // Reward & Dynamic-m curriculum state
   const [rewards, setRewards] = useState(DEFAULT_REWARD_WEIGHTS);
@@ -713,11 +722,19 @@ export const AnsatzTrainingStudioPanel: React.FC<AnsatzTrainingStudioPanelProps>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           {(
             [
+              ["train", "Train & Dispatch"],
+              ["certify", "Certify & Viz"],
+              [
+                "annotate",
+                effectiveZonotopeState.pendingOverrides.length > 0
+                  ? `Annotate & Refine (${effectiveZonotopeState.pendingOverrides.length})`
+                  : "Annotate & Refine",
+              ],
               ["rlvr", "RLVR & Dynamic-m"],
               ["dag", "Recipe DAG"],
               ["prose", "Prose & Spec"],
               ["generators", `Generators (m=${effectiveHypergraph?.mInit ?? 0})`],
-              ["diskann", `DiskANN & Dial (m=${dialMValue})`],
+              ["diskann", `DiskANN & Attribution (m=${dialMValue})`],
               ["debugger", "Debugger & X-Ray"],
             ] as const
           ).map(([id, label]) => (
@@ -755,6 +772,54 @@ export const AnsatzTrainingStudioPanel: React.FC<AnsatzTrainingStudioPanelProps>
 
       {/* Body */}
       <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+        {activeTab === "train" && (
+          <TrainAndDispatchSection
+            apiBaseUrl={apiBaseUrl}
+            dialect={dialect}
+            documentUri={documentUri}
+            mStart={mStart}
+            mMax={mMax}
+            mCap={mCap}
+            retrievalTau={retrievalTau}
+            rewards={rewards}
+            trainingStudioContext={trainingStudioContext}
+            palette={{ border, bg, bgSubtle, fg, fgMuted, accent, isDark }}
+          />
+        )}
+
+        {activeTab === "certify" && (
+          <CertifyAndVisualizeSection
+            sourceCode={sourceCode}
+            dialect={dialect}
+            hypergraph={effectiveHypergraph}
+            zonotopeState={effectiveZonotopeState}
+            showHypergraphOverlay={showHypergraphOverlay}
+            onToggleHypergraphOverlay={onToggleHypergraphOverlay}
+            onRunXRay={() => {
+              setActiveTab("debugger");
+              void handleRunXRayPass();
+            }}
+            isRunningXRay={isRunningXRay}
+            palette={{ border, bg, bgSubtle, fg, fgMuted, accent, isDark }}
+          />
+        )}
+
+        {activeTab === "annotate" && (
+          <AnnotateAndRefineSection
+            apiBaseUrl={apiBaseUrl}
+            documentUri={documentUri}
+            dialect={dialect}
+            sourceCode={sourceCode}
+            zonotopeState={effectiveZonotopeState}
+            showHypergraphOverlay={showHypergraphOverlay}
+            onToggleHypergraphOverlay={onToggleHypergraphOverlay}
+            onClearPendingOverrides={onClearPendingOverrides}
+            onEscalateToSocialArena={handleEscalateToSocialArena}
+            escalateStatus={escalateStatus}
+            palette={{ border, bg, bgSubtle, fg, fgMuted, accent, isDark }}
+          />
+        )}
+
         {activeTab === "dag" && (
           <RecipeComposerDagView
             colorMode={colorMode}
@@ -1166,6 +1231,14 @@ export const AnsatzTrainingStudioPanel: React.FC<AnsatzTrainingStudioPanelProps>
                 </div>
               )}
             </div>
+
+            <DiskAnnCurationAndAttributionSection
+              apiBaseUrl={apiBaseUrl}
+              dialect={dialect}
+              sourceCode={sourceCode}
+              documentUri={documentUri}
+              palette={{ border, bg, bgSubtle, fg, fgMuted, accent, isDark }}
+            />
           </>
         )}
 

@@ -5,6 +5,9 @@
  * diagnostics, documentSymbols, hover, completions, and domain actions.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { ACSL_OPERATOR_SPECS, lookupAcslOperatorSchema } from "./catalog/index.js";
 import { acslToDae } from "./dae/index.js";
 import { lintAcsl } from "./lints/index.js";
@@ -111,11 +114,74 @@ const ACSL_KEYWORDS = [
   "NSTEPS",
 ];
 
-function lineRange(lineNum: number, lineText: string): LspRange {
+interface AcslCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface AcslCstLineIndex {
+  byRow: Map<number, AcslCstLineEntry>;
+  lastRow: number;
+  lastCol: number;
+}
+
+function buildAcslCstLineIndex(content: string): AcslCstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("acsl", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, AcslCstLineEntry>();
+  if (rootNode) {
+    const grouped = groupAllCstTokensByLine(rootNode as CstNodeLike);
+    let maxRow = 0;
+    let maxCol = 0;
+    for (const { row, tokens } of grouped) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row >= maxRow) {
+        maxRow = row;
+        maxCol = endCol;
+      }
+    }
+    const rootEnd = (rootNode as { endPosition?: { row?: number; column?: number } }).endPosition;
+    const lastRow = Math.max(maxRow, rootEnd?.row ?? 0);
+    const lastCol = lastRow === maxRow ? maxCol : (rootEnd?.column ?? 0);
+    return { byRow, lastRow, lastCol };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  const lastRow = Math.max(0, rawLines.length - 1);
+  return { byRow, lastRow, lastCol: (rawLines[lastRow] ?? "").length };
+}
+
+function cstLineAt(index: AcslCstLineIndex, row: number): string {
+  const entry = index.byRow.get(row);
+  return entry ? " ".repeat(entry.startCol) + entry.text : "";
+}
+
+function lineRange(lineNum: number, index: AcslCstLineIndex): LspRange {
   const zeroLine = Math.max(0, lineNum - 1);
+  const entry = index.byRow.get(zeroLine);
   return {
-    start: { line: zeroLine, character: 0 },
-    end: { line: zeroLine, character: Math.max(1, lineText.length) },
+    start: { line: zeroLine, character: entry?.startCol ?? 0 },
+    end: { line: zeroLine, character: Math.max((entry?.startCol ?? 0) + 1, entry?.endCol ?? 1) },
   };
 }
 
@@ -125,13 +191,14 @@ function lineRange(lineNum: number, lineText: string): LspRange {
 export function validateAcsl(content: string, _uri: string = "model.csl"): LspDiagnostic[] {
   const program = parseAcsl(content);
   const diags = lintAcsl(program);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildAcslCstLineIndex(content);
 
   return diags.map((d) => {
     const lineIdx = d.line ? Math.max(0, d.line - 1) : 0;
-    const lineText = lines[lineIdx] ?? "";
-    let startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    let endChar = lineText.length;
+    const lineText = cstLineAt(cstIndex, lineIdx);
+    const entry = cstIndex.byRow.get(lineIdx);
+    let startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    let endChar = entry?.endCol ?? lineText.length;
     if (d.symbol) {
       const idx = lineText.toUpperCase().indexOf(d.symbol.toUpperCase());
       if (idx >= 0) {
@@ -157,12 +224,12 @@ export function validateAcsl(content: string, _uri: string = "model.csl"): LspDi
  */
 export function getAcslDocumentSymbols(content: string, _uri: string = "model.csl"): LspDocumentSymbol[] {
   const program = parseAcsl(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildAcslCstLineIndex(content);
   const children: LspDocumentSymbol[] = [];
 
   for (const sec of program.sections) {
     if (sec.kind === "PROGRAM") continue;
-    const rng = lineRange(sec.line, lines[sec.line - 1] ?? "");
+    const rng = lineRange(sec.line, cstIndex);
     children.push({
       name: sec.name ? `${sec.kind} ${sec.name}` : sec.kind,
       detail: `ACSL ${sec.kind} section`,
@@ -173,7 +240,7 @@ export function getAcslDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const decl of program.declarations) {
-    const rng = lineRange(decl.line, lines[decl.line - 1] ?? "");
+    const rng = lineRange(decl.line, cstIndex);
     children.push({
       name: decl.name,
       detail: `${decl.kind} (${decl.section})`,
@@ -184,7 +251,7 @@ export function getAcslDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const integ of program.integrators) {
-    const rng = lineRange(integ.line, lines[integ.line - 1] ?? "");
+    const rng = lineRange(integ.line, cstIndex);
     children.push({
       name: integ.stateVar,
       detail: `Continuous State (${integ.operator})`,
@@ -195,7 +262,7 @@ export function getAcslDocumentSymbols(content: string, _uri: string = "model.cs
   }
 
   for (const tbl of program.tables) {
-    const rng = lineRange(tbl.line, lines[tbl.line - 1] ?? "");
+    const rng = lineRange(tbl.line, cstIndex);
     children.push({
       name: tbl.name,
       detail: `TABLE (${tbl.breakpoints.length} pts)`,
@@ -207,8 +274,9 @@ export function getAcslDocumentSymbols(content: string, _uri: string = "model.cs
 
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: lines[lines.length - 1]?.length ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastCol },
   };
+  const firstLineEnd = cstIndex.byRow.get(0)?.endCol ?? 1;
 
   return [
     {
@@ -218,7 +286,7 @@ export function getAcslDocumentSymbols(content: string, _uri: string = "model.cs
       range: rootRange,
       selectionRange: {
         start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.max(1, lines[0]?.length ?? 1) },
+        end: { line: 0, character: Math.max(1, firstLineEnd) },
       },
       children: children.length > 0 ? children : undefined,
     },
@@ -238,8 +306,8 @@ function wordAtPosition(line: string, character: number): string {
  * Provides contextual Markdown hover documentation for ACSL operators, states, constants, and sections.
  */
 export function getAcslHover(content: string, position: LspPosition, _uri: string = "model.csl"): LspHover | undefined {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line] ?? "";
+  const cstIndex = buildAcslCstLineIndex(content);
+  const line = cstLineAt(cstIndex, position.line);
   const word = wordAtPosition(line, position.character);
   if (!word) return undefined;
 
@@ -309,8 +377,8 @@ export function getAcslCompletions(
   position: LspPosition,
   _uri: string = "model.csl",
 ): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line] ?? "";
+  const cstIndex = buildAcslCstLineIndex(content);
+  const line = cstLineAt(cstIndex, position.line);
   const prefix = wordAtPosition(line, position.character).toUpperCase();
   const program = parseAcsl(content);
 

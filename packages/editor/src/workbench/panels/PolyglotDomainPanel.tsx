@@ -30,6 +30,7 @@ const CsvViewer = React.lazy(() => import("../../internal/CsvViewer").then((m) =
 export interface PolyglotDocumentSymbol {
   name: string;
   detail?: string;
+  value?: string;
   kind?: number;
   containerName?: string;
   range?: { start?: { line?: number } };
@@ -1060,7 +1061,7 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
           id: src.id,
           kind: "AC/DC Source",
           busOrNode: src.bus,
-          spec: `${src.voltageKv} kV · ${src.frequencyHz} Hz`,
+          spec: `${src.vPeakKv} kV · ${src.frequencyHz} Hz`,
           line: 1,
         });
       }
@@ -2010,7 +2011,7 @@ function analyzeAmplOptimization(code: string, lines: string[]): DomainAnalysisR
         ? `${primaryObj!["sense"] === "maximize" ? "Max" : "Min"} ${primaryObj!["name"]}`
         : `${objectiveRows.length} objectives`;
 
-  const sections: DomainSection[] = [
+  const sections: TableSection[] = [
     {
       title: "Objective Function(s)",
       columns: [

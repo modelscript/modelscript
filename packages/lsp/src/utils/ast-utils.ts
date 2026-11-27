@@ -10,6 +10,8 @@ export const XML_WASM_BYTE_LIMIT = 2 * 1024 * 1024;
 export interface XmlFallbackTree extends Tree {
   __isXmlCstFallback?: boolean;
   __xmlErrors?: XmlSyntaxError[];
+  facade?: { removeDocument?: (uri: string) => void } | null;
+  delete?(): void;
 }
 
 export interface CstNodeLike {
@@ -44,6 +46,7 @@ export interface CstTreeLike {
   rootNode: CstNodeLike;
   rootPtr?: number;
   sourceCode?: string;
+  facade?: { removeDocument?: (uri: string) => void } | null;
   runtime?: { getSemanticTokens?(rootPtr: number, text: string): Uint32Array };
   getSemanticTokens?(): Uint32Array;
   delete?(): void;

@@ -2,18 +2,18 @@
 
 import { composeTransformMatrixDirect, sampleTelemetryFrame } from "@modelscript/cad";
 import {
+  createDefaultAssemblyVisibility,
+  inferSubsystemsFromPartNames,
+  resolvePartPresentation,
+} from "@modelscript/cad-viewer/assembly-visibility.js";
+import { extractCadComponents } from "@modelscript/cad-viewer/parse-cad-annotations.js";
+import {
   createCanonicalPolyglotDemoBoard,
   serializeCanvasDocument,
   SpatialSurfaceBridge,
   type CanvasDocument,
   type SurfacePresentationMode,
 } from "@modelscript/canvas";
-import {
-  createDefaultAssemblyVisibility,
-  inferSubsystemsFromPartNames,
-  resolvePartPresentation,
-} from "@modelscript/editor/workbench/cad-viewer/assembly-visibility.js";
-import { extractCadComponents } from "@modelscript/editor/workbench/cad-viewer/parse-cad-annotations.js";
 import { getLanguageInfo } from "@modelscript/editor/workbench/constants.js";
 import { CURATED_OPEN_MODELS } from "@modelscript/editor/workbench/openModelCatalog.js";
 import {
@@ -26,14 +26,32 @@ import {
   computeCarouselSlotTransform,
   computeGeometryCaeVertexColors,
   createBrushedAluminumPbr,
+  createCableStayedBridgeGeometry,
   createCaeFieldGradientTexture,
+  createConferenceTableGeometry,
+  createErgonomicTaskChairGeometry,
   createHonedTravertinePbr,
+  createHorizonLoungeSofaGeometry,
   createInitialRotundaState,
   createKnurledMetalNormalMap,
+  createLabWorkbenchGeometry,
+  createLakeSailboatGeometry,
+  createLoungeCoffeeTableGeometry,
   createMeadowGrassPbr,
+  createObservatoryDomeGeometry,
+  createOfficeCubiclePodGeometry,
+  createOfficeWaterCoolerGeometry,
+  createPanoramicMountainRingGeometry,
+  createParkBroadleafTreeGeometry,
   createPolishedConcretePbr,
+  createPottedIndoorTreeGeometry,
   createRadialContactShadowTexture,
   createRotundaEnvironmentHdri,
+  createSculptedPineTreeGeometry,
+  createSilverBirchTreeGeometry,
+  createWarehouseAgvGeometry,
+  createWindTurbineRotorGeometry,
+  createWindTurbineTowerGeometry,
   DESK_SCALE_PRESETS,
   EngineeringRotunda,
   evaluateOctopusArm3DetachFactor,
@@ -75,8 +93,8 @@ import {
   type RotundaEnvironmentId,
   type RotundaModelKind,
   type RotundaRenderStyle,
-} from "@modelscript/editor/workbench/vr-rotunda/index.js";
-import { evaluatePinchState } from "@modelscript/editor/workbench/vr-rotunda/xr-gestures.js";
+} from "@modelscript/rotunda/index.js";
+import { evaluatePinchState } from "@modelscript/rotunda/xr-gestures.js";
 import {
   enterXrSession,
   exitXrSession,
@@ -84,7 +102,7 @@ import {
   playRotundaCue,
   pulseXrHaptics,
   SHARED_XR_STORE_CONFIG,
-} from "@modelscript/editor/workbench/vr-rotunda/xr-session.js";
+} from "@modelscript/rotunda/xr-session.js";
 import { parseUrdf } from "@modelscript/urdf";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
@@ -1860,5 +1878,56 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
       playRotundaCue("materialize");
       playRotundaCue("magnet-lock");
     });
+  });
+
+  test("Sculpted Quest-Home & Job-Simulator prop, tree, landmark & mountain vista archetypes bake finite GI/AO vertex colors", () => {
+    const builders: ReadonlyArray<readonly [string, () => THREE.BufferGeometry]> = [
+      ["horizon-sofa", createHorizonLoungeSofaGeometry],
+      ["lounge-coffee-table", createLoungeCoffeeTableGeometry],
+      ["office-cubicle-pod", createOfficeCubiclePodGeometry],
+      ["ergonomic-task-chair", createErgonomicTaskChairGeometry],
+      ["conference-table", createConferenceTableGeometry],
+      ["office-water-cooler", createOfficeWaterCoolerGeometry],
+      ["park-broadleaf-tree", createParkBroadleafTreeGeometry],
+      ["silver-birch-tree", createSilverBirchTreeGeometry],
+      ["sculpted-pine-tree", createSculptedPineTreeGeometry],
+      ["potted-indoor-tree", createPottedIndoorTreeGeometry],
+      ["warehouse-agv", createWarehouseAgvGeometry],
+      ["lab-workbench", createLabWorkbenchGeometry],
+      ["wind-turbine-tower", createWindTurbineTowerGeometry],
+      ["wind-turbine-rotor", createWindTurbineRotorGeometry],
+      ["cable-stayed-bridge", createCableStayedBridgeGeometry],
+      ["lake-sailboat", createLakeSailboatGeometry],
+      ["observatory-dome", createObservatoryDomeGeometry],
+      [
+        "panoramic-mountain-ring",
+        () => createPanoramicMountainRingGeometry(88, -2.5, 5.5, 19.0, "#5e7d73", "#cde0f0", 2.2, 64),
+      ],
+    ];
+
+    for (const [name, build] of builders) {
+      const geom = build();
+      const pos = geom.getAttribute("position");
+      const norm = geom.getAttribute("normal");
+      const col = geom.getAttribute("color");
+      assert.ok(pos && pos.count >= 24, `Archetype '${name}' must have non-trivial vertex positions`);
+      assert.ok(norm && norm.count === pos.count, `Archetype '${name}' must have matching vertex normals`);
+      assert.ok(col && col.count === pos.count, `Archetype '${name}' must bake per-vertex GI/AO colors`);
+
+      for (let i = 0; i < Math.min(pos.count, 48); i++) {
+        assert.ok(
+          Number.isFinite(pos.getX(i)) && Number.isFinite(pos.getY(i)) && Number.isFinite(pos.getZ(i)),
+          `Archetype '${name}' vertex ${i} position must be finite`,
+        );
+        const r = col.getX(i);
+        const g = col.getY(i);
+        const b = col.getZ(i);
+        assert.ok(
+          r >= 0 && r <= 1 && g >= 0 && g <= 1 && b >= 0 && b <= 1,
+          `Archetype '${name}' vertex ${i} color (${r},${g},${b}) must be in [0, 1]`,
+        );
+      }
+      geom.dispose();
+    }
   });
 });

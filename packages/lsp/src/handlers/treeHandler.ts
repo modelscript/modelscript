@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
+import { getClassIconSvg, loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
 import { globalLibraryRegistry, type TreeNodeInfo } from "@modelscript/runtime";
 import { LspContext } from "../lsp-context.js";
 import {
@@ -22,7 +22,25 @@ export interface ProjectTreeNodeInfo {
   line?: number | undefined;
 }
 
-export const iconCache = new Map<string, string | null>();
+class BoundedIconCacheMap extends Map<string, string | null> {
+  constructor(private readonly maxEntries: number) {
+    super();
+  }
+
+  override set(key: string, value: string | null): this {
+    if (this.has(key)) {
+      this.delete(key);
+    } else if (this.size >= this.maxEntries) {
+      const oldest = this.keys().next().value;
+      if (oldest !== undefined) {
+        this.delete(oldest);
+      }
+    }
+    return super.set(key, value);
+  }
+}
+
+export const iconCache: Map<string, string | null> = new BoundedIconCacheMap(500);
 
 export function getCachedClassIcon(className: string): string | null | undefined {
   const rootSeg = className.split(".")[0];
@@ -85,7 +103,7 @@ export function registerTreeHandlers(context: LspContext) {
         params.parentId?.startsWith("Modelica") ||
         !params.parentId
       ) {
-        await loadPrebakedMslIcons(iconCache, (globalThis as { serverDistBase?: string }).serverDistBase ?? params.uri);
+        await loadPrebakedMslIcons(iconCache, context.parserService?.getServerDistBase?.() || params.uri);
       }
 
       const nodes = await getTreeChildrenFast(
@@ -280,7 +298,7 @@ export function registerTreeHandlers(context: LspContext) {
       Boolean(uri) && (uri!.startsWith("sysml2:") || /\.(sysml|sysml2|kerml|owl|ttl|rdf|reqif|step|stp)$/i.test(uri!));
 
     if (!isNonModelicaUri && (cleanName.startsWith("Modelica.") || cleanName === "Modelica" || iconCache.size === 0)) {
-      await loadPrebakedMslIcons(iconCache, (globalThis as { serverDistBase?: string }).serverDistBase ?? uri);
+      await loadPrebakedMslIcons(iconCache, context.parserService?.getServerDistBase?.() || uri);
       const afterMsl = getCachedClassIcon(cleanName) ?? getCachedClassIcon(className);
       if (afterMsl !== undefined) {
         return afterMsl || null;
@@ -358,17 +376,7 @@ export function registerTreeHandlers(context: LspContext) {
       return null;
     }
 
-    type GetClassIconSvgFn = (cls: unknown, size: number, flag: boolean) => string | null | undefined;
-    const globalIcons = globalThis as {
-      getClassIconSvg?: GetClassIconSvgFn;
-      modelicaDiagramOps?: { getClassIconSvg?: GetClassIconSvgFn };
-    };
-    const getIconSvg = globalIcons.getClassIconSvg ?? globalIcons.modelicaDiagramOps?.getClassIconSvg;
-    if (!getIconSvg) {
-      iconCache.set(className, null);
-      iconCache.set(cleanName, null);
-      return null;
-    }
+    const getIconSvg = getClassIconSvg as (cls: unknown, size: number, flag: boolean) => string | null | undefined;
 
     try {
       const cls = context.workspaceManager.resolveClassInstance(uri || "file:///", cleanName, {

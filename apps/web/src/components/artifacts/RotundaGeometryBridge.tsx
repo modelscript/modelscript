@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { RotundaModelEntry } from "@modelscript/editor/workbench/vr-rotunda/types.js";
+import type { RotundaModelEntry } from "@modelscript/rotunda/types.js";
 import "@react-three/fiber";
 import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as THREE from "three";

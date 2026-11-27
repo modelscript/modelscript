@@ -4,6 +4,7 @@
 // Produces LSP TextEdit arrays for inserting, modifying, and deleting
 // SysML2 elements and connections in `.sysml` source text.
 
+import { CstDocumentSession, CstTransaction, type CstTextEdit } from "@modelscript/dsl/unparser";
 import { Range, TextEdit } from "vscode-languageserver";
 import {
   collectCstLeaves,
@@ -1181,4 +1182,88 @@ function deduplicateAndSort(edits: TextEdit[]): TextEdit[] {
       (edit.range.start.line === prev.range.end.line && edit.range.start.character < prev.range.end.character)
     );
   });
+}
+
+/**
+ * Plans SysML v2 diagram actions directly against a live {@link CstDocumentSession},
+ * coalescing all resulting edits atomically through {@link CstTransaction}.
+ * Usable both inside the Dedicated CST Edit Worker (zero-LSP roundtrip) and the LSP backend.
+ */
+export function planSysml2EditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<{
+    type: string;
+    source?: string | undefined;
+    target?: string | undefined;
+    edgeType?: string | undefined;
+    oldSource?: string | undefined;
+    oldTarget?: string | undefined;
+    newSource?: string | undefined;
+    newTarget?: string | undefined;
+    names?: string[] | undefined;
+    oldName?: string | undefined;
+    newName?: string | undefined;
+    name?: string | undefined;
+    description?: string | undefined;
+    parameter?: string | undefined;
+    key?: string | undefined;
+    value?: unknown;
+    className?: string | undefined;
+  }>,
+): { edits: CstTextEdit[]; hasStructural: boolean } {
+  const docText = session.text;
+  const tree = session.tree as DiagramCstTree | null;
+  const tx = new CstTransaction(session);
+  let hasStructural = false;
+
+  const pushEdits = (rawEdits: TextEdit[]) => {
+    for (const e of rawEdits) {
+      const startOff = session.positionToOffset(e.range.start);
+      const endOff = session.positionToOffset(e.range.end);
+      tx.replaceRange(startOff, endOff, e.newText);
+    }
+  };
+
+  for (const act of actions) {
+    if (act.type === "connect" && act.source && act.target) {
+      const edgeType = act.edgeType ?? "connection";
+      if (edgeType === "transition") {
+        pushEdits(computeSysML2TransitionInsert(docText, act.source, act.target, tree));
+      } else if (edgeType === "succession") {
+        pushEdits(computeSysML2SuccessionInsert(docText, act.source, act.target, tree));
+      } else {
+        pushEdits(computeSysML2ConnectionInsert(docText, act.source, act.target, tree));
+      }
+      hasStructural = true;
+    } else if (act.type === "disconnect" && act.source && act.target) {
+      pushEdits(computeSysML2ConnectionDelete(docText, act.source, act.target, tree));
+      hasStructural = true;
+    } else if (act.type === "reconnect" && act.oldSource && act.oldTarget && act.newSource && act.newTarget) {
+      pushEdits(computeSysML2ConnectionDelete(docText, act.oldSource, act.oldTarget, tree));
+      pushEdits(computeSysML2ConnectionInsert(docText, act.newSource, act.newTarget, tree));
+      hasStructural = true;
+    } else if (act.type === "deleteComponents" && Array.isArray(act.names)) {
+      pushEdits(computeSysML2ElementDelete(docText, act.names, tree));
+      hasStructural = true;
+    } else if (act.type === "updateName" && act.oldName && act.newName) {
+      pushEdits(computeSysML2NameEdit(tree, docText, act.oldName, act.newName));
+      hasStructural = true;
+    } else if (act.type === "updateDescription" && act.name && typeof act.description === "string") {
+      pushEdits(computeSysML2DescriptionEdit(tree, docText, act.name, act.description));
+    } else if (act.type === "updateParameter" && act.name && act.parameter) {
+      pushEdits(computeSysML2ParameterEdit(tree, docText, act.name, act.parameter, String(act.value ?? "")));
+    } else if (act.type === "updateProperty" && act.name && act.key) {
+      pushEdits(computeSysML2ParameterEdit(tree, docText, act.name, act.key, String(act.value ?? "")));
+    } else if (act.type === "addComponent" && act.className) {
+      if (ELEMENT_TEMPLATES[act.className]) {
+        const uniqueName =
+          act.name ||
+          generateUniqueName(docText, act.className.replace(/Definition|Usage/g, "").toLowerCase() || "part");
+        pushEdits(computeSysML2ElementInsert(docText, act.className, uniqueName, undefined, tree));
+        hasStructural = true;
+      }
+    }
+  }
+
+  return { edits: tx.commit().edits, hasStructural };
 }

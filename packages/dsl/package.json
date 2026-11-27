@@ -90,14 +90,6 @@
       "types": "./dist/codegen/emitters/*.d.ts",
       "default": "./dist/codegen/emitters/*.js"
     },
-    "./codegen/ide": {
-      "types": "./dist/codegen/ide/index.d.ts",
-      "default": "./dist/codegen/ide/index.js"
-    },
-    "./codegen/ide/*": {
-      "types": "./dist/codegen/ide/*.d.ts",
-      "default": "./dist/codegen/ide/*.js"
-    },
     "./codegen/shared": {
       "types": "./dist/codegen/shared/index.d.ts",
       "default": "./dist/codegen/shared/index.js"

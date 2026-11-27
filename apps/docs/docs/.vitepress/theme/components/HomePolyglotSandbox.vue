@@ -454,6 +454,9 @@ watch(
     monacoHandle.switchTab(nextUri, activeTab.value.code, nextSlug);
     const diags = diagnosticsByUri.value[nextUri];
     if (diags) monacoHandle.setDiagnostics(nextUri, diags);
+    if (workerStatus.value.state === "ready") {
+      monacoHandle.refreshSemanticTokens();
+    }
   },
 );
 
@@ -579,8 +582,13 @@ onBeforeUnmount(() => {
 async function syncTabsAndLint(): Promise<void> {
   workerError.value = null;
   try {
+    let anyChanged = false;
     for (const tab of tabs.value) {
-      await syncDocsLspBuffer(tab.uri, tab.langSlug, tab.code);
+      const changed = await syncDocsLspBuffer(tab.uri, tab.langSlug, tab.code);
+      if (changed) anyChanged = true;
+    }
+    if (anyChanged) {
+      monacoHandle?.refreshSemanticTokens();
     }
     void refreshDiagramPreview();
   } catch (err: any) {

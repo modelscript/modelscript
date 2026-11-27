@@ -6980,7 +6980,7 @@ export function collectWasmSyntaxErrors(rootNode, maxErrors = 25) {
   return out;
 }
 
-export const semanticLegend = { tokenTypes: ["keyword","type"], tokenModifiers: [] };
+export const semanticLegend = { tokenTypes: ["keyword","type","class","variable","parameter","function","string","number","operator","comment","namespace","enumMember"], tokenModifiers: ["declaration","readonly"] };
 
 export const SyntaxKind = {
   ERROR: 0,

@@ -25,6 +25,7 @@ import { ActionList, ActionMenu, IconButton } from "@primer/react";
 import React from "react";
 import { useEditorCapabilities as useCapabilities, useEditorFeatureFlag as useFeatureFlag } from "../../host";
 import { getLanguageInfo, useVisibleAnsatzLanguages } from "../constants";
+import type { Translations } from "../util/i18n";
 import { AnsatzView } from "./types";
 export { AnsatzView };
 
@@ -48,7 +49,7 @@ export interface AnsatzFloatingDockProps {
   onSelectDialect?: ((dialect: string) => void) | undefined;
   treeVisible: boolean;
   setTreeVisible: React.Dispatch<React.SetStateAction<boolean>>;
-  translations: Record<string, string>;
+  translations: Translations | Record<string, string>;
   onNewModel: (e: React.MouseEvent) => void;
   openFileButtonRef: React.RefObject<HTMLButtonElement | null>;
   onOpenFile: () => void;

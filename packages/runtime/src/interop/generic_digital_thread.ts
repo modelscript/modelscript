@@ -583,7 +583,19 @@ function extractGenericArtifact(
         const num = Number.parseFloat(rawVal);
         if (Number.isFinite(num)) {
           const attrSpan = part.attributeSpans?.[attrName];
-          const startOff = attrSpan && "start" in attrSpan ? (attrSpan as { start: number }).start : part.span.start;
+          let startOff = part.span.start;
+          let spanLen = attrName.length;
+          if (attrSpan?.declSpan) {
+            const declText = file.content.slice(attrSpan.declSpan.start, attrSpan.declSpan.end);
+            const escapedName = attrName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const nameMatch = new RegExp(`\\b${escapedName}\\b`).exec(declText);
+            startOff = nameMatch ? attrSpan.declSpan.start + nameMatch.index : attrSpan.declSpan.start;
+          } else if (attrSpan?.valueSpan) {
+            startOff = attrSpan.valueSpan.start;
+            spanLen = Math.max(1, attrSpan.valueSpan.end - attrSpan.valueSpan.start);
+          } else if (attrSpan && "start" in attrSpan) {
+            startOff = (attrSpan as { start: number }).start;
+          }
           const lc = lineColAtOffset(file.content, startOff);
           const fqn = `${namespaceFqn}::${part.name}.${attrName}`;
           parameters.set(attrName, {
@@ -594,7 +606,7 @@ function extractGenericArtifact(
             unit: unitHints.get(attrName) ?? unitFromVal,
             line: lc.line,
             startCol: lc.col,
-            endCol: lc.col + attrName.length,
+            endCol: lc.col + spanLen,
             valueStart: attrSpan?.valueSpan?.start,
             valueEnd: attrSpan?.valueSpan?.end,
           });

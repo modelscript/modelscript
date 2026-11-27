@@ -1,31 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  appendChildSplice,
-  applySplices,
-  removeElementSplice,
-  setAttributeSplice,
-  type Splice,
-  type XmlElement,
-} from "@modelscript/dsl/xml";
-import {
-  attr,
-  buildProjectModel,
-  childrenNamed,
-  type ExternalDefinitions,
-  type ModelDefinition,
-  type PscadProjectModel,
-  type Pt,
-} from "../model/pscad-model.js";
-import { registeredExternalDefinitions } from "../model/workspace-registry.js";
+  CstDocumentSession,
+  CstTransaction,
+  CstXmlAdapter,
+  encodeXmlAttrValue,
+  nodeEndOffset,
+  nodeStartOffset,
+  walkHealthyCst,
+  type CstIncrementalParser,
+  type CstTextEdit,
+} from "@modelscript/dsl/unparser";
+import type { SyntaxNode } from "@modelscript/dsl/utils";
+import { applySplices, type Splice, type XmlElement } from "@modelscript/dsl/xml";
+import { attr, type ExternalDefinitions, type Pt } from "../model/pscad-model.js";
+import { getPscadWasmParser } from "../parser/wasm-loader.js";
 export { applySplices };
 
 /**
- * Structural edit engine for PSCAD projects.
+ * CST-backed structural edit engine for PSCAD projects.
  *
- * Every operation is expressed on the lossless XML tree and produces minimal text splices, so
- * untouched bytes (CRLF/`\r\r\n` endings, indentation, attribute order, CDATA) are preserved and
- * editor undo history stays meaningful.
+ * Every operation executes directly against a live {@link CstDocumentSession} through
+ * {@link CstTransaction} and {@link CstXmlAdapter} (`@modelscript/dsl/unparser`).
+ * Untouched bytes (CRLF/`\r\r\n` endings, indentation, attribute order, CDATA, and even
+ * sibling `ERROR` subtrees when the file contains syntax errors) are preserved verbatim.
  */
 export type PscadEditOp =
   | { type: "moveComponent"; id: string; x: number; y: number; orient?: number }
@@ -190,27 +188,39 @@ export type PscadEditOp =
 export interface PscadEditResult {
   text: string;
   splices: Splice[];
+  edits: CstTextEdit[];
   /** Ids of elements created by the edit, in operation order. */
   createdIds: string[];
   errors: string[];
 }
 
-function eolOf(text: string): string {
-  return /\r\r\n/.test(text) ? "\r\r\n" : /\r\n/.test(text) ? "\r\n" : "\n";
-}
-
 function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  return encodeXmlAttrValue(s, '"');
 }
 
-function collectIds(model: PscadProjectModel): Set<string> {
+export function createPscadCstSession(text: string, uri = "file:///document.pscx"): CstDocumentSession {
+  let wasmParser: CstIncrementalParser | null = null;
+  try {
+    wasmParser = getPscadWasmParser() as unknown as CstIncrementalParser;
+  } catch {
+    wasmParser = null;
+  }
+  return new CstDocumentSession({
+    uri,
+    text,
+    parser: wasmParser,
+    xmlFallback: true,
+  });
+}
+
+function collectCstIds(root: SyntaxNode | null, source: string): Set<string> {
   const ids = new Set<string>();
-  const walk = (el: XmlElement) => {
-    const id = attr(el, "id");
+  walkHealthyCst(root, (node) => {
+    const tag = CstXmlAdapter.getTagName(node, source);
+    if (!tag) return;
+    const id = CstXmlAdapter.getAttribute(node, "id", source)?.value;
     if (id) ids.add(id);
-    for (const c of el.children) walk(c);
-  };
-  walk(model.root);
+  });
   return ids;
 }
 
@@ -221,22 +231,7 @@ function newId(used: Set<string>, seed: number): string {
   return String(n);
 }
 
-function findInstance(model: PscadProjectModel, id: string) {
-  for (const d of model.definitions.values()) {
-    const inst = d.instances.find((i) => i.id === id);
-    if (inst) return { def: d, inst };
-  }
-  return undefined;
-}
-
-function findWire(model: PscadProjectModel, id: string) {
-  for (const d of model.definitions.values()) {
-    const wire = d.wires.find((w) => w.id === id);
-    if (wire) return { def: d, wire };
-  }
-  return undefined;
-}
-
+/** Legacy compatibility helper for XmlElement callers. */
 export function findElementById(root: XmlElement, id: string, tagNames?: Set<string>): XmlElement | undefined {
   if (attr(root, "id") === id && (!tagNames || tagNames.has(root.name))) {
     return root;
@@ -248,8 +243,88 @@ export function findElementById(root: XmlElement, id: string, tagNames?: Set<str
   return undefined;
 }
 
-function schematicOf(def: ModelDefinition): XmlElement | undefined {
-  return childrenNamed(def.element, "schematic")[0];
+function findCstElementById(
+  root: SyntaxNode | null,
+  source: string,
+  id: string,
+  tagNamesLower?: Set<string>,
+): SyntaxNode | null {
+  let found: SyntaxNode | null = null;
+  walkHealthyCst(root, (node) => {
+    if (found) return false;
+    const tag = CstXmlAdapter.getTagName(node, source);
+    if (!tag) return undefined;
+    if (tagNamesLower && !tagNamesLower.has(tag.toLowerCase())) return undefined;
+    if (CstXmlAdapter.getAttribute(node, "id", source)?.value === id) {
+      found = node;
+      return false;
+    }
+    return undefined;
+  });
+  return found;
+}
+
+function findCstChildByTag(parent: SyntaxNode, source: string, ...tagNamesLower: string[]): SyntaxNode | null {
+  const want = new Set(tagNamesLower.map((t) => t.toLowerCase()));
+  for (const ch of CstXmlAdapter.getChildElements(parent)) {
+    const tag = CstXmlAdapter.getTagName(ch, source);
+    if (tag && want.has(tag.toLowerCase())) return ch;
+  }
+  return null;
+}
+
+function getCstChildrenByTag(parent: SyntaxNode, source: string, ...tagNamesLower: string[]): SyntaxNode[] {
+  const want = new Set(tagNamesLower.map((t) => t.toLowerCase()));
+  return CstXmlAdapter.getChildElements(parent).filter((ch) => {
+    const tag = CstXmlAdapter.getTagName(ch, source);
+    return Boolean(tag && want.has(tag.toLowerCase()));
+  });
+}
+
+function findDefinitionNode(root: SyntaxNode | null, source: string, defName?: string): SyntaxNode | null {
+  const defs = CstXmlAdapter.findElements(root, source, (_n, tag) => tag.toLowerCase() === "definition");
+  if (defs.length === 0) return null;
+  if (defName) {
+    const clean = defName.includes(":") ? defName.split(":").pop()! : defName;
+    const exact = defs.find((d) => {
+      const n = CstXmlAdapter.getAttribute(d, "name", source)?.value;
+      return n === defName || n === clean;
+    });
+    if (exact) return exact;
+    const ci = defs.find((d) => {
+      const n = (CstXmlAdapter.getAttribute(d, "name", source)?.value ?? "").toLowerCase();
+      return n === defName.toLowerCase() || n === clean.toLowerCase();
+    });
+    if (ci) return ci;
+  }
+  return (
+    defs.find((d) => (CstXmlAdapter.getAttribute(d, "name", source)?.value ?? "").toLowerCase() === "main") ?? defs[0]!
+  );
+}
+
+function findSchematicNode(root: SyntaxNode | null, source: string, defName?: string): SyntaxNode | null {
+  const def = findDefinitionNode(root, source, defName);
+  if (def) {
+    const sch = findCstChildByTag(def, source, "schematic");
+    if (sch) return sch;
+  }
+  return CstXmlAdapter.findElements(root, source, (_n, tag) => tag.toLowerCase() === "schematic")[0] ?? null;
+}
+
+function findRootXmlElement(root: SyntaxNode | null, source: string): SyntaxNode | null {
+  return CstXmlAdapter.findElements(root, source, () => true)[0] ?? null;
+}
+
+function findOwnerDefinitionName(elNode: SyntaxNode, source: string): string | undefined {
+  let cur: SyntaxNode | null | undefined = elNode.parent;
+  while (cur) {
+    const tag = CstXmlAdapter.getTagName(cur, source);
+    if (tag && tag.toLowerCase() === "definition") {
+      return CstXmlAdapter.getAttribute(cur, "name", source)?.value;
+    }
+    cur = cur.parent;
+  }
+  return undefined;
 }
 
 /** `Wire` x/y is the first vertex; vertices are relative; w/h is the padded bounding box. */
@@ -371,194 +446,175 @@ function buildDefinitionXml(
   );
 }
 
-export function planPscadEdits(
-  text: string,
-  ops: PscadEditOp[],
-  external: ExternalDefinitions | undefined = registeredExternalDefinitions(),
+/**
+ * Applies `PscadEditOp[]` directly to a live {@link CstDocumentSession} via {@link CstTransaction}
+ * and {@link CstXmlAdapter} with zero redundant parsing and full error isolation.
+ */
+export function planPscadEditsOnSession(
+  session: CstDocumentSession,
+  ops: ReadonlyArray<PscadEditOp>,
+  _external?: ExternalDefinitions,
 ): PscadEditResult {
-  const model = buildProjectModel(text, external);
-  const eol = eolOf(text);
-  const used = collectIds(model);
-  const splices: Splice[] = [];
+  const text = session.text;
+  const eol = session.eol;
+  const root = session.rootNode;
+  const tx = new CstTransaction(session);
+  const used = collectCstIds(root, text);
   const createdIds: string[] = [];
   const errors: string[] = [];
-  // Several ops may touch the same attribute; the last write wins.
-  const attrWrites = new Map<string, Splice>();
-  const writeAttr = (el: XmlElement, name: string, value: string) => {
-    const s = setAttributeSplice(el, name, value, text);
-    attrWrites.set(`${el.start}:${name}`, s);
-  };
-  const removed = new Set<number>();
+  const removedStarts = new Set<number>();
   let seed = text.length;
 
-  const insertInto = (defName: string | undefined, xml: (indent: string) => string): boolean => {
-    const def = model.definitions.get(defName ?? "Main") ?? [...model.definitions.values()][0];
-    const sch = def ? schematicOf(def) : undefined;
+  const CMP_TAGS = new Set(["user", "component"]);
+  const WIRE_BUS_TAGS = new Set(["wire", "bus"]);
+  const STICKY_TAGS = new Set(["sticky"]);
+  const CLONE_TAGS = new Set(["user", "component", "wire", "bus", "sticky"]);
+
+  const insertIntoSchematic = (defName: string | undefined, buildXml: (indent: string) => string): boolean => {
+    const sch = findSchematicNode(root, text, defName);
     if (!sch) {
       errors.push(`No schematic found for definition '${defName ?? "Main"}'.`);
       return false;
     }
-    const first = sch.children[0];
-    let indent = "        ";
-    if (first) {
-      let s = first.start;
-      while (s > 0 && (text[s - 1] === " " || text[s - 1] === "\t")) s--;
-      indent = text.slice(s, first.start);
-    }
-    splices.push(appendChildSplice(sch, xml(indent), text));
-    return true;
+    const children = CstXmlAdapter.getChildElements(sch);
+    const indent =
+      children.length > 0
+        ? session.lineIndentAt(nodeStartOffset(children[0]!))
+        : `${session.lineIndentAt(nodeStartOffset(sch))}  `;
+    return CstXmlAdapter.appendChild(tx, sch, buildXml(indent));
   };
 
   for (const op of ops) {
     switch (op.type) {
       case "moveComponent": {
-        const hit = findInstance(model, op.id);
-        if (!hit) {
+        const cmpNode = findCstElementById(root, text, op.id, CMP_TAGS);
+        if (!cmpNode) {
           errors.push(`Component '${op.id}' not found.`);
           break;
         }
-        writeAttr(hit.inst.element, "x", String(Math.round(op.x)));
-        writeAttr(hit.inst.element, "y", String(Math.round(op.y)));
-        if (op.orient !== undefined) writeAttr(hit.inst.element, "orient", String(op.orient));
+        CstXmlAdapter.setAttribute(tx, cmpNode, "x", String(Math.round(op.x)));
+        CstXmlAdapter.setAttribute(tx, cmpNode, "y", String(Math.round(op.y)));
+        if (op.orient !== undefined) {
+          CstXmlAdapter.setAttribute(tx, cmpNode, "orient", String(op.orient));
+        }
         break;
       }
+
       case "setParameter": {
-        const hit = findInstance(model, op.id);
-        if (!hit) {
+        const cmpNode = findCstElementById(root, text, op.id, CMP_TAGS);
+        if (!cmpNode) {
           errors.push(`Component '${op.id}' not found.`);
           break;
         }
-        const paramlist = childrenNamed(hit.inst.element, "paramlist")[0];
-        const param = paramlist
-          ? childrenNamed(paramlist, "param").find((p) => attr(p, "name") === op.name)
+        const paramlist = findCstChildByTag(cmpNode, text, "paramlist");
+        const existingParam = paramlist
+          ? getCstChildrenByTag(paramlist, text, "param").find(
+              (p) => CstXmlAdapter.getAttribute(p, "name", text, false)?.value === op.name,
+            )
           : undefined;
-        if (param) {
-          writeAttr(param, "value", op.value);
-        } else if (paramlist && !paramlist.selfClosing) {
-          splices.push(
-            appendChildSplice(
-              paramlist,
-              `<param name="${escapeAttr(op.name)}" value="${escapeAttr(op.value)}" />`,
-              text,
-            ),
-          );
+        if (existingParam) {
+          CstXmlAdapter.setAttribute(tx, existingParam, "value", op.value);
         } else if (paramlist) {
-          // Self-closing <paramlist ... />: expand it.
-          const open = text.slice(paramlist.start, paramlist.end).replace(/\s*\/>$/, ">");
-          let s = paramlist.start;
-          while (s > 0 && (text[s - 1] === " " || text[s - 1] === "\t")) s--;
-          const indent = text.slice(s, paramlist.start);
-          splices.push({
-            start: paramlist.start,
-            end: paramlist.end,
-            text: `${open}${eol}${indent}  <param name="${escapeAttr(op.name)}" value="${escapeAttr(op.value)}" />${eol}${indent}</paramlist>`,
-          });
+          // Handles both container `<paramlist>...</paramlist>`, self-closing `<paramlist/>`, and unclosed `<paramlist>`
+          CstXmlAdapter.appendChild(
+            tx,
+            paramlist,
+            `<param name="${escapeAttr(op.name)}" value="${escapeAttr(op.value)}" />`,
+          );
         } else {
+          const cmpIndent = session.lineIndentAt(nodeStartOffset(cmpNode));
           const paramlistXml =
             `<paramlist link="-1" name="" crc="0">${eol}` +
-            `  <param name="${escapeAttr(op.name)}" value="${escapeAttr(op.value)}" />${eol}` +
-            `</paramlist>`;
-          splices.push(appendChildSplice(hit.inst.element, paramlistXml, text));
+            `${cmpIndent}    <param name="${escapeAttr(op.name)}" value="${escapeAttr(op.value)}" />${eol}` +
+            `${cmpIndent}  </paramlist>`;
+          CstXmlAdapter.appendChild(tx, cmpNode, paramlistXml);
         }
         break;
       }
+
       case "removeComponent": {
-        const hit = findInstance(model, op.id);
-        if (!hit) {
+        const cmpNode = findCstElementById(root, text, op.id, CMP_TAGS);
+        if (!cmpNode) {
           errors.push(`Component '${op.id}' not found.`);
           break;
         }
-        if (!removed.has(hit.inst.element.start)) {
-          removed.add(hit.inst.element.start);
-          splices.push(removeElementSplice(hit.inst.element, text));
+        const s = nodeStartOffset(cmpNode);
+        if (!removedStarts.has(s)) {
+          removedStarts.add(s);
+          CstXmlAdapter.deleteElement(tx, cmpNode);
         }
         break;
       }
+
       case "addComponent": {
         const id = newId(used, seed++);
-        if (insertInto(op.definition, (indent) => componentXml(id, op, eol, indent))) createdIds.push(id);
+        if (insertIntoSchematic(op.definition, (indent) => componentXml(id, op, eol, indent))) {
+          createdIds.push(id);
+        }
         break;
       }
+
       case "setWirePoints": {
-        const hit = findWire(model, op.id);
-        if (!hit) {
+        const wireNode = findCstElementById(root, text, op.id, WIRE_BUS_TAGS);
+        if (!wireNode) {
           errors.push(`Wire '${op.id}' not found.`);
           break;
         }
-        if (removed.has(hit.wire.element.start)) break;
-        removed.add(hit.wire.element.start);
-        let s = hit.wire.element.start;
-        while (s > 0 && (text[s - 1] === " " || text[s - 1] === "\t")) s--;
-        const indent = text.slice(s, hit.wire.element.start);
-        // Keep the original classid/name/orient attributes by only replacing geometry attributes + vertices.
-        const el = hit.wire.element;
+        const wStart = nodeStartOffset(wireNode);
+        if (removedStarts.has(wStart)) break;
+        removedStarts.add(wStart);
+
         const xs = op.points.map((p) => Math.round(p.x));
         const ys = op.points.map((p) => Math.round(p.y));
         const x0 = xs[0] ?? 0;
         const y0 = ys[0] ?? 0;
-        const verts = [...childrenNamed(el, "vertex"), ...childrenNamed(el, "Vertex")];
+        const verts = getCstChildrenByTag(wireNode, text, "vertex");
         const first = verts[0];
         const last = verts[verts.length - 1];
+
         if (first && last) {
-          writeAttr(el, "x", String(x0));
-          writeAttr(el, "y", String(y0));
-          writeAttr(el, "w", String(Math.max(...xs) - Math.min(...xs) + 10));
-          writeAttr(el, "h", String(Math.max(...ys) - Math.min(...ys) + 10));
-          const vTag = first.name;
-          const vindent = (() => {
-            let vs = first.start;
-            while (vs > 0 && (text[vs - 1] === " " || text[vs - 1] === "\t")) vs--;
-            return text.slice(vs, first.start);
-          })();
-          splices.push({
-            start: first.start,
-            end: last.end,
-            text: op.points.map((_, i) => `<${vTag} x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`).join(`${eol}${vindent}`),
-          });
-        } else if (op.points.length === 2 && (attr(el, "x2") !== undefined || attr(el, "y2") !== undefined)) {
-          writeAttr(el, "x", String(x0));
-          writeAttr(el, "y", String(y0));
-          writeAttr(el, "x2", String(xs[1] ?? x0));
-          writeAttr(el, "y2", String(ys[1] ?? y0));
-        } else if (el.selfClosing) {
-          const open = text.slice(el.start, el.end).replace(/\s*\/>$/, ">");
-          const vText = op.points
-            .map((_, i) => `${indent}  <vertex x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`)
-            .join(eol);
-          splices.push({
-            start: el.start,
-            end: el.end,
-            text: `${open}${eol}${vText}${eol}${indent}</Wire>`,
-          });
+          CstXmlAdapter.setAttribute(tx, wireNode, "x", String(x0));
+          CstXmlAdapter.setAttribute(tx, wireNode, "y", String(y0));
+          CstXmlAdapter.setAttribute(tx, wireNode, "w", String(Math.max(...xs) - Math.min(...xs) + 10));
+          CstXmlAdapter.setAttribute(tx, wireNode, "h", String(Math.max(...ys) - Math.min(...ys) + 10));
+          const vTag = CstXmlAdapter.getTagName(first, text) ?? "vertex";
+          const vIndent = session.lineIndentAt(nodeStartOffset(first));
+          tx.replaceRange(
+            nodeStartOffset(first),
+            nodeEndOffset(last),
+            op.points.map((_, i) => `<${vTag} x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`).join(`${eol}${vIndent}`),
+          );
+        } else if (
+          op.points.length === 2 &&
+          (CstXmlAdapter.getAttribute(wireNode, "x2", text) !== undefined ||
+            CstXmlAdapter.getAttribute(wireNode, "y2", text) !== undefined)
+        ) {
+          CstXmlAdapter.setAttribute(tx, wireNode, "x", String(x0));
+          CstXmlAdapter.setAttribute(tx, wireNode, "y", String(y0));
+          CstXmlAdapter.setAttribute(tx, wireNode, "x2", String(xs[1] ?? x0));
+          CstXmlAdapter.setAttribute(tx, wireNode, "y2", String(ys[1] ?? y0));
         } else {
-          writeAttr(el, "x", String(x0));
-          writeAttr(el, "y", String(y0));
-          writeAttr(el, "w", String(Math.max(...xs) - Math.min(...xs) + 10));
-          writeAttr(el, "h", String(Math.max(...ys) - Math.min(...ys) + 10));
+          const indent = session.lineIndentAt(wStart);
+          CstXmlAdapter.setAttribute(tx, wireNode, "x", String(x0));
+          CstXmlAdapter.setAttribute(tx, wireNode, "y", String(y0));
+          CstXmlAdapter.setAttribute(tx, wireNode, "w", String(Math.max(...xs) - Math.min(...xs) + 10));
+          CstXmlAdapter.setAttribute(tx, wireNode, "h", String(Math.max(...ys) - Math.min(...ys) + 10));
           const vText = op.points
-            .map((_, i) => `${indent}  <vertex x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`)
-            .join(eol);
-          const closeIdx = text.lastIndexOf("</", el.end);
-          if (closeIdx > el.start) {
-            const openTagEnd = text.indexOf(">", el.start);
-            if (openTagEnd !== -1 && openTagEnd < closeIdx) {
-              splices.push({
-                start: openTagEnd + 1,
-                end: closeIdx,
-                text: `${eol}${vText}${eol}${indent}`,
-              });
-              break;
-            }
-          }
-          errors.push(`Wire '${op.id}' has no vertices to replace.`);
+            .map((_, i) => `<vertex x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`)
+            .join(`${eol}${indent}  `);
+          CstXmlAdapter.appendChild(tx, wireNode, vText);
         }
         break;
       }
+
       case "addWire": {
         const id = newId(used, seed++);
-        if (insertInto(op.definition, (indent) => wireXml(id, op.points, eol, indent))) createdIds.push(id);
+        if (insertIntoSchematic(op.definition, (indent) => wireXml(id, op.points, eol, indent))) {
+          createdIds.push(id);
+        }
         break;
       }
+
       case "addBus": {
         const id = newId(used, seed++);
         const busName = op.name || `Bus_${id}`;
@@ -567,169 +623,183 @@ export function planPscadEdits(
         const bx = Math.round(op.x);
         const by = Math.round(op.y);
         const kv = op.baseKV ?? "230.0";
-        const snippet = (indent: string) =>
-          `${indent}<Bus id="${id}" name="${busName}" x="${bx}" y="${by}" w="${bw}" h="${bh}" BaseKV="${kv}">` +
+        const buildBus = (indent: string) =>
+          `<Bus id="${id}" name="${escapeAttr(busName)}" x="${bx}" y="${by}" w="${bw}" h="${bh}" BaseKV="${escapeAttr(kv)}">` +
           `${eol}${indent}  <paramlist>` +
-          `${eol}${indent}    <param name="Name" value="${busName}"/>` +
-          `${eol}${indent}    <param name="BaseKV" value="${kv}"/>` +
+          `${eol}${indent}    <param name="Name" value="${escapeAttr(busName)}"/>` +
+          `${eol}${indent}    <param name="BaseKV" value="${escapeAttr(kv)}"/>` +
           `${eol}${indent}  </paramlist>` +
           `${eol}${indent}</Bus>`;
-        if (insertInto(op.definition, snippet)) createdIds.push(id);
+        if (insertIntoSchematic(op.definition, buildBus)) {
+          createdIds.push(id);
+        }
         break;
       }
+
       case "removeWire": {
-        const hit = findWire(model, op.id);
-        const wireEl = hit?.wire.element ?? findElementById(model.root, op.id, new Set(["Bus", "Wire"]));
-        if (!wireEl) {
+        const wireNode = findCstElementById(root, text, op.id, WIRE_BUS_TAGS);
+        if (!wireNode) {
           errors.push(`Wire '${op.id}' not found.`);
           break;
         }
-        if (!removed.has(wireEl.start)) {
-          removed.add(wireEl.start);
-          splices.push(removeElementSplice(wireEl, text));
+        const s = nodeStartOffset(wireNode);
+        if (!removedStarts.has(s)) {
+          removedStarts.add(s);
+          CstXmlAdapter.deleteElement(tx, wireNode);
         }
         break;
       }
+
       case "toggleDisable": {
-        const hit = findInstance(model, op.id);
-        if (!hit) {
+        const cmpNode = findCstElementById(root, text, op.id, CMP_TAGS);
+        if (!cmpNode) {
           errors.push(`Component '${op.id}' not found.`);
           break;
         }
-        const current = attr(hit.inst.element, "disable") === "true";
+        const current = CstXmlAdapter.getAttribute(cmpNode, "disable", text)?.value === "true";
         const target = op.disabled !== undefined ? op.disabled : !current;
-        writeAttr(hit.inst.element, "disable", target ? "true" : "false");
+        CstXmlAdapter.setAttribute(tx, cmpNode, "disable", target ? "true" : "false");
         break;
       }
+
       case "resizeBus": {
-        const busEl = findElementById(model.root, op.id, new Set(["Bus", "Wire"]));
-        if (!busEl) {
+        const busNode = findCstElementById(root, text, op.id, WIRE_BUS_TAGS);
+        if (!busNode) {
           errors.push(`Bus '${op.id}' not found.`);
           break;
         }
-        if (op.x !== undefined) writeAttr(busEl, "x", String(Math.round(op.x)));
-        if (op.y !== undefined) writeAttr(busEl, "y", String(Math.round(op.y)));
-        if (op.w !== undefined) writeAttr(busEl, "w", String(Math.round(op.w)));
-        if (op.h !== undefined) writeAttr(busEl, "h", String(Math.round(op.h)));
+        if (op.x !== undefined) CstXmlAdapter.setAttribute(tx, busNode, "x", String(Math.round(op.x)));
+        if (op.y !== undefined) CstXmlAdapter.setAttribute(tx, busNode, "y", String(Math.round(op.y)));
+        if (op.w !== undefined) CstXmlAdapter.setAttribute(tx, busNode, "w", String(Math.round(op.w)));
+        if (op.h !== undefined) CstXmlAdapter.setAttribute(tx, busNode, "h", String(Math.round(op.h)));
         if (op.name !== undefined) {
-          writeAttr(busEl, "name", op.name);
-          const paramlist = childrenNamed(busEl, "paramlist")[0];
+          CstXmlAdapter.setAttribute(tx, busNode, "name", op.name);
+          const paramlist = findCstChildByTag(busNode, text, "paramlist");
           const nameParam = paramlist
-            ? childrenNamed(paramlist, "param").find((p) => {
-                const n = attr(p, "name");
+            ? getCstChildrenByTag(paramlist, text, "param").find((p) => {
+                const n = CstXmlAdapter.getAttribute(p, "name", text)?.value;
                 return n === "Name" || n === "name";
               })
             : undefined;
-          if (nameParam) writeAttr(nameParam, "value", op.name);
+          if (nameParam) CstXmlAdapter.setAttribute(tx, nameParam, "value", op.name);
         }
         if (op.baseKV !== undefined) {
-          const paramlist = childrenNamed(busEl, "paramlist")[0];
+          const paramlist = findCstChildByTag(busNode, text, "paramlist");
           const kvParam = paramlist
-            ? childrenNamed(paramlist, "param").find((p) => {
-                const n = attr(p, "name");
+            ? getCstChildrenByTag(paramlist, text, "param").find((p) => {
+                const n = CstXmlAdapter.getAttribute(p, "name", text)?.value;
                 return n === "BaseKV" || n === "Vbase" || n === "Vm";
               })
             : undefined;
-          if (kvParam) writeAttr(kvParam, "value", op.baseKV);
-          else writeAttr(busEl, "vbase", op.baseKV);
+          if (kvParam) CstXmlAdapter.setAttribute(tx, kvParam, "value", op.baseKV);
+          else CstXmlAdapter.setAttribute(tx, busNode, "vbase", op.baseKV);
         }
         if (op.points && op.points.length >= 2) {
-          const verts = [...childrenNamed(busEl, "vertex"), ...childrenNamed(busEl, "Vertex")];
+          const verts = getCstChildrenByTag(busNode, text, "vertex");
           const first = verts[0];
           const last = verts[verts.length - 1];
           const xs = op.points.map((p) => Math.round(p.x));
           const ys = op.points.map((p) => Math.round(p.y));
           const x0 = xs[0] ?? 0;
           const y0 = ys[0] ?? 0;
-          writeAttr(busEl, "x", String(x0));
-          writeAttr(busEl, "y", String(y0));
+          CstXmlAdapter.setAttribute(tx, busNode, "x", String(x0));
+          CstXmlAdapter.setAttribute(tx, busNode, "y", String(y0));
           if (first && last) {
-            const vTag = first.name;
-            let vs = first.start;
-            while (vs > 0 && (text[vs - 1] === " " || text[vs - 1] === "\t")) vs--;
-            const vindent = text.slice(vs, first.start);
-            splices.push({
-              start: first.start,
-              end: last.end,
-              text: op.points
-                .map((_, i) => `<${vTag} x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`)
-                .join(`${eol}${vindent}`),
-            });
+            const vTag = CstXmlAdapter.getTagName(first, text) ?? "vertex";
+            const vIndent = session.lineIndentAt(nodeStartOffset(first));
+            tx.replaceRange(
+              nodeStartOffset(first),
+              nodeEndOffset(last),
+              op.points.map((_, i) => `<${vTag} x="${xs[i]! - x0}" y="${ys[i]! - y0}" />`).join(`${eol}${vIndent}`),
+            );
           }
         } else if (op.w !== undefined || op.h !== undefined) {
-          const verts = [...childrenNamed(busEl, "vertex"), ...childrenNamed(busEl, "Vertex")];
+          const verts = getCstChildrenByTag(busNode, text, "vertex");
           if (verts.length >= 2) {
             const last = verts[verts.length - 1]!;
             const isVertical = (op.h ?? 0) >= (op.w ?? 0);
             if (isVertical && op.h !== undefined) {
-              writeAttr(last, "y", String(Math.round(op.h)));
+              CstXmlAdapter.setAttribute(tx, last, "y", String(Math.round(op.h)));
             } else if (!isVertical && op.w !== undefined) {
-              writeAttr(last, "x", String(Math.round(op.w)));
+              CstXmlAdapter.setAttribute(tx, last, "x", String(Math.round(op.w)));
             }
           }
         }
         break;
       }
+
       case "editSticky": {
-        const stickyEl = findElementById(model.root, op.id, new Set(["Sticky"]));
-        if (!stickyEl) {
+        const stickyNode = findCstElementById(root, text, op.id, STICKY_TAGS);
+        if (!stickyNode) {
           errors.push(`Sticky '${op.id}' not found.`);
           break;
         }
-        if (op.x !== undefined) writeAttr(stickyEl, "x", String(Math.round(op.x)));
-        if (op.y !== undefined) writeAttr(stickyEl, "y", String(Math.round(op.y)));
-        if (op.w !== undefined) writeAttr(stickyEl, "w", String(Math.round(op.w)));
-        if (op.h !== undefined) writeAttr(stickyEl, "h", String(Math.round(op.h)));
+        if (op.x !== undefined) CstXmlAdapter.setAttribute(tx, stickyNode, "x", String(Math.round(op.x)));
+        if (op.y !== undefined) CstXmlAdapter.setAttribute(tx, stickyNode, "y", String(Math.round(op.y)));
+        if (op.w !== undefined) CstXmlAdapter.setAttribute(tx, stickyNode, "w", String(Math.round(op.w)));
+        if (op.h !== undefined) CstXmlAdapter.setAttribute(tx, stickyNode, "h", String(Math.round(op.h)));
         if (op.text !== undefined) {
-          const rawSlice = text.slice(stickyEl.start, stickyEl.end);
-          const cdataMatch = /<!\[CDATA\[([\s\S]*?)\]\]>/.exec(rawSlice);
           const safeText = op.text.replace(/]]>/g, "]]]]><![CDATA[>");
-          if (cdataMatch && cdataMatch.index !== undefined) {
-            const cStart = stickyEl.start + cdataMatch.index;
-            const cEnd = cStart + cdataMatch[0].length;
-            splices.push({
-              start: cStart,
-              end: cEnd,
-              text: `<![CDATA[${safeText}]]>`,
-            });
-          } else if (!stickyEl.selfClosing) {
-            const closeIdx = rawSlice.lastIndexOf("</Sticky>");
-            if (closeIdx > 0) {
-              const openEnd = rawSlice.indexOf(">") + 1;
-              const paramlist = childrenNamed(stickyEl, "paramlist")[0];
-              const bodyStart = paramlist ? paramlist.end : stickyEl.start + openEnd;
-              const bodyEnd = stickyEl.start + closeIdx;
-              splices.push({
-                start: bodyStart,
-                end: bodyEnd,
-                text: `<![CDATA[${safeText}]]>`,
-              });
+          let cdataNode: SyntaxNode | null = null;
+          walkHealthyCst(stickyNode, (n) => {
+            if (cdataNode) return false;
+            if (n.type === "CData") {
+              cdataNode = n;
+              return false;
+            }
+            return undefined;
+          });
+          if (cdataNode) {
+            tx.replaceNode(cdataNode, `<![CDATA[${safeText}]]>`);
+          } else {
+            const sStart = nodeStartOffset(stickyNode);
+            const sEnd = nodeEndOffset(stickyNode);
+            const slice = text.slice(sStart, sEnd);
+            const cdataMatch = /<!\[CDATA\[([\s\S]*?)\]\]>/.exec(slice);
+            if (cdataMatch && cdataMatch.index !== undefined) {
+              tx.replaceRange(
+                sStart + cdataMatch.index,
+                sStart + cdataMatch.index + cdataMatch[0].length,
+                `<![CDATA[${safeText}]]>`,
+              );
+            } else {
+              CstXmlAdapter.appendChild(tx, stickyNode, `<![CDATA[${safeText}]]>`);
             }
           }
         }
         break;
       }
+
       case "addSticky": {
         const id = newId(used, seed++);
-        if (insertInto(op.definition, (indent) => stickyXml(id, op, eol, indent))) createdIds.push(id);
+        if (insertIntoSchematic(op.definition, (indent) => stickyXml(id, op, eol, indent))) {
+          createdIds.push(id);
+        }
         break;
       }
+
       case "renameNet": {
         const targetDefs = op.definition
-          ? [model.definitions.get(op.definition)].filter((d): d is ModelDefinition => Boolean(d))
-          : [...model.definitions.values()];
+          ? [findDefinitionNode(root, text, op.definition)].filter((d): d is SyntaxNode => Boolean(d))
+          : CstXmlAdapter.findElements(root, text, (_n, tag) => tag.toLowerCase() === "definition");
         let count = 0;
-        for (const d of targetDefs) {
-          for (const inst of d.instances) {
-            const isNetEndpoint = /datalabel|xnode|pgb|pin|port/i.test(inst.defnName);
-            if (!isNetEndpoint) continue;
-            const paramlist = childrenNamed(inst.element, "paramlist")[0];
-            const searchEls = paramlist ? childrenNamed(paramlist, "param") : childrenNamed(inst.element, "param");
+        for (const defNode of targetDefs) {
+          const cmps = CstXmlAdapter.findElements(defNode, text, (_n, tag) => CMP_TAGS.has(tag.toLowerCase()));
+          for (const cmpNode of cmps) {
+            const defnName =
+              CstXmlAdapter.getAttribute(cmpNode, "defn", text)?.value ??
+              CstXmlAdapter.getAttribute(cmpNode, "name", text)?.value ??
+              "";
+            if (!/datalabel|xnode|pgb|pin|port/i.test(defnName)) continue;
+            const paramlist = findCstChildByTag(cmpNode, text, "paramlist");
+            const searchEls = paramlist
+              ? getCstChildrenByTag(paramlist, text, "param")
+              : getCstChildrenByTag(cmpNode, text, "param");
             for (const p of searchEls) {
-              const pName = attr(p, "name");
-              const pVal = attr(p, "value") ?? p.text.trim();
+              const pName = CstXmlAdapter.getAttribute(p, "name", text)?.value;
+              const pVal = CstXmlAdapter.getAttribute(p, "value", text)?.value;
               if ((pName === "Name" || pName === "name") && pVal === op.oldName) {
-                writeAttr(p, "value", op.newName);
+                CstXmlAdapter.setAttribute(tx, p, "value", op.newName);
                 count++;
               }
             }
@@ -740,34 +810,37 @@ export function planPscadEdits(
         }
         break;
       }
+
       case "copySelection": {
         const dx = Math.round(op.dx ?? 36);
         const dy = Math.round(op.dy ?? 36);
         let cloned = 0;
         for (const rawId of op.ids) {
-          const el =
-            findElementById(model.root, rawId, new Set(["User", "Component", "Wire", "Bus", "Sticky"])) ??
-            findInstance(model, rawId)?.inst.element;
-          if (!el) {
+          const elNode = findCstElementById(root, text, rawId, CLONE_TAGS);
+          if (!elNode) {
             errors.push(`Selection element '${rawId}' not found.`);
             continue;
           }
           const nid = newId(used, seed++);
-          const oldX = Number(attr(el, "x") ?? "0");
-          const oldY = Number(attr(el, "y") ?? "0");
-          const ownerDef =
-            op.targetDefinition ??
-            (() => {
-              let p = el.parent;
-              while (p && p.name.toLowerCase() !== "definition") p = p.parent;
-              return p ? attr(p, "name") : undefined;
-            })();
-          const rawSlice = text.slice(el.start, el.end);
-          const shiftedSlice = rawSlice
-            .replace(/\bid\s*=\s*"([^"]*)"/i, `id="${nid}"`)
-            .replace(/\bx\s*=\s*"(-?\d+(?:\.\d+)?)"/i, `x="${Math.round(oldX + dx)}"`)
-            .replace(/\by\s*=\s*"(-?\d+(?:\.\d+)?)"/i, `y="${Math.round(oldY + dy)}"`);
-          if (insertInto(ownerDef, () => shiftedSlice)) {
+          const oldX = Number(CstXmlAdapter.getAttribute(elNode, "x", text)?.value ?? "0");
+          const oldY = Number(CstXmlAdapter.getAttribute(elNode, "y", text)?.value ?? "0");
+          const ownerDef = op.targetDefinition ?? findOwnerDefinitionName(elNode, text);
+
+          // Clone via a mini CST transaction (zero regex rewriting — preserves single quotes and nested attributes!)
+          const rawSlice = text.slice(nodeStartOffset(elNode), nodeEndOffset(elNode));
+          const cloneSession = createPscadCstSession(rawSlice, "file:///clone.pscx");
+          const cloneRoot = findRootXmlElement(cloneSession.rootNode, rawSlice);
+          let shiftedSlice = rawSlice;
+          if (cloneRoot) {
+            const cloneTx = new CstTransaction(cloneSession);
+            CstXmlAdapter.setAttribute(cloneTx, cloneRoot, "id", nid);
+            CstXmlAdapter.setAttribute(cloneTx, cloneRoot, "x", String(Math.round(oldX + dx)));
+            CstXmlAdapter.setAttribute(cloneTx, cloneRoot, "y", String(Math.round(oldY + dy)));
+            shiftedSlice = cloneTx.commit().applyToString(rawSlice);
+          }
+          cloneSession.dispose();
+
+          if (insertIntoSchematic(ownerDef, () => shiftedSlice)) {
             createdIds.push(nid);
             cloned++;
           }
@@ -777,147 +850,182 @@ export function planPscadEdits(
         }
         break;
       }
+
       case "syncSubmodulePorts": {
-        const cleanTarget = op.definition.includes(":") ? op.definition.split(":").pop()! : op.definition;
-        const targetDef = model.definitions.get(op.definition) ?? model.definitions.get(cleanTarget);
+        const targetDef = findDefinitionNode(root, text, op.definition);
         if (!targetDef) {
           errors.push(`Submodule definition '${op.definition}' not found.`);
           break;
         }
-        const sch = schematicOf(targetDef);
-        const gfx =
-          childrenNamed(targetDef.element, "graphics")[0] ??
-          childrenNamed(targetDef.element, "Graphics")[0] ??
-          childrenNamed(targetDef.element, "graphic")[0] ??
-          childrenNamed(targetDef.element, "svg")[0];
+        const sch = findCstChildByTag(targetDef, text, "schematic");
+        const gfx = findCstChildByTag(targetDef, text, "graphics", "graphic", "svg");
         if (!sch || !gfx) {
           errors.push(`Submodule '${op.definition}' lacks schematic or graphic section.`);
           break;
         }
-        // Collect boundary pins/xnodes inside the submodule schematic
         const desiredPorts: { name: string; x: number; y: number; dim: string; mode: string }[] = [];
-        for (const inst of targetDef.instances) {
-          const shortDef = (
-            inst.defnName.includes(":") ? inst.defnName.split(":").pop()! : inst.defnName
-          ).toLowerCase();
+        for (const cmpNode of CstXmlAdapter.findElements(sch, text, (_n, tag) => CMP_TAGS.has(tag.toLowerCase()))) {
+          const defnAttr = CstXmlAdapter.getAttribute(cmpNode, "defn", text)?.value ?? "";
+          const shortDef = (defnAttr.includes(":") ? defnAttr.split(":").pop()! : defnAttr).toLowerCase();
           if (shortDef !== "xnode" && shortDef !== "pin" && shortDef !== "import" && shortDef !== "export") continue;
-          const pName = (inst.params.get("Name") ?? inst.params.get("name") ?? attr(inst.element, "name") ?? "").trim();
+          const paramlist = findCstChildByTag(cmpNode, text, "paramlist");
+          const params = paramlist ? getCstChildrenByTag(paramlist, text, "param") : [];
+          const getParam = (k: string) =>
+            params.find(
+              (p) => (CstXmlAdapter.getAttribute(p, "name", text)?.value ?? "").toLowerCase() === k.toLowerCase(),
+            );
+          const pName = (
+            (getParam("Name") ? CstXmlAdapter.getAttribute(getParam("Name")!, "value", text)?.value : undefined) ??
+            CstXmlAdapter.getAttribute(cmpNode, "name", text)?.value ??
+            ""
+          ).trim();
           if (!pName) continue;
-          const dim = inst.params.get("Dim") ?? inst.params.get("dim") ?? "1";
+          const dim =
+            (getParam("Dim") ? CstXmlAdapter.getAttribute(getParam("Dim")!, "value", text)?.value : undefined) ?? "1";
           const mode = shortDef === "export" ? "Out" : shortDef === "import" ? "In" : "Electrical";
           desiredPorts.push({ name: pName, x: -54, y: desiredPorts.length * 18, dim, mode });
         }
-        const existingPorts = childrenNamed(gfx, "port");
-        const existingByName = new Map(existingPorts.map((p) => [(attr(p, "name") ?? "").trim().toLowerCase(), p]));
+        const existingPorts = getCstChildrenByTag(gfx, text, "port");
+        const existingByName = new Map(
+          existingPorts.map((p) => [
+            (CstXmlAdapter.getAttribute(p, "name", text)?.value ?? "").trim().toLowerCase(),
+            p,
+          ]),
+        );
         const desiredNames = new Set(desiredPorts.map((d) => d.name.toLowerCase()));
         for (const ep of existingPorts) {
-          const nm = (attr(ep, "name") ?? "").trim().toLowerCase();
-          if (nm && !desiredNames.has(nm) && !removed.has(ep.start)) {
-            removed.add(ep.start);
-            splices.push(removeElementSplice(ep, text));
+          const nm = (CstXmlAdapter.getAttribute(ep, "name", text)?.value ?? "").trim().toLowerCase();
+          const s = nodeStartOffset(ep);
+          if (nm && !desiredNames.has(nm) && !removedStarts.has(s)) {
+            removedStarts.add(s);
+            CstXmlAdapter.deleteElement(tx, ep);
           }
         }
         for (const dp of desiredPorts) {
           const existing = existingByName.get(dp.name.toLowerCase());
           if (!existing) {
             const portXml = `<port name="${escapeAttr(dp.name)}" x="${dp.x}" y="${dp.y}" dim="${escapeAttr(dp.dim)}" mode="${escapeAttr(dp.mode)}" type="" />`;
-            splices.push(appendChildSplice(gfx, portXml, text));
+            CstXmlAdapter.appendChild(tx, gfx, portXml);
           } else {
-            writeAttr(existing, "dim", dp.dim);
-            writeAttr(existing, "mode", dp.mode);
+            CstXmlAdapter.setAttribute(tx, existing, "dim", dp.dim);
+            CstXmlAdapter.setAttribute(tx, existing, "mode", dp.mode);
           }
         }
         break;
       }
+
       case "setScriptSegment": {
-        const cleanTarget = op.definition.includes(":") ? op.definition.split(":").pop()! : op.definition;
-        const targetDef = model.definitions.get(op.definition) ?? model.definitions.get(cleanTarget);
+        const targetDef = findDefinitionNode(root, text, op.definition);
         if (!targetDef) {
           errors.push(`Definition '${op.definition}' not found.`);
           break;
         }
         const safeCode = op.code.replace(/]]>/g, "]]]]><![CDATA[>");
-        const scriptEl = childrenNamed(targetDef.element, "script")[0];
+        const scriptEl = findCstChildByTag(targetDef, text, "script");
         if (!scriptEl) {
           const scriptXml = `<script>${eol}  <segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>${eol}</script>`;
-          splices.push(appendChildSplice(targetDef.element, scriptXml, text));
+          CstXmlAdapter.appendChild(tx, targetDef, scriptXml);
           break;
         }
-        const segEl = childrenNamed(scriptEl, "segment").find(
-          (s) => (attr(s, "name") ?? "").toLowerCase() === op.segment.toLowerCase(),
+        const segEl = getCstChildrenByTag(scriptEl, text, "segment").find(
+          (s) => (CstXmlAdapter.getAttribute(s, "name", text)?.value ?? "").toLowerCase() === op.segment.toLowerCase(),
         );
         if (!segEl) {
           const segXml = `<segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>`;
-          splices.push(appendChildSplice(scriptEl, segXml, text));
+          CstXmlAdapter.appendChild(tx, scriptEl, segXml);
           break;
         }
-        if (segEl.end > segEl.openEnd && !segEl.selfClosing) {
-          const closeIdx = text.lastIndexOf("</segment>", segEl.end);
-          if (closeIdx >= segEl.openEnd) {
-            splices.push({
-              start: segEl.openEnd,
-              end: closeIdx,
-              text: `<![CDATA[${safeCode}]]>`,
-            });
+        if (CstXmlAdapter.isSelfClosing(segEl, text)) {
+          tx.replaceNode(segEl, `<segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>`);
+        } else {
+          let cdataNode: SyntaxNode | null = null;
+          walkHealthyCst(segEl, (n) => {
+            if (cdataNode) return false;
+            if (n.type === "CData") {
+              cdataNode = n;
+              return false;
+            }
+            return undefined;
+          });
+          if (cdataNode) {
+            tx.replaceNode(cdataNode, `<![CDATA[${safeCode}]]>`);
+          } else {
+            // Replace inner body between open and close tag via CST
+            const open = typeof segEl.childForFieldName === "function" ? segEl.childForFieldName("open") : null;
+            const close = typeof segEl.childForFieldName === "function" ? segEl.childForFieldName("endName") : null;
+            if (open && close) {
+              tx.replaceRange(nodeEndOffset(open), nodeStartOffset(close), `<![CDATA[${safeCode}]]>`);
+            } else {
+              tx.replaceNode(segEl, `<segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>`);
+            }
           }
-        } else {
-          splices.push({
-            start: segEl.start,
-            end: segEl.end,
-            text: `<segment name="${escapeAttr(op.segment)}"><![CDATA[${safeCode}]]></segment>`,
-          });
         }
         break;
       }
+
       case "addDefinition": {
-        const defsEl = childrenNamed(model.root, "definitions")[0] ?? model.root;
-        splices.push(appendChildSplice(defsEl, buildDefinitionXml(op, eol), text));
+        const rootEl = findRootXmlElement(root, text);
+        const defsEl = (rootEl ? findCstChildByTag(rootEl, text, "definitions") : null) ?? rootEl;
+        if (!defsEl) {
+          errors.push("No <definitions> or root element found.");
+          break;
+        }
+        CstXmlAdapter.appendChild(tx, defsEl, buildDefinitionXml(op, eol));
         break;
       }
+
       case "updateDefinition": {
-        const defsEl = childrenNamed(model.root, "definitions")[0] ?? model.root;
+        const rootEl = findRootXmlElement(root, text);
+        const defsEl = (rootEl ? findCstChildByTag(rootEl, text, "definitions") : null) ?? rootEl;
+        if (!defsEl) {
+          errors.push("No <definitions> or root element found.");
+          break;
+        }
         const targetLower = op.name.trim().toLowerCase();
-        const candidates = [...childrenNamed(defsEl, "Definition"), ...childrenNamed(defsEl, "definition")];
-        const existingDef = candidates.find((el) => (attr(el, "name") ?? "").trim().toLowerCase() === targetLower);
+        const existingDef = getCstChildrenByTag(defsEl, text, "definition").find(
+          (el) => (CstXmlAdapter.getAttribute(el, "name", text)?.value ?? "").trim().toLowerCase() === targetLower,
+        );
         if (existingDef) {
-          const extraSch = childrenNamed(existingDef, "schematic")
-            .map((sc) => text.slice(sc.start, sc.end))
+          const extraSch = getCstChildrenByTag(existingDef, text, "schematic")
+            .map((sc) => text.slice(nodeStartOffset(sc), nodeEndOffset(sc)))
             .join(eol);
-          splices.push({
-            start: existingDef.start,
-            end: existingDef.end,
-            text: buildDefinitionXml(op, eol, extraSch ? `  ${extraSch}` : ""),
-          });
+          tx.replaceNode(existingDef, buildDefinitionXml(op, eol, extraSch ? `  ${extraSch}` : ""));
         } else {
-          splices.push(appendChildSplice(defsEl, buildDefinitionXml(op, eol), text));
+          CstXmlAdapter.appendChild(tx, defsEl, buildDefinitionXml(op, eol));
         }
         break;
       }
+
       case "setProjectSettings": {
-        const paramlists = childrenNamed(model.root, "paramlist");
+        const rootEl = findRootXmlElement(root, text);
+        if (!rootEl) {
+          errors.push("No root element found.");
+          break;
+        }
+        const paramlists = getCstChildrenByTag(rootEl, text, "paramlist");
         const settingsList =
-          paramlists.find((p) => (attr(p, "name") ?? "").toLowerCase() === "settings") ?? paramlists[0];
+          paramlists.find(
+            (p) => (CstXmlAdapter.getAttribute(p, "name", text)?.value ?? "").toLowerCase() === "settings",
+          ) ?? paramlists[0];
         if (!settingsList) {
           const entries = Object.entries(op.settings)
             .map(([k, v]) => `    <param name="${escapeAttr(k)}" value="${escapeAttr(String(v))}"/>`)
             .join(eol);
-          splices.push(
-            appendChildSplice(model.root, `<paramlist name="Settings">${eol}${entries}${eol}</paramlist>`, text),
-          );
+          CstXmlAdapter.appendChild(tx, rootEl, `<paramlist name="Settings">${eol}${entries}${eol}</paramlist>`);
           break;
         }
-        const existingParams = childrenNamed(settingsList, "param");
+        const existingParams = getCstChildrenByTag(settingsList, text, "param");
         for (const [k, v] of Object.entries(op.settings)) {
-          const hit = existingParams.find((p) => (attr(p, "name") ?? "").toLowerCase() === k.toLowerCase());
+          const hit = existingParams.find(
+            (p) => (CstXmlAdapter.getAttribute(p, "name", text)?.value ?? "").toLowerCase() === k.toLowerCase(),
+          );
           if (hit) {
-            writeAttr(hit, "value", String(v));
+            CstXmlAdapter.setAttribute(tx, hit, "value", String(v));
           } else {
-            splices.push(
-              appendChildSplice(
-                settingsList,
-                `<param name="${escapeAttr(k)}" value="${escapeAttr(String(v))}"/>`,
-                text,
-              ),
+            CstXmlAdapter.appendChild(
+              tx,
+              settingsList,
+              `<param name="${escapeAttr(k)}" value="${escapeAttr(String(v))}"/>`,
             );
           }
         }
@@ -926,31 +1034,24 @@ export function planPscadEdits(
     }
   }
 
-  // Drop attribute writes that fall inside removed elements.
-  const inRemoved = (s: Splice) =>
-    splices.some((r) => r.text === "" && r.start <= s.start && s.end <= r.end && r !== s);
-  for (const s of attrWrites.values()) if (!inRemoved(s)) splices.push(s);
+  const committed = tx.commit();
+  const splices: Splice[] = committed.byteEdits.map((b) => ({ start: b.start, end: b.end, text: b.text }));
+  return {
+    text: committed.applyToString(text),
+    splices,
+    edits: committed.edits,
+    createdIds,
+    errors,
+  };
+}
 
-  // Merge coincident zero-length insertions (e.g. multiple new attributes added to a bare <Wire>)
-  // so downstream LSP/VS Code TextEdit application never sees overlapping inserts at the same offset.
-  const mergedSplices: Splice[] = [];
-  const insertAt = new Map<number, Splice>();
-  for (const s of splices) {
-    if (s.start === s.end) {
-      const existing = insertAt.get(s.start);
-      if (existing) {
-        existing.text += s.text;
-        continue;
-      }
-      const copy: Splice = { ...s };
-      insertAt.set(s.start, copy);
-      mergedSplices.push(copy);
-    } else {
-      mergedSplices.push(s);
-    }
+export function planPscadEdits(text: string, ops: PscadEditOp[], external?: ExternalDefinitions): PscadEditResult {
+  const session = createPscadCstSession(text);
+  try {
+    return planPscadEditsOnSession(session, ops, external);
+  } finally {
+    session.dispose();
   }
-
-  return { text: applySplices(text, mergedSplices), splices: mergedSplices, createdIds, errors };
 }
 
 /** Converts offset splices to LSP-style text edits (0-based line/character). */

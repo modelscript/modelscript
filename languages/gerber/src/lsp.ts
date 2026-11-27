@@ -5,6 +5,9 @@
  * diagnostics, document symbols, hover documentation, and completions.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { unitToMm } from "./cad/geometry.js";
 import { lintGerber, type GerberLintOptions } from "./lints/index.js";
 import { parseGerber } from "./parser/gerber-parser.js";
@@ -100,6 +103,60 @@ const GERBER_COMMAND_DOCS: Record<string, string> = {
   TA: "**%TA** — Gerber X2 Aperture Attribute.",
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface GerberCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildGerberCstIndex(content: string): GerberCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("gerber", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates a Gerber RS-274-D / RS-274X file and returns LSP diagnostics.
  */
@@ -111,13 +168,13 @@ export function validateGerber(
   try {
     const doc = parseGerber(content, uri);
     const diags = lintGerber(doc, options);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildGerberCstIndex(content);
 
     return diags.map((d) => {
       const lineIdx = d.line ? Math.max(0, d.line - 1) : 0;
-      const lineText = lines[lineIdx] ?? "";
-      const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-      const endChar = Math.max(startChar + 1, lineText.length);
+      const entry = cstIndex.byRow.get(lineIdx);
+      const startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+      const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
       return {
         range: {
           start: { line: lineIdx, character: startChar },
@@ -147,18 +204,17 @@ export function validateGerber(
  */
 export function getGerberDocumentSymbols(content: string, uri: string = "layer.gbr"): LspDocumentSymbol[] {
   const doc = parseGerber(content, uri);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
-  const lastChar = (lines[lastLine] ?? "").length;
+  const cstIndex = buildGerberCstIndex(content);
   const children: LspDocumentSymbol[] = [];
   const unit = doc.unit ?? "MM";
 
   if (doc.formatSpec) {
     const fs = doc.formatSpec;
     const lineIdx = Math.max(0, fs.line - 1);
+    const entry = cstIndex.byRow.get(lineIdx);
     const range: LspRange = {
       start: { line: lineIdx, character: Math.max(0, fs.column - 1) },
-      end: { line: lineIdx, character: (lines[lineIdx] ?? "").length },
+      end: { line: lineIdx, character: entry?.endCol ?? 0 },
     };
     children.push({
       name: `Format ${fs.zeroOmission}${fs.coordNotation} X${fs.xInteger}.${fs.xDecimal} Y${fs.yInteger}.${fs.yDecimal}`,
@@ -171,9 +227,10 @@ export function getGerberDocumentSymbols(content: string, uri: string = "layer.g
 
   for (const [dCode, ap] of doc.apertures) {
     const lineIdx = Math.max(0, ap.line - 1);
+    const entry = cstIndex.byRow.get(lineIdx);
     const range: LspRange = {
       start: { line: lineIdx, character: Math.max(0, ap.column - 1) },
-      end: { line: lineIdx, character: (lines[lineIdx] ?? "").length },
+      end: { line: lineIdx, character: entry?.endCol ?? 0 },
     };
     const wMm = unitToMm(ap.width, unit).toFixed(3);
     const detail =
@@ -195,9 +252,10 @@ export function getGerberDocumentSymbols(content: string, uri: string = "layer.g
 
   for (const [macroName, macro] of doc.macros) {
     const lineIdx = Math.max(0, macro.line - 1);
+    const entry = cstIndex.byRow.get(lineIdx);
     const range: LspRange = {
       start: { line: lineIdx, character: Math.max(0, macro.column - 1) },
-      end: { line: lineIdx, character: (lines[lineIdx] ?? "").length },
+      end: { line: lineIdx, character: entry?.endCol ?? 0 },
     };
     children.push({
       name: macroName,
@@ -209,8 +267,8 @@ export function getGerberDocumentSymbols(content: string, uri: string = "layer.g
   }
 
   const rootRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: lastLine, character: lastChar },
+    start: { line: 0, character: cstIndex.byRow.get(0)?.startCol ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   return [
@@ -229,9 +287,13 @@ export function getGerberDocumentSymbols(content: string, uri: string = "layer.g
  * Provides hover documentation for Gerber commands (`G01`, `D10`, `%FS`, `%AD`, etc.) at the given position.
  */
 export function getGerberHover(content: string, position: LspPosition, uri: string = "layer.gbr"): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildGerberCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+
+  const line = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > line.length) return null;
 
   const doc = parseGerber(content, uri);
   const unit = doc.unit ?? "MM";
@@ -242,8 +304,10 @@ export function getGerberHover(content: string, position: LspPosition, uri: stri
   while ((m = dRegex.exec(line)) !== null) {
     const start = m.index;
     const end = start + m[0].length;
-    if (position.character >= start && position.character <= end) {
+    if (relChar >= start && relChar <= end) {
       const codeNum = Number.parseInt(m[1] ?? "0", 10);
+      const absStart = entry.startCol + start;
+      const absEnd = entry.startCol + end;
       if (codeNum >= 10) {
         const ap = doc.apertures.get(codeNum);
         const value = ap
@@ -252,8 +316,8 @@ export function getGerberHover(content: string, position: LspPosition, uri: stri
         return {
           contents: { kind: "markdown", value },
           range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
+            start: { line: position.line, character: absStart },
+            end: { line: position.line, character: absEnd },
           },
         };
       }
@@ -263,8 +327,8 @@ export function getGerberHover(content: string, position: LspPosition, uri: stri
         return {
           contents: { kind: "markdown", value: help },
           range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
+            start: { line: position.line, character: absStart },
+            end: { line: position.line, character: absEnd },
           },
         };
       }
@@ -276,15 +340,15 @@ export function getGerberHover(content: string, position: LspPosition, uri: stri
   while ((m = tokenRegex.exec(line)) !== null) {
     const start = m.index;
     const end = start + m[0].length;
-    if (position.character >= start && position.character <= end) {
+    if (relChar >= start && relChar <= end) {
       const key = m[1] ?? m[2] ?? "";
       const help = GERBER_COMMAND_DOCS[key];
       if (help) {
         return {
           contents: { kind: "markdown", value: help },
           range: {
-            start: { line: position.line, character: start },
-            end: { line: position.line, character: end },
+            start: { line: position.line, character: entry.startCol + start },
+            end: { line: position.line, character: entry.startCol + end },
           },
         };
       }

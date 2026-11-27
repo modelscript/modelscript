@@ -1574,8 +1574,6 @@ export declare namespace Cst {
     countList(node: SyntaxNode | null | undefined): SyntaxNode[];
     item(node: SyntaxNode | null | undefined): SyntaxNode | null;
     itemList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    unit(node: SyntaxNode | null | undefined): SyntaxNode | null;
-    unitList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const IncludeDirective: {
     readonly typeId: number;

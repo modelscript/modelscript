@@ -4,14 +4,13 @@
  * @modelscript/reqif — Bidirectional TGG Round-Trip Synchronizer.
  *
  * Executes declarative TGG rules via PolyglotTransformer (`evaluateRuleForward` /
- * `evaluateRuleBackward`), `parseSysml2Cst`, and `@modelscript/dsl`'s lossless XML
- * CST splice engine (`xml.parseXml`, `setAttributeSplice`, `setElementTextSplice`,
- * `applySplices`) to round-trip ReqIF 1.2 <-> SysML v2 while preserving comments,
- * header metadata, UUIDs, and unmapped attributes.
+ * `evaluateRuleBackward`), `parseSysml2Cst`, and `@modelscript/dsl/unparser` lossless XML CST
+ * transactions (`CstDocumentSession`, `CstTransaction`, `CstXmlAdapter`) to round-trip
+ * ReqIF 1.2 <-> SysML v2 while preserving comments, header metadata, UUIDs, and unmapped attributes.
  */
 
-import { xml } from "@modelscript/dsl";
-import type { Splice, XmlElement } from "@modelscript/dsl/xml";
+import { CstDocumentSession, CstTransaction, CstXmlAdapter } from "@modelscript/dsl/unparser";
+import { getXmlWasmParser } from "@modelscript/dsl/xml";
 import { PolyglotTransformer, parseSysml2Cst } from "@modelscript/runtime";
 import { parseReqIf } from "../parser/reqif-parser.js";
 import { reqifToSysml2 } from "../projections/sysml2.js";
@@ -42,13 +41,6 @@ export interface ReqIfSyncResult {
 
 function escapeXml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function findXmlElements(el: XmlElement | null, tagName: string, out: XmlElement[] = []): XmlElement[] {
-  if (!el) return out;
-  if (el.name.toUpperCase() === tagName.toUpperCase()) out.push(el);
-  for (const c of el.children) findXmlElements(c, tagName, out);
-  return out;
 }
 
 /**
@@ -173,10 +165,24 @@ export function synchronizeSysml2ToReqIf(
   const strategy = options?.strategy ?? "target-wins";
   const changes: ReqIfSyncChange[] = [];
 
-  // Parse original ReqIF XML into a lossless XML CST
-  const xmlDoc = xml.parseXml(originalReqIfXml);
-  const specObjElements = findXmlElements(xmlDoc.root, "SPEC-OBJECT");
-  const splices: Splice[] = [];
+  // Parse original ReqIF XML into a live CST session
+  let xmlParser: unknown = null;
+  try {
+    xmlParser = getXmlWasmParser();
+  } catch {
+    xmlParser = null;
+  }
+  const session = new CstDocumentSession({
+    uri: "file:///requirements.reqif",
+    text: originalReqIfXml,
+    parser: xmlParser as never,
+    xmlFallback: true,
+  });
+  const root = session.rootNode;
+  const specObjElements = root
+    ? CstXmlAdapter.findElements(root, originalReqIfXml, (_n, t) => t.toUpperCase() === "SPEC-OBJECT")
+    : [];
+  const tx = new CstTransaction(session);
 
   const origSpecEntries = Array.from(originalDoc.specObjects.values());
   const renderedFallbackObjects: string[] = [];
@@ -323,25 +329,33 @@ export function synchronizeSysml2ToReqIf(
       }
     }
 
-    // Locate corresponding <SPEC-OBJECT> in the lossless XML CST and apply surgical splices
+    // Locate corresponding <SPEC-OBJECT> in the live XML CST and apply surgical edits
     const xmlEl =
       specObjElements.find(
         (el) =>
-          el.attributes.find((a) => a.name.toUpperCase() === "IDENTIFIER")?.value ===
+          CstXmlAdapter.getAttribute(el, "IDENTIFIER", originalReqIfXml)?.value ===
           (origObj?.identifier ?? resolvedReqId),
       ) ?? specObjElements[idx];
 
     if (xmlEl) {
       if (origObj && origObj.identifier !== resolvedReqId) {
-        splices.push(xml.setAttributeSplice(xmlEl, "IDENTIFIER", resolvedReqId, originalReqIfXml));
+        CstXmlAdapter.setAttribute(tx, xmlEl, "IDENTIFIER", resolvedReqId);
       }
-      const theValueEl = findXmlElements(xmlEl, "THE-VALUE")[0];
-      if (theValueEl && !theValueEl.selfClosing) {
-        splices.push(xml.setElementTextSplice(theValueEl, reconciledText));
+      const theValueEl = CstXmlAdapter.findElements(
+        xmlEl,
+        originalReqIfXml,
+        (_n, t) => t.toUpperCase() === "THE-VALUE",
+      )[0];
+      if (theValueEl && !CstXmlAdapter.isSelfClosing(theValueEl, originalReqIfXml)) {
+        CstXmlAdapter.setElementText(tx, theValueEl, reconciledText);
       } else {
-        const attrValEl = findXmlElements(xmlEl, "ATTRIBUTE-VALUE-STRING")[0];
-        if (attrValEl && attrValEl.attributes.some((a) => a.name.toUpperCase() === "THE-VALUE")) {
-          splices.push(xml.setAttributeSplice(attrValEl, "THE-VALUE", reconciledText, originalReqIfXml));
+        const attrValEl = CstXmlAdapter.findElements(
+          xmlEl,
+          originalReqIfXml,
+          (_n, t) => t.toUpperCase() === "ATTRIBUTE-VALUE-STRING",
+        )[0];
+        if (attrValEl && CstXmlAdapter.getAttribute(attrValEl, "THE-VALUE", originalReqIfXml)) {
+          CstXmlAdapter.setAttribute(tx, attrValEl, "THE-VALUE", reconciledText);
         }
       }
     } else {
@@ -356,20 +370,24 @@ export function synchronizeSysml2ToReqIf(
   }
 
   let updatedText = originalReqIfXml;
-  if (splices.length > 0 || renderedFallbackObjects.length > 0) {
+  try {
     if (renderedFallbackObjects.length > 0) {
-      const specObjectsContainer = findXmlElements(xmlDoc.root, "SPEC-OBJECTS")[0];
+      const specObjectsContainer = root
+        ? CstXmlAdapter.findElements(root, originalReqIfXml, (_n, t) => t.toUpperCase() === "SPEC-OBJECTS")[0]
+        : undefined;
       if (specObjectsContainer) {
         for (const snippet of renderedFallbackObjects) {
-          splices.push(xml.appendChildSplice(specObjectsContainer, snippet, originalReqIfXml));
+          CstXmlAdapter.appendChild(tx, specObjectsContainer, snippet);
         }
-        updatedText = xml.applySplices(originalReqIfXml, splices);
+        updatedText = tx.commit().applyToString(originalReqIfXml);
       } else {
-        updatedText = `${xml.applySplices(originalReqIfXml, splices).trim()}\n\n${renderedFallbackObjects.join("\n\n")}`;
+        updatedText = `${tx.commit().applyToString(originalReqIfXml).trim()}\n\n${renderedFallbackObjects.join("\n\n")}`;
       }
     } else {
-      updatedText = xml.applySplices(originalReqIfXml, splices);
+      updatedText = tx.commit().applyToString(originalReqIfXml);
     }
+  } finally {
+    session.dispose();
   }
 
   return {

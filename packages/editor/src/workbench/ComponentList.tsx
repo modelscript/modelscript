@@ -46,39 +46,79 @@ export function getSemanticKindIcon(kind: string | undefined, size = 16): React.
     .replace(/^ontology-/, "");
   switch (k) {
     case "class":
-      return <TagIcon size={size} style={{ color: "#ef4444", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#ef4444", flexShrink: 0, display: "inline-flex" }}>
+          <TagIcon size={size} />
+        </span>
+      );
     case "definedclass":
     case "defined_class":
-      return <ShieldCheckIcon size={size} style={{ color: "#f59e0b", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#f59e0b", flexShrink: 0, display: "inline-flex" }}>
+          <ShieldCheckIcon size={size} />
+        </span>
+      );
     case "objectproperty":
     case "object-property":
-      return <GitBranchIcon size={size} style={{ color: "#3b82f6", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#3b82f6", flexShrink: 0, display: "inline-flex" }}>
+          <GitBranchIcon size={size} />
+        </span>
+      );
     case "dataproperty":
     case "data-property":
     case "datatype":
-      return <DatabaseIcon size={size} style={{ color: "#10b981", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#10b981", flexShrink: 0, display: "inline-flex" }}>
+          <DatabaseIcon size={size} />
+        </span>
+      );
     case "individual":
     case "namedindividual":
-      return <PersonIcon size={size} style={{ color: "#a855f7", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#a855f7", flexShrink: 0, display: "inline-flex" }}>
+          <PersonIcon size={size} />
+        </span>
+      );
     case "model":
     case "block":
     case "partdefinition":
     case "partusage":
-      return <CpuIcon size={size} style={{ color: "#06b6d4", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#06b6d4", flexShrink: 0, display: "inline-flex" }}>
+          <CpuIcon size={size} />
+        </span>
+      );
     case "connector":
     case "portdefinition":
     case "portusage":
-      return <WorkflowIcon size={size} style={{ color: "#eab308", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#eab308", flexShrink: 0, display: "inline-flex" }}>
+          <WorkflowIcon size={size} />
+        </span>
+      );
     case "record":
     case "type":
     case "attributedefinition":
-      return <DatabaseIcon size={size} style={{ color: "#3b82f6", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#3b82f6", flexShrink: 0, display: "inline-flex" }}>
+          <DatabaseIcon size={size} />
+        </span>
+      );
     case "function":
     case "algorithm":
     case "actiondefinition":
-      return <CodeIcon size={size} style={{ color: "#c084fc", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "#c084fc", flexShrink: 0, display: "inline-flex" }}>
+          <CodeIcon size={size} />
+        </span>
+      );
     default:
-      return <PackageIcon size={size} style={{ color: "var(--fgColor-muted, #64748b)", flexShrink: 0 }} />;
+      return (
+        <span style={{ color: "var(--fgColor-muted, #64748b)", flexShrink: 0, display: "inline-flex" }}>
+          <PackageIcon size={size} />
+        </span>
+      );
   }
 }
 
@@ -198,16 +238,18 @@ export const ComponentIcon = React.memo(function ComponentIcon(props: ComponentI
 
   const effectiveSvg = propSvg || svg;
 
-  if (!effectiveSvg) {
+  const sizedSvg = React.useMemo(() => {
+    if (!effectiveSvg) return null;
+    const displaySvg = invertSvgColors(effectiveSvg, !!darkMode);
+    const rawSizedSvg = normalizeSvgForIcon(displaySvg);
+    return DOMPurify.sanitize(rawSizedSvg, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+    });
+  }, [effectiveSvg, darkMode]);
+
+  if (!sizedSvg) {
     return getSemanticKindIcon(kind, size - 2);
   }
-
-  const displaySvg = invertSvgColors(effectiveSvg, !!darkMode);
-  const rawSizedSvg = normalizeSvgForIcon(displaySvg);
-
-  const sizedSvg = DOMPurify.sanitize(rawSizedSvg, {
-    USE_PROFILES: { svg: true, svgFilters: true },
-  });
 
   return (
     <div
@@ -246,7 +288,8 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
   const validComponents = components.filter((c) => {
     if (!c.id || c.id.startsWith("__diagram_") || c.id.startsWith("solder_dot_")) return false;
     // Exclude synthetic junction dots or nodes without properties
-    if (!c.properties || (c as unknown as { shape?: string }).shape === "circle") return false;
+    const shape = "shape" in c && typeof c.shape === "string" ? c.shape : undefined;
+    if (!c.properties || shape === "circle") return false;
     const kind = c.properties?.classKind?.toLowerCase();
     // Exclude Modelica connectors from the top-level components list
     if (kind && kind.includes("connector")) return false;
@@ -280,11 +323,12 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
     <NavList className="height-full overflow-auto" style={{ flex: 1 }}>
       {validComponents.map((component) => {
         const rawKind = component.properties?.classKind || component.properties?.className || "component";
+        const nodeData =
+          "data" in component && component.data && typeof component.data === "object"
+            ? (component.data as { label?: string })
+            : undefined;
         const displayName =
-          component.properties?.name ||
-          component.properties?.description ||
-          (component as unknown as { data?: { label?: string } }).data?.label ||
-          component.id;
+          component.properties?.name || component.properties?.description || nodeData?.label || component.id;
         const badgeStyle = getKindBadgeStyle(rawKind, true);
         const rawClassName = component.properties?.className || "";
         const shortTypeName = rawClassName.includes(".")
@@ -296,8 +340,14 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
         return (
           <NavList.Item
             key={component.id}
+            as="button"
+            type="button"
             aria-current={selectedName === component.id ? "page" : undefined}
-            onClick={() => component.id && onSelect(component.id)}
+            onClick={(e: React.MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (component.id) onSelect(component.id);
+            }}
             onMouseEnter={() => {
               if (component.id) onHighlight?.(component.id);
             }}

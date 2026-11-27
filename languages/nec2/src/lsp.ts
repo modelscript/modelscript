@@ -5,6 +5,9 @@
  * diagnostics, document symbols, hover documentation, and card completions.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintNec2 } from "./lints/index.js";
 import { parseNec2Deck } from "./parser/deck-parser.js";
 
@@ -179,19 +182,78 @@ const CARD_DOCS: Record<string, { title: string; syntax: string; description: st
   },
 };
 
+interface Nec2CstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface Nec2CstIndex {
+  byRow: Map<number, Nec2CstLine>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildNec2CstIndex(content: string): Nec2CstIndex {
+  const byRow = new Map<number, Nec2CstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("nec2", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates a NEC-2 wire antenna deck and returns LSP diagnostics.
  */
 export function validateNec2(content: string, _uri: string = "antenna.nec"): LspDiagnostic[] {
   const deck = parseNec2Deck(content);
   const diags = lintNec2(deck);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildNec2CstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
+    const entry = cstIndex.byRow.get(lineIdx);
     const startChar = Math.max(0, d.column - 1);
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
 
     return {
       range: {
@@ -211,20 +273,24 @@ export function validateNec2(content: string, _uri: string = "antenna.nec"): Lsp
  */
 export function getNec2DocumentSymbols(content: string): LspDocumentSymbol[] {
   const deck = parseNec2Deck(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildNec2CstIndex(content);
   const fullRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: (lines[lines.length - 1] ?? "").length },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
+  };
+  const mkLineRange = (l: number): LspRange => {
+    const entry = cstIndex.byRow.get(l);
+    return {
+      start: { line: l, character: entry?.startCol ?? 0 },
+      end: { line: l, character: entry?.endCol ?? 0 },
+    };
   };
 
   const children: LspDocumentSymbol[] = [];
 
   for (const sym of deck.symbolDefs) {
     const l = Math.max(0, sym.line - 1);
-    const range: LspRange = {
-      start: { line: l, character: 0 },
-      end: { line: l, character: (lines[l] ?? "").length },
-    };
+    const range = mkLineRange(l);
     children.push({
       name: sym.name,
       detail: `= ${sym.value} (${sym.expression})`,
@@ -237,10 +303,7 @@ export function getNec2DocumentSymbols(content: string): LspDocumentSymbol[] {
   for (const w of deck.wires) {
     const l = Math.max(0, w.line - 1);
     const len = Math.hypot(w.x2 - w.x1, w.y2 - w.y1, w.z2 - w.z1);
-    const range: LspRange = {
-      start: { line: l, character: 0 },
-      end: { line: l, character: (lines[l] ?? "").length },
-    };
+    const range = mkLineRange(l);
     children.push({
       name: `GW Tag ${w.tag}`,
       detail: `${w.segments} segs, L=${len.toFixed(4)}m, a=${w.radius}m`,
@@ -252,10 +315,7 @@ export function getNec2DocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const fr of deck.frequencies) {
     const l = Math.max(0, fr.line - 1);
-    const range: LspRange = {
-      start: { line: l, character: 0 },
-      end: { line: l, character: (lines[l] ?? "").length },
-    };
+    const range = mkLineRange(l);
     children.push({
       name: `FR ${fr.fmhz} MHz`,
       detail: fr.nfrq > 1 ? `${fr.nfrq} steps (Δ=${fr.delFreq} MHz)` : "single frequency",
@@ -267,10 +327,7 @@ export function getNec2DocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const ex of deck.excitations) {
     const l = Math.max(0, ex.line - 1);
-    const range: LspRange = {
-      start: { line: l, character: 0 },
-      end: { line: l, character: (lines[l] ?? "").length },
-    };
+    const range = mkLineRange(l);
     children.push({
       name: `EX Tag ${ex.tag} Seg ${ex.segment}`,
       detail: `V = ${ex.vReal} + j${ex.vImag} V`,
@@ -286,7 +343,7 @@ export function getNec2DocumentSymbols(content: string): LspDocumentSymbol[] {
       detail: `${deck.wires.length} wire(s), ${deck.frequencies.length} FR card(s)`,
       kind: LspSymbolKind.Package,
       range: fullRange,
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: (lines[0] ?? "").length } },
+      selectionRange: mkLineRange(0),
       children,
     },
   ];
@@ -296,9 +353,10 @@ export function getNec2DocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides markdown hover documentation for NEC-2 card mnemonics and symbolic variables.
  */
 export function getNec2Hover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (line === undefined) return null;
+  const cstIndex = buildNec2CstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = entry.colLine;
 
   // Find word under cursor
   let start = position.character;

@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lowerSimaToDae } from "./dae/sima-to-dae.js";
 import { lintSimaProject } from "./lints/index.js";
 import { parseSimaFile } from "./parser/index.js";
@@ -76,6 +79,91 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
+interface SimaCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface SimaCstIndex {
+  byRow: Map<number, SimaCstLine>;
+  entries: SimaCstLine[];
+  rootRange: LspRange;
+}
+
+function buildSimaCstIndex(content: string): SimaCstIndex {
+  const byRow = new Map<number, SimaCstLine>();
+  const entries: SimaCstLine[] = [];
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("sima", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      const entry: SimaCstLine = { row, text: lineText, colLine, startCol, endCol };
+      byRow.set(row, entry);
+      entries.push(entry);
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      const entry: SimaCstLine = { row: i, text: trimmed, colLine: raw, startCol, endCol };
+      byRow.set(i, entry);
+      entries.push(entry);
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  const rootRange: LspRange = {
+    start: { line: 0, character: 0 },
+    end: { line: lastRow, character: Math.max(1, lastEndCol) },
+  };
+  return { byRow, entries, rootRange };
+}
+
+function findSimaNeedleRange(cstIndex: SimaCstIndex, needle: string): LspRange {
+  if (!needle) return DEFAULT_RANGE;
+  const found = cstIndex.entries.find((e) => e.text.includes(needle));
+  if (!found) return DEFAULT_RANGE;
+  const idx = found.colLine.indexOf(needle);
+  if (idx >= 0) {
+    return {
+      start: { line: found.row, character: idx },
+      end: { line: found.row, character: idx + needle.length },
+    };
+  }
+  return {
+    start: { line: found.row, character: found.startCol },
+    end: { line: found.row, character: Math.max(found.startCol + 1, found.endCol) },
+  };
+}
+
 /**
  * Validates a SIMO/RIFLEX or SIMA XML marine file and returns diagnostics.
  */
@@ -83,36 +171,45 @@ export function validateSima(content: string, uri: string = "model.inp"): LspDia
   try {
     const model = parseSimaFile(content, uri);
     const diags = lintSimaProject(model);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildSimaCstIndex(content);
 
     return diags.map((d) => {
-      // Find matching line in source if possible
-      let matchedLine = 0;
+      let range: LspRange;
       if (d.target) {
-        const found = lines.findIndex((l) => l.includes(d.target!));
-        if (found >= 0) matchedLine = found;
-      }
-      const lt = lines[matchedLine] ?? "";
-      let startChar = 0;
-      let endChar = 0;
-      if (d.target) {
-        const idx = lt.indexOf(d.target);
-        if (idx >= 0) {
-          startChar = idx;
-          endChar = idx + d.target.length;
+        const found = cstIndex.entries.find((e) => e.text.includes(d.target!));
+        if (found) {
+          const idx = found.colLine.indexOf(d.target);
+          range =
+            idx >= 0
+              ? {
+                  start: { line: found.row, character: idx },
+                  end: { line: found.row, character: idx + d.target.length },
+                }
+              : {
+                  start: { line: found.row, character: found.startCol },
+                  end: { line: found.row, character: Math.max(found.startCol + 1, found.endCol) },
+                };
+        } else {
+          const first = cstIndex.entries[0];
+          range = first
+            ? {
+                start: { line: first.row, character: first.startCol },
+                end: { line: first.row, character: Math.max(first.startCol + 1, first.endCol) },
+              }
+            : DEFAULT_RANGE;
         }
-      }
-      if (endChar <= startChar) {
-        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
-        const tok = lt.slice(startChar).match(/^<\/?[A-Za-z0-9_:-]+|^[^\s=,;]+/);
-        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
+      } else {
+        const first = cstIndex.entries[0];
+        range = first
+          ? {
+              start: { line: first.row, character: first.startCol },
+              end: { line: first.row, character: Math.max(first.startCol + 1, first.endCol) },
+            }
+          : DEFAULT_RANGE;
       }
 
       return {
-        range: {
-          start: { line: matchedLine, character: startChar },
-          end: { line: matchedLine, character: Math.max(startChar + 1, endChar) },
-        },
+        range,
         severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
         code: String(d.code),
         source: "modelscript-sima",
@@ -138,33 +235,39 @@ export function validateSima(content: string, uri: string = "model.inp"): LspDia
 export function getSimaDocumentSymbols(content: string, uri: string = "model.inp"): LspDocumentSymbol[] {
   try {
     const model = parseSimaFile(content, uri);
+    const cstIndex = buildSimaCstIndex(content);
     const children: LspDocumentSymbol[] = [];
 
     // Environment
+    const envRange = findSimaNeedleRange(cstIndex, "ENVIRONMENT");
     children.push({
       name: "Environment",
       detail: `Depth: ${model.environment.waterDepth}m | Hs: ${model.environment.wave.hs}m | Tp: ${model.environment.wave.tp}s`,
       kind: LspSymbolKind.Namespace,
-      range: DEFAULT_RANGE,
-      selectionRange: DEFAULT_RANGE,
+      range: envRange,
+      selectionRange: envRange,
     });
 
     // Vessels
     for (const vessel of model.vessels) {
-      const fairleadChildren: LspDocumentSymbol[] = vessel.fairleads.map((f) => ({
-        name: `Fairlead ${f.name}`,
-        detail: `Pos: [${f.position.join(", ")}]`,
-        kind: LspSymbolKind.Field,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
-      }));
+      const fairleadChildren: LspDocumentSymbol[] = vessel.fairleads.map((f) => {
+        const fr = findSimaNeedleRange(cstIndex, f.name);
+        return {
+          name: `Fairlead ${f.name}`,
+          detail: `Pos: [${f.position.join(", ")}]`,
+          kind: LspSymbolKind.Field,
+          range: fr,
+          selectionRange: fr,
+        };
+      });
 
+      const vr = findSimaNeedleRange(cstIndex, vessel.name);
       children.push({
         name: `Vessel ${vessel.name}`,
         detail: `Mass: ${(vessel.mass / 1000).toFixed(1)}t | Disp: ${vessel.displacement.toFixed(1)}m³ | GMt: ${vessel.gmTransverse}m`,
         kind: LspSymbolKind.Class,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: vr,
+        selectionRange: vr,
         children: fairleadChildren.length > 0 ? fairleadChildren : undefined,
       });
     }
@@ -172,12 +275,13 @@ export function getSimaDocumentSymbols(content: string, uri: string = "model.inp
     // Mooring Lines
     for (const line of model.lines) {
       const segSummary = line.segments.map((s) => `${s.length}m ${s.name}`).join(", ");
+      const lr = findSimaNeedleRange(cstIndex, line.name);
       children.push({
         name: `Mooring Line ${line.name}`,
         detail: `Type: ${line.type} | Len: ${line.totalLength}m | Segments: [${segSummary}]`,
         kind: LspSymbolKind.Property,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: lr,
+        selectionRange: lr,
       });
     }
 
@@ -186,8 +290,8 @@ export function getSimaDocumentSymbols(content: string, uri: string = "model.inp
         name: model.title || "SIMA Marine System",
         detail: `Vessels: ${model.vessels.length} | Lines: ${model.lines.length} | Depth: ${model.environment.waterDepth}m`,
         kind: LspSymbolKind.Package,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: cstIndex.rootRange,
+        selectionRange: cstIndex.rootRange,
         children: children.length > 0 ? children : undefined,
       },
     ];
@@ -202,8 +306,8 @@ export function getSimaDocumentSymbols(content: string, uri: string = "model.inp
 export function getSimaHover(content: string, position: LspPosition, uri: string = "model.inp"): LspHover | undefined {
   try {
     const model = parseSimaFile(content, uri);
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
+    const cstIndex = buildSimaCstIndex(content);
+    const line = cstIndex.byRow.get(position.line)?.colLine ?? "";
 
     // Match vessel by name or id
     for (const v of model.vessels) {

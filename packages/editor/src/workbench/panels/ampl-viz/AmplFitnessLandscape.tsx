@@ -71,20 +71,24 @@ export const AmplFitnessLandscape: React.FC<{
   const [error, setError] = useState<string | null>(null);
   interface SweepPoint {
     p1: number;
-    p2?: number;
+    p2?: number | undefined;
+    status: string;
     feasible: boolean;
     objectiveValue: number | null;
     variables: Record<string, number>;
   }
+  interface SweepPoint2D extends SweepPoint {
+    p2: number;
+  }
   interface SweepResultData {
     mode: "1d" | "2d";
     target1: { targetName: string; targetType: string; min: number; max: number; steps: number };
-    target2?: { targetName: string; targetType: string; min: number; max: number; steps: number };
+    target2?: { targetName: string; targetType: string; min: number; max: number; steps: number } | undefined;
     objectiveName?: string;
     points: SweepPoint[];
   }
   const [sweepResult, setSweepResult] = useState<SweepResultData | null>(null);
-  const [hoveredCell, setHoveredCell] = useState<SweepPoint | null>(null);
+  const [hoveredCell, setHoveredCell] = useState<SweepPoint2D | null>(null);
 
   const t1 = options.find((o) => o.id === target1Id) ?? options[0];
   const t2 = options.find((o) => o.id === target2Id) ?? options[1] ?? options[0];
@@ -157,13 +161,7 @@ export const AmplFitnessLandscape: React.FC<{
 
   const heatmapStats = useMemo(() => {
     if (!sweepResult || sweepResult.mode !== "2d") return null;
-    const pts = (sweepResult.points ?? []) as Array<{
-      p1: number;
-      p2: number;
-      feasible: boolean;
-      objectiveValue: number | null;
-      status: string;
-    }>;
+    const pts = (sweepResult.points ?? []).filter((p): p is SweepPoint2D => p.p2 !== undefined);
     const vals = pts.filter((p) => p.feasible && p.objectiveValue !== null).map((p) => p.objectiveValue!);
     const zMin = vals.length ? Math.min(...vals) : 0;
     const zMax = vals.length ? Math.max(...vals) : 1;
@@ -415,7 +413,7 @@ export const AmplFitnessLandscape: React.FC<{
         </div>
       )}
 
-      {sweepResult?.mode === "2d" && heatmapStats && (
+      {sweepResult?.mode === "2d" && sweepResult.target2 && heatmapStats && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: textMuted }}>
             <span>

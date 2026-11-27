@@ -685,6 +685,9 @@ importers:
       '@modelscript/ibis':
         specifier: workspace:*
         version: link:../../languages/ibis
+      '@modelscript/ide-packager':
+        specifier: workspace:*
+        version: link:../../packages/ide-packager
       '@modelscript/ieee-cdf':
         specifier: workspace:*
         version: link:../../languages/ieee-cdf
@@ -1113,6 +1116,9 @@ importers:
       '@modelscript/ide-client':
         specifier: workspace:*
         version: link:../../packages/ide
+      '@modelscript/ide-packager':
+        specifier: workspace:*
+        version: link:../../packages/ide-packager
       '@modelscript/las':
         specifier: workspace:*
         version: link:../../languages/las
@@ -1184,7 +1190,7 @@ importers:
   apps/ide/github-fs:
     devDependencies:
       '@types/vscode':
-        specifier: ^1.72.0
+        specifier: ^1.90.0
         version: 1.146.0
       esbuild:
         specifier: ^0.28.1
@@ -1201,6 +1207,9 @@ importers:
       '@modelscript/cad':
         specifier: workspace:*
         version: link:../../packages/cad
+      '@modelscript/cad-viewer':
+        specifier: workspace:*
+        version: link:../../packages/cad-viewer
       '@modelscript/canvas':
         specifier: workspace:*
         version: link:../../packages/canvas
@@ -1228,6 +1237,9 @@ importers:
       '@modelscript/exchange':
         specifier: workspace:*
         version: link:../../packages/exchange
+      '@modelscript/ide-packager':
+        specifier: workspace:*
+        version: link:../../packages/ide-packager
       '@modelscript/igtl':
         specifier: workspace:*
         version: link:../../languages/igtl
@@ -1261,6 +1273,9 @@ importers:
       '@modelscript/reqif':
         specifier: workspace:*
         version: link:../../languages/reqif
+      '@modelscript/rotunda':
+        specifier: workspace:*
+        version: link:../../packages/rotunda
       '@modelscript/sima':
         specifier: workspace:*
         version: link:../../languages/sima
@@ -5033,6 +5048,58 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/cad-viewer:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../cad
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../diagram
+      '@modelscript/modelica':
+        specifier: workspace:*
+        version: link:../../languages/modelica
+      '@modelscript/simulate':
+        specifier: workspace:*
+        version: link:../simulate
+      '@primer/octicons-react':
+        specifier: ^19.23.1
+        version: 19.42.0(react@19.3.1)
+      '@primer/react':
+        specifier: ^38.14.0
+        version: 38.46.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react-is@19.3.1)(react@19.3.1)
+      '@react-three/drei':
+        specifier: ^10.7.7
+        version: 10.7.9(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(@types/three@0.184.1)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/fiber':
+        specifier: ^9.6.1
+        version: 9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/xr':
+        specifier: ^6.6.29
+        version: 6.6.32(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      three:
+        specifier: ^0.184.0
+        version: 0.184.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      '@types/three':
+        specifier: ^0.184.0
+        version: 0.184.1
+      react:
+        specifier: ^19.2.7
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.3.1(react@19.3.1)
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/canvas:
     devDependencies:
       '@types/node':
@@ -5133,6 +5200,96 @@ importers:
       '@mlc-ai/web-llm':
         specifier: ^0.2.85
         version: 0.2.89
+      '@modelscript/ampl':
+        specifier: workspace:*
+        version: link:../../languages/ampl
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../cad
+      '@modelscript/cad-viewer':
+        specifier: workspace:*
+        version: link:../cad-viewer
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../canvas
+      '@modelscript/cgmes':
+        specifier: workspace:*
+        version: link:../../languages/cgmes
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../diagram
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../dsl
+      '@modelscript/epanet':
+        specifier: workspace:*
+        version: link:../../languages/epanet
+      '@modelscript/exchange':
+        specifier: workspace:*
+        version: link:../exchange
+      '@modelscript/lsp':
+        specifier: workspace:*
+        version: link:../lsp
+      '@modelscript/matpower':
+        specifier: workspace:*
+        version: link:../../languages/matpower
+      '@modelscript/modelica':
+        specifier: workspace:*
+        version: link:../../languages/modelica
+      '@modelscript/opendrive':
+        specifier: workspace:*
+        version: link:../../languages/opendrive
+      '@modelscript/opendss':
+        specifier: workspace:*
+        version: link:../../languages/opendss
+      '@modelscript/owl2':
+        specifier: workspace:*
+        version: link:../../languages/owl2
+      '@modelscript/powerfactory':
+        specifier: workspace:*
+        version: link:../../languages/powerfactory
+      '@modelscript/pscad':
+        specifier: workspace:*
+        version: link:../../languages/pscad
+      '@modelscript/pslf':
+        specifier: workspace:*
+        version: link:../../languages/pslf
+      '@modelscript/psse':
+        specifier: workspace:*
+        version: link:../../languages/psse
+      '@modelscript/react':
+        specifier: workspace:*
+        version: link:../react
+      '@modelscript/rotunda':
+        specifier: workspace:*
+        version: link:../rotunda
+      '@modelscript/simulate':
+        specifier: workspace:*
+        version: link:../simulate
+      '@modelscript/simulink':
+        specifier: workspace:*
+        version: link:../../languages/simulink
+      '@modelscript/spice':
+        specifier: workspace:*
+        version: link:../../languages/spice
+      '@modelscript/ssp':
+        specifier: workspace:*
+        version: link:../../languages/ssp
+      '@modelscript/swmm':
+        specifier: workspace:*
+        version: link:../../languages/swmm
+      '@modelscript/sysml2':
+        specifier: workspace:*
+        version: link:../../languages/sysml2
+      '@modelscript/three-mf':
+        specifier: workspace:*
+        version: link:../../languages/three-mf
+      '@modelscript/urdf':
+        specifier: workspace:*
+        version: link:../../languages/urdf
+      '@modelscript/usd':
+        specifier: workspace:*
+        version: link:../../languages/usd
       '@monaco-editor/react':
         specifier: ^4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -5157,9 +5314,6 @@ importers:
       dompurify:
         specifier: ^3.4.17
         version: 3.4.18
-      lodash:
-        specifier: ^4.18.1
-        version: 4.18.1
       monaco-editor:
         specifier: ^0.55.1
         version: 0.55.1
@@ -5175,9 +5329,6 @@ importers:
       parse-data-url:
         specifier: ^6.0.0
         version: 6.0.0
-      react-dom:
-        specifier: ^19.2.7
-        version: 19.3.1(react@19.3.1)
       react-dropzone:
         specifier: ^15.0.0
         version: 15.0.0(react@19.3.1)
@@ -5193,9 +5344,6 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
-      styled-components:
-        specifier: ^6.3.11
-        version: 6.6.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       three:
         specifier: ^0.184.0
         version: 0.184.0
@@ -5215,6 +5363,9 @@ importers:
       react:
         specifier: ^19.2.7
         version: 19.3.1
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.3.1(react@19.3.1)
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
@@ -5331,6 +5482,9 @@ importers:
       '@modelscript/cad':
         specifier: workspace:*
         version: link:../cad
+      '@modelscript/cad-viewer':
+        specifier: workspace:*
+        version: link:../cad-viewer
       '@modelscript/cantera':
         specifier: workspace:*
         version: link:../../languages/cantera
@@ -5376,6 +5530,9 @@ importers:
       '@modelscript/qif':
         specifier: workspace:*
         version: link:../../languages/qif
+      '@modelscript/rotunda':
+        specifier: workspace:*
+        version: link:../rotunda
       '@modelscript/runtime':
         specifier: workspace:*
         version: link:../runtime
@@ -5435,7 +5592,7 @@ importers:
         specifier: ^3.0.5
         version: 3.2.0
       '@types/vscode':
-        specifier: ^1.72.0
+        specifier: ^1.90.0
         version: 1.146.0
       esbuild:
         specifier: ^0.28.1
@@ -5446,6 +5603,25 @@ importers:
       vscode-uri:
         specifier: ^3.2.0
         version: 3.2.0
+
+  packages/ide-packager:
+    dependencies:
+      '@modelscript/dsl':
+        specifier: workspace:*
+        version: link:../dsl
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.2
+        version: 25.9.9
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   packages/lsp:
     dependencies:
@@ -6005,9 +6181,18 @@ importers:
       adm-zip:
         specifier: ^0.6.1
         version: 0.6.1
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.2
+      eslint:
+        specifier: ^10.12.0
+        version: 10.15.0(jiti@2.7.0)
       rimraf:
         specifier: ^6.1.0
         version: 6.1.4
+      tsx:
+        specifier: ^4.21.0
+        version: 4.23.15
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -6214,6 +6399,58 @@ importers:
       react-dom:
         specifier: ^19.2.7
         version: 19.3.1(react@19.3.1)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/rotunda:
+    dependencies:
+      '@modelscript/cad':
+        specifier: workspace:*
+        version: link:../cad
+      '@modelscript/cad-viewer':
+        specifier: workspace:*
+        version: link:../cad-viewer
+      '@modelscript/canvas':
+        specifier: workspace:*
+        version: link:../canvas
+      '@modelscript/diagram':
+        specifier: workspace:*
+        version: link:../diagram
+      '@primer/octicons-react':
+        specifier: ^19.23.1
+        version: 19.42.0(react@19.3.1)
+      '@react-three/drei':
+        specifier: ^10.7.7
+        version: 10.7.9(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(@types/three@0.184.1)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/fiber':
+        specifier: ^9.6.1
+        version: 9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      '@react-three/xr':
+        specifier: ^6.6.29
+        version: 6.6.32(@react-three/fiber@9.8.2(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0))(@types/react@19.3.0)(immer@11.2.10)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.184.0)
+      three:
+        specifier: ^0.184.0
+        version: 0.184.0
+      three-stdlib:
+        specifier: ^2.36.1
+        version: 2.36.1(three@0.184.0)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.7
+        version: 19.3.0
+      '@types/three':
+        specifier: ^0.184.0
+        version: 0.184.1
+      react:
+        specifier: ^19.2.7
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.2.7
+        version: 19.3.1(react@19.3.1)
+      rimraf:
+        specifier: ^6.1.0
+        version: 6.1.4
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

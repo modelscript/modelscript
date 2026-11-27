@@ -22,6 +22,7 @@ import {
 } from "@modelscript/diagram/fits-astro";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -162,14 +163,18 @@ export class FitsImageViewerPanel extends BaseWebviewPanel {
             .map((d) => {
               const col = d.severity === "error" ? "#f85149" : "#d29922";
               const icon = d.severity === "error" ? "✖" : "⚠";
-              return `<div style="color: ${col}; font-size: 11.5px; margin-top: 3px;"><strong>${icon} [${d.code}]</strong> ${escapeXml(d.message)}</div>`;
+              return `<div style="color: ${col}; font-size: 11.5px; margin-top: 3px;"><strong>${icon} [${escapeXml(d.code)}]</strong> ${escapeXml(d.message)}</div>`;
             })
             .join("");
+
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <style>
     body {
       background-color: var(--vscode-editor-background, #18181b);
@@ -315,7 +320,7 @@ export class FitsImageViewerPanel extends BaseWebviewPanel {
     ${diagsHtml}
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     document.getElementById('stretchSelect').addEventListener('change', (e) => {

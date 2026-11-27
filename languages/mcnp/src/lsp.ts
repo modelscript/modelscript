@@ -4,6 +4,9 @@
  * @modelscript/mcnp — Language Server Protocol (LSP) Services.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lookupIsotopeCrossSection } from "./catalog/library-package-adapter.js";
 import { lowerMcnpToDae } from "./dae/mcnp-to-dae.js";
 import { lintMcnpDeck } from "./lints/index.js";
@@ -68,12 +71,68 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
-function lineRange(lines: string[], lineOneBased: number): LspRange {
-  const ln = Math.max(0, Math.min(lines.length - 1, lineOneBased - 1));
-  const text = lines[ln] ?? "";
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface McnpCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildMcnpCstIndex(content: string): McnpCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("mcnp", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
+function lineRange(cstIndex: McnpCstIndex, lineOneBased: number): LspRange {
+  const ln = Math.max(0, lineOneBased - 1);
+  const entry = cstIndex.byRow.get(ln);
+  const startChar = entry?.startCol ?? 0;
+  const endChar = Math.max(startChar + 1, entry?.endCol ?? 1);
   return {
-    start: { line: ln, character: 0 },
-    end: { line: ln, character: Math.max(1, text.length) },
+    start: { line: ln, character: startChar },
+    end: { line: ln, character: endChar },
   };
 }
 
@@ -84,10 +143,10 @@ export function validateMcnp(content: string, _uri: string = "deck.mcnp"): LspDi
   try {
     const deck = parseMcnpDeck(content);
     const diags = lintMcnpDeck(deck);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildMcnpCstIndex(content);
 
     return diags.map((d) => ({
-      range: d.line ? lineRange(lines, d.line) : DEFAULT_RANGE,
+      range: d.line ? lineRange(cstIndex, d.line) : DEFAULT_RANGE,
       severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
       code: d.id,
       source: "modelscript-mcnp",
@@ -112,11 +171,11 @@ export function validateMcnp(content: string, _uri: string = "deck.mcnp"): LspDi
 export function getMcnpDocumentSymbols(content: string, _uri: string = "deck.mcnp"): LspDocumentSymbol[] {
   try {
     const deck = parseMcnpDeck(content);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildMcnpCstIndex(content);
     const children: LspDocumentSymbol[] = [];
 
     for (const cell of deck.cells.values()) {
-      const r = lineRange(lines, cell.line);
+      const r = lineRange(cstIndex, cell.line);
       const matLabel = cell.materialId === 0 ? "VOID" : `M${cell.materialId} (rho=${cell.density ?? 0})`;
       children.push({
         name: `Cell ${cell.id}`,
@@ -128,7 +187,7 @@ export function getMcnpDocumentSymbols(content: string, _uri: string = "deck.mcn
     }
 
     for (const surf of deck.surfaces.values()) {
-      const r = lineRange(lines, surf.line);
+      const r = lineRange(cstIndex, surf.line);
       children.push({
         name: `Surface ${surf.id} (${surf.type})`,
         detail: `Params: ${surf.params.join(" ")}`,
@@ -139,7 +198,7 @@ export function getMcnpDocumentSymbols(content: string, _uri: string = "deck.mcn
     }
 
     for (const mat of deck.materials.values()) {
-      const r = lineRange(lines, mat.line);
+      const r = lineRange(cstIndex, mat.line);
       children.push({
         name: `M${mat.id}`,
         detail: `${mat.isotopes.length} isotope(s)${mat.thermalLaw ? ` | MT: ${mat.thermalLaw}` : ""}`,
@@ -150,7 +209,7 @@ export function getMcnpDocumentSymbols(content: string, _uri: string = "deck.mcn
     }
 
     for (const tally of deck.tallies.values()) {
-      const r = lineRange(lines, tally.line);
+      const r = lineRange(cstIndex, tally.line);
       children.push({
         name: `F${tally.id}:${tally.particle}`,
         detail: `Type F${tally.type} | Targets: ${tally.targets.join(", ")}`,
@@ -165,7 +224,10 @@ export function getMcnpDocumentSymbols(content: string, _uri: string = "deck.mcn
         name: deck.title || "MCNP Transport Deck",
         detail: `Cells: ${deck.cells.size} | Surfaces: ${deck.surfaces.size} | Materials: ${deck.materials.size} | Tallies: ${deck.tallies.size}`,
         kind: LspSymbolKind.Package,
-        range: DEFAULT_RANGE,
+        range: {
+          start: { line: 0, character: cstIndex.byRow.get(0)?.startCol ?? 0 },
+          end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
+        },
         selectionRange: DEFAULT_RANGE,
         children: children.length > 0 ? children : undefined,
       },
@@ -181,8 +243,8 @@ export function getMcnpDocumentSymbols(content: string, _uri: string = "deck.mcn
 export function getMcnpHover(content: string, position: LspPosition, _uri: string = "deck.mcnp"): LspHover | undefined {
   try {
     const deck = parseMcnpDeck(content);
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
+    const cstIndex = buildMcnpCstIndex(content);
+    const line = cstIndex.byRow.get(position.line)?.text ?? "";
     const lineNum = position.line + 1;
 
     // Hover on ZAID isotope (e.g. 92235.80c)

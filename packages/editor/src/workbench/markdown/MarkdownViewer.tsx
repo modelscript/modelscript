@@ -23,17 +23,23 @@ interface DirectiveNode {
   };
 }
 
+function isDirectiveNode(node: object): node is DirectiveNode {
+  return (
+    "type" in node &&
+    (node.type === "textDirective" || node.type === "leafDirective" || node.type === "containerDirective")
+  );
+}
+
 // Convert remark-directive and var nodes to HAST elements that react-markdown can map to React components
 function remarkDirectiveToHast() {
   return (tree: Parameters<typeof visit>[0]) => {
     visit(tree, (rawNode) => {
-      const node = rawNode as unknown as DirectiveNode;
-      if (node.type === "textDirective" || node.type === "leafDirective" || node.type === "containerDirective") {
-        const data = node.data || (node.data = {});
-        if (node.name !== undefined) {
-          data.hName = node.name;
+      if (isDirectiveNode(rawNode)) {
+        const data = rawNode.data || (rawNode.data = {});
+        if (rawNode.name !== undefined) {
+          data.hName = rawNode.name;
         }
-        data.hProperties = node.attributes || {};
+        data.hProperties = rawNode.attributes || {};
       }
     });
   };

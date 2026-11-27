@@ -35,7 +35,7 @@ export const spiceLanguage = language({
       light: "./assets/spice/icon-light.png",
       dark: "./assets/spice/icon-dark.png",
     },
-    folding: ["SubcktDef"],
+    folding: ["SubcktDef", { rule: "CommentLine", kind: "comment", defaultCollapsed: true }],
     outline: ["SubcktDef", "Component", "Directive"],
   },
   rules: spiceNetlistGrammar.rules,

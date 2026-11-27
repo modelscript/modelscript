@@ -20,6 +20,7 @@ import {
 } from "@modelscript/diagram/reaction-coordinate";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -108,6 +109,11 @@ export class ReactionCoordinatePanel extends BaseWebviewPanel {
     void this.update();
   }
 
+  public override dispose(): void {
+    ReactionCoordinatePanel.currentPanel = undefined;
+    super.dispose();
+  }
+
   private async _reconcileWriteback(newEaJoules: number): Promise<void> {
     if (!this.targetUri) return;
     try {
@@ -182,6 +188,8 @@ export class ReactionCoordinatePanel extends BaseWebviewPanel {
     diagram: ReactionCoordinateDiagram,
     svgContent: string,
   ): string {
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
     const rxnOptions = reactions
       .map(
         (r, idx) =>
@@ -195,6 +203,7 @@ export class ReactionCoordinatePanel extends BaseWebviewPanel {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reaction Coordinate Visualizer</title>
   <style>
@@ -341,7 +350,7 @@ export class ReactionCoordinatePanel extends BaseWebviewPanel {
     <div class="params-card">
       <div>
         <label for="rxnSelect">Chemical Reaction</label>
-        <select id="rxnSelect" onchange="onRxnChange(this.value)">
+        <select id="rxnSelect">
           ${rxnOptions}
         </select>
       </div>
@@ -349,7 +358,7 @@ export class ReactionCoordinatePanel extends BaseWebviewPanel {
       <div>
         <label>Activation Energy ($E_a$)</label>
         <div class="slider-row">
-          <input type="range" id="eaSlider" min="0" max="350" step="0.5" value="${eaKj.toFixed(1)}" oninput="onEaSlide(this.value)" onchange="onEaCommit(this.value)">
+          <input type="range" id="eaSlider" min="0" max="350" step="0.5" value="${eaKj.toFixed(1)}">
           <span class="val-badge" id="eaBadge">${eaKj.toFixed(1)} kJ/mol</span>
         </div>
       </div>
@@ -357,13 +366,13 @@ export class ReactionCoordinatePanel extends BaseWebviewPanel {
       <div>
         <label>Reaction Enthalpy ($\\Delta_r H$)</label>
         <div class="slider-row">
-          <input type="range" id="dhSlider" min="-200" max="150" step="1.0" value="${this._currentDeltaH.toFixed(1)}" oninput="onDhSlide(this.value)">
+          <input type="range" id="dhSlider" min="-200" max="150" step="1.0" value="${this._currentDeltaH.toFixed(1)}">
           <span class="val-badge" id="dhBadge">${this._currentDeltaH.toFixed(1)} kJ/mol</span>
         </div>
       </div>
 
       <div class="btn-row">
-        <button onclick="commitWriteback()">Save $E_a$ to Model</button>
+        <button id="btnCommitWriteback">Save $E_a$ to Model</button>
       </div>
 
       <table class="info-table">
@@ -391,30 +400,31 @@ export class ReactionCoordinatePanel extends BaseWebviewPanel {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    function onRxnChange(val) {
-      vscode.postMessage({ command: 'selectReaction', rxnIndex: parseInt(val, 10) });
-    }
+    document.getElementById('rxnSelect').addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'selectReaction', rxnIndex: parseInt(e.target.value, 10) });
+    });
 
-    function onEaSlide(val) {
-      document.getElementById('eaBadge').innerText = parseFloat(val).toFixed(1) + ' kJ/mol';
-    }
+    const eaSlider = document.getElementById('eaSlider');
+    eaSlider.addEventListener('input', (e) => {
+      document.getElementById('eaBadge').innerText = parseFloat(e.target.value).toFixed(1) + ' kJ/mol';
+    });
+    eaSlider.addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'adjustEa', newEaKj: parseFloat(e.target.value), writeback: false });
+    });
 
-    function onEaCommit(val) {
-      vscode.postMessage({ command: 'adjustEa', newEaKj: parseFloat(val), writeback: false });
-    }
+    document.getElementById('dhSlider').addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      document.getElementById('dhBadge').innerText = val.toFixed(1) + ' kJ/mol';
+      vscode.postMessage({ command: 'adjustDeltaH', deltaH: val });
+    });
 
-    function onDhSlide(val) {
-      document.getElementById('dhBadge').innerText = parseFloat(val).toFixed(1) + ' kJ/mol';
-      vscode.postMessage({ command: 'adjustDeltaH', deltaH: parseFloat(val) });
-    }
-
-    function commitWriteback() {
-      const val = parseFloat(document.getElementById('eaSlider').value);
+    document.getElementById('btnCommitWriteback').addEventListener('click', () => {
+      const val = parseFloat(eaSlider.value);
       vscode.postMessage({ command: 'adjustEa', newEaKj: val, writeback: true });
-    }
+    });
   </script>
 </body>
 </html>`;

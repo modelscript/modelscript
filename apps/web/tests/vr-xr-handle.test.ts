@@ -12,7 +12,7 @@ import {
   shouldTriggerForcePull,
   springFollowStep,
   VerletCableSim,
-} from "@modelscript/editor/workbench/vr-rotunda/index.js";
+} from "@modelscript/rotunda/index.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import * as THREE from "three";

@@ -3,6 +3,7 @@
 import { CheckIcon, CopyIcon, DownloadIcon, PinIcon, XIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu, Button } from "@primer/react";
 import React from "react";
+import { loadInitialSnapshotFromJson } from "../../util/initial-snapshot-store";
 
 export interface SimulationToolbarProps {
   xAxisVar: string;
@@ -255,13 +256,8 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
                 inp.onchange = async () => {
                   const file = inp.files?.[0];
                   if (!file) return;
-                  try {
-                    const text = await file.text();
-                    (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot =
-                      JSON.parse(text);
-                  } catch {
-                    (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot = undefined;
-                  }
+                  const text = await file.text();
+                  loadInitialSnapshotFromJson(text);
                 };
                 inp.click();
               }}

@@ -61,11 +61,6 @@ interface ListedActionInfo {
   ui?: LanguageAction["ui"] | undefined;
 }
 
-interface GlobalActionRouterFallback {
-  sharedFs?: { read(path: string): string } | undefined;
-  sharedContext?: unknown;
-}
-
 function findMatchingHandler<T extends (...args: never[]) => unknown>(
   handlers: Record<string, T> | undefined,
   requestedId: string,
@@ -233,7 +228,6 @@ export function registerActionRouter(context: LspContext): void {
         );
       }
 
-      const globalFallback = globalThis as unknown as GlobalActionRouterFallback;
       let docText = typeof params.inputs?.["documentText"] === "string" ? params.inputs["documentText"] : undefined;
       if (!docText) {
         let doc = params.uri ? context.documents.get(params.uri) : undefined;
@@ -266,12 +260,19 @@ export function registerActionRouter(context: LspContext): void {
             wmDocMgr?.documentTrees?.get(params.uri);
           if (cached?.text) {
             docText = cached.text;
-          } else if (globalFallback.sharedFs) {
-            const fsPath = params.uri.replace(/^[a-z0-9+-]+:\/\/?/, "/");
-            try {
-              docText = globalFallback.sharedFs.read(fsPath);
-            } catch {
-              /* ignore */
+          } else {
+            const activeFs =
+              context.sharedFs ??
+              context.parserService?.sharedFs ??
+              context.workspaceManager?.sharedFs ??
+              context.state?.sharedContext?.fs;
+            if (activeFs) {
+              const fsPath = params.uri.replace(/^[a-z0-9+-]+:\/\/?/, "/");
+              try {
+                docText = activeFs.read(fsPath);
+              } catch {
+                /* ignore */
+              }
             }
           }
         }
@@ -332,8 +333,7 @@ export function registerActionRouter(context: LspContext): void {
         documentManager: context.documentManager,
         documents: context.documents,
         state: context.state,
-        sharedContext:
-          context.state?.sharedContext ?? context.parserService?.sharedContext ?? globalFallback.sharedContext,
+        sharedContext: context.state?.sharedContext ?? context.parserService?.sharedContext,
         connection: context.connection,
         notifyProgress: (msg: string, increment?: number) => {
           context.connection.sendNotification("modelscript/status", {

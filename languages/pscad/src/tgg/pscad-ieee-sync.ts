@@ -11,9 +11,11 @@
  * and `@modelscript/dsl` lossless XML CST splicing.
  */
 
-import { compileTGGRules, verifyRuleLosslessness, xml } from "@modelscript/dsl";
-import type { Splice, XmlElement } from "@modelscript/dsl/xml";
+import { compileTGGRules, verifyRuleLosslessness } from "@modelscript/dsl";
+import { CstTransaction, CstXmlAdapter } from "@modelscript/dsl/unparser";
+import type { SyntaxNode } from "@modelscript/dsl/utils";
 import { PolyglotTransformer } from "@modelscript/runtime";
+import { createPscadCstSession } from "../edit/edit-engine.js";
 import { parsePscx } from "../parser/pscx-parser.js";
 import type { PscxProject } from "../types.js";
 import { pscadIeeePolyglotConfig, pscadIeeeTggRules } from "./pscad-ieee-rules.js";
@@ -47,22 +49,6 @@ function ensureCompiledPscadTggKernel(): string {
     cachedKernelCode = compiled.sourceCode;
   }
   return cachedKernelCode;
-}
-
-function findXmlElements(root: XmlElement | null, tagName: string): XmlElement[] {
-  const results: XmlElement[] = [];
-  if (!root) return results;
-  const upper = tagName.toUpperCase();
-  const visit = (el: XmlElement) => {
-    if (el.name.toUpperCase() === upper) {
-      results.push(el);
-    }
-    for (const child of el.children) {
-      visit(child);
-    }
-  };
-  visit(root);
-  return results;
 }
 
 /**
@@ -252,199 +238,210 @@ export function synchronizeIeee2800ToPscad(
     );
   }
 
-  const xmlDoc = xml.parseXml(originalPscadXml);
-  const splices: Splice[] = [];
-  const projectEl =
-    xmlDoc.root?.name.toLowerCase() === "project" ? xmlDoc.root : findXmlElements(xmlDoc.root, "project")[0];
+  const session = createPscadCstSession(originalPscadXml, "file:///pscad-ieee-sync.pscx");
+  try {
+    const root = session.rootNode;
+    const tx = new CstTransaction(session);
+    const projectEl = root
+      ? (CstXmlAdapter.findElements(root, originalPscadXml, (_n, t) => t.toLowerCase() === "project")[0] ?? null)
+      : null;
 
-  // 1. Parse and reconcile Project Name via Rule #1
-  const nameMatch = /Report\s+for\s+'([^']+)'/i.exec(modifiedReportText);
-  if (nameMatch && nameMatch[1]) {
-    const targetName = nameMatch[1].trim();
-    const headerBack = transformer.evaluateRuleBackward(
-      {
-        kind: "Ieee2800VerificationHeader",
-        name: targetName,
-        projectName: targetName,
-        properties: { projectName: targetName },
-      },
-      "pscad",
-      {
-        strategy,
-        threadId: "project:header",
-      },
-    );
-    const getSourceProp = (node: Record<string, unknown> | undefined, key: string): unknown => {
+    // 1. Parse and reconcile Project Name via Rule #1
+    const nameMatch = /Report\s+for\s+'([^']+)'/i.exec(modifiedReportText);
+    if (nameMatch && nameMatch[1]) {
+      const targetName = nameMatch[1].trim();
+      const headerBack = transformer.evaluateRuleBackward(
+        {
+          kind: "Ieee2800VerificationHeader",
+          name: targetName,
+          projectName: targetName,
+          properties: { projectName: targetName },
+        },
+        "pscad",
+        {
+          strategy,
+          threadId: "project:header",
+        },
+      );
+      const getSourceProp = (node: Record<string, unknown> | undefined, key: string): unknown => {
+        const props = node?.["properties"];
+        return props && typeof props === "object" ? (props as Record<string, unknown>)[key] : undefined;
+      };
+      const resolvedName = String(getSourceProp(headerBack?.sourceNode, "name") ?? targetName);
+      if (resolvedName !== origName && projectEl) {
+        CstXmlAdapter.setAttribute(tx, projectEl, "name", resolvedName);
+        changes.push({
+          target: "project",
+          elementId: origName,
+          property: "name",
+          sourceOldVal: origName,
+          targetNewVal: targetName,
+          reconciledVal: resolvedName,
+          strategy,
+        });
+      }
+    }
+
+    const getSourceNodeProp = (node: Record<string, unknown> | undefined, key: string): unknown => {
       const props = node?.["properties"];
       return props && typeof props === "object" ? (props as Record<string, unknown>)[key] : undefined;
     };
-    const resolvedName = String(getSourceProp(headerBack?.sourceNode, "name") ?? targetName);
-    if (resolvedName !== origName && projectEl) {
-      splices.push(xml.setAttributeSplice(projectEl, "name", resolvedName, originalPscadXml));
-      changes.push({
-        target: "project",
-        elementId: origName,
-        property: "name",
-        sourceOldVal: origName,
-        targetNewVal: targetName,
-        reconciledVal: resolvedName,
-        strategy,
-      });
-    }
-  }
 
-  const getSourceNodeProp = (node: Record<string, unknown> | undefined, key: string): unknown => {
-    const props = node?.["properties"];
-    return props && typeof props === "object" ? (props as Record<string, unknown>)[key] : undefined;
-  };
+    // Locate IBR <Component> in PSCAD XML via healthy CST
+    const compEls = root
+      ? CstXmlAdapter.findElements(root, originalPscadXml, (_n, t) => t.toUpperCase() === "COMPONENT")
+      : [];
+    const ibrCompEl =
+      compEls.find((el) => {
+        const defn =
+          CstXmlAdapter.getAttribute(el, "defn", originalPscadXml)?.value ??
+          CstXmlAdapter.getAttribute(el, "type", originalPscadXml)?.value ??
+          "";
+        return /ibr|renewable|inverter|pv/i.test(defn);
+      }) ?? compEls[compEls.length - 1];
 
-  // Locate IBR <Component> in PSCAD XML
-  const compEls = findXmlElements(xmlDoc.root, "Component");
-  const ibrCompEl =
-    compEls.find((el) => {
-      const defn = el.attributes.find((a) => a.name === "defn" || a.name === "type")?.value ?? "";
-      return /ibr|renewable|inverter|pv/i.test(defn);
-    }) ?? compEls[compEls.length - 1];
-
-  const upsertParamSplice = (compEl: XmlElement, paramName: string, paramValue: string) => {
-    const paramEls = compEl.children.filter((c) => c.name.toLowerCase() === "param");
-    const existingParam = paramEls.find((p) => p.attributes.find((a) => a.name === "name")?.value === paramName);
-    if (existingParam) {
-      const curVal = existingParam.attributes.find((a) => a.name === "value")?.value;
-      if (curVal !== paramValue) {
-        splices.push(xml.setAttributeSplice(existingParam, "value", paramValue, originalPscadXml));
-      }
-    } else if (!compEl.selfClosing) {
-      splices.push(
-        xml.appendChildSplice(compEl, `<param name="${paramName}" value="${paramValue}"/>`, originalPscadXml),
+    const upsertParamInTx = (compEl: SyntaxNode, paramName: string, paramValue: string) => {
+      const paramEls = CstXmlAdapter.getChildElements(compEl).filter(
+        (c) => (CstXmlAdapter.getTagName(c, originalPscadXml) ?? "").toLowerCase() === "param",
       );
-    } else {
-      // Component is self-closing (e.g. `<Component type="RenewableSource" ... />`), update attribute directly
-      splices.push(xml.setAttributeSplice(compEl, paramName, paramValue, originalPscadXml));
-    }
-  };
+      const existingParam = paramEls.find(
+        (p) => CstXmlAdapter.getAttribute(p, "name", originalPscadXml)?.value === paramName,
+      );
+      if (existingParam) {
+        const curVal = CstXmlAdapter.getAttribute(existingParam, "value", originalPscadXml)?.value;
+        if (curVal !== paramValue) {
+          CstXmlAdapter.setAttribute(tx, existingParam, "value", paramValue);
+        }
+      } else if (!CstXmlAdapter.isSelfClosing(compEl, originalPscadXml)) {
+        CstXmlAdapter.appendChild(tx, compEl, `<param name="${paramName}" value="${paramValue}"/>`);
+      } else {
+        // Component is self-closing (e.g. `<Component type="RenewableSource" ... />`), update attribute directly
+        CstXmlAdapter.setAttribute(tx, compEl, paramName, paramValue);
+      }
+    };
 
-  // 2. Parse and reconcile Clause 5.3.2 LVRT behavior via Rule #2
-  const clause532Match = /•\s*\[(PASS|FAIL)\]\s*Clause\s+5\.3\.2[^:]*:\s*([^[\n]+)/i.exec(modifiedReportText);
-  if (clause532Match && ibrCompEl) {
-    const status532 = clause532Match[1]!.toUpperCase();
-    const desc532 = clause532Match[2]!.trim();
-    const wantsTrip =
-      status532 === "FAIL" || (/trip|cessation|disconnect/i.test(desc532) && !/^no\s+trip/i.test(desc532));
-    const targetLvrtBehavior = wantsTrip ? "Trip or momentary cessation" : "No trip or cessation";
+    // 2. Parse and reconcile Clause 5.3.2 LVRT behavior via Rule #2
+    const clause532Match = /•\s*\[(PASS|FAIL)\]\s*Clause\s+5\.3\.2[^:]*:\s*([^[\n]+)/i.exec(modifiedReportText);
+    if (clause532Match && ibrCompEl) {
+      const status532 = clause532Match[1]!.toUpperCase();
+      const desc532 = clause532Match[2]!.trim();
+      const wantsTrip =
+        status532 === "FAIL" || (/trip|cessation|disconnect/i.test(desc532) && !/^no\s+trip/i.test(desc532));
+      const targetLvrtBehavior = wantsTrip ? "Trip or momentary cessation" : "No trip or cessation";
 
-    const lvrtBack = transformer.evaluateRuleBackward(
-      {
-        kind: "Ieee2800Clause532",
-        name: "IBR_LVRT",
-        lvrtBehavior: targetLvrtBehavior,
-        properties: { lvrtBehavior: targetLvrtBehavior },
-      },
-      "pscad",
-      {
-        strategy,
-        threadId: "clause:5.3.2",
-      },
-    );
-    const resolvedLvrtMode = String(
-      getSourceNodeProp(lvrtBack?.sourceNode, "LVRT_mode") ?? (wantsTrip ? "Legacy_Trip" : "IEEE2800_Standard"),
-    );
-
-    if (resolvedLvrtMode !== origLvrtMode) {
-      upsertParamSplice(ibrCompEl, "LVRT_mode", resolvedLvrtMode);
-      changes.push({
-        target: "lvrt",
-        elementId: "PV_Array_Inverter",
-        property: "LVRT_mode",
-        sourceOldVal: origLvrtMode,
-        targetNewVal: resolvedLvrtMode,
-        reconciledVal: resolvedLvrtMode,
-        strategy,
-      });
-    }
-  }
-
-  // 3. Parse and reconcile Clause 5.4.1 Reactive Current Step Response (T_step) via Rule #3 (tggInvertible + tggReconcilePhysics)
-  const clause541Match = /Clause\s+5\.4\.1[^:]*:\s*(?:T_step|T_90%)\s*(?:=|<=|<)\s*([0-9]+(?:\.[0-9]+)?)\s*ms/i.exec(
-    modifiedReportText,
-  );
-  if (clause541Match && clause541Match[1] && ibrCompEl) {
-    const targetStepMs = Number(clause541Match[1]);
-    // Default report shows `T_step <= 50 ms` when Kp_v = 2.5 (which corresponds to T_step = 18.0 ms).
-    // Only trigger an inverse parameter update when the user edits the step time away from 50 ms (or when Kp_v was already customized).
-    if (!Number.isNaN(targetStepMs) && targetStepMs > 0 && (targetStepMs !== 50 || origKpV !== 2.5)) {
-      const kpBack = transformer.evaluateRuleBackward(
+      const lvrtBack = transformer.evaluateRuleBackward(
         {
-          kind: "Ieee2800Clause541",
-          name: "IBR_Kp_v",
-          stepResponseMs: targetStepMs,
-          properties: { stepResponseMs: targetStepMs },
+          kind: "Ieee2800Clause532",
+          name: "IBR_LVRT",
+          lvrtBehavior: targetLvrtBehavior,
+          properties: { lvrtBehavior: targetLvrtBehavior },
         },
         "pscad",
         {
           strategy,
-          threadId: "clause:5.4.1",
+          threadId: "clause:5.3.2",
         },
       );
-      const rawKp = Number(getSourceNodeProp(kpBack?.sourceNode, "Kp_v") ?? 45.0 / targetStepMs);
-      const resolvedKp = Math.round(rawKp * 100) / 100;
-      if (Math.abs(resolvedKp - origKpV) > 1e-3) {
-        upsertParamSplice(ibrCompEl, "Kp_v", String(resolvedKp));
+      const resolvedLvrtMode = String(
+        getSourceNodeProp(lvrtBack?.sourceNode, "LVRT_mode") ?? (wantsTrip ? "Legacy_Trip" : "IEEE2800_Standard"),
+      );
+
+      if (resolvedLvrtMode !== origLvrtMode) {
+        upsertParamInTx(ibrCompEl, "LVRT_mode", resolvedLvrtMode);
         changes.push({
-          target: "kp_v",
+          target: "lvrt",
           elementId: "PV_Array_Inverter",
-          property: "Kp_v",
-          sourceOldVal: origKpV,
-          targetNewVal: Math.round((45.0 / targetStepMs) * 100) / 100,
-          reconciledVal: resolvedKp,
+          property: "LVRT_mode",
+          sourceOldVal: origLvrtMode,
+          targetNewVal: resolvedLvrtMode,
+          reconciledVal: resolvedLvrtMode,
           strategy,
         });
       }
     }
-  }
 
-  // 4. Parse and reconcile Clause 7.2.2.3.5 Active Power Recovery (%) via Rule #4 (tggInvertible + tggReconcilePhysics)
-  const clause722Match = /Clause\s+7\.2\.2\.3\.5[^:]*:\s*I_post\s*\/\s*I_pre\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*%/i.exec(
-    modifiedReportText,
-  );
-  if (clause722Match && clause722Match[1] && ibrCompEl) {
-    const targetRecovPct = Number(clause722Match[1]);
-    if (!Number.isNaN(targetRecovPct) && (targetRecovPct !== 100.0 || origKiV !== 40.0)) {
-      const kiBack = transformer.evaluateRuleBackward(
-        {
-          kind: "Ieee2800Clause722",
-          name: "IBR_Ki_v",
-          recoveryPct: targetRecovPct,
-          properties: { recoveryPct: targetRecovPct },
-        },
-        "pscad",
-        {
-          strategy,
-          threadId: "clause:7.2.2.3.5",
-        },
-      );
-      const rawKi = Number(getSourceNodeProp(kiBack?.sourceNode, "Ki_v") ?? (targetRecovPct - 90.0) * 4.0);
-      const resolvedKi = Math.round(rawKi * 100) / 100;
-      if (Math.abs(resolvedKi - origKiV) > 1e-3) {
-        upsertParamSplice(ibrCompEl, "Ki_v", String(resolvedKi));
-        changes.push({
-          target: "ki_v",
-          elementId: "PV_Array_Inverter",
-          property: "Ki_v",
-          sourceOldVal: origKiV,
-          targetNewVal: Math.round((targetRecovPct - 90.0) * 4.0 * 100) / 100,
-          reconciledVal: resolvedKi,
-          strategy,
-        });
+    // 3. Parse and reconcile Clause 5.4.1 Reactive Current Step Response (T_step) via Rule #3 (tggInvertible + tggReconcilePhysics)
+    const clause541Match = /Clause\s+5\.4\.1[^:]*:\s*(?:T_step|T_90%)\s*(?:=|<=|<)\s*([0-9]+(?:\.[0-9]+)?)\s*ms/i.exec(
+      modifiedReportText,
+    );
+    if (clause541Match && clause541Match[1] && ibrCompEl) {
+      const targetStepMs = Number(clause541Match[1]);
+      if (!Number.isNaN(targetStepMs) && targetStepMs > 0 && (targetStepMs !== 50 || origKpV !== 2.5)) {
+        const kpBack = transformer.evaluateRuleBackward(
+          {
+            kind: "Ieee2800Clause541",
+            name: "IBR_Kp_v",
+            stepResponseMs: targetStepMs,
+            properties: { stepResponseMs: targetStepMs },
+          },
+          "pscad",
+          {
+            strategy,
+            threadId: "clause:5.4.1",
+          },
+        );
+        const rawKp = Number(getSourceNodeProp(kpBack?.sourceNode, "Kp_v") ?? 45.0 / targetStepMs);
+        const resolvedKp = Math.round(rawKp * 100) / 100;
+        if (Math.abs(resolvedKp - origKpV) > 1e-3) {
+          upsertParamInTx(ibrCompEl, "Kp_v", String(resolvedKp));
+          changes.push({
+            target: "kp_v",
+            elementId: "PV_Array_Inverter",
+            property: "Kp_v",
+            sourceOldVal: origKpV,
+            targetNewVal: Math.round((45.0 / targetStepMs) * 100) / 100,
+            reconciledVal: resolvedKp,
+            strategy,
+          });
+        }
       }
     }
-  }
 
-  const updatedText = xml.applySplices(originalPscadXml, splices);
-  return {
-    updatedText,
-    changes,
-    conflicts: transformer.getConflicts(),
-    transformer,
-  };
+    // 4. Parse and reconcile Clause 7.2.2.3.5 Active Power Recovery (%) via Rule #4 (tggInvertible + tggReconcilePhysics)
+    const clause722Match = /Clause\s+7\.2\.2\.3\.5[^:]*:\s*I_post\s*\/\s*I_pre\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*%/i.exec(
+      modifiedReportText,
+    );
+    if (clause722Match && clause722Match[1] && ibrCompEl) {
+      const targetRecovPct = Number(clause722Match[1]);
+      if (!Number.isNaN(targetRecovPct) && (targetRecovPct !== 100.0 || origKiV !== 40.0)) {
+        const kiBack = transformer.evaluateRuleBackward(
+          {
+            kind: "Ieee2800Clause722",
+            name: "IBR_Ki_v",
+            recoveryPct: targetRecovPct,
+            properties: { recoveryPct: targetRecovPct },
+          },
+          "pscad",
+          {
+            strategy,
+            threadId: "clause:7.2.2.3.5",
+          },
+        );
+        const rawKi = Number(getSourceNodeProp(kiBack?.sourceNode, "Ki_v") ?? (targetRecovPct - 90.0) * 4.0);
+        const resolvedKi = Math.round(rawKi * 100) / 100;
+        if (Math.abs(resolvedKi - origKiV) > 1e-3) {
+          upsertParamInTx(ibrCompEl, "Ki_v", String(resolvedKi));
+          changes.push({
+            target: "ki_v",
+            elementId: "PV_Array_Inverter",
+            property: "Ki_v",
+            sourceOldVal: origKiV,
+            targetNewVal: Math.round((targetRecovPct - 90.0) * 4.0 * 100) / 100,
+            reconciledVal: resolvedKi,
+            strategy,
+          });
+        }
+      }
+    }
+
+    const updatedText = tx.commit().applyToString(originalPscadXml);
+    return {
+      updatedText,
+      changes,
+      conflicts: transformer.getConflicts(),
+      transformer,
+    };
+  } finally {
+    session.dispose();
+  }
 }

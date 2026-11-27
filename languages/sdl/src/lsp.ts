@@ -6,6 +6,9 @@
  * hover documentation (`getSdlHover`), and keyword/catalog completions (`getSdlCompletions`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getSdlSchemasFromLibraries, lookupSdlModelSchema } from "./catalog/library-package-adapter.js";
 import { lintSdl } from "./lints/index.js";
 import { parseSdl } from "./parser/sdl-parser.js";
@@ -234,10 +237,55 @@ export function getSdlDocumentSymbols(content: string, _uri = "system.sdl"): Lsp
   ];
 }
 
+interface SdlCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+function buildSdlCstLines(content: string): Map<number, SdlCstLine> {
+  const byRow = new Map<number, SdlCstLine>();
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("sdl", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+    }
+  }
+
+  return byRow;
+}
+
 function wordAtPosition(content: string, pos: LspPosition): string | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[pos.line];
-  if (!lineText) return null;
+  const byRow = buildSdlCstLines(content);
+  const entry = byRow.get(pos.line);
+  if (!entry) return null;
+  const lineText = entry.colLine;
   let start = pos.character;
   let end = pos.character;
   while (start > 0 && /[A-Za-z0-9_]/.test(lineText[start - 1] ?? "")) start--;

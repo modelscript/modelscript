@@ -381,7 +381,7 @@ function renderStaticWorkbench(): string {
         try {
           sessionStorage.setItem('modelscript.initialAnchor', anchorParam);
           localStorage.setItem('modelscript.initialAnchor', anchorParam);
-        } catch (e) {}
+        } catch (e) { /* ignore: storage unavailable in restricted/private contexts */ }
       }
     }
     if (template.startsWith('artifact-')) {
@@ -396,7 +396,7 @@ function renderStaticWorkbench(): string {
           var parsed = JSON.parse(cached);
           if (parsed && parsed.title) cachedTitle = parsed.title;
         }
-      } catch (e) {}
+      } catch (e) { /* ignore: storage unavailable or malformed cached artifact metadata */ }
       document.title = (cachedTitle || ('Artifact #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
     } else if (template.startsWith('package-')) {
       document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
@@ -433,7 +433,7 @@ function renderStaticWorkbench(): string {
           sessionStorage.setItem('modelscript.user', JSON.stringify(data.user));
           localStorage.setItem('modelscript.user', JSON.stringify(data.user));
         }
-      } catch (e) {}
+      } catch (e) { /* ignore: storage quota/access restricted in sandboxed context */ }
     }
     if (data.type === 'MODELSCRIPT_MOUNT_ARTIFACT' && data.artifactId) {
       try {
@@ -443,7 +443,7 @@ function renderStaticWorkbench(): string {
         if (data.title) {
           document.title = data.title + ' — Studio';
         }
-      } catch (e) {}
+      } catch (e) { /* ignore: storage quota/access restricted in sandboxed context */ }
     }
   }
 
@@ -470,7 +470,7 @@ function renderStaticWorkbench(): string {
         u.hostname === 'modelscript.org' || u.hostname.endsWith('.modelscript.org') ||
         u.hostname === 'ansatz.social' || u.hostname.endsWith('.ansatz.social')
       )) return true;
-    } catch(e) {}
+    } catch (e) { /* ignore: malformed origin URL falls through to deny */ }
     return false;
   }
 
@@ -479,7 +479,7 @@ function renderStaticWorkbench(): string {
     if (document.referrer && checkOriginAllowed(document.referrer)) {
       targetOrigin = new URL(document.referrer).origin;
     }
-  } catch(e) {}
+  } catch (e) { /* ignore: malformed referrer falls back to window.location.origin */ }
 
   try {
     if (window.parent && window.parent !== window) {
@@ -488,7 +488,7 @@ function renderStaticWorkbench(): string {
     if (window.opener && !window.opener.closed) {
       window.opener.postMessage({ type: 'MODELSCRIPT_READY' }, targetOrigin);
     }
-  } catch (e) {}
+  } catch (e) { /* ignore: cross-origin parent/opener postMessage may throw */ }
 
   if (typeof BroadcastChannel !== 'undefined') {
     try {
@@ -497,7 +497,7 @@ function renderStaticWorkbench(): string {
         handleIncomingBridgeData(ev.data);
       });
       bridgeChannel.postMessage({ type: 'MODELSCRIPT_READY' });
-    } catch (e) {}
+    } catch (e) { /* ignore: BroadcastChannel unavailable in opaque/sandboxed origin */ }
   }
 
   window.addEventListener('message', function(ev) {

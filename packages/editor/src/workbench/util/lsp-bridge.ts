@@ -14,11 +14,13 @@ import {
   type DiagramData,
   type DiagramEdge,
   type DiagramEditAction,
+  type DiagramGetDataParams,
   type DiagramNode,
   type DiagramPort,
 } from "@modelscript/diagram/protocol";
 import { scanModelicaStructure } from "@modelscript/modelica/structure-scanner";
 import pako from "pako";
+import type { DocumentSymbol, TextEdit } from "vscode-languageserver-protocol";
 import { ALL_ANSATZ_LANGUAGES } from "../constants";
 import {
   createHttpLspTransport,
@@ -27,6 +29,7 @@ import {
   setActiveLspTransport,
   type AnsatzLspTransport,
 } from "./lsp-transport";
+import { onLspReconnect } from "./lsp-worker";
 
 export { createHttpLspTransport, setActiveLspTransport, type AnsatzLspTransport };
 export type { DiagramApplyEditsResult, DiagramData, DiagramEdge, DiagramEditAction, DiagramNode, DiagramPort };
@@ -72,6 +75,15 @@ async function lsp(initialLanguageId?: string): Promise<AnsatzLspTransport> {
 /** Version counter for incremental didChange notifications. */
 const versions = new Map<string, number>();
 const openedDocuments = new Map<string, { text: string; languageId: string }>();
+
+// Replay open documents automatically if the LSP worker crashes and respawns.
+onLspReconnect((conn) => {
+  for (const [uri, entry] of openedDocuments.entries()) {
+    conn.sendNotification("textDocument/didOpen", {
+      textDocument: { uri, languageId: entry.languageId, version: nextVersion(uri), text: entry.text },
+    });
+  }
+});
 
 function nextVersion(uri: string): number {
   const v = (versions.get(uri) ?? 0) + 1;
@@ -171,13 +183,7 @@ export function didChangeVisibleRanges(uri: string, ranges: { startLine: number;
 // LSP types used in Ansatz
 // ────────────────────────────────────────────────────────────────────
 
-export interface LspTextEdit {
-  range: {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
-  };
-  newText: string;
-}
+export type LspTextEdit = TextEdit;
 
 export interface SimulateParams {
   className?: string | undefined;
@@ -195,6 +201,7 @@ export interface SimulateParams {
   sweepConfig?: { parameterName: string; start: number; end: number; steps: number } | undefined;
   flattenerBackend?: "hybrid" | "wasm" | "ts" | "diff" | undefined;
   initialSnapshot?: string | Record<string, unknown> | undefined;
+  skipValidation?: boolean | undefined;
 }
 
 export interface SimulateResult {
@@ -324,7 +331,13 @@ export async function onSimulationProgress(
   handler: (payload: { uri: string; timeSec: number; stepIndex: number; voltages: Record<string, number> }) => void,
 ): Promise<{ dispose: () => void }> {
   const conn = await lsp();
-  return conn.onNotification("modelscript/simulationProgress", handler);
+  if (!conn.onNotification) {
+    return { dispose: () => {} };
+  }
+  const sub = conn.onNotification("modelscript/simulationProgress", (params: unknown) => {
+    handler(params as { uri: string; timeSec: number; stepIndex: number; voltages: Record<string, number> });
+  });
+  return typeof sub === "function" ? { dispose: sub } : sub;
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -655,7 +668,7 @@ export interface ApplyCadEditParams {
   documentText?: string | undefined;
   languageId?: string | undefined;
   kind: "gizmo" | "dimension" | "face_tag" | "assembly_joint";
-  payload: Record<string, unknown>;
+  payload: object;
 }
 
 export interface ApplyCadEditResult {
@@ -724,14 +737,7 @@ export async function parseCode(code: string): Promise<{
   return (await lsp()).sendRequest("modelscript/parse", { code });
 }
 
-export interface LspDocumentSymbol {
-  name: string;
-  detail?: string;
-  kind?: number;
-  range?: { start: { line: number; character: number }; end: { line: number; character: number } };
-  selectionRange?: { start: { line: number; character: number }; end: { line: number; character: number } };
-  children?: LspDocumentSymbol[];
-}
+export type LspDocumentSymbol = DocumentSymbol;
 
 export async function verifyAllInLsp<T = Record<string, unknown>>(
   params: {

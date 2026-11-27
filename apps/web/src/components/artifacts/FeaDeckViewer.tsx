@@ -6,7 +6,7 @@ import {
   CaeSimulationTree,
   ScalarColorbarLegend,
   type CaeSimulationRunEntry,
-} from "@modelscript/editor/workbench/cad-viewer";
+} from "@modelscript/cad-viewer";
 import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CodeIcon, EyeIcon, VersionsIcon, WorkflowIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";

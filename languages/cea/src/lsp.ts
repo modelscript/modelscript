@@ -4,6 +4,9 @@
  * @modelscript/cea — Language Server Protocol (LSP) Services for NASA CEA Decks.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { CEA_STD_SPECIES_DATA } from "./catalog/cea-std-schemas.js";
 import { lintCeaDeck } from "./lints/index.js";
 import { parseCeaDeck } from "./parser/cea-parser.js";
@@ -83,19 +86,75 @@ const KEYWORD_DOCS: Record<string, string> = {
   frozen: "Frozen-composition isentropic expansion from the combustion chamber.",
 };
 
+interface CeaCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface CeaCstLineIndex {
+  byRow: Map<number, CeaCstLineEntry>;
+  lastRow: number;
+  lastCol: number;
+}
+
+function buildCeaCstLineIndex(content: string): CeaCstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("cea", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, CeaCstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    let maxCol = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row >= maxRow) {
+        maxRow = row;
+        maxCol = endCol;
+      }
+    }
+    const rootEnd = (rootNode as { endPosition?: { row?: number; column?: number } }).endPosition;
+    const lastRow = Math.max(maxRow, rootEnd?.row ?? 0);
+    const lastCol = lastRow === maxRow ? maxCol : (rootEnd?.column ?? 0);
+    return { byRow, lastRow, lastCol };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  const lastRow = Math.max(0, rawLines.length - 1);
+  return { byRow, lastRow, lastCol: (rawLines[lastRow] ?? "").length };
+}
+
 /**
  * Validates a NASA CEA problem deck and returns LSP diagnostics.
  */
 export function validateCea(content: string, _uri: string = "problem.cea"): LspDiagnostic[] {
   const deck = parseCeaDeck(content);
   const diags = lintCeaDeck(deck);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildCeaCstLineIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = Math.max(0, Math.min(lineText.length, d.column - 1));
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const lineLen = cstIndex.byRow.get(lineIdx)?.endCol ?? 0;
+    const startChar = Math.max(0, Math.min(lineLen, d.column - 1));
+    const endChar = Math.max(startChar + 1, lineLen);
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -114,10 +173,10 @@ export function validateCea(content: string, _uri: string = "problem.cea"): LspD
  */
 export function getCeaDocumentSymbols(content: string): LspDocumentSymbol[] {
   const deck = parseCeaDeck(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildCeaCstLineIndex(content);
   const fullRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: (lines[lines.length - 1] ?? "").length },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastCol },
   };
 
   const children: LspDocumentSymbol[] = [];
@@ -138,9 +197,10 @@ export function getCeaDocumentSymbols(content: string): LspDocumentSymbol[] {
 
   for (const r of deck.reactants) {
     const rLine = Math.max(0, r.line - 1);
+    const rEnd = cstIndex.byRow.get(rLine)?.endCol ?? Math.max(1, r.column);
     const rRange: LspRange = {
       start: { line: rLine, character: Math.max(0, r.column - 1) },
-      end: { line: rLine, character: (lines[rLine] ?? "").length },
+      end: { line: rLine, character: rEnd },
     };
     const detailParts: string[] = [r.role];
     if (r.wtPercent !== undefined) detailParts.push(`wt%=${r.wtPercent}`);
@@ -163,7 +223,7 @@ export function getCeaDocumentSymbols(content: string): LspDocumentSymbol[] {
       range: fullRange,
       selectionRange: {
         start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.min(20, (lines[0] ?? "").length) },
+        end: { line: 0, character: Math.min(20, cstIndex.byRow.get(0)?.endCol ?? 0) },
       },
       children,
     },
@@ -174,9 +234,10 @@ export function getCeaDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides Markdown hover documentation for NASA CEA keywords and thermodynamic species.
  */
 export function getCeaHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildCeaCstLineIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = " ".repeat(entry.startCol) + entry.text;
 
   let start = position.character;
   let end = position.character;

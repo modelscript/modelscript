@@ -6,6 +6,9 @@
  * hover documentation (`getJedecHover`), and completions (`getJedecCompletions`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintJedec, type JedecLintOptions } from "./lints/index.js";
 import { formatHex16 } from "./parser/checksum.js";
 import { parseJedec } from "./parser/jedec-parser.js";
@@ -92,6 +95,60 @@ const JESD3_FIELD_DOCS: Record<string, string> = {
   GAL16V8: "**GAL16V8** — 20-pin E2CMOS GAL (2194 fuses, 8 OLMC macrocells with programmable XOR polarity).",
   GAL22V10: "**GAL22V10** — 24-pin E2CMOS GAL (5892 fuses, 10 variable-product-term OLMC macrocells).",
 };
+
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface JedecCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildJedecCstIndex(source: string): JedecCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("jedec", import.meta.url, createWasmParserSync).parse(source)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(source, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = source.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
 
 function spanToRange(span?: JedecSourceSpan): LspRange {
   if (!span) return DEFAULT_RANGE;
@@ -188,10 +245,10 @@ export function getJedecDocumentSymbols(source: string, uri?: string): LspDocume
     });
   }
 
-  const lines = source.split("\n");
+  const cstIndex = buildJedecCstIndex(source);
   const fullRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: lines[lines.length - 1]?.length ?? 0 },
+    start: { line: 0, character: cstIndex.byRow.get(0)?.startCol ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   return [
@@ -210,15 +267,18 @@ export function getJedecDocumentSymbols(source: string, uri?: string): LspDocume
  * Provides Markdown hover documentation for JESD3 field codes and PLD device names.
  */
 export function getJedecHover(source: string, position: LspPosition): LspHover | null {
-  const lines = source.split("\n");
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildJedecCstIndex(source);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
 
-  const col = Math.max(0, Math.min(position.character, line.length));
+  const line = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > line.length) return null;
+
   // Extract alphanumeric token around cursor
-  let start = col;
+  let start = relChar;
   while (start > 0 && /[A-Za-z0-9]/.test(line.charAt(start - 1))) start--;
-  let end = col;
+  let end = relChar;
   while (end < line.length && /[A-Za-z0-9]/.test(line.charAt(end))) end++;
 
   const token = line.slice(start, end).toUpperCase();
@@ -235,8 +295,8 @@ export function getJedecHover(source: string, position: LspPosition): LspHover |
       value: exactDoc,
     },
     range: {
-      start: { line: position.line, character: start },
-      end: { line: position.line, character: end },
+      start: { line: position.line, character: entry.startCol + start },
+      end: { line: position.line, character: entry.startCol + end },
     },
   };
 }

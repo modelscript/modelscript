@@ -4,6 +4,9 @@
  * @modelscript/endf6 — Language Server Protocol (LSP) Services.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { CLEANROOM_ENDF6_NUCLIDES, ENDF6_MT_DESCRIPTORS } from "./catalog/endf6-std-schemas.js";
 import { lintEndf6Tape } from "./lints/index.js";
 import { parseEndf6Card, parseEndf6Tape } from "./parser/tape-parser.js";
@@ -72,14 +75,62 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
-function lineRange(lines: string[], lineOneBased: number, endLineOneBased?: number): LspRange {
-  const startLn = Math.max(0, Math.min(lines.length - 1, lineOneBased - 1));
+interface Endf6CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface Endf6CstLineIndex {
+  byRow: Map<number, Endf6CstLineEntry>;
+  lastRow: number;
+}
+
+function buildEndf6CstLineIndex(content: string): Endf6CstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("endf6", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, Endf6CstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row > maxRow) maxRow = row;
+    }
+    const rootEndRow = (rootNode as { endPosition?: { row?: number } }).endPosition?.row ?? 0;
+    return { byRow, lastRow: Math.max(maxRow, rootEndRow) };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  return { byRow, lastRow: Math.max(0, rawLines.length - 1) };
+}
+
+function lineRange(cstIndex: Endf6CstLineIndex, lineOneBased: number, endLineOneBased?: number): LspRange {
+  const startLn = Math.max(0, Math.min(cstIndex.lastRow, lineOneBased - 1));
   const endLn =
-    endLineOneBased !== undefined ? Math.max(startLn, Math.min(lines.length - 1, endLineOneBased - 1)) : startLn;
-  const endText = lines[endLn] ?? "";
+    endLineOneBased !== undefined ? Math.max(startLn, Math.min(cstIndex.lastRow, endLineOneBased - 1)) : startLn;
+  const endCol = cstIndex.byRow.get(endLn)?.endCol ?? 1;
   return {
     start: { line: startLn, character: 0 },
-    end: { line: endLn, character: Math.max(1, endText.length) },
+    end: { line: endLn, character: Math.max(1, endCol) },
   };
 }
 
@@ -90,10 +141,10 @@ export function validateEndf6(content: string, _uri: string = "tape.endf"): LspD
   try {
     const tape = parseEndf6Tape(content);
     const diags = lintEndf6Tape(tape);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildEndf6CstLineIndex(content);
 
     return diags.map((d) => ({
-      range: lineRange(lines, d.line),
+      range: lineRange(cstIndex, d.line),
       severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
       code: d.id,
       source: "modelscript-endf6",
@@ -117,30 +168,30 @@ export function validateEndf6(content: string, _uri: string = "tape.endf"): LspD
  */
 export function getEndf6DocumentSymbols(content: string): LspDocumentSymbol[] {
   const tape = parseEndf6Tape(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildEndf6CstLineIndex(content);
   const symbols: LspDocumentSymbol[] = [];
 
   for (const mat of tape.materials.values()) {
     const children: LspDocumentSymbol[] = [];
     for (const sec of mat.sections) {
       const desc = ENDF6_MT_DESCRIPTORS.get(sec.mt);
-      const secRange = lineRange(lines, sec.startLine, sec.endLine);
+      const secRange = lineRange(cstIndex, sec.startLine, sec.endLine);
       children.push({
         name: desc ? `MF=${sec.mf} MT=${sec.mt} (${desc.name})` : `MF=${sec.mf} MT=${sec.mt}`,
         detail: `${sec.cards.length} cards`,
         kind: sec.mf === 3 ? LspSymbolKind.Function : LspSymbolKind.Interface,
         range: secRange,
-        selectionRange: lineRange(lines, sec.startLine),
+        selectionRange: lineRange(cstIndex, sec.startLine),
       });
     }
 
-    const matRange = lineRange(lines, mat.startLine, mat.endLine);
+    const matRange = lineRange(cstIndex, mat.startLine, mat.endLine);
     symbols.push({
       name: `${mat.name} (MAT=${mat.mat})`,
       detail: `ZA=${Math.round(mat.za)}, AWR=${mat.awr.toFixed(4)}`,
       kind: LspSymbolKind.Class,
       range: matRange,
-      selectionRange: lineRange(lines, mat.startLine),
+      selectionRange: lineRange(cstIndex, mat.startLine),
       children,
     });
   }
@@ -152,9 +203,10 @@ export function getEndf6DocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides contextual Markdown hover information for an ENDF-6 card position.
  */
 export function getEndf6Hover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const rawLine = lines[position.line];
-  if (!rawLine || rawLine.trim().length === 0) return null;
+  const cstIndex = buildEndf6CstLineIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry || entry.text.trim().length === 0) return null;
+  const rawLine = " ".repeat(entry.startCol) + entry.text;
 
   const card = parseEndf6Card(rawLine, position.line + 1);
   const col = position.character;
@@ -168,7 +220,7 @@ export function getEndf6Hover(content: string, position: LspPosition): LspHover 
     };
     return {
       contents: { kind: "markdown", value: descriptions[card.terminator] ?? card.terminator },
-      range: lineRange(lines, position.line + 1),
+      range: lineRange(cstIndex, position.line + 1),
     };
   }
 

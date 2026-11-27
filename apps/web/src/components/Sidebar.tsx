@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  BeakerIcon,
   BookIcon,
   CodeIcon,
   CommentDiscussionIcon,
@@ -35,6 +36,7 @@ import { safeCssImageUrl } from "../util/url";
 import AnsatzMark from "./AnsatzLogo";
 import Box from "./Box";
 import { AnsatzIcon } from "./icons";
+import { isMlArenaPathname } from "./MlArenaNavHeader";
 import { scrollToTop } from "./ScrollToTop";
 
 const SidebarContainer = styled.header`
@@ -1208,6 +1210,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onAnsatzClick, onSketchC
   if (hasPackages) {
     registryLinks.push({ to: "/packages", icon: PackageIcon, label: "Packages" });
   }
+  registryLinks.push({ to: "/arena", icon: BeakerIcon, label: "ML & Arena" });
   if (hasIde) {
     registryLinks.push({ to: "/studio", icon: CodeIcon, label: "Studio" });
   }
@@ -1228,6 +1231,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onAnsatzClick, onSketchC
     const isActive =
       location.pathname === link.to ||
       location.pathname.startsWith(`${link.to}/`) ||
+      (link.to === "/arena" && isMlArenaPathname(location.pathname)) ||
       (link.to === "/inbox" &&
         (location.pathname === "/notifications" ||
           location.pathname.startsWith("/notifications/") ||

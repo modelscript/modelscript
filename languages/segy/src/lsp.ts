@@ -6,6 +6,9 @@
  * for SEG-Y Rev 0 / Rev 1 textual reel headers and standard header fields.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getSegySchemasFromLibraries, lookupSegySchema } from "./catalog/library-package-adapter.js";
 import { lintSegyTextualHeader } from "./lints/index.js";
 import { parseSegyTextualHeader } from "./parser/textual-header.js";
@@ -95,18 +98,77 @@ const KEYWORD_DOCS: Record<string, { title: string; doc: string }> = {
   },
 };
 
+interface SegyCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface SegyCstIndex {
+  byRow: Map<number, SegyCstLine>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildSegyCstIndex(content: string): SegyCstIndex {
+  const byRow = new Map<number, SegyCstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("segy", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates a SEG-Y textual reel header and returns LSP diagnostics.
  */
 export function validateSegy(content: string): SegyLspDiagnostic[] {
   const diags = lintSegyTextualHeader(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildSegyCstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, (d.line ?? 1) - 1);
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = Math.max(0, (d.column ?? 1) - 1);
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column !== undefined ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -125,18 +187,16 @@ export function validateSegy(content: string): SegyLspDiagnostic[] {
  */
 export function getSegyDocumentSymbols(content: string): SegyLspDocumentSymbol[] {
   const header = parseSegyTextualHeader(content);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
-  const lastCol = (lines[lastLine] ?? "").length;
+  const cstIndex = buildSegyCstIndex(content);
 
   const children: SegyLspDocumentSymbol[] = [];
   for (const card of header.cards) {
     if (!card.key) continue;
     const lineIdx = Math.max(0, card.line - 1);
-    const lineLen = (lines[lineIdx] ?? card.raw).length;
+    const entry = cstIndex.byRow.get(lineIdx);
     const range: SegyLspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: lineLen },
+      start: { line: lineIdx, character: entry?.startCol ?? 0 },
+      end: { line: lineIdx, character: entry?.endCol ?? card.raw.length },
     };
     children.push({
       name: card.key,
@@ -149,8 +209,9 @@ export function getSegyDocumentSymbols(content: string): SegyLspDocumentSymbol[]
 
   const rootRange: SegyLspRange = {
     start: { line: 0, character: 0 },
-    end: { line: lastLine, character: lastCol },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
+  const firstEntry = cstIndex.byRow.get(0);
 
   return [
     {
@@ -158,7 +219,10 @@ export function getSegyDocumentSymbols(content: string): SegyLspDocumentSymbol[]
       detail: header.revision ? `SEG-Y Rev ${header.revision}` : "SEG-Y Reel Header",
       kind: SegyLspSymbolKind.Package,
       range: rootRange,
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: (lines[0] ?? "").length } },
+      selectionRange: {
+        start: { line: 0, character: firstEntry?.startCol ?? 0 },
+        end: { line: 0, character: firstEntry?.endCol ?? 0 },
+      },
       children,
     },
   ];
@@ -168,9 +232,10 @@ export function getSegyDocumentSymbols(content: string): SegyLspDocumentSymbol[]
  * Returns hover documentation for a position inside a SEG-Y textual reel header.
  */
 export function getSegyHover(content: string, position: SegyLspPosition): SegyLspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (!lineText) return null;
+  const cstIndex = buildSegyCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const lineText = entry.colLine;
 
   // 1. Check multi-word standard keywords on this line
   const upperLine = lineText.toUpperCase();

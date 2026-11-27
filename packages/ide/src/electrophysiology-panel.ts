@@ -19,6 +19,7 @@ import {
 import { parseNmodl, solveNmodlActionPotential, type NmodlDocument, type NmodlSimResult } from "@modelscript/nmodl";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -129,11 +130,24 @@ export class ElectrophysiologyPanel extends BaseWebviewPanel {
   }
 
   private renderHtml(doc: NmodlDocument, sim: NmodlSimResult, injAmp: number): string {
-    return renderElectrophysiologyHtml(doc, sim, injAmp);
+    return renderElectrophysiologyHtml(doc, sim, injAmp, this._panel.webview.cspSource);
+  }
+
+  public override dispose(): void {
+    ElectrophysiologyPanel.currentPanel = undefined;
+    super.dispose();
   }
 }
 
-export function renderElectrophysiologyHtml(doc: NmodlDocument, sim: NmodlSimResult, injAmp: number): string {
+export function renderElectrophysiologyHtml(
+  doc: NmodlDocument,
+  sim: NmodlSimResult,
+  injAmp: number,
+  cspSource = "",
+): string {
+  const nonce = getNonce();
+  const styleSrc = cspSource ? `'unsafe-inline' ${cspSource}` : `'unsafe-inline'`;
+  const imgSrc = cspSource ? `${cspSource} data: blob:` : `data: blob:`;
   const mechanismName = doc.model.suffix || "HodgkinHuxley";
   const title = doc.model.title || `${mechanismName} Electrophysiology`;
   const peakVm = sim.vPeak;
@@ -147,6 +161,7 @@ export function renderElectrophysiologyHtml(doc: NmodlDocument, sim: NmodlSimRes
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${styleSrc}; script-src 'nonce-${nonce}'; img-src ${imgSrc};">
   <title>${escapeXml(title)}</title>
   <style>
     :root {
@@ -317,10 +332,10 @@ export function renderElectrophysiologyHtml(doc: NmodlDocument, sim: NmodlSimRes
       <div style="font-size: 11px; color: var(--muted); margin-top: 2px;">NEURON Mechanism: <code>${escapeXml(mechanismName)}</code></div>
     </div>
     <div class="tab-bar">
-      <button class="tab-btn active" id="tab-grid" onclick="switchView('grid')">All-in-One Grid</button>
-      <button class="tab-btn" id="tab-cable" onclick="switchView('cable')">Morphological Cable</button>
-      <button class="tab-btn" id="tab-oscilloscope" onclick="switchView('oscilloscope')">Oscilloscope</button>
-      <button class="tab-btn" id="tab-phase" onclick="switchView('phase')">Phase Portrait</button>
+      <button class="tab-btn active" id="tab-grid" data-view="grid">All-in-One Grid</button>
+      <button class="tab-btn" id="tab-cable" data-view="cable">Morphological Cable</button>
+      <button class="tab-btn" id="tab-oscilloscope" data-view="oscilloscope">Oscilloscope</button>
+      <button class="tab-btn" id="tab-phase" data-view="phase">Phase Portrait</button>
     </div>
     <div class="metrics">
       <div class="metric-badge">Peak Vm: <span style="color: var(--accent);">${peakVm.toFixed(1)} mV</span></div>
@@ -405,13 +420,13 @@ export function renderElectrophysiologyHtml(doc: NmodlDocument, sim: NmodlSimRes
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    const simTimes = ${JSON.stringify(sim.time)};
-    const simVm = ${JSON.stringify(sim.v)};
-    const simM = ${JSON.stringify(sim.states["m"] ?? [])};
-    const simH = ${JSON.stringify(sim.states["h"] ?? [])};
-    const simN = ${JSON.stringify(sim.states["n"] ?? [])};
+    const simTimes = ${JSON.stringify(sim.time).replace(/</g, "\\u003c")};
+    const simVm = ${JSON.stringify(sim.v).replace(/</g, "\\u003c")};
+    const simM = ${JSON.stringify(sim.states["m"] ?? []).replace(/</g, "\\u003c")};
+    const simH = ${JSON.stringify(sim.states["h"] ?? []).replace(/</g, "\\u003c")};
+    const simN = ${JSON.stringify(sim.states["n"] ?? []).replace(/</g, "\\u003c")};
 
     let currentTime = 0.0;
     let isPlaying = false;
@@ -428,7 +443,12 @@ export function renderElectrophysiologyHtml(doc: NmodlDocument, sim: NmodlSimRes
       document.getElementById("panel-" + view).classList.add("active");
       renderAll();
     }
-    window.switchView = switchView;
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const view = btn.getAttribute("data-view");
+        if (view) switchView(view);
+      });
+    });
 
     // Phase Mode Switcher
     document.getElementById("btn-mode-m").addEventListener("click", () => {

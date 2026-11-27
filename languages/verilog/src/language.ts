@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { choice, field, language, optional, repeat, seq } from "@modelscript/dsl";
+import { choice, field, language, optional, repeat, semanticToken, seq } from "@modelscript/dsl";
 import { registerBuiltInVerilogLibrarySync } from "./catalog/library-package-adapter.js";
 import { VerilogErrorCode } from "./errors.js";
 import { verilogIndexing } from "./indexing.js";
@@ -17,6 +17,23 @@ export const verilogLanguage = language({
   indexing: verilogIndexing,
   lsp: {
     fileExtensions: [".v", ".vh", ".vl"],
+    folding: [
+      "ModuleDeclaration",
+      "AlwaysBlock",
+      "InitialBlock",
+      "BlockStatement",
+      "CaseStatement",
+      { rule: "Comment", kind: "comment", defaultCollapsed: true },
+    ],
+    outline: [
+      "ModuleDeclaration",
+      "PortDeclaration",
+      "NetDeclaration",
+      "ParamDeclaration",
+      "AlwaysBlock",
+      "InitialBlock",
+      "ModuleInstantiation",
+    ],
   },
   errorCodes: VerilogErrorCode,
 
@@ -28,7 +45,7 @@ export const verilogLanguage = language({
     ModuleDeclaration: ($) =>
       seq(
         choice("module", "macromodule"),
-        field("name", $["Identifier"]!),
+        semanticToken("class", field("name", $["Identifier"]!), ["declaration"]),
         optional($["ParamPortList"]!),
         optional($["PortList"]!),
         ";",
@@ -42,7 +59,7 @@ export const verilogLanguage = language({
       seq(
         optional(choice("parameter", "localparam")),
         optional($["Range"]!),
-        field("name", $["Identifier"]!),
+        semanticToken("parameter", field("name", $["Identifier"]!), ["declaration"]),
         "=",
         field("value", $["Expression"]!),
       ),
@@ -56,9 +73,9 @@ export const verilogLanguage = language({
           optional(choice("wire", "reg", "tri", "integer")),
           optional("signed"),
           optional($["Range"]!),
-          field("name", $["Identifier"]!),
+          semanticToken("parameter", field("name", $["Identifier"]!), ["declaration"]),
         ),
-        field("name", $["Identifier"]!),
+        semanticToken("parameter", field("name", $["Identifier"]!), ["declaration"]),
       ),
 
     Range: ($) => seq("[", field("msb", $["Expression"]!), ":", field("lsb", $["Expression"]!), "]"),
@@ -82,8 +99,8 @@ export const verilogLanguage = language({
         optional(choice("wire", "reg", "tri", "integer")),
         optional("signed"),
         optional($["Range"]!),
-        $["Identifier"]!,
-        repeat(seq(",", $["Identifier"]!)),
+        semanticToken("parameter", $["Identifier"]!, ["declaration"]),
+        repeat(seq(",", semanticToken("parameter", $["Identifier"]!, ["declaration"]))),
         ";",
       ),
 
@@ -98,7 +115,11 @@ export const verilogLanguage = language({
       ),
 
     NetDeclItem: ($) =>
-      seq(field("name", $["Identifier"]!), optional($["Range"]!), optional(seq("=", $["Expression"]!))),
+      seq(
+        semanticToken("variable", field("name", $["Identifier"]!), ["declaration"]),
+        optional($["Range"]!),
+        optional(seq("=", $["Expression"]!)),
+      ),
 
     ParamDeclaration: ($) =>
       seq(
@@ -109,7 +130,12 @@ export const verilogLanguage = language({
         ";",
       ),
 
-    ParamAssign: ($) => seq(field("name", $["Identifier"]!), "=", field("value", $["Expression"]!)),
+    ParamAssign: ($) =>
+      seq(
+        semanticToken("parameter", field("name", $["Identifier"]!), ["declaration", "readonly"]),
+        "=",
+        field("value", $["Expression"]!),
+      ),
 
     ContinuousAssign: ($) => seq("assign", field("lhs", $["Expression"]!), "=", field("rhs", $["Expression"]!), ";"),
 
@@ -128,9 +154,9 @@ export const verilogLanguage = language({
 
     SensitivityItem: ($) =>
       choice(
-        seq("posedge", field("signal", $["Identifier"]!)),
-        seq("negedge", field("signal", $["Identifier"]!)),
-        field("signal", $["Identifier"]!),
+        seq("posedge", semanticToken("variable", field("signal", $["Identifier"]!))),
+        seq("negedge", semanticToken("variable", field("signal", $["Identifier"]!))),
+        semanticToken("variable", field("signal", $["Identifier"]!)),
       ),
 
     Statement: ($) =>
@@ -143,7 +169,13 @@ export const verilogLanguage = language({
         ";",
       ),
 
-    BlockStatement: ($) => seq("begin", optional(seq(":", $["Identifier"]!)), repeat($["Statement"]!), "end"),
+    BlockStatement: ($) =>
+      seq(
+        "begin",
+        optional(seq(":", semanticToken("namespace", $["Identifier"]!, ["declaration"]))),
+        repeat($["Statement"]!),
+        "end",
+      ),
 
     IfStatement: ($) =>
       seq(
@@ -181,9 +213,12 @@ export const verilogLanguage = language({
       seq(
         field(
           "gateType",
-          choice("and", "nand", "or", "nor", "xor", "xnor", "buf", "not", "bufif0", "bufif1", "notif0", "notif1"),
+          semanticToken(
+            "function",
+            choice("and", "nand", "or", "nor", "xor", "xnor", "buf", "not", "bufif0", "bufif1", "notif0", "notif1"),
+          ),
         ),
-        optional(field("instanceName", $["Identifier"]!)),
+        optional(semanticToken("variable", field("instanceName", $["Identifier"]!), ["declaration"])),
         "(",
         $["Expression"]!,
         repeat(seq(",", $["Expression"]!)),
@@ -193,8 +228,8 @@ export const verilogLanguage = language({
 
     ModuleInstantiation: ($) =>
       seq(
-        field("moduleType", $["Identifier"]!),
-        field("instanceName", $["Identifier"]!),
+        semanticToken("type", field("moduleType", $["Identifier"]!)),
+        semanticToken("variable", field("instanceName", $["Identifier"]!), ["declaration"]),
         "(",
         optional(seq($["PortConnection"]!, repeat(seq(",", $["PortConnection"]!)))),
         ")",
@@ -203,7 +238,7 @@ export const verilogLanguage = language({
 
     PortConnection: ($) =>
       choice(
-        seq(".", field("port", $["Identifier"]!), "(", field("expr", $["Expression"]!), ")"),
+        seq(".", semanticToken("property", field("port", $["Identifier"]!)), "(", field("expr", $["Expression"]!), ")"),
         field("expr", $["Expression"]!),
       ),
 
@@ -248,10 +283,10 @@ export const verilogLanguage = language({
         ">",
       ),
 
-    SizedNumber: () => /\d*'[sS]?[bBoOdDhH][0-9a-fA-FxXzZ?_]+/,
-    NumberLiteral: () => /\d[\d_]*/,
+    SizedNumber: () => semanticToken("number", /\d*'[sS]?[bBoOdDhH][0-9a-fA-FxXzZ?_]+/),
+    NumberLiteral: () => semanticToken("number", /\d[\d_]*/),
     Identifier: () => /[A-Za-z_][A-Za-z0-9_$]*/,
-    Comment: () => /(?:\/\/[^\n]*|\/\*([^*]|\*+[^*/])*\*+\/)/,
+    Comment: () => semanticToken("comment", /(?:\/\/[^\n]*|\/\*([^*]|\*+[^*/])*\*+\/)/),
   },
 });
 

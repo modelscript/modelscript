@@ -3,7 +3,20 @@
 import { exportNetDmrXml } from "@modelscript/swmm";
 import { CheckCircleFillIcon, DownloadIcon, WorkflowIcon, XCircleFillIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
-import styled from "styled-components";
+import {
+  ActionBtn,
+  ActionButtons,
+  CardContainer,
+  type ComplianceTone,
+  HeaderRow,
+  MetricGrid,
+  MetricLabel,
+  MetricSub,
+  MetricTile,
+  MetricValue,
+  StatusPill,
+  TitleGroup,
+} from "./ComplianceCardPrimitives";
 
 export interface CsoOutfallSummary {
   outfallId: string;
@@ -37,137 +50,8 @@ export interface CsoNpdesComplianceCardProps {
   colorMode?: "light" | "dark" | undefined;
 }
 
-const CardContainer = styled.div<{ $isDark: boolean }>`
-  border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
-  border-radius: 10px;
-  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  font-family: inherit;
-  margin-top: 8px;
-`;
-
-const HeaderRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-`;
-
-const TitleGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const StatusBadge = styled.span<{ $status: "Compliant" | "Permit Exceeded" | "Warning" }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: #ffffff;
-  background: ${(p) =>
-    p.$status === "Compliant"
-      ? "var(--color-success-emphasis, #238636)"
-      : p.$status === "Warning"
-        ? "var(--color-attention-emphasis, #9a6700)"
-        : "var(--color-danger-emphasis, #da3633)"};
-`;
-
-const ActionButtons = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const ActionBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border-default, #d0d7de);
-  background: var(--color-canvas-default, #ffffff);
-  color: var(--color-fg-default, #24292f);
-  cursor: pointer;
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: var(--color-canvas-subtle, #f6f8fa);
-  }
-`;
-
-const MetricGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
-`;
-
-const MetricTile = styled.div<{ $isDark: boolean; $alert?: boolean }>`
-  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
-  border: 1px solid
-    ${(p) => (p.$alert ? "var(--color-danger-emphasis, #da3633)" : "var(--color-border-subtle, #eaecef)")};
-  border-radius: 8px;
-  padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const MetricLabel = styled.span`
-  font-size: 11px;
-  color: var(--color-fg-muted, #57606a);
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-`;
-
-const MetricValue = styled.span<{ $color?: string }>`
-  font-size: 18px;
-  font-weight: 700;
-  color: ${(p) => p.$color || "var(--color-fg-default, #24292f)"};
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-`;
-
-const MetricSub = styled.span`
-  font-size: 11px;
-  color: var(--color-fg-muted, #57606a);
-`;
-
-const OutfallsTable = styled.table<{ $isDark: boolean }>`
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
-  border-radius: 8px;
-  overflow: hidden;
-  border: 1px solid var(--color-border-subtle, #eaecef);
-
-  th,
-  td {
-    padding: 8px 12px;
-    text-align: left;
-    border-bottom: 1px solid var(--color-border-subtle, #eaecef);
-  }
-
-  th {
-    font-weight: 600;
-    color: var(--color-fg-muted, #57606a);
-    background: var(--color-canvas-subtle, ${(p) => (p.$isDark ? "#21262d" : "#f6f8fa")});
-  }
-`;
+const statusToTone = (status: "Compliant" | "Permit Exceeded" | "Warning"): ComplianceTone =>
+  status === "Compliant" ? "success" : status === "Warning" ? "warning" : "danger";
 
 const DEFAULT_REPORT: CsoNpdesComplianceReport = {
   utilityName: "Greater Harbor Water & Sewer Commission",
@@ -220,6 +104,19 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
     : isCaptureDeficient
       ? "Warning"
       : data.status;
+
+  const borderSubtle = `var(--ms-border-subtle, var(--color-border-subtle, ${isDark ? "#30363d" : "#eaecef"}))`;
+  const cellStyle: React.CSSProperties = {
+    padding: "8px 12px",
+    textAlign: "left",
+    borderBottom: `1px solid ${borderSubtle}`,
+  };
+  const headerCellStyle: React.CSSProperties = {
+    ...cellStyle,
+    fontWeight: 600,
+    color: "var(--ms-text-2, var(--color-fg-muted, #57606a))",
+    background: `var(--ms-bg-subtle, var(--color-canvas-subtle, ${isDark ? "#21262d" : "#f6f8fa"}))`,
+  };
 
   const handleExport = () => {
     if (onExportJson) {
@@ -296,35 +193,41 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
   };
 
   return (
-    <CardContainer $isDark={isDark}>
+    <CardContainer isDark={isDark}>
       <HeaderRow>
         <TitleGroup>
           <WorkflowIcon size={20} fill={computedStatus === "Compliant" ? "#238636" : "#da3633"} />
           <div>
             <div style={{ fontWeight: 700, fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
               <span>CWA CSO NPDES Permit Compliance</span>
-              <StatusBadge $status={computedStatus}>
+              <StatusPill tone={statusToTone(computedStatus)}>
                 {computedStatus === "Compliant" ? <CheckCircleFillIcon size={12} /> : <XCircleFillIcon size={12} />}
                 {computedStatus}
-              </StatusBadge>
+              </StatusPill>
             </div>
-            <div style={{ fontSize: "12px", color: "var(--color-fg-muted, #57606a)", marginTop: "2px" }}>
+            <div
+              style={{
+                fontSize: "12px",
+                color: "var(--ms-text-2, var(--color-fg-muted, #57606a))",
+                marginTop: "2px",
+              }}
+            >
               {data.utilityName} &bull; {data.permitId} &bull; Calendar Year {data.evaluatedYear}
             </div>
           </div>
         </TitleGroup>
 
         <ActionButtons>
-          <ActionBtn onClick={handleExportXml} aria-label="Export NetDMR XML">
+          <ActionBtn isDark={isDark} compact onClick={handleExportXml} aria-label="Export NetDMR XML">
             <DownloadIcon size={14} />
             Export NetDMR XML
           </ActionBtn>
-          <ActionBtn onClick={handleExport} aria-label="Export JSON">
+          <ActionBtn isDark={isDark} compact onClick={handleExport} aria-label="Export JSON">
             <DownloadIcon size={14} />
             Export JSON
           </ActionBtn>
           {onClose && (
-            <ActionBtn onClick={onClose} aria-label="Close">
+            <ActionBtn isDark={isDark} compact onClick={onClose} aria-label="Close">
               <XIcon size={14} />
             </ActionBtn>
           )}
@@ -333,23 +236,23 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
 
       {/* Primary Presumptive Criteria Metrics */}
       <MetricGrid>
-        <MetricTile $isDark={isDark} $alert={isEventsExceeded}>
+        <MetricTile isDark={isDark} alert={isEventsExceeded}>
           <MetricLabel>Annual CSO Events</MetricLabel>
-          <MetricValue $color={isEventsExceeded ? "#da3633" : "#238636"}>
+          <MetricValue color={isEventsExceeded ? "#da3633" : "#238636"}>
             {data.totalAnnualEvents} <span style={{ fontSize: "12px" }}>/ year</span>
           </MetricValue>
           <MetricSub>Presumptive Limit: &le; {data.maxEventsLimit} events/yr</MetricSub>
         </MetricTile>
 
-        <MetricTile $isDark={isDark} $alert={isCaptureDeficient}>
+        <MetricTile isDark={isDark} alert={isCaptureDeficient}>
           <MetricLabel>Volumetric Capture</MetricLabel>
-          <MetricValue $color={isCaptureDeficient ? "#9a6700" : "#238636"}>
+          <MetricValue color={isCaptureDeficient ? "#9a6700" : "#238636"}>
             {data.volumetricCapturePct.toFixed(1)}%
           </MetricValue>
           <MetricSub>EPA Criteria: &ge; {data.targetCapturePct.toFixed(1)}%</MetricSub>
         </MetricTile>
 
-        <MetricTile $isDark={isDark}>
+        <MetricTile isDark={isDark}>
           <MetricLabel>Total CSO Spill Volume</MetricLabel>
           <MetricValue>
             {(data.totalSpillVolumeM3 / 1000).toFixed(1)} <span style={{ fontSize: "12px" }}>k-m³</span>
@@ -357,9 +260,9 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
           <MetricSub>{data.totalSpillVolumeM3.toLocaleString()} m³ discharged</MetricSub>
         </MetricTile>
 
-        <MetricTile $isDark={isDark}>
+        <MetricTile isDark={isDark}>
           <MetricLabel>RTC / Storage Diverted</MetricLabel>
-          <MetricValue $color="var(--fgColor-accent, var(--ms-brand))">
+          <MetricValue color="var(--ms-brand, var(--fgColor-accent, #0969da))">
             {((data.rtcVolumeDivertedM3 ?? 0) / 1000).toFixed(1)} <span style={{ fontSize: "12px" }}>k-m³</span>
           </MetricValue>
           <MetricSub>Volume saved via control</MetricSub>
@@ -368,23 +271,33 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
 
       {/* Outfalls Breakdown Table */}
       {data.outfalls && data.outfalls.length > 0 && (
-        <OutfallsTable $isDark={isDark}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: 12,
+            background: `var(--ms-bg-elv, var(--bgColor-muted, ${isDark ? "#1e1e22" : "#ffffff"}))`,
+            borderRadius: 8,
+            overflow: "hidden",
+            border: `1px solid ${borderSubtle}`,
+          }}
+        >
           <thead>
             <tr>
-              <th>Outfall</th>
-              <th>Receiving Water</th>
-              <th>Annual Events</th>
-              <th>Spill Vol (m³)</th>
-              <th>Peak Rate (m³/s)</th>
-              <th>Status</th>
+              <th style={headerCellStyle}>Outfall</th>
+              <th style={headerCellStyle}>Receiving Water</th>
+              <th style={headerCellStyle}>Annual Events</th>
+              <th style={headerCellStyle}>Spill Vol (m³)</th>
+              <th style={headerCellStyle}>Peak Rate (m³/s)</th>
+              <th style={headerCellStyle}>Status</th>
             </tr>
           </thead>
           <tbody>
             {data.outfalls.map((of) => (
               <tr key={of.outfallId}>
-                <td style={{ fontWeight: 600 }}>{of.outfallId}</td>
-                <td>{of.receivingWater}</td>
-                <td>
+                <td style={{ ...cellStyle, fontWeight: 600 }}>{of.outfallId}</td>
+                <td style={cellStyle}>{of.receivingWater}</td>
+                <td style={cellStyle}>
                   <span
                     style={{ color: of.annualEvents > data.maxEventsLimit ? "#da3633" : undefined, fontWeight: 600 }}
                   >
@@ -392,9 +305,9 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
                   </span>{" "}
                   / {data.maxEventsLimit}
                 </td>
-                <td>{of.annualSpillVolumeM3.toLocaleString()}</td>
-                <td>{of.peakRateM3s.toFixed(2)}</td>
-                <td>
+                <td style={cellStyle}>{of.annualSpillVolumeM3.toLocaleString()}</td>
+                <td style={cellStyle}>{of.peakRateM3s.toFixed(2)}</td>
+                <td style={cellStyle}>
                   <span style={{ color: of.compliant ? "#238636" : "#da3633", fontWeight: 600 }}>
                     {of.compliant ? "PASS" : "EXCEED"}
                   </span>
@@ -402,7 +315,7 @@ export const CsoNpdesComplianceCard: React.FC<CsoNpdesComplianceCardProps> = ({
               </tr>
             ))}
           </tbody>
-        </OutfallsTable>
+        </table>
       )}
     </CardContainer>
   );

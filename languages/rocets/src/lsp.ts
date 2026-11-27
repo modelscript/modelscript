@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { rocetsToDae } from "./dae/rocets-to-dae.js";
 import { lintRocets } from "./lints/index.js";
 import { parseRocetsDeck } from "./parser/deck-parser.js";
@@ -76,6 +79,90 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
+interface RocetsCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface RocetsCstIndex {
+  byRow: Map<number, RocetsCstLine>;
+  entries: RocetsCstLine[];
+  rootRange: LspRange;
+}
+
+function buildRocetsCstIndex(content: string): RocetsCstIndex {
+  const byRow = new Map<number, RocetsCstLine>();
+  const entries: RocetsCstLine[] = [];
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("rocets", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      const entry: RocetsCstLine = { row, text: lineText, colLine, startCol, endCol };
+      byRow.set(row, entry);
+      entries.push(entry);
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      const entry: RocetsCstLine = { row: i, text: trimmed, colLine: raw, startCol, endCol };
+      byRow.set(i, entry);
+      entries.push(entry);
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  const rootRange: LspRange = {
+    start: { line: 0, character: 0 },
+    end: { line: lastRow, character: Math.max(1, lastEndCol) },
+  };
+  return { byRow, entries, rootRange };
+}
+
+function findRocetsNeedleRange(cstIndex: RocetsCstIndex, needle: string): LspRange {
+  const found = cstIndex.entries.find((e) => e.text.includes(needle));
+  if (!found) return DEFAULT_RANGE;
+  const idx = found.colLine.indexOf(needle);
+  if (idx >= 0) {
+    return {
+      start: { line: found.row, character: idx },
+      end: { line: found.row, character: idx + needle.length },
+    };
+  }
+  return {
+    start: { line: found.row, character: found.startCol },
+    end: { line: found.row, character: Math.max(found.startCol + 1, found.endCol) },
+  };
+}
+
 /**
  * Validates a NASA ROCETS liquid rocket engine simulation deck and returns diagnostics.
  */
@@ -83,17 +170,18 @@ export function validateRocets(content: string, _uri: string = "engine.roc"): Ls
   try {
     const model = parseRocetsDeck(content);
     const diags = lintRocets(model);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildRocetsCstIndex(content);
 
     return diags.map((d) => {
       let lineNum = d.line ? Math.max(0, d.line - 1) : 0;
       const compId = d.componentId;
       if (lineNum === 0 && compId) {
-        const found = lines.findIndex((l) => l.includes(compId));
-        if (found >= 0) lineNum = found;
+        const found = cstIndex.entries.find((e) => e.text.includes(compId));
+        if (found) lineNum = found.row;
       }
-      const lt = lines[lineNum] ?? "";
-      let startChar = d.column ? Math.max(0, d.column - 1) : 0;
+      const entry = cstIndex.byRow.get(lineNum);
+      const lt = entry?.colLine ?? "";
+      let startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
       let endChar = 0;
       if (!d.column && compId) {
         const idx = lt.indexOf(compId);
@@ -103,9 +191,7 @@ export function validateRocets(content: string, _uri: string = "engine.roc"): Ls
         }
       }
       if (endChar <= startChar) {
-        while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) startChar++;
-        const tok = lt.slice(startChar).match(/^[^\s=,;]+/);
-        endChar = Math.min(lt.length, startChar + (tok ? tok[0].length : 1));
+        endChar = entry?.endCol ?? startChar + 1;
       }
 
       return {
@@ -138,6 +224,7 @@ export function validateRocets(content: string, _uri: string = "engine.roc"): Ls
 export function getRocetsDocumentSymbols(content: string, _uri: string = "engine.roc"): LspDocumentSymbol[] {
   try {
     const model = parseRocetsDeck(content);
+    const cstIndex = buildRocetsCstIndex(content);
     const children: LspDocumentSymbol[] = [];
 
     for (const [compId, comp] of model.components) {
@@ -163,12 +250,13 @@ export function getRocetsDocumentSymbols(content: string, _uri: string = "engine
         detail = `Control Valve`;
       }
 
+      const compRange = findRocetsNeedleRange(cstIndex, compId);
       children.push({
         name: `${compId} [${comp.type}]`,
         detail,
         kind,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: compRange,
+        selectionRange: compRange,
       });
     }
 
@@ -177,8 +265,8 @@ export function getRocetsDocumentSymbols(content: string, _uri: string = "engine
         name: model.name || "ROCETS Liquid Engine Deck",
         detail: `Components: ${model.components.size} | Connections: ${model.connections.length} | Cycle: ${model.config?.cycle ?? "standard"}`,
         kind: LspSymbolKind.Package,
-        range: DEFAULT_RANGE,
-        selectionRange: DEFAULT_RANGE,
+        range: cstIndex.rootRange,
+        selectionRange: cstIndex.rootRange,
         children: children.length > 0 ? children : undefined,
       },
     ];
@@ -197,8 +285,8 @@ export function getRocetsHover(
 ): LspHover | undefined {
   try {
     const model = parseRocetsDeck(content);
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
+    const cstIndex = buildRocetsCstIndex(content);
+    const line = cstIndex.byRow.get(position.line)?.colLine ?? "";
 
     for (const [compId, comp] of model.components) {
       if (line.includes(compId)) {

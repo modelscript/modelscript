@@ -7,8 +7,167 @@
  * contextual hover assistance with intrinsic procedure specs, and intelligent code completions for Fortran 90/95/2003/2008.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { createWasmParserSync, type SyntaxNode } from "../src-gen/bindings.js";
 import { verifyFortranSource } from "./formal/verifier.js";
 import { lintFortranSource, type FortranDiagnostic } from "./lints/index.js";
+
+function tryParseFortranWasm(source: string, cstTree?: { rootNode?: unknown } | null): SyntaxNode | null {
+  if (cstTree?.rootNode) {
+    return cstTree.rootNode as SyntaxNode;
+  }
+  try {
+    const parser = getOrLoadLanguageWasmParser("fortran", import.meta.url, createWasmParserSync);
+    const tree = parser.parse(source);
+    return (tree?.rootNode as SyntaxNode | undefined) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function nodeToRange(node: SyntaxNode): LspRange {
+  return {
+    start: { line: node.startPosition.row, character: node.startPosition.column },
+    end: { line: node.endPosition.row, character: node.endPosition.column },
+  };
+}
+
+function extractFortranSymbolsFromCst(root: SyntaxNode): LspDocumentSymbol[] {
+  const symbols: LspDocumentSymbol[] = [];
+
+  const visitUnit = (node: SyntaxNode, parentChildren: LspDocumentSymbol[] | null): void => {
+    if (node.type === "ProgramDeclaration") {
+      const nameNode = node.childForFieldName("name");
+      const name = nameNode?.text.trim() ?? "";
+      if (!name) return;
+      const children: LspDocumentSymbol[] = [];
+      for (const child of node.namedChildren) {
+        if (child.type === "SubroutineDeclaration" || child.type === "FunctionDeclaration") {
+          visitUnit(child, children);
+        }
+      }
+      const sym: LspDocumentSymbol = {
+        name: `program ${name}`,
+        detail: "Main Program Unit",
+        kind: LspSymbolKind.Module,
+        range: nodeToRange(node),
+        selectionRange: nodeToRange(nameNode ?? node),
+        children,
+      };
+      (parentChildren ?? symbols).push(sym);
+      return;
+    }
+
+    if (node.type === "ModuleDeclaration") {
+      const nameNode = node.childForFieldName("name");
+      const name = nameNode?.text.trim() ?? "";
+      if (!name) return;
+      const children: LspDocumentSymbol[] = [];
+      for (const child of node.namedChildren) {
+        if (child.type === "SubroutineDeclaration" || child.type === "FunctionDeclaration") {
+          visitUnit(child, children);
+        }
+      }
+      const sym: LspDocumentSymbol = {
+        name: `module ${name}`,
+        detail: "Fortran Module",
+        kind: LspSymbolKind.Package,
+        range: nodeToRange(node),
+        selectionRange: nodeToRange(nameNode ?? node),
+        children,
+      };
+      (parentChildren ?? symbols).push(sym);
+      return;
+    }
+
+    if (node.type === "SubroutineDeclaration") {
+      const nameNode = node.childForFieldName("name");
+      const name = nameNode?.text.trim() ?? "";
+      if (!name) return;
+      const params =
+        node.childForFieldName("parameters")?.text.trim() ??
+        node.namedChildren.find((c) => c.type === "ParameterList")?.text.trim() ??
+        "";
+      const sym: LspDocumentSymbol = {
+        name: `${name}(${params})`,
+        detail: `subroutine ${name}`,
+        kind: LspSymbolKind.Method,
+        range: nodeToRange(node),
+        selectionRange: nodeToRange(nameNode ?? node),
+      };
+      (parentChildren ?? symbols).push(sym);
+      return;
+    }
+
+    if (node.type === "FunctionDeclaration") {
+      const nameNode = node.childForFieldName("name");
+      const name = nameNode?.text.trim() ?? "";
+      if (!name) return;
+      const params =
+        node.childForFieldName("parameters")?.text.trim() ??
+        node.namedChildren.find((c) => c.type === "ParameterList")?.text.trim() ??
+        "";
+      const sym: LspDocumentSymbol = {
+        name: `${name}(${params})`,
+        detail: `function ${name}`,
+        kind: LspSymbolKind.Function,
+        range: nodeToRange(node),
+        selectionRange: nodeToRange(nameNode ?? node),
+      };
+      (parentChildren ?? symbols).push(sym);
+      return;
+    }
+
+    for (const child of node.namedChildren) {
+      visitUnit(child, parentChildren);
+    }
+  };
+
+  visitUnit(root, null);
+  return symbols;
+}
+
+function findFortranSymbolHoverInCst(root: SyntaxNode, lowerWord: string): string | null {
+  const stack: SyntaxNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node.type === "SubroutineDeclaration") {
+      const name = node.childForFieldName("name")?.text.trim();
+      if (name && name.toLowerCase() === lowerWord) {
+        const params =
+          node.childForFieldName("parameters")?.text.trim() ??
+          node.namedChildren.find((c) => c.type === "ParameterList")?.text.trim() ??
+          "";
+        return "```fortran\n" + `subroutine ${name}(${params})\n` + "```\n\n*Fortran Subroutine*";
+      }
+    } else if (node.type === "FunctionDeclaration") {
+      const name = node.childForFieldName("name")?.text.trim();
+      if (name && name.toLowerCase() === lowerWord) {
+        const ret = node.childForFieldName("returnType")?.text.trim();
+        const params =
+          node.childForFieldName("parameters")?.text.trim() ??
+          node.namedChildren.find((c) => c.type === "ParameterList")?.text.trim() ??
+          "";
+        const prefix = ret ? `${ret} ` : "";
+        return "```fortran\n" + `${prefix}function ${name}(${params})\n` + "```\n\n*Fortran Function*";
+      }
+    } else if (node.type === "ModuleDeclaration") {
+      const name = node.childForFieldName("name")?.text.trim();
+      if (name && name.toLowerCase() === lowerWord) {
+        return "```fortran\n" + `module ${name}\n` + "```\n\n*Fortran Module*";
+      }
+    } else if (node.type === "ProgramDeclaration") {
+      const name = node.childForFieldName("name")?.text.trim();
+      if (name && name.toLowerCase() === lowerWord) {
+        return "```fortran\n" + `program ${name}\n` + "```\n\n*Fortran Main Program*";
+      }
+    }
+    for (let i = node.namedChildren.length - 1; i >= 0; i--) {
+      stack.push(node.namedChildren[i]!);
+    }
+  }
+  return null;
+}
 
 export interface LspPosition {
   line: number;
@@ -85,7 +244,7 @@ export interface LspCompletionItem {
 /**
  * Validates Fortran source returning LSP diagnostics.
  */
-export function validateFortran(source: string): LspDiagnostic[] {
+export function validateFortran(source: string, _cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   const diags: LspDiagnostic[] = [];
   const rawLints: FortranDiagnostic[] = lintFortranSource(source);
 
@@ -161,11 +320,22 @@ export function validateFortran(source: string): LspDiagnostic[] {
 /**
  * Extracts hierarchical document symbols for programs, modules, subroutines, and functions.
  */
-export function getFortranDocumentSymbols(source: string): LspDocumentSymbol[] {
+export function getFortranDocumentSymbols(
+  source: string,
+  cstTree?: { rootNode?: unknown } | null,
+): LspDocumentSymbol[] {
+  const root = tryParseFortranWasm(source, cstTree);
+  if (root) {
+    const cstSymbols = extractFortranSymbolsFromCst(root);
+    if (cstSymbols.length > 0 || !root.hasError) {
+      return cstSymbols;
+    }
+  }
+
+  // Fallback for F90/F95 constructs not yet covered by the WASM grammar or when WASM is unavailable
   const symbols: LspDocumentSymbol[] = [];
   const lines = source.split(/\r?\n/);
 
-  // Scan line by line for structural blocks
   let currentParent: LspDocumentSymbol | null = null;
 
   for (let idx = 0; idx < lines.length; idx++) {
@@ -284,17 +454,36 @@ const FORTRAN_INTRINSICS: Record<string, string> = {
 /**
  * Returns contextual hover documentation for Fortran keywords, intrinsics, and symbols.
  */
-export function getFortranHover(source: string, pos: LspPosition): LspHover | undefined {
-  const lines = source.split(/\r?\n/);
-  if (pos.line >= lines.length) return undefined;
-  const line = lines[pos.line] ?? "";
+export function getFortranHover(
+  source: string,
+  pos: LspPosition,
+  cstTree?: { rootNode?: unknown } | null,
+): LspHover | undefined {
+  let word = "";
+  let hoverRange: LspRange | undefined;
 
-  const left = line.slice(0, pos.character).match(/[a-zA-Z_]\w*$/);
-  const right = line.slice(pos.character).match(/^[a-zA-Z_]\w*/);
-  if (!left && !right) return undefined;
+  const root = tryParseFortranWasm(source, cstTree);
+  if (root) {
+    const target = root.descendantForPosition({ row: pos.line, column: pos.character });
+    if (target) {
+      const candidate = target.text.trim();
+      if (/^[a-zA-Z_]\w*$/.test(candidate)) {
+        word = candidate.toLowerCase();
+        hoverRange = nodeToRange(target);
+      }
+    }
+  }
 
-  const word = ((left ? left[0] : "") + (right ? right[0] : "")).toLowerCase();
-  if (!word) return undefined;
+  if (!word) {
+    const lines = source.split(/\r?\n/);
+    if (pos.line >= lines.length) return undefined;
+    const line = lines[pos.line] ?? "";
+    const left = line.slice(0, pos.character).match(/[a-zA-Z_]\w*$/);
+    const right = line.slice(pos.character).match(/^[a-zA-Z_]\w*/);
+    if (!left && !right) return undefined;
+    word = ((left ? left[0] : "") + (right ? right[0] : "")).toLowerCase();
+    if (!word) return undefined;
+  }
 
   if (FORTRAN_INTRINSICS[word]) {
     return {
@@ -302,7 +491,21 @@ export function getFortranHover(source: string, pos: LspPosition): LspHover | un
         kind: "markdown",
         value: FORTRAN_INTRINSICS[word]!,
       },
+      ...(hoverRange ? { range: hoverRange } : {}),
     };
+  }
+
+  if (root) {
+    const cstDoc = findFortranSymbolHoverInCst(root, word);
+    if (cstDoc) {
+      return {
+        contents: {
+          kind: "markdown",
+          value: cstDoc,
+        },
+        ...(hoverRange ? { range: hoverRange } : {}),
+      };
+    }
   }
 
   return {
@@ -310,6 +513,7 @@ export function getFortranHover(source: string, pos: LspPosition): LspHover | un
       kind: "markdown",
       value: `\`${word}\` (Fortran procedure / variable)`,
     },
+    ...(hoverRange ? { range: hoverRange } : {}),
   };
 }
 

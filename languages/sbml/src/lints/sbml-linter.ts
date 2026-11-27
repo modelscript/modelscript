@@ -9,6 +9,64 @@
 import { type DiagnosticItem, SbmlErrorCode } from "../errors.js";
 import type { SbmlDocument } from "../types.js";
 
+function isIdentStart(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+function isIdentPart(code: number): boolean {
+  return isIdentStart(code) || (code >= 48 && code <= 57);
+}
+
+function isDigit(code: number): boolean {
+  return code >= 48 && code <= 57;
+}
+
+/**
+ * Structured zero-regex lexer that extracts identifier tokens from a kinetic law formula,
+ * properly skipping numeric literals (including decimal and scientific notation like `1e-3`).
+ */
+function extractFormulaIdentifiers(formula: string): string[] {
+  const idents: string[] = [];
+  const len = formula.length;
+  let i = 0;
+
+  while (i < len) {
+    const ch = formula.charCodeAt(i);
+
+    // Skip numeric literals (digits, optional decimal part, optional exponent part)
+    if (isDigit(ch) || (ch === 46 && i + 1 < len && isDigit(formula.charCodeAt(i + 1)))) {
+      while (i < len && isDigit(formula.charCodeAt(i))) i++;
+      if (i < len && formula.charCodeAt(i) === 46) {
+        i++;
+        while (i < len && isDigit(formula.charCodeAt(i))) i++;
+      }
+      if (i < len && (formula.charCodeAt(i) === 101 || formula.charCodeAt(i) === 69)) {
+        let expIdx = i + 1;
+        if (expIdx < len && (formula.charCodeAt(expIdx) === 43 || formula.charCodeAt(expIdx) === 45)) {
+          expIdx++;
+        }
+        if (expIdx < len && isDigit(formula.charCodeAt(expIdx))) {
+          i = expIdx;
+          while (i < len && isDigit(formula.charCodeAt(i))) i++;
+        }
+      }
+      continue;
+    }
+
+    if (isIdentStart(ch)) {
+      const start = i;
+      i++;
+      while (i < len && isIdentPart(formula.charCodeAt(i))) i++;
+      idents.push(formula.slice(start, i));
+      continue;
+    }
+
+    i++;
+  }
+
+  return idents;
+}
+
 export function lintSbml(doc: SbmlDocument): DiagnosticItem[] {
   const diagnostics: DiagnosticItem[] = [];
   const model = doc.model;
@@ -180,15 +238,8 @@ export function lintSbml(doc: SbmlDocument): DiagnosticItem[] {
         "false",
       ]);
       const seenUndefined = new Set<string>();
-      const identRegex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
-      let match: RegExpExecArray | null;
-      while ((match = identRegex.exec(r.kineticLaw.formula)) !== null) {
-        const sym = match[0];
+      for (const sym of extractFormulaIdentifiers(r.kineticLaw.formula)) {
         if (!sym || seenUndefined.has(sym) || BUILTIN_MATH_SYMBOLS.has(sym)) continue;
-        // Skip scientific notation exponent markers like 1e-3 (already avoided since identRegex requires leading alpha/underscore, unless preceded by digit)
-        const prevIdx = match.index - 1;
-        const prevChar = prevIdx >= 0 ? r.kineticLaw.formula[prevIdx] : undefined;
-        if (prevChar && /[0-9.]/.test(prevChar)) continue;
 
         const isDefined =
           model.species.has(sym) ||

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { computeComponentInsert, loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
+import { injectPredefinedTypes } from "@modelscript/modelica/factory";
 import {
   globalLibraryRegistry,
   type ClassHierarchyNode,
@@ -11,6 +12,7 @@ import {
 import { printArenaDAE } from "@modelscript/runtime/dae-printer";
 import { computeModelicaComponentDropEdits, resolveCrossLanguageComponentDrop } from "../cross-language-drop.js";
 import { LspContext } from "../lsp-context.js";
+import { flattenArenaFromInstance, type FlattenableClassInstanceLike } from "../services/server-lifecycle.js";
 import type { CstNodeLike, CstParserLike, CstTreeLike } from "../utils/ast-utils.js";
 import { isClassInstance } from "../utils/ast-utils.js";
 import {
@@ -52,11 +54,14 @@ interface ParseWalkNodeLike {
   childForFieldName?: (name: string) => ParseWalkNodeLike | null | undefined;
 }
 
-interface GlobalClassQueryFallback {
-  serverDistBase?: string;
-  sharedFs?: VirtualFsLike;
-  ModelicaClassInstance?: new (id: number, db: unknown) => unknown;
-  ModelicaComponentInstance?: new (...args: never[]) => unknown;
+function getSharedFs(context: LspContext): VirtualFsLike | undefined {
+  const wm: typeof context.workspaceManager & { fs?: VirtualFsLike } = context.workspaceManager;
+  const candidate: unknown =
+    wm.fs ??
+    context.state?.sharedContext?.fs ??
+    context.parserService?.sharedContext?.fs ??
+    context.parserService?.sharedFs;
+  return candidate && typeof candidate === "object" ? (candidate as VirtualFsLike) : undefined;
 }
 
 function findClassStartOffsetInCst(root: CstNodeLike, className: string): number {
@@ -107,10 +112,7 @@ function resolveClassStartOffset(
   className: string,
   fallbackOffset: number,
 ): number {
-  const docMgr = (
-    context as unknown as { documentManager?: { documentTrees?: Map<string, { tree?: CstTreeLike | null }> } }
-  ).documentManager;
-  const existingTree = docMgr?.documentTrees?.get?.(uri)?.tree;
+  const existingTree = context.documentManager?.documentTrees?.get?.(uri)?.tree as CstTreeLike | null | undefined;
   if (existingTree?.rootNode) {
     const cstOff = findClassStartOffsetInCst(existingTree.rootNode, className);
     if (cstOff >= 0) return cstOff;
@@ -209,18 +211,6 @@ function buildParentPrefixSet(keys: Iterable<string>): Set<string> {
   return prefixes;
 }
 
-function callFlattenArenaFromInstance(classInstance: unknown, ctx: unknown): import("@modelscript/runtime").DAEBuilder {
-  const fn = (
-    globalThis as unknown as {
-      flattenArenaFromInstance?: (inst: unknown, context?: unknown) => import("@modelscript/runtime").DAEBuilder;
-    }
-  ).flattenArenaFromInstance;
-  if (typeof fn !== "function") {
-    throw new Error("flattenArenaFromInstance is not initialized.");
-  }
-  return fn(classInstance, ctx);
-}
-
 export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/getExperiments",
@@ -271,7 +261,11 @@ export function registerClassQueryEndpoints(context: LspContext) {
             const docContext = context.workspaceManager.documentContexts.get(uri);
             if (!docContext) continue;
 
-            const arena = callFlattenArenaFromInstance(instance, docContext);
+            const arena = flattenArenaFromInstance(
+              context.workspaceManager,
+              instance as unknown as FlattenableClassInstanceLike,
+              docContext,
+            );
             const exp = arena.experiment;
             // Only consider classes with actual experiment data (not the default empty {})
             if (
@@ -314,9 +308,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       const limit = params.limit ?? 60;
       try {
-        const distBase =
-          (globalThis as unknown as GlobalClassQueryFallback).serverDistBase ??
-          context.parserService?.getServerDistBase?.();
+        const distBase = context.parserService?.getServerDistBase?.();
         await loadPrebakedMslIcons(iconCache, distBase);
       } catch {
         // Prebaked icon index optional in minimal unit-test harnesses
@@ -414,9 +406,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
     "modelscript/getComponentCatalog",
     async (): Promise<{ components: CatalogComponentInfo[] }> => {
       try {
-        const distBase =
-          (globalThis as unknown as GlobalClassQueryFallback).serverDistBase ??
-          context.parserService?.getServerDistBase?.();
+        const distBase = context.parserService?.getServerDistBase?.();
         await loadPrebakedMslIcons(iconCache, distBase);
       } catch {
         // Prebaked icon index optional in minimal unit-test harnesses
@@ -694,8 +684,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           WorkspaceIndexFileLookupLike | undefined;
         const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2") as
           WorkspaceIndexFileLookupLike | undefined;
-        const uwLookup = context.workspaceManager.unifiedWorkspace as unknown as
-          WorkspaceIndexFileLookupLike | undefined;
+        const uwLookup: WorkspaceIndexFileLookupLike | undefined = context.workspaceManager.unifiedWorkspace;
         let uri =
           uwLookup?.getFileUriForFQN?.(params.className) ||
           moIdx?.getFileUriForFQN?.(params.className) ||
@@ -752,10 +741,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
 
           let text: string | undefined;
-          const sharedFs = ((context.workspaceManager as unknown as { fs?: VirtualFsLike })?.fs ??
-            context.state?.sharedContext?.fs ??
-            context.parserService?.sharedContext?.fs ??
-            (globalThis as unknown as GlobalClassQueryFallback).sharedFs) as unknown as VirtualFsLike | undefined;
+          const sharedFs = getSharedFs(context);
           if (sharedFs) {
             let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
             if (uri.startsWith("modelica:")) {
@@ -846,28 +832,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
             localizedName?: string;
             translate?: (s: string) => string;
           };
-          let droppedClass: unknown = null;
-          if (context.workspaceManager.globalModelicaQueryEngine) {
-            const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
-            const parts = resolved.className.split(".");
-            let currentId: number | null = null;
-            for (const part of parts) {
-              const resolver: ((name: string) => { id?: number | null } | null) | undefined = db.query(
-                "resolveSimpleName",
-                currentId as unknown as number,
-              );
-              const res: { id?: number | null } | null = resolver ? resolver(part) : null;
-              if (!res) {
-                currentId = null;
-                break;
-              }
-              currentId = res.id ?? null;
-            }
-            const ModelicaClassInstanceCtor = (globalThis as unknown as GlobalClassQueryFallback).ModelicaClassInstance;
-            if (currentId != null && ModelicaClassInstanceCtor) {
-              droppedClass = new ModelicaClassInstanceCtor(currentId, db);
-            }
-          }
+          const droppedClass: unknown = context.workspaceManager.resolveClassInstance(params.uri, resolved.className);
 
           if (isClassInstance(droppedClass)) {
             const dropped = droppedClass as DroppedClassLike;
@@ -967,9 +932,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
         const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
         if (!context.state.dependenciesReady && (moIdx?.pendingFileCount ?? 0) > 0) {
           const fullIndex = context.workspaceManager.unifiedWorkspace.getIndex();
-          const injectPredefined = (globalThis as unknown as { injectPredefinedTypes?: (idx: unknown) => void })
-            .injectPredefinedTypes;
-          injectPredefined?.(fullIndex);
+          injectPredefinedTypes(fullIndex);
           const langId = params.uri?.endsWith(".sysml") ? "sysml2" : "modelica";
           const engine = context.workspaceManager.getQueryEngine(langId);
           if (engine) {
@@ -1002,7 +965,11 @@ export function registerClassQueryEndpoints(context: LspContext) {
           return { text: null, error: "No Modelica context found." };
         }
 
-        const arena = callFlattenArenaFromInstance(classInstance, docContext);
+        const arena = flattenArenaFromInstance(
+          context.workspaceManager,
+          classInstance as unknown as FlattenableClassInstanceLike,
+          docContext,
+        );
         return { text: printArenaDAE(arena) };
       } catch (e) {
         return { text: null, error: e instanceof Error ? (e.stack ?? e.message) : String(e) };
@@ -1034,22 +1001,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       try {
         if (!context.workspaceManager.globalModelicaQueryEngine) return null;
-        const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
-        const parts = params.name.split(".");
-        let currentId: number | null = null;
-        for (const part of parts) {
-          const resolver: ((name: string) => { id?: number | null } | null) | undefined = db.query(
-            "resolveSimpleName",
-            currentId as unknown as number,
-          );
-          const res: { id?: number | null } | null = resolver ? resolver(part) : null;
-          if (!res) return null;
-          currentId = res.id ?? null;
-        }
-        if (currentId == null) return null;
-        const globalFallback = globalThis as unknown as GlobalClassQueryFallback;
-        const ModelicaClassInstanceCtor = globalFallback.ModelicaClassInstance;
-        const element = ModelicaClassInstanceCtor ? new ModelicaClassInstanceCtor(currentId, db) : null;
+        const element: unknown = context.workspaceManager.resolveClassInstance(params.uri ?? "", params.name);
 
         if (!isClassInstance(element)) return null;
 
@@ -1068,12 +1020,8 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
         const components: { name: string; type: string; description: string }[] = [];
         const childClasses: { name: string; kind: string }[] = [];
-        const ModelicaComponentInstanceCtor = globalFallback.ModelicaComponentInstance;
         for (const child of clsEl.elements) {
-          if (
-            (ModelicaComponentInstanceCtor && child instanceof ModelicaComponentInstanceCtor) ||
-            (!isClassInstance(child) && child?.classInstance)
-          ) {
+          if (!isClassInstance(child) && child?.classInstance) {
             components.push({
               name: child.name ?? "",
               type: child.classInstance?.name ?? "",
@@ -1118,7 +1066,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       }
 
       try {
-        const tree = ctx.parse(".mo", params.code) as unknown as { rootNode?: ParseWalkNodeLike };
+        const tree = ctx.parse(".mo", params.code) as { rootNode?: ParseWalkNodeLike } | null | undefined;
         const errors: string[] = [];
         const walk = (node: ParseWalkNodeLike | null | undefined) => {
           if (!node) return;
@@ -1129,7 +1077,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           const children = node.children || [];
           for (let i = 0; i < children.length; i++) walk(children[i]);
         };
-        walk(tree.rootNode);
+        walk(tree?.rootNode);
 
         const classes: { name: string; kind: string }[] = [];
         const findClassDefs = (n: ParseWalkNodeLike | null | undefined) => {
@@ -1152,7 +1100,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
             findClassDefs(ch);
           }
         };
-        findClassDefs(tree.rootNode);
+        findClassDefs(tree?.rootNode);
         return { classes, syntaxErrors: errors };
       } catch (e) {
         return { classes: [], syntaxErrors: [e instanceof Error ? e.message : String(e)] };
@@ -1240,10 +1188,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return { exists: false };
       const fsPath = getVirtualFsPath(target);
-      const fs = ((context.workspaceManager as unknown as { fs?: VirtualFsLike })?.fs ??
-        context.state?.sharedContext?.fs ??
-        context.parserService?.sharedContext?.fs ??
-        (globalThis as unknown as GlobalClassQueryFallback).sharedFs) as unknown as VirtualFsLike | undefined;
+      const fs = getSharedFs(context);
       if (!fs) return { exists: false };
       if (typeof fs.exists === "function" && fs.exists(fsPath)) {
         const stat = typeof fs.stat === "function" ? fs.stat(fsPath) : null;
@@ -1268,10 +1213,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return [];
       const fsPath = getVirtualFsPath(target);
-      const fs = ((context.workspaceManager as unknown as { fs?: VirtualFsLike })?.fs ??
-        context.state?.sharedContext?.fs ??
-        context.parserService?.sharedContext?.fs ??
-        (globalThis as unknown as GlobalClassQueryFallback).sharedFs) as unknown as VirtualFsLike | undefined;
+      const fs = getSharedFs(context);
       if (!fs || typeof fs.readdir !== "function") return [];
       try {
         const entries = fs.readdir(fsPath);

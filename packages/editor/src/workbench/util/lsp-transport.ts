@@ -13,8 +13,7 @@ import {
   getCustomEditorLspTransport,
   setActiveEditorLspTransport,
   type EditorLspTransport,
-} from "@modelscript/editor";
-import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
+} from "../../transport.js";
 import { getLsp, startLsp } from "./lsp-worker";
 
 export type AnsatzLspTransport = EditorLspTransport;
@@ -39,6 +38,5 @@ export function hasActiveLspTransport(): boolean {
 export async function getActiveLspTransport(initialLanguageId?: string): Promise<EditorLspTransport> {
   const custom = getCustomEditorLspTransport();
   if (custom) return custom;
-  const conn: ProtocolConnection = getLsp() ?? (await startLsp(initialLanguageId));
-  return conn as unknown as EditorLspTransport;
+  return getLsp() ?? (await startLsp(initialLanguageId));
 }

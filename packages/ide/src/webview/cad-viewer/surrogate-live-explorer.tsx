@@ -5,4 +5,4 @@ export {
   reconstructSurrogate,
   type PodSurrogateDataPayload,
   type SurrogateLiveExplorerProps,
-} from "@modelscript/editor/workbench/cad-viewer/SurrogateLiveExplorer.js";
+} from "@modelscript/cad-viewer/SurrogateLiveExplorer.js";

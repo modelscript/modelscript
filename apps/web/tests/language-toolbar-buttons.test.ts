@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { discoverSingleLanguage, discoverWorkspaceLanguages } from "@modelscript/dsl";
 import {
   getActiveToolbarContext,
   getEditorLanguageUi,
@@ -10,6 +9,7 @@ import {
   setActiveToolbarContext,
   type EditorLanguageToolbarButton,
 } from "@modelscript/editor";
+import { discoverSingleLanguage, discoverWorkspaceLanguages } from "@modelscript/ide-packager";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -204,7 +204,7 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
       "utf-8",
     );
     const extGenSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/dsl/src/codegen/ide/extension-generator.ts"),
+      path.resolve(import.meta.dirname, "../../../packages/ide-packager/src/manifest-generator.ts"),
       "utf-8",
     );
 

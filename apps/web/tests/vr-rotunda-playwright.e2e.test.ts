@@ -186,8 +186,7 @@ const VIRTUAL_LANGUAGE_UI_RESOLVED = `\0${VIRTUAL_LANGUAGE_UI_ID}`;
 
 function createVirtualHarnessPlugin(): Plugin {
   const runtimeWasmPath = path.resolve(REPO_ROOT, "packages/runtime/build/release.wasm");
-  const lspWorkerPath = path.resolve(REPO_ROOT, "packages/lsp/dist/browserServerMain.js");
-  const indexerWorkerPath = path.resolve(REPO_ROOT, "packages/lsp/dist/workers/indexer.worker.js");
+  const lspWorkerPath = path.resolve(REPO_ROOT, "packages/lsp/dist/browser/browserServerMain.js");
   const entrySource = buildVirtualEntrySource();
 
   const spaRoutes = new Set(["/", "/canvas", "/editor", "/editor", "/embed/editor"]);
@@ -234,12 +233,6 @@ export const LANGUAGE_TOOLBAR_BUTTONS = {};
           res.statusCode = 200;
           res.setHeader("Content-Type", "application/javascript; charset=utf-8");
           fs.createReadStream(lspWorkerPath).pipe(res);
-          return;
-        }
-        if (reqPath === "/lsp/server/dist/workers/indexer.worker.js" && fs.existsSync(indexerWorkerPath)) {
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-          fs.createReadStream(indexerWorkerPath).pipe(res);
           return;
         }
         if (reqPath === "/lsp/server/dist/languages-manifest.json") {
@@ -1410,7 +1403,7 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       await page.locator('[data-testid="rotunda-toggle-wafer-style"]').click();
       await page.waitForTimeout(180);
 
-      // Summon the Floating 2D Component Library Panel (Pull-to-Materialize palette)
+      // Summon the Floating Polished Glass Component Library Navigator & test keyboard rotunda/hierarchy flow
       const libBtn = page.locator('[data-testid="rotunda-toggle-wrist-library"]');
       await libBtn.click();
       await page.waitForFunction(
@@ -1419,7 +1412,12 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
         undefined,
         { timeout: 5_000 },
       );
-      await page.waitForTimeout(350);
+      await page.waitForTimeout(250);
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowLeft");
+      await page.keyboard.press("ArrowUp");
+      await page.keyboard.press("ArrowDown");
+      await page.waitForTimeout(200);
 
       // Verify Undo works after Auto-Layer and WebGL remains 100% healthy with non-blank rendered pixels
       const undoBtn = page.locator('[data-testid="rotunda-diagram-undo"]');

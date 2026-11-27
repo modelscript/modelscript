@@ -7,6 +7,9 @@
  * hover documentation (`getNetcdfHover`), and completions (`getNetcdfCompletions`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lookupNetcdfModelSchema } from "./catalog/library-package-adapter.js";
 import { lintNetcdf } from "./lints/index.js";
 import { parseCdl } from "./parser/cdl-parser.js";
@@ -76,25 +79,85 @@ function makeLineRange(lineOneBased: number | undefined, colOneBased: number | u
   };
 }
 
+interface NetcdfCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface NetcdfCstIndex {
+  byRow: Map<number, NetcdfCstLine>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildNetcdfCstIndex(content: string): NetcdfCstIndex {
+  const byRow = new Map<number, NetcdfCstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("netcdf", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates a NetCDF CDL document and returns LSP diagnostics.
  */
 export function validateNetcdf(content: string, _uri = "dataset.cdl"): LspDiagnostic[] {
   const dataset = parseCdl(content);
   const lints = lintNetcdf(dataset);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildNetcdfCstIndex(content);
 
   return lints.map((d) => {
     const lineIdx = Math.max(0, (d.line ?? 1) - 1);
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = Math.max(0, (d.column ?? 1) - 1);
-    const tokLen = d.symbolName ? d.symbolName.length : Math.max(1, lineText.trim().length);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column !== undefined ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    const tokLen = d.symbolName ? d.symbolName.length : Math.max(1, (entry?.text ?? "").length);
+    const maxEnd = Math.max(startChar + 1, entry?.endCol ?? startChar + tokLen);
     return {
       range: {
         start: { line: lineIdx, character: startChar },
         end: {
           line: lineIdx,
-          character: Math.min(Math.max(startChar + 1, startChar + tokLen), Math.max(startChar + 1, lineText.length)),
+          character: Math.min(Math.max(startChar + 1, startChar + tokLen), maxEnd),
         },
       },
       severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
@@ -110,10 +173,10 @@ export function validateNetcdf(content: string, _uri = "dataset.cdl"): LspDiagno
  */
 export function getNetcdfDocumentSymbols(content: string): LspDocumentSymbol[] {
   const dataset = parseCdl(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildNetcdfCstIndex(content);
   const fullRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: lines[lines.length - 1]?.length ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   const children: LspDocumentSymbol[] = [];
@@ -175,8 +238,10 @@ export function getNetcdfDocumentSymbols(content: string): LspDocumentSymbol[] {
 }
 
 function wordAtPosition(content: string, position: LspPosition): string {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line] ?? "";
+  const cstIndex = buildNetcdfCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return "";
+  const line = entry.colLine;
   if (position.character < 0 || position.character > line.length) return "";
   let start = position.character;
   let end = position.character;

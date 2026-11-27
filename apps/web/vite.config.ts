@@ -129,7 +129,39 @@ function discoverLanguageWasmTargets(): {
     }
   }
 
+  // Serve the shared XML v2 WASM GLR parser for the Dedicated CST Edit Worker (covers all ~25 XML languages)
+  const sharedXmlWasm = path.resolve(import.meta.dirname, "../../packages/dsl/dist/xml/parser.wasm");
+  if (fs.existsSync(sharedXmlWasm)) {
+    targets.push({
+      src: "../../packages/dsl/dist/xml/parser.wasm",
+      dest: "lsp/server/dist",
+      rename: "xml.wasm",
+    });
+  }
+
   return { targets, manifest };
+}
+
+function collectLspEsmTargets(): StaticCopyTarget[] {
+  const esmRoot = path.resolve(import.meta.dirname, "../../packages/lsp/dist/esm");
+  if (!fs.existsSync(esmRoot)) return [];
+  const targets: StaticCopyTarget[] = [];
+  const walk = (dir: string, relDir: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const nextRel = relDir ? `${relDir}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        walk(full, nextRel);
+      } else if (entry.name.endsWith(".js") && !entry.name.endsWith(".map")) {
+        targets.push({
+          src: `../../packages/lsp/dist/esm/${nextRel}`,
+          dest: relDir ? `lsp/server/dist/esm/${relDir}` : "lsp/server/dist/esm",
+        });
+      }
+    }
+  };
+  walk(esmRoot, "");
+  return targets;
 }
 
 function inlineStaticCopy(targets: StaticCopyTarget[]): Plugin {
@@ -418,7 +450,7 @@ function modelscriptLanguageUiPlugin(): Plugin {
       if (id !== resolvedVirtualId) return null;
       const languagesRoot = path.resolve(import.meta.dirname, "../../languages");
       try {
-        const { discoverWorkspaceLanguages } = await import("@modelscript/dsl");
+        const { discoverWorkspaceLanguages } = await import("@modelscript/ide-packager");
         const discovered = await discoverWorkspaceLanguages(languagesRoot);
 
         const panelMetaEntries: string[] = [];
@@ -541,13 +573,14 @@ export default defineConfig({
           rename: "long.js",
         },
         {
-          src: "../../packages/lsp/dist/browserServerMain.js",
+          src: "../../packages/lsp/dist/browser/browserServerMain.js",
           dest: "lsp/server/dist",
         },
         {
-          src: "../../packages/lsp/dist/workers/indexer.worker.js",
-          dest: "lsp/server/dist/workers",
+          src: "../../packages/lsp/dist/browser/simWorker.js",
+          dest: "lsp/server/dist",
         },
+        ...collectLspEsmTargets(),
         {
           content: JSON.stringify(languagesManifest, null, 2),
           dest: "lsp/server/dist",

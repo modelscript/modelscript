@@ -7,6 +7,7 @@
  * completions, go-to-definition, and custom action execution.
  */
 
+import { offsetToLspPosition, parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { lowerCellmlToDae } from "./dae/index.js";
 import { formatDimensionVector, lintCellmlDocument } from "./lints/index.js";
 import { BUILTIN_CELLML_UNITS, parseCellml, resolveUnitDimensions } from "./parser/index.js";
@@ -147,11 +148,13 @@ export function getCellmlDocumentSymbols(content: string): LspDocumentSymbol[] {
     return [];
   }
 
+  const xmlDoc = doc.range ? null : parseXmlSync(content);
+  const rootEndPos = offsetToLspPosition(content, xmlDoc?.root?.end ?? content.length);
   const rootRange: LspRange = doc.range
     ? toLspRange(doc.range)
     : {
         start: { line: 0, character: 0 },
-        end: { line: content.split("\n").length, character: 0 },
+        end: { line: rootEndPos.line + 1, character: 0 },
       };
 
   const modelChildren: LspDocumentSymbol[] = [];
@@ -218,12 +221,32 @@ export function getCellmlDocumentSymbols(content: string): LspDocumentSymbol[] {
 
 function positionOrOffsetToOffset(content: string, posOrOffset: number | LspPosition): number {
   if (typeof posOrOffset === "number") return posOrOffset;
-  const lines = content.split("\n");
-  let offset = 0;
-  for (let i = 0; i < posOrOffset.line && i < lines.length; i++) {
-    offset += (lines[i]?.length ?? 0) + 1;
+  let line = 0;
+  let lineStart = 0;
+  const len = content.length;
+  for (let i = 0; i < len && line < posOrOffset.line; i++) {
+    if (content.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
   }
-  return offset + posOrOffset.character;
+  return Math.min(len, lineStart + Math.max(0, posOrOffset.character));
+}
+
+function findDeepestXmlElementAtOffset(root: XmlElement, offset: number): XmlElement | null {
+  if (offset < root.start || offset > root.end) return null;
+  let current: XmlElement = root;
+  while (true) {
+    let next: XmlElement | null = null;
+    for (const child of current.children) {
+      if (offset >= child.start && offset <= child.end) {
+        next = child;
+        break;
+      }
+    }
+    if (!next) return current;
+    current = next;
+  }
 }
 
 export function getCellmlHover(content: string, posOrOffset: number | LspPosition): LspHover | null {
@@ -390,14 +413,27 @@ export function getCellmlCompletions(content: string, _offset?: number): LspComp
   return items;
 }
 
-function extractWordAtOffset(text: string, offset: number): string {
-  if (offset < 0 || offset > text.length) return "";
-  const isWordChar = (ch: string | undefined) => Boolean(ch && /[A-Za-z0-9_-]/.test(ch));
-  let start = offset;
-  while (start > 0 && isWordChar(text[start - 1])) start--;
-  let end = offset;
-  while (end < text.length && isWordChar(text[end])) end++;
-  return text.slice(start, end);
+function extractXmlSymbolAtOffset(content: string, offset: number): string {
+  if (offset < 0 || offset > content.length) return "";
+  const xmlDoc = parseXmlSync(content);
+  if (!xmlDoc.root) return "";
+  const elem = findDeepestXmlElementAtOffset(xmlDoc.root, offset);
+  if (!elem) return "";
+
+  for (const attr of elem.attributes) {
+    if (offset >= attr.valueStart && offset <= attr.valueEnd) {
+      return attr.value.trim();
+    }
+    if (offset >= attr.start && offset <= attr.end) {
+      return attr.value.trim();
+    }
+  }
+
+  if (offset >= elem.openEnd && offset <= elem.closeStart && elem.text) {
+    return elem.text.trim();
+  }
+
+  return "";
 }
 
 export function getCellmlDefinition(
@@ -413,7 +449,7 @@ export function getCellmlDefinition(
   }
 
   const offset = positionOrOffsetToOffset(content, posOrOffset);
-  const word = extractWordAtOffset(content, offset);
+  const word = extractXmlSymbolAtOffset(content, offset);
   if (!word) return null;
 
   const comp = doc.components.get(word);

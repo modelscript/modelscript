@@ -729,11 +729,21 @@ export class FeaSolver {
    * Solves the static equilibrium Ku = f or dynamic equations of motion Mu'' + Cu' + Ku = f
    * using Preconditioned Conjugate Gradient (PCG) with optional Newmark-beta implicit time integration.
    */
-  public solve(bcs: FeaBoundaryConditions, tol: number = 1e-6, maxIters: number = 500): FeaStepResult {
-    return this.step(bcs, tol, maxIters);
+  public solve(
+    bcs: FeaBoundaryConditions,
+    tol: number = 1e-6,
+    maxIters: number = 500,
+    onIteration?: (iter: number, relResidual: number) => void,
+  ): FeaStepResult {
+    return this.step(bcs, tol, maxIters, onIteration);
   }
 
-  public step(bcs: FeaBoundaryConditions, tol: number = 1e-6, maxIters: number = 500): FeaStepResult {
+  public step(
+    bcs: FeaBoundaryConditions,
+    tol: number = 1e-6,
+    maxIters: number = 500,
+    onIteration?: (iter: number, relResidual: number) => void,
+  ): FeaStepResult {
     if (bcs.resetDynamics) {
       this.lastDisplacements.fill(0);
       this.currentVelocities.fill(0);
@@ -876,7 +886,7 @@ export class FeaSolver {
       u[dof] = prescribed?.get(dof) ?? 0.0;
     }
 
-    this.solvePcg(rhs, u, tol, maxIters);
+    this.solvePcg(rhs, u, tol, maxIters, onIteration);
 
     // For static corotational solves, perform up to 5 nonlinear Picard/Newton iterations
     // with updated element rotations R(u^(k)) and corotational geometric load correction
@@ -905,7 +915,7 @@ export class FeaSolver {
             rhs[dof] = val;
             u[dof] = val;
           }
-          this.solvePcg(rhs, u, tol, maxIters);
+          this.solvePcg(rhs, u, tol, maxIters, onIteration);
 
           let diffSq = 0.0;
           let normSq = 0.0;
@@ -1028,8 +1038,7 @@ export class FeaSolver {
           __unpin?: ((ptr: number) => void) | undefined;
           fea_solve_csr_pcg?: NonNullable<typeof FeaSolver.wasmBuffers>["wasm"]["fea_solve_csr_pcg"] | undefined;
           fea_assemble_csr_values?:
-            | NonNullable<typeof FeaSolver.wasmBuffers>["wasm"]["fea_assemble_csr_values"]
-            | undefined;
+            NonNullable<typeof FeaSolver.wasmBuffers>["wasm"]["fea_assemble_csr_values"] | undefined;
         }
       | null
       | undefined;
@@ -1133,9 +1142,15 @@ export class FeaSolver {
     return bufs;
   }
 
-  private solvePcg(b: Float64Array, x: Float64Array, tol: number, maxIters: number): void {
+  private solvePcg(
+    b: Float64Array,
+    x: Float64Array,
+    tol: number,
+    maxIters: number,
+    onIteration?: (iter: number, relResidual: number) => void,
+  ): void {
     const n = this.numDofs;
-    const bufs = this.ensureWasmBuffers();
+    const bufs = onIteration ? null : this.ensureWasmBuffers();
 
     if (bufs && typeof bufs.wasm.fea_solve_csr_pcg === "function" && n > 0) {
       const memBuf = bufs.wasm.memory.buffer;
@@ -1179,7 +1194,12 @@ export class FeaSolver {
     const initialResidual = Math.sqrt(Math.max(0, rzOld));
     const refNorm = Math.max(initialResidual, 1e-30);
 
-    if (initialResidual < 1e-18) return;
+    if (initialResidual < 1e-18) {
+      onIteration?.(1, 0);
+      return;
+    }
+
+    onIteration?.(0, 1.0);
 
     for (let iter = 0; iter < maxIters; iter++) {
       this.spmv(p, Ap);
@@ -1194,8 +1214,13 @@ export class FeaSolver {
       }
 
       const rzNew = this.dot(r, z);
-      if (Math.sqrt(Math.max(0, rzNew)) / refNorm < tol) {
+      const relRes = Math.sqrt(Math.max(0, rzNew)) / refNorm;
+      if (relRes < tol) {
+        onIteration?.(iter + 1, Math.max(1e-12, relRes));
         break;
+      }
+      if (iter === 0 || (iter + 1) % 10 === 0 || iter === maxIters - 1) {
+        onIteration?.(iter + 1, relRes);
       }
 
       const beta = rzNew / rzOld;

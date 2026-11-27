@@ -487,8 +487,9 @@ async function discoverWorkspaceModels(lspClient?: LspClientLike): Promise<Works
       const previews = resp?.previews ?? {};
       for (const card of cards) {
         const hit = previews[card.id];
-        if (hit) {
-          card.previewSvg = hit.svg;
+        const safeSvg = hit ? sanitizeHubSvg(hit.svg) : undefined;
+        if (hit && safeSvg) {
+          card.previewSvg = safeSvg;
           card.nodeCount = hit.nodeCount;
           card.edgeCount = hit.edgeCount;
         } else {
@@ -530,10 +531,23 @@ async function hydrateCuratedModelPreviews(panel: vscode.WebviewPanel, lspClient
       { items, isDark: isDarkColorTheme() },
     );
     if (resp?.previews && Object.keys(resp.previews).length > 0) {
-      await panel.webview.postMessage({
-        command: "setDiagramPreviews",
-        previews: resp.previews,
-      });
+      const sanitizedPreviews: Record<string, DiagramPreviewItemResult> = {};
+      for (const [id, entry] of Object.entries(resp.previews)) {
+        const safeSvg = sanitizeHubSvg(entry.svg);
+        if (safeSvg) {
+          sanitizedPreviews[id] = {
+            svg: safeSvg,
+            nodeCount: entry.nodeCount,
+            edgeCount: entry.edgeCount,
+          };
+        }
+      }
+      if (Object.keys(sanitizedPreviews).length > 0) {
+        await panel.webview.postMessage({
+          command: "setDiagramPreviews",
+          previews: sanitizedPreviews,
+        });
+      }
     }
   } catch {
     // Keep curated connected schematic SVGs when LSP is still warming up
@@ -545,15 +559,25 @@ export function renderOpenModelHubHtml(options: {
   cspSource: string;
   initialMode?: "gallery" | "workspace" | "local" | undefined;
 }): string {
-  const { nonce, cspSource, initialMode = "gallery" } = options;
-  const serializedCatalog = JSON.stringify(HUB_CURATED_OPEN_MODELS).replace(/</g, "\\u003c");
-  const serializedDomains = JSON.stringify(HUB_DOMAIN_FILTERS).replace(/</g, "\\u003c");
+  const { nonce, cspSource } = options;
+  const safeMode: "gallery" | "workspace" | "local" =
+    options.initialMode === "workspace" || options.initialMode === "local" ? options.initialMode : "gallery";
+  const safeCspSource = cspSource.replace(/["';\r\n]/g, "");
+  const safeJson = (val: unknown) =>
+    JSON.stringify(val)
+      .replace(/</g, "\\u003c")
+      .replace(/>/g, "\\u003e")
+      .replace(/&/g, "\\u0026")
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
+  const serializedCatalog = safeJson(HUB_CURATED_OPEN_MODELS);
+  const serializedDomains = safeJson(HUB_DOMAIN_FILTERS);
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} data: https:; style-src ${cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${safeCspSource} data: https:; style-src ${safeCspSource} 'unsafe-inline'; script-src 'nonce-${nonce}'; base-uri 'none'; form-action 'none';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Open Model</title>
   <style>
@@ -927,7 +951,7 @@ export function renderOpenModelHubHtml(options: {
       const DOMAINS = ${serializedDomains};
 
       const state = {
-        mode: ${JSON.stringify(initialMode)},
+        mode: ${safeJson(safeMode)},
         domain: "all",
         packageFilter: "all",
         query: "",
@@ -961,7 +985,33 @@ export function renderOpenModelHubHtml(options: {
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function sanitizeSvg(rawSvg) {
+        if (typeof rawSvg !== "string") return "";
+        const openMatch = /<svg\\b/i.exec(rawSvg);
+        if (!openMatch) return "";
+        const closeIdx = rawSvg.toLowerCase().lastIndexOf("</svg>");
+        if (closeIdx === -1 || closeIdx < openMatch.index) return "";
+        let cleaned = rawSvg.slice(openMatch.index, closeIdx + 6);
+        let prev = "";
+        let iter = 0;
+        while (cleaned !== prev && iter < 20) {
+          prev = cleaned;
+          cleaned = cleaned
+            .replace(/<(script|foreignObject|iframe|object|embed|applet|style|link|meta|base|form|animate|animateTransform|animateMotion|set|handler)\\b[^>]*>[\\s\\S]*?<\\/\\1[^>]*>/gi, "")
+            .replace(/<\\/?(?:script|foreignObject|iframe|object|embed|applet|style|link|meta|base|form|animate|animateTransform|animateMotion|set|handler)\\b[^>]*>/gi, "")
+            .replace(/(?:[\\s/]+)on[a-z0-9_-]*\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)/gi, "")
+            .replace(/(?:[\\s/]+)(?:xlink:)?href\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))/gi, (full, dq, sq, uq) => {
+              const val = String(dq ?? sq ?? uq ?? "").trim();
+              return /^(?:#[A-Za-z0-9_.:-]+|data:image\\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=\\s]+)$/i.test(val) ? full : "";
+            });
+          iter++;
+        }
+        cleaned = cleaned.trim();
+        return /^<svg\\b/i.test(cleaned) && /<\\/svg>$/i.test(cleaned) ? cleaned : "";
       }
 
       function buildWebviewEquationFallbackSvg(title, fqn) {
@@ -1112,9 +1162,9 @@ export function renderOpenModelHubHtml(options: {
           const mounted = isPackageMounted(item.packageName, item.bundledByDefault);
           const selected = state.selectedId === item.id ? " selected" : "";
           const busy = state.busyId === item.id;
-          const nodes = live ? live.nodeCount : item.nodeCount;
-          const edges = live ? live.edgeCount : item.edgeCount;
-          const svg = live && live.svg ? live.svg : item.diagramSvg;
+          const nodes = Number(live ? live.nodeCount : item.nodeCount) || 0;
+          const edges = Number(live ? live.edgeCount : item.edgeCount) || 0;
+          const svg = sanitizeSvg(live && live.svg ? live.svg : item.diagramSvg);
           return (
             '<div class="model-card' + selected + '" data-action="select-card" data-id="' + escapeHtml(item.id) + '">' +
               '<div class="diagram-stage">' +
@@ -1151,7 +1201,7 @@ export function renderOpenModelHubHtml(options: {
           const mounted = isPackageMounted(item.packageName, false);
           const selected = state.selectedId === cardId ? " selected" : "";
           const busy = state.busyId === cardId;
-          const svg = item.diagramSvg || buildWebviewEquationFallbackSvg(item.name, item.fqn);
+          const svg = sanitizeSvg(item.diagramSvg) || buildWebviewEquationFallbackSvg(item.name, item.fqn);
           const dialectLabel = item.language || "Modelica";
           const rightBadge = item.diagramSvg ? "Registry schematic" : (item.kind || "model");
           const summary = item.description || (item.subpackage ? ("Runnable model in " + item.packageName + "." + item.subpackage) : ("Runnable model in " + item.packageName));
@@ -1187,7 +1237,7 @@ export function renderOpenModelHubHtml(options: {
         })).concat(dyn.map((item) => {
           const live = state.livePreviews[item.id];
           const selected = state.selectedId === item.id ? " selected" : "";
-          const svg = (live && live.svg) || item.previewSvg || "";
+          const svg = sanitizeSvg((live && live.svg) || item.previewSvg || "");
           const badge = live ? (live.nodeCount + " blocks · " + live.edgeCount + " nets") : "Library model";
           return (
             '<div class="model-card' + selected + '" data-action="select-card" data-id="' + escapeHtml(item.id) + '">' +
@@ -1288,7 +1338,7 @@ export function renderOpenModelHubHtml(options: {
             return (
               '<div class="model-card" data-action="open-workspace-uri" data-uri="' + escapeHtml(w.uri) + '" data-view="split">' +
                 '<div class="diagram-stage">' +
-                  '<div class="diagram-stage-inner">' + (w.previewSvg || "") + '</div>' +
+                  '<div class="diagram-stage-inner">' + sanitizeSvg(w.previewSvg || "") + '</div>' +
                   '<span class="stage-pill top-left">' + escapeHtml(w.dialect) + '</span>' +
                   '<span class="stage-pill bottom-right">' + escapeHtml(topo) + '</span>' +
                 '</div>' +
@@ -1314,7 +1364,7 @@ export function renderOpenModelHubHtml(options: {
         const stagedHtml = staged
           ? '<div class="model-card selected" style="cursor:default">' +
               '<div class="diagram-stage" style="height:230px">' +
-                '<div class="diagram-stage-inner">' + (staged.previewSvg || '<div style="color:var(--hub-muted);font-size:12.5px">Rendering schematic preview…</div>') + '</div>' +
+                '<div class="diagram-stage-inner">' + (sanitizeSvg(staged.previewSvg) || '<div style="color:var(--hub-muted);font-size:12.5px">Rendering schematic preview…</div>') + '</div>' +
                 '<span class="stage-pill top-left">' + escapeHtml(staged.dialect) + '</span>' +
                 '<span class="stage-pill bottom-right">' +
                   escapeHtml(typeof staged.nodeCount === "number" && staged.nodeCount > 0 ? (staged.nodeCount + " blocks · " + (staged.edgeCount || 0) + " nets") : "Equation / text model") +
@@ -1638,6 +1688,7 @@ export function openModelHub(
   const panel = vscode.window.createWebviewPanel("modelscript.openModelHub", "Open Model", vscode.ViewColumn.One, {
     enableScripts: true,
     retainContextWhenHidden: true,
+    localResourceRoots: [],
   });
   activeOpenModelPanel = panel;
 
@@ -1851,7 +1902,10 @@ export function openModelHub(
 
         case "openWorkspaceUri": {
           if (msg.uri) {
-            await openUriInRequestedView(vscode.Uri.parse(msg.uri), msg.viewMode ?? "split");
+            const parsedUri = vscode.Uri.parse(msg.uri);
+            if (parsedUri.scheme === "file" || parsedUri.scheme === "memfs" || parsedUri.scheme === "untitled") {
+              await openUriInRequestedView(parsedUri, msg.viewMode ?? "split");
+            }
           }
           break;
         }
@@ -1894,8 +1948,9 @@ export function openModelHub(
               );
               for (const d of dynamicModels) {
                 const hit = prevResp?.previews?.[d.id];
-                if (hit) {
-                  d.previewSvg = hit.svg;
+                const safeSvg = hit ? sanitizeHubSvg(hit.svg) : undefined;
+                if (hit && safeSvg) {
+                  d.previewSvg = safeSvg;
                   d.nodeCount = hit.nodeCount;
                   d.edgeCount = hit.edgeCount;
                 }
@@ -1935,8 +1990,9 @@ export function openModelHub(
                 },
               );
               const hit = prevResp?.previews?.["staged"];
-              if (hit) {
-                previewSvg = hit.svg;
+              const safeSvg = hit ? sanitizeHubSvg(hit.svg) : undefined;
+              if (hit && safeSvg) {
+                previewSvg = safeSvg;
                 nodeCount = hit.nodeCount;
                 edgeCount = hit.edgeCount;
               }
@@ -2053,8 +2109,9 @@ export function openModelHub(
                 },
               );
               const hit = prevResp?.previews?.["native"];
-              if (hit) {
-                previewSvg = hit.svg;
+              const safeSvg = hit ? sanitizeHubSvg(hit.svg) : undefined;
+              if (hit && safeSvg) {
+                previewSvg = safeSvg;
                 nodeCount = hit.nodeCount;
                 edgeCount = hit.edgeCount;
               }

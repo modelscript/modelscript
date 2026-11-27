@@ -263,7 +263,7 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
   if (isModelica) {
     try {
       const cachedTree = context.documentManager?.documentTrees?.get(params.uri)?.tree;
-      const rootCst = cachedTree?.rootNode ?? cachedTree;
+      const rootCst = cachedTree && "edit" in cachedTree ? cachedTree.rootNode : undefined;
       const { patchModelicaCadAnnotation, patchModelicaCadPortAnnotation, patchModelicaAssemblyJoint } =
         await import("@modelscript/cad");
 

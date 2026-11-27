@@ -26,6 +26,7 @@ import { getKindBadgeStyle } from "../internal/kind-badge";
 import Spinner from "../internal/Spinner";
 import { getSemanticKindIcon } from "./ComponentList";
 import { clearPlacement } from "./placement";
+import { publishCstWorkerForeignSymbols } from "./util/cst-edit-client";
 import {
   getClassIcon,
   getLibraryTree,
@@ -35,6 +36,50 @@ import {
   type TreeNodeInfo,
 } from "./util/lsp-bridge";
 import { invertSvgColors, normalizeSvgForIcon } from "./util/x6";
+
+function publishTreeNodesToCstWorker(nodes: ReadonlyArray<TreeNodeInfo>): void {
+  const batch: Record<
+    string,
+    {
+      cleanName: string;
+      shortName: string;
+      sourceLanguage: string;
+      explicitLanguage: string | null;
+      params: Array<{ name: string; defaultValue: string }>;
+    }
+  > = {};
+  let count = 0;
+  for (const n of nodes) {
+    if (
+      n.classKind === "package" ||
+      n.classKind === "loading-package" ||
+      n.id.startsWith("__LIB__:") ||
+      n.id.startsWith("__LOADING__:")
+    ) {
+      continue;
+    }
+    const rawName = (n.compositeName ?? n.name ?? "")
+      .replace(/^__LIB__:[^/]+\//, "")
+      .replace(/^__LIB__:/, "")
+      .trim();
+    if (!rawName) continue;
+    const nodeLang = (n as { language?: string | undefined }).language;
+    const lang = (nodeLang ?? "").toLowerCase();
+    if (!lang || lang === "pscad") continue;
+    const shortName = rawName.split(/[.:/]/).filter(Boolean).pop() ?? rawName;
+    batch[rawName] = {
+      cleanName: rawName,
+      shortName,
+      sourceLanguage: lang,
+      explicitLanguage: lang,
+      params: [],
+    };
+    count++;
+  }
+  if (count > 0) {
+    publishCstWorkerForeignSymbols(batch);
+  }
+}
 
 // ────────────────────────────────────────────────────────────────────
 // Props
@@ -72,13 +117,25 @@ function getFallbackTreeIcon(className: string, classKind?: string, nodeId?: str
     return <Spinner size={16} srText="Loading library..." />;
   }
   if (k === "owl2-folder" || k === "ontology-folder") {
-    return <FileDirectoryIcon size={16} style={{ color: "#f59e0b", flexShrink: 0 }} />;
+    return (
+      <span style={{ color: "#f59e0b", flexShrink: 0, display: "inline-flex" }}>
+        <FileDirectoryIcon size={16} />
+      </span>
+    );
   }
   if (k === "owl2-ontology" || id.startsWith("__owl2") || /\.(owl|owl2|ofn|fss|ttl)$/i.test(n)) {
-    return <ShareAndroidIcon size={16} style={{ color: "#ec4899", flexShrink: 0 }} />;
+    return (
+      <span style={{ color: "#ec4899", flexShrink: 0, display: "inline-flex" }}>
+        <ShareAndroidIcon size={16} />
+      </span>
+    );
   }
   if (k === "ontology-package" || id === "__ontology_root__" || n.includes("ontology (polyglot)")) {
-    return <GlobeIcon size={16} style={{ color: "#a855f7", flexShrink: 0 }} />;
+    return (
+      <span style={{ color: "#a855f7", flexShrink: 0, display: "inline-flex" }}>
+        <GlobeIcon size={16} />
+      </span>
+    );
   }
   if (
     k.startsWith("owl2-") ||
@@ -90,21 +147,41 @@ function getFallbackTreeIcon(className: string, classKind?: string, nodeId?: str
     return getSemanticKindIcon(k, 16);
   }
   if (k.includes("sysml") || /\.(sysml|sysml2|kerml)$/i.test(n) || n === "sysml2" || n === "sysml") {
-    return <WorkflowIcon size={16} style={{ color: "#8b5cf6", flexShrink: 0 }} />;
+    return (
+      <span style={{ color: "#8b5cf6", flexShrink: 0, display: "inline-flex" }}>
+        <WorkflowIcon size={16} />
+      </span>
+    );
   }
   if (/\.(step|stp|p21|scad)$/i.test(n) || k.includes("cad") || k.includes("product")) {
-    return <StackIcon size={16} style={{ color: "#10b981", flexShrink: 0 }} />;
+    return (
+      <span style={{ color: "#10b981", flexShrink: 0, display: "inline-flex" }}>
+        <StackIcon size={16} />
+      </span>
+    );
   }
   if (/\.(pscx|pslx|pswx|raw)$/i.test(n) || n === "pscad") {
-    return <ZapIcon size={16} style={{ color: "#eab308", flexShrink: 0 }} />;
+    return (
+      <span style={{ color: "#eab308", flexShrink: 0, display: "inline-flex" }}>
+        <ZapIcon size={16} />
+      </span>
+    );
   }
   if (depth === 0 && (n === "modelica" || n === "complex" || n === "modelicaservices" || /\.mo$/i.test(n))) {
-    return <CpuIcon size={16} style={{ color: "#06b6d4", flexShrink: 0 }} />;
+    return (
+      <span style={{ color: "#06b6d4", flexShrink: 0, display: "inline-flex" }}>
+        <CpuIcon size={16} />
+      </span>
+    );
   }
   if (k && k !== "package" && k !== "class") {
     return getSemanticKindIcon(k, 16);
   }
-  return <PackageIcon size={16} style={{ color: "var(--fgColor-muted, #64748b)", flexShrink: 0 }} />;
+  return (
+    <span style={{ color: "var(--fgColor-muted, #64748b)", flexShrink: 0, display: "inline-flex" }}>
+      <PackageIcon size={16} />
+    </span>
+  );
 }
 
 function ClassIcon({
@@ -285,6 +362,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
         getLibraryTree(uri, node.id)
           .then((result) => {
             setChildren(result);
+            publishTreeNodesToCstWorker(result);
             setLoading(false);
           })
           .catch(() => {
@@ -352,7 +430,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             if (isCoarsePointer) {
               onSelect(compositeName, node.classKind ?? "class");
             }
-          } else if (node.uri === uri || isCoarsePointer) {
+          } else if ((node as { uri?: string | undefined }).uri === uri || isCoarsePointer) {
             onSelect(compositeName, node.classKind ?? "class");
           }
         }}
@@ -425,6 +503,7 @@ const TreeNode = React.memo(function TreeNode(props: TreeNodeProps) {
             return;
           }
           const cleanCompositeName = compositeName.replace(/^__LIB__:[^/]+\//, "").replace(/^__LIB__:/, "");
+          publishTreeNodesToCstWorker([node]);
           const iconSvg = node.iconSvg || iconCache.get(cleanCompositeName) || iconCache.get(compositeName);
           const payload = {
             className: cleanCompositeName,
@@ -665,6 +744,7 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
     Promise.all([getLibraryTree(props.uri), getMountedLibraries()])
       .then(([nodes, mountedState]) => {
         setRootNodes(nodes);
+        publishTreeNodesToCstWorker(nodes);
         const explicit = new Set<string>();
         for (const m of mountedState.mounted) {
           if (m.explicitlyInstalled) {
@@ -689,6 +769,7 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
     searchClasses(filter, SEARCH_RESULT_LIMIT)
       .then((result) => {
         if (cancelled) return;
+        publishTreeNodesToCstWorker(result.results);
         setSearchState({
           results: result.results,
           searching: false,
@@ -712,11 +793,12 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
   if (filter) {
     // Search results
     for (const node of searchState.results) {
-      if (effectiveLanguage && node.language) {
+      const nodeLang = (node as { language?: string | undefined }).language;
+      if (effectiveLanguage && nodeLang) {
         const isPolyglot =
           (effectiveLanguage === "modelica" || effectiveLanguage === "modelscript") &&
-          POLYGLOT_MODELICA_COMPONENT_LANGUAGES.has(node.language.toLowerCase());
-        if (!isPolyglot && !isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
+          POLYGLOT_MODELICA_COMPONENT_LANGUAGES.has(nodeLang.toLowerCase());
+        if (!isPolyglot && !isLanguageCompatible(nodeLang, node.name, effectiveLanguage)) {
           continue;
         }
       }
@@ -795,15 +877,16 @@ const TreeWidget = React.memo(function TreeWidget(props: TreeWidgetProps) {
         node.id.startsWith("__LOADING__:") ||
         node.classKind === "ontology";
 
+      const extNode = node as { language?: string | undefined; uri?: string | undefined };
       if (effectiveLanguage && isContainer) {
         if (
           !explicitlyInstalledNames.has(node.name.toLowerCase()) &&
-          !isLanguageCompatible(node.language, node.name, effectiveLanguage)
+          !isLanguageCompatible(extNode.language, node.name, effectiveLanguage)
         ) {
           continue;
         }
-      } else if (effectiveLanguage && node.language && node.uri && node.uri !== props.uri) {
-        if (!isLanguageCompatible(node.language, node.name, effectiveLanguage)) {
+      } else if (effectiveLanguage && extNode.language && extNode.uri && extNode.uri !== props.uri) {
+        if (!isLanguageCompatible(extNode.language, node.name, effectiveLanguage)) {
           continue;
         }
       }

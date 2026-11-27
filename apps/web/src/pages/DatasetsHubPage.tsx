@@ -147,23 +147,22 @@ const DEFAULT_DIFF_AFTER = JSON.stringify(
 
 const PageRoot = styled.div`
   width: 100%;
-  max-width: 1180px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 20px 18px 48px;
+  padding: 20px 20px 56px;
   display: flex;
   flex-direction: column;
   gap: 18px;
-  color: var(--color-text-primary, #e6edf3);
+  color: var(--color-text-primary);
   box-sizing: border-box;
 `;
 
 const HeroBanner = styled.header`
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.24));
-  border-radius: 16px;
-  padding: 20px 22px;
-  background:
-    radial-gradient(circle at 85% 15%, rgba(14, 165, 233, 0.14), transparent 45%),
-    radial-gradient(circle at 12% 85%, rgba(99, 102, 241, 0.1), transparent 45%), var(--color-bg-elevated, #111827);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -173,21 +172,21 @@ const HeroBanner = styled.header`
 
 const HeroTitle = styled.h1`
   margin: 0;
-  font-size: 22px;
-  font-weight: 800;
+  font-size: 20px;
+  font-weight: 700;
   letter-spacing: -0.02em;
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--color-text-heading, var(--color-text-primary, #f8fafc));
+  color: var(--color-text-heading);
 `;
 
 const HeroSubtitle = styled.p`
-  margin: 6px 0 0;
+  margin: 5px 0 0;
   font-size: 13px;
   line-height: 1.5;
   max-width: 720px;
-  color: var(--color-text-secondary, #94a3b8);
+  color: var(--color-text-muted);
 `;
 
 const NutritionGrid = styled.section`
@@ -197,10 +196,11 @@ const NutritionGrid = styled.section`
 `;
 
 const NutritionCard = styled.div`
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.22));
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 14px 16px;
-  background: var(--color-bg-elevated, #111827);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -211,26 +211,27 @@ const NutritionLabel = styled.span`
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--color-text-secondary, #94a3b8);
+  color: var(--color-text-muted);
 `;
 
 const NutritionValue = styled.div<{ $accent?: string }>`
-  font-size: 24px;
-  font-weight: 800;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  color: ${({ $accent }) => $accent || "var(--color-text-heading, var(--color-text-primary, #f8fafc))"};
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: ${({ $accent }) => $accent || "var(--color-text-heading)"};
 `;
 
 const NutritionSub = styled.span`
   font-size: 11.5px;
-  color: var(--color-text-tertiary, #64748b);
+  color: var(--color-text-tertiary);
 `;
 
 const FilterPanel = styled.section`
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.22));
-  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   padding: 14px 16px;
-  background: var(--color-bg-elevated, #111827);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -249,46 +250,47 @@ const KindPill = styled.button<{ $active: boolean }>`
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid ${({ $active }) => ($active ? "#38bdf8" : "var(--color-border-default, rgba(148, 163, 184, 0.3))")};
-  background: ${({ $active }) => ($active ? "rgba(56, 189, 248, 0.16)" : "var(--color-bg-secondary, transparent)")};
-  color: ${({ $active }) => ($active ? "#38bdf8" : "var(--color-text-secondary, #94a3b8)")};
+  border: 1px solid ${({ $active }) => ($active ? "var(--ms-brand)" : "var(--color-border-default)")};
+  background: ${({ $active }) => ($active ? "var(--ms-brand-soft)" : "var(--color-bg-surface)")};
+  color: ${({ $active }) => ($active ? "var(--ms-brand)" : "var(--color-text-secondary)")};
   transition: all 0.15s ease;
   &:hover {
-    border-color: #38bdf8;
-    color: var(--color-text-primary, #f8fafc);
+    border-color: var(--ms-brand);
+    color: var(--color-text-heading);
   }
 `;
 
 const Input = styled.input`
   padding: 7px 10px;
   border-radius: 8px;
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.3));
-  background: var(--color-search-bg, rgba(15, 23, 42, 0.4));
-  color: var(--color-text-primary, #e6edf3);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-canvas-inset);
+  color: var(--color-text-primary);
   font-size: 12.5px;
   outline: none;
   &:focus {
-    border-color: var(--color-primary, #38bdf8);
+    border-color: var(--ms-brand);
   }
 `;
 
 const Select = styled.select`
   padding: 7px 10px;
   border-radius: 8px;
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.3));
-  background: var(--color-search-bg, rgba(15, 23, 42, 0.7));
-  color: var(--color-text-primary, #e6edf3);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-canvas-inset);
+  color: var(--color-text-primary);
   font-size: 12.5px;
   outline: none;
   &:focus {
-    border-color: var(--color-primary, #38bdf8);
+    border-color: var(--ms-brand);
   }
 `;
 
 const DrawerCard = styled.section`
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.24));
-  border-radius: 14px;
-  background: var(--color-bg-elevated, #111827);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   overflow: hidden;
 `;
 
@@ -300,14 +302,14 @@ const DrawerToggle = styled.button`
   gap: 12px;
   padding: 13px 18px;
   border: none;
-  background: var(--color-bg-secondary, rgba(15, 23, 42, 0.55));
-  color: var(--color-text-heading, var(--color-text-primary, #f8fafc));
+  background: var(--color-bg-secondary);
+  color: var(--color-text-heading);
   font-size: 13.5px;
   font-weight: 700;
   cursor: pointer;
   text-align: left;
   &:hover {
-    background: var(--color-btn-secondary-bg, rgba(30, 41, 59, 0.65));
+    background: var(--surface-row-hover);
   }
 `;
 
@@ -443,12 +445,12 @@ const PrimaryButton = styled.button`
   gap: 6px;
   padding: 7px 13px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid rgba(56, 189, 248, 0.55);
-  background: linear-gradient(135deg, #0284c7, #4f46e5);
-  color: #ffffff;
+  border: 1px solid var(--ms-brand);
+  background: var(--ms-brand);
+  color: var(--ms-brand-contrast, #ffffff);
   &:hover:not(:disabled) {
     opacity: 0.92;
   }
@@ -468,11 +470,12 @@ const SecondaryButton = styled.button`
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid var(--color-border-default, rgba(148, 163, 184, 0.28));
-  background: var(--color-btn-secondary-bg, rgba(30, 41, 59, 0.6));
-  color: var(--color-text-primary, #e6edf3);
+  border: 1px solid var(--color-border-default);
+  background: var(--color-bg-surface);
+  color: var(--color-text-primary);
   &:hover:not(:disabled) {
-    border-color: #38bdf8;
+    border-color: var(--ms-brand);
+    background: var(--surface-row-hover);
   }
   &:disabled {
     opacity: 0.5;

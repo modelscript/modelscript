@@ -145,6 +145,46 @@ export const ViewColumn = {
   Three: 3,
 };
 
+export const StatusBarAlignment = {
+  Left: 1,
+  Right: 2,
+};
+
+export const QuickPickItemKind = {
+  Separator: -1,
+  Default: 0,
+};
+
+export const ConfigurationTarget = {
+  Global: 1,
+  Workspace: 2,
+  WorkspaceFolder: 3,
+};
+
+export const TextEditorRevealType = {
+  Default: 0,
+  InCenter: 1,
+  InCenterIfOutsideViewport: 2,
+  AtTop: 3,
+};
+
+export class Selection extends Range {
+  public readonly anchor: Position;
+  public readonly active: Position;
+  constructor(anchor: Position, active: Position) {
+    super(anchor, active);
+    this.anchor = anchor;
+    this.active = active;
+  }
+}
+
+export class TabInputCustom {
+  constructor(
+    public readonly uri: any,
+    public readonly viewType: string,
+  ) {}
+}
+
 export const ColorThemeKind = {
   Light: 1,
   Dark: 2,
@@ -152,7 +192,55 @@ export const ColorThemeKind = {
   HighContrastLight: 4,
 };
 
+export const FileType = {
+  Unknown: 0,
+  File: 1,
+  Directory: 2,
+  SymbolicLink: 64,
+};
+
+export const FileChangeType = {
+  Changed: 1,
+  Created: 2,
+  Deleted: 3,
+};
+
+export class FileSystemError extends Error {
+  constructor(
+    messageOrUri?: string | { toString(): string },
+    public readonly code = "Unknown",
+  ) {
+    super(typeof messageOrUri === "string" ? messageOrUri : (messageOrUri?.toString() ?? code));
+    this.name = "FileSystemError";
+  }
+
+  static FileNotFound(messageOrUri?: string | { toString(): string }): FileSystemError {
+    return new FileSystemError(messageOrUri, "FileNotFound");
+  }
+
+  static FileExists(messageOrUri?: string | { toString(): string }): FileSystemError {
+    return new FileSystemError(messageOrUri, "FileExists");
+  }
+
+  static FileNotADirectory(messageOrUri?: string | { toString(): string }): FileSystemError {
+    return new FileSystemError(messageOrUri, "FileNotADirectory");
+  }
+
+  static FileIsADirectory(messageOrUri?: string | { toString(): string }): FileSystemError {
+    return new FileSystemError(messageOrUri, "FileIsADirectory");
+  }
+
+  static NoPermissions(messageOrUri?: string | { toString(): string }): FileSystemError {
+    return new FileSystemError(messageOrUri, "NoPermissions");
+  }
+
+  static Unavailable(messageOrUri?: string | { toString(): string }): FileSystemError {
+    return new FileSystemError(messageOrUri, "Unavailable");
+  }
+}
+
 export const workspace = {
+  isTrusted: true,
   workspaceFolders: undefined as any[] | undefined,
   textDocuments: [] as any[],
   findFiles: async (_include: any, _exclude?: any, _maxResults?: number) => [] as any[],
@@ -162,6 +250,7 @@ export const workspace = {
   onDidSaveTextDocument: (_listener: any) => new Disposable(),
   onDidOpenTextDocument: (_listener: any) => new Disposable(),
   onDidCloseTextDocument: (_listener: any) => new Disposable(),
+  onDidChangeConfiguration: (_listener: any) => new Disposable(),
   getConfiguration: (_section?: string) => ({
     get: <T = unknown>(_key: string, defaultValue?: T): T | undefined => defaultValue,
     inspect: <T = unknown>(_key: string) => ({
@@ -193,10 +282,33 @@ export const ProgressLocation = {
 export const window = {
   activeColorTheme: { kind: ColorThemeKind.Dark },
   activeTextEditor: undefined as any,
+  tabGroups: {
+    activeTabGroup: {
+      activeTab: undefined as any,
+    },
+  },
   showTextDocument: async (doc: any, _options?: any) => ({ document: doc }),
   showOpenDialog: async (_options?: any) => undefined as any[] | undefined,
+  showInputBox: async (_options?: any) => undefined as string | undefined,
   onDidChangeActiveTextEditor: (_listener: any) => new Disposable(),
+  onDidChangeTextEditorSelection: (_listener: any) => new Disposable(),
+  onDidChangeTextEditorVisibleRanges: (_listener: any) => new Disposable(),
   registerCustomEditorProvider: (_viewType: string, _provider: any, _options?: any) => new Disposable(),
+  registerTreeDataProvider: (_viewId: string, _provider: any) => new Disposable(),
+  registerUriHandler: (_handler: any) => new Disposable(),
+  createStatusBarItem: (_alignment?: number, _priority?: number) => ({
+    text: "",
+    tooltip: "",
+    command: undefined as string | undefined,
+    show: () => {},
+    hide: () => {},
+    dispose: () => {},
+  }),
+  visibleTextEditors: [] as any[],
+  createTextEditorDecorationType: (_options?: any) => ({
+    key: "mock-decoration",
+    dispose: () => {},
+  }),
   withProgress: async (_options: any, task: any) =>
     task({ report: () => {} }, { isCancellationRequested: false, onCancellationRequested: () => new Disposable() }),
   createWebviewPanel: (_viewType: string, _title: string, _showOptions: any, _options?: any) => ({
@@ -234,6 +346,8 @@ export const env = {
 };
 
 export const languages = {
+  onDidChangeDiagnostics: (_listener: any) => new Disposable(),
+  getDiagnostics: (_uri?: any) => [] as any[],
   createDiagnosticCollection: (_name?: string) => ({
     name: _name ?? "",
     set: (_uri: any, _diagnostics?: any) => {},

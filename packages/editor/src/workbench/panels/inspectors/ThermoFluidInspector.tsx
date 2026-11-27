@@ -43,7 +43,7 @@ export interface ThermoFluidSummary {
   netMassDemandLps: number;
 }
 
-export function analyzeThermoFluidNetwork(code: string, lines: string[]): ThermoFluidSummary {
+export function analyzeThermoFluidNetwork(_code: string, lines: string[]): ThermoFluidSummary {
   const nodeMap = new Map<string, FluidNode>();
   const conduits: FluidConduit[] = [];
 

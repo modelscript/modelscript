@@ -94,6 +94,7 @@ import {
   ref,
   repeat,
   repeat1,
+  semanticToken,
   seq,
   token,
 } from "@modelscript/dsl";
@@ -743,7 +744,7 @@ export const sysml2Language = language({
         syntax: seq(
           $["_OptUsageModifiers"]!,
           "package",
-          optional($["_Identification"]!),
+          optional(semanticToken("namespace", $["_Identification"]!, ["declaration"])),
           field("body", $["_PackageBody"]!),
         ),
         symbol: (self: SysmlRuleSelf) => ({
@@ -764,7 +765,7 @@ export const sysml2Language = language({
           "library",
           $["_OptUsageModifiers"]!,
           "package",
-          optional($["_Identification"]!),
+          optional(semanticToken("namespace", $["_Identification"]!, ["declaration"])),
           field("body", $["_PackageBody"]!),
         ),
         symbol: (self: SysmlRuleSelf) => ({
@@ -984,7 +985,7 @@ export const sysml2Language = language({
 
     OwnedSubclassification: ($) =>
       ref({
-        syntax: field("superclassifier", $["QualifiedName"]!),
+        syntax: semanticToken("type", field("superclassifier", $["QualifiedName"]!)),
         name: (self: SysmlRuleSelf) => self["superclassifier"],
         targetKinds: ["Classifier"],
         resolve: "qualified",
@@ -995,7 +996,13 @@ export const sysml2Language = language({
     // =====================================================================
 
     _FeatureDeclaration: ($) =>
-      choice(seq($["_Identification"]!, optional($["_FeatureSpecializationPart"]!)), $["_FeatureSpecializationPart"]!),
+      choice(
+        seq(
+          semanticToken("parameter", $["_Identification"]!, ["declaration"]),
+          optional($["_FeatureSpecializationPart"]!),
+        ),
+        $["_FeatureSpecializationPart"]!,
+      ),
 
     _FeatureSpecializationPart: ($) => repeat1(choice($["_FeatureSpecialization"]!, $["_MultiplicityPart"]!)),
 
@@ -1031,7 +1038,7 @@ export const sysml2Language = language({
     OwnedFeatureTyping: ($) =>
       choice(
         ref({
-          syntax: field("type", $["QualifiedName"]!),
+          syntax: semanticToken("type", field("type", $["QualifiedName"]!)),
           name: (self: SysmlRuleSelf) => self["type"],
           targetKinds: ["Type"],
           resolve: "qualified",
@@ -1105,7 +1112,11 @@ export const sysml2Language = language({
     // =====================================================================
 
     _Definition: ($) =>
-      seq(optional($["_Identification"]!), optional($["_SubclassificationPart"]!), $["_DefinitionBody"]!),
+      seq(
+        optional(semanticToken("class", $["_Identification"]!, ["declaration"])),
+        optional($["_SubclassificationPart"]!),
+        $["_DefinitionBody"]!,
+      ),
 
     _DefinitionBody: ($) => choice(";", seq("{", repeat($["_DefinitionBodyItem"]!), "}")),
 
@@ -3110,7 +3121,7 @@ export const sysml2Language = language({
 
     ReferenceTyping: ($) =>
       ref({
-        syntax: field("type", $["QualifiedName"]!),
+        syntax: semanticToken("type", field("type", $["QualifiedName"]!)),
         name: (self: SysmlRuleSelf) => self["type"],
         targetKinds: ["Type"],
         resolve: "qualified",
@@ -3272,7 +3283,7 @@ export const sysml2Language = language({
     FeatureReferenceExpression: ($) => field("ownedRelationship", $["FeatureReferenceMember"]!),
     FeatureReferenceMember: ($) =>
       ref({
-        syntax: field("memberElement", $["QualifiedName"]!),
+        syntax: semanticToken("type", field("memberElement", $["QualifiedName"]!)),
         name: (self: SysmlRuleSelf) => self["memberElement"],
         targetKinds: ["Feature"],
         resolve: "qualified",
@@ -3350,11 +3361,11 @@ export const sysml2Language = language({
     _LiteralExpression: ($) =>
       choice($["LiteralBoolean"]!, $["LiteralString"]!, $["LiteralInteger"]!, $["LiteralReal"]!, $["LiteralInfinity"]!),
 
-    LiteralBoolean: ($) => field("value", $["BooleanValue"]!),
+    LiteralBoolean: ($) => semanticToken("keyword", field("value", $["BooleanValue"]!)),
     BooleanValue: () => choice("true", "false"),
-    LiteralString: ($) => field("value", $["STRING_VALUE"]!),
-    LiteralInteger: ($) => field("value", $["DECIMAL_VALUE"]!),
-    LiteralReal: ($) => field("value", $["RealValue"]!),
+    LiteralString: ($) => semanticToken("string", field("value", $["STRING_VALUE"]!)),
+    LiteralInteger: ($) => semanticToken("number", field("value", $["DECIMAL_VALUE"]!)),
+    LiteralReal: ($) => semanticToken("number", field("value", $["RealValue"]!)),
     RealValue: ($) =>
       choice(seq(optional($["DECIMAL_VALUE"]!), ".", choice($["DECIMAL_VALUE"]!, $["EXP_VALUE"]!)), $["EXP_VALUE"]!),
     LiteralInfinity: () => "*",
@@ -3381,9 +3392,9 @@ export const sysml2Language = language({
     ID: () => token(/[a-zA-Z_][a-zA-Z_0-9\u00B2\u00B3\u00B9\u2070-\u2079]*/),
     UNRESTRICTED_NAME: () => token(/'(?:[^'\\]|\\.)*'/),
     STRING_VALUE: () => token(/"(?:[^"\\]|\\.)*"/),
-    REGULAR_COMMENT: () => token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
-    ML_NOTE: () => token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//),
-    SL_NOTE: () => token(/\/\/[^\r\n]*/),
+    REGULAR_COMMENT: () => semanticToken("comment", token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//)),
+    ML_NOTE: () => semanticToken("comment", token(/\/\*[^*]*\*+([^/*][^*]*\*+)*\//)),
+    SL_NOTE: () => semanticToken("comment", token(/\/\/[^\r\n]*/)),
   },
 
   polyglot: sysml2PolyglotConfig,

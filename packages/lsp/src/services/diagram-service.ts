@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import * as defaultModelicaDiagramOps from "@modelscript/modelica/diagram";
+import { TableauReasoner } from "@modelscript/runtime";
+import * as defaultSysml2DiagramOps from "@modelscript/sysml2/diagram";
+import { buildSysML2DiagramData } from "@modelscript/sysml2/factory";
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Connection } from "vscode-languageserver";
+import type { TextDocument } from "vscode-languageserver-textdocument";
 import { resolveCrossLanguageComponentDrop } from "../cross-language-drop.js";
 import {
   GenericDSLDiagramBackend,
@@ -349,6 +354,7 @@ export interface DiagramDataLike {
 
 interface ModelicaDiagramOpsLike {
   buildDiagramData?(classInstance: unknown, diagramType?: string): Promise<unknown> | unknown;
+  buildComponentProperties?(cls: unknown, componentName: string): unknown;
 }
 
 interface SysML2DiagramOpsLike {
@@ -377,29 +383,15 @@ interface DiagramValidationServiceLike {
   dependenciesReady?: boolean;
   syncDocumentForDiagram?: (uri: string, explicitText?: string) => Promise<boolean>;
   flushValidation?: (uri: string) => Promise<void>;
+  validateTextDocument?: (doc: TextDocument) => Promise<void>;
+  setClearDiagramCache?: (fn: () => void) => void;
 }
 
 interface DiagramParserServiceLike {
   ensureLanguageParserLoaded?: (langOrUri: string) => Promise<unknown>;
   isParserReady?: (langId: string) => boolean;
   getParser?: (langId: string) => unknown;
-}
-
-interface DiagramGlobalHooks {
-  modelicaDiagramOps?: ModelicaDiagramOpsLike;
-  sysml2DiagramOps?: SysML2DiagramOpsLike;
-  diagramCache?: Map<string, { version: string; data: DiagramDataLike | null }>;
-  clearDiagramCache?: () => void;
-  lastIndexedText?: Map<string, string>;
-  dependenciesReady?: boolean;
-  validateTextDocument?: (doc: unknown) => Promise<void>;
-  sysml2ParserReady?: boolean;
-  sysml2Parser?: unknown;
-  TableauReasoner?: new () => {
-    loadOntology: (axioms: unknown[]) => void;
-    classify: () => void;
-    getTaxonomy: () => Array<{ iri: string; directSuperClasses?: string[] }>;
-  };
+  setClearDiagramCache?: (fn: () => void) => void;
 }
 
 export interface DiagramServiceOptions {
@@ -407,18 +399,30 @@ export interface DiagramServiceOptions {
   sysml2DiagramOps?: SysML2DiagramOpsLike;
 }
 
+const DEFAULT_MODELICA_DIAGRAM_OPS: ModelicaDiagramOpsLike =
+  defaultModelicaDiagramOps as unknown as ModelicaDiagramOpsLike;
+const DEFAULT_SYSML2_DIAGRAM_OPS: SysML2DiagramOpsLike = {
+  ...defaultSysml2DiagramOps,
+  buildSysML2DiagramData,
+} as unknown as SysML2DiagramOpsLike;
+
 /**
  * Retrieves the registered Modelica diagram operations module.
  */
 function getModelicaDiagramOps(service?: DiagramService): ModelicaDiagramOpsLike {
-  return service?.modelicaDiagramOps ?? (globalThis as unknown as DiagramGlobalHooks).modelicaDiagramOps ?? {};
+  return service?.modelicaDiagramOps ?? DEFAULT_MODELICA_DIAGRAM_OPS;
 }
 
 /**
  * Retrieves the registered SysML v2 diagram operations module.
  */
 function getSysML2DiagramOps(service?: DiagramService): SysML2DiagramOpsLike {
-  return service?.sysml2DiagramOps ?? (globalThis as unknown as DiagramGlobalHooks).sysml2DiagramOps ?? {};
+  // Prefer injected DI ops; fall back to globalThis only for legacy unit tests (sysml2-diagram-sidecar.test.ts).
+  return (
+    service?.sysml2DiagramOps ??
+    (globalThis as { sysml2DiagramOps?: SysML2DiagramOpsLike }).sysml2DiagramOps ??
+    DEFAULT_SYSML2_DIAGRAM_OPS
+  );
 }
 
 /**
@@ -440,6 +444,8 @@ function simpleHash(str: string): number {
  * interactive graphical diagrams across Modelica, SysML v2, OWL2, PSCAD, and generic DSLs.
  */
 export class DiagramService {
+  /** Maximum number of entries retained in `diagramCache` before FIFO/LRU eviction. */
+  private static readonly MAX_DIAGRAM_CACHE_ENTRIES = 200;
   /** In-memory cache of SysML v2 `.layout` sidecar data keyed by document URI. */
   private sysml2Layouts = new Map<string, DiagramLayoutLike>();
   /** In-memory cache of OWL2 `.layout` sidecar data keyed by document URI. */
@@ -458,11 +464,55 @@ export class DiagramService {
   public sysml2DiagramOps?: SysML2DiagramOpsLike | undefined;
 
   /**
-   * Clears both the local and global diagram payload caches.
+   * Returns the shared diagram payload cache map owned by this service.
+   */
+  getDiagramCache(): Map<string, { version: string; data: DiagramDataLike | null }> {
+    return this.diagramCache;
+  }
+
+  /**
+   * Inserts or updates a diagram cache entry while enforcing `MAX_DIAGRAM_CACHE_ENTRIES`.
+   */
+  private setDiagramCacheEntry(key: string, entry: { version: string; data: DiagramDataLike | null }): void {
+    if (this.diagramCache.has(key)) {
+      this.diagramCache.delete(key);
+    } else if (this.diagramCache.size >= DiagramService.MAX_DIAGRAM_CACHE_ENTRIES) {
+      const oldest = this.diagramCache.keys().next().value;
+      if (oldest !== undefined) {
+        this.diagramCache.delete(oldest);
+      }
+    }
+    this.diagramCache.set(key, entry);
+  }
+
+  /**
+   * Clears the diagram payload cache.
    */
   clearCache(): void {
     this.diagramCache.clear();
-    (globalThis as unknown as DiagramGlobalHooks).diagramCache?.clear();
+  }
+
+  /**
+   * Removes cached diagram entries and sidecar layouts associated with a closed or invalidated URI.
+   */
+  deleteCacheForUri(uri: string): void {
+    const eff = uri.startsWith("modelscript-lib://global")
+      ? "file://" + uri.substring("modelscript-lib://global".length)
+      : uri;
+    const norm = eff.replace(/^file:\/\/\/+/, "file:///");
+    const prefixes = new Set([`${uri}|`, `${eff}|`, `${norm}|`, `pscad:${uri}:`, `pscad:${eff}:`, `pscad:${norm}:`]);
+    for (const key of Array.from(this.diagramCache.keys())) {
+      for (const prefix of prefixes) {
+        if (key.startsWith(prefix)) {
+          this.diagramCache.delete(key);
+          break;
+        }
+      }
+    }
+    this.sysml2Layouts.delete(uri);
+    this.sysml2Layouts.delete(eff);
+    this.owl2Layouts.delete(uri);
+    this.owl2Layouts.delete(eff);
   }
 
   /**
@@ -487,7 +537,8 @@ export class DiagramService {
     this.parserService = parserService;
     this.modelicaDiagramOps = options?.modelicaDiagramOps;
     this.sysml2DiagramOps = options?.sysml2DiagramOps;
-    (globalThis as unknown as DiagramGlobalHooks).clearDiagramCache = () => this.clearCache();
+    this.validationService?.setClearDiagramCache?.(() => this.clearCache());
+    this.parserService?.setClearDiagramCache?.(() => this.clearCache());
   }
 
   /**
@@ -556,7 +607,7 @@ export class DiagramService {
               breadcrumbs,
             },
           };
-          this.diagramCache.set(pscadCacheKey, { version: pscadVersion, data: pscadResult });
+          this.setDiagramCacheEntry(pscadCacheKey, { version: pscadVersion, data: pscadResult });
           return pscadResult;
         }
       } catch (err: unknown) {
@@ -619,9 +670,8 @@ export class DiagramService {
       }
     }
 
-    const gHooks = globalThis as unknown as DiagramGlobalHooks;
-    const lastIndexedMap = this.validationService?.lastIndexedText ?? gHooks.lastIndexedText;
-    const dependenciesReady = this.validationService?.dependenciesReady ?? gHooks.dependenciesReady ?? true;
+    const lastIndexedMap = this.validationService?.lastIndexedText;
+    const dependenciesReady = this.validationService?.dependenciesReady ?? true;
     const indexedText = params.documentText !== undefined ? params.documentText : lastIndexedMap?.get(effectiveUri);
     const version =
       indexedText != null
@@ -630,7 +680,7 @@ export class DiagramService {
           ? "deps-ready"
           : "deps-loading";
     const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
-    const cached = this.diagramCache.get(cacheKey) ?? gHooks.diagramCache?.get(cacheKey);
+    const cached = this.diagramCache.get(cacheKey);
     if (cached && cached.version === version) {
       const text = indexedText ?? "";
       let likelyHasComponents = false;
@@ -654,7 +704,6 @@ export class DiagramService {
         return cached.data;
       }
       this.diagramCache.delete(cacheKey);
-      gHooks.diagramCache?.delete(cacheKey);
     }
 
     if (!dependenciesReady) {
@@ -713,7 +762,7 @@ export class DiagramService {
       // Cache the result (do not cache empty nodes if class actually had component declarations)
       const hasDeclaredComponents = Array.isArray(classInstance.components) && classInstance.components.length > 0;
       if (result && (!hasDeclaredComponents || (result.nodes && result.nodes.length > 0))) {
-        this.diagramCache.set(cacheKey, { version, data: result });
+        this.setDiagramCacheEntry(cacheKey, { version, data: result });
       }
 
       return result;
@@ -785,10 +834,9 @@ export class DiagramService {
             await this.validationService.flushValidation(uri);
             return;
           }
-          const f = (globalThis as unknown as DiagramGlobalHooks).validateTextDocument;
-          if (f) {
+          if (this.validationService?.validateTextDocument) {
             const doc = this.documentManager.documents.get(uri);
-            if (doc) await f(doc);
+            if (doc) await this.validationService.validateTextDocument(doc);
           }
         },
       });
@@ -945,13 +993,7 @@ export class DiagramService {
             >;
           }
           const p = globalLanguageRegistry.getPluginById("sysml2")?.parser;
-          if (p) {
-            return p as ReturnType<
-              NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["getSysML2Parser"]>
-            >;
-          }
-          const gHooks = globalThis as unknown as DiagramGlobalHooks;
-          return (gHooks.sysml2ParserReady && gHooks.sysml2Parser ? gHooks.sysml2Parser : null) as ReturnType<
+          return (p ?? null) as ReturnType<
             NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["getSysML2Parser"]>
           >;
         },
@@ -1127,10 +1169,8 @@ export class DiagramService {
         getInferredSubClassOf: (_uri, axioms) => {
           if (!axioms || axioms.length === 0) return [];
           try {
-            const ReasonerCtor = (globalThis as unknown as DiagramGlobalHooks).TableauReasoner;
-            if (typeof ReasonerCtor !== "function") return [];
-            const reasoner = new ReasonerCtor();
-            reasoner.loadOntology(axioms);
+            const reasoner = new TableauReasoner();
+            reasoner.loadOntology(axioms as Parameters<TableauReasoner["loadOntology"]>[0]);
             reasoner.classify();
             const taxonomy = reasoner.getTaxonomy();
             const pairs: { subClassIri: string; superClassIri: string }[] = [];

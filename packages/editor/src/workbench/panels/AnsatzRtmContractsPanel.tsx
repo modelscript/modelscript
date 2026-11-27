@@ -973,7 +973,6 @@ export const AnsatzRtmContractsPanel: React.FC<AnsatzRtmContractsPanelProps> = (
                         position: "sticky",
                         left: 0,
                         zIndex: 1,
-                        backgroundColor: colors.bg,
                         padding: "6px 8px",
                         borderBottom: `1px solid ${colors.border}`,
                         borderRight: `1px solid ${colors.border}`,

@@ -5,6 +5,9 @@
  * diagnostics, document symbols, contextual hover, completions, and domain actions.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { GPSS_MODEL_SPECS, lookupGpssModelSchema } from "./catalog/index.js";
 import { gpssToDae } from "./dae/gpss-to-dae.js";
 import { lintGpss } from "./lints/index.js";
@@ -90,11 +93,68 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
-function lineRange(lineIndex: number, lineText: string): LspRange {
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface GpssCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildGpssCstIndex(content: string): GpssCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("gpss", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
+function lineRange(cstIndex: GpssCstIndex, lineIndex: number): LspRange {
   const safeLine = Math.max(0, lineIndex);
+  const entry = cstIndex.byRow.get(safeLine);
+  const startChar = entry?.startCol ?? 0;
+  const endChar = Math.max(startChar + 1, entry?.endCol ?? 1);
   return {
-    start: { line: safeLine, character: 0 },
-    end: { line: safeLine, character: Math.max(1, lineText.length) },
+    start: { line: safeLine, character: startChar },
+    end: { line: safeLine, character: endChar },
   };
 }
 
@@ -105,13 +165,13 @@ export function validateGpss(content: string, _uri: string = "model.gps"): LspDi
   try {
     const model = parseGpss(content);
     const diags = lintGpss(model);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildGpssCstIndex(content);
 
     return diags.map((d) => {
       const lineIdx = Math.max(0, d.line - 1);
-      const lt = lines[lineIdx] ?? "";
-      const startChar = Math.max(0, d.column - 1);
-      const endChar = Math.max(startChar + 1, lt.length);
+      const entry = cstIndex.byRow.get(lineIdx);
+      const startChar = d.column > 1 ? d.column - 1 : (entry?.startCol ?? 0);
+      const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
 
       return {
         range: {
@@ -143,14 +203,14 @@ export function validateGpss(content: string, _uri: string = "model.gps"): LspDi
 export function getGpssDocumentSymbols(content: string, _uri: string = "model.gps"): LspDocumentSymbol[] {
   try {
     const model = parseGpss(content);
-    const lines = content.split(/\r?\n/);
+    const cstIndex = buildGpssCstIndex(content);
     const children: LspDocumentSymbol[] = [];
 
     for (const fac of model.facilities) {
       const stmt = model.blocks.find(
         (b) => (b.opcode === "SEIZE" || b.opcode === "RELEASE") && (b.operands[0] ?? "").toUpperCase() === fac,
       );
-      const r = stmt ? lineRange(stmt.line - 1, lines[stmt.line - 1] ?? "") : DEFAULT_RANGE;
+      const r = stmt ? lineRange(cstIndex, stmt.line - 1) : DEFAULT_RANGE;
       children.push({
         name: fac,
         detail: "Facility (Single-Server)",
@@ -161,7 +221,7 @@ export function getGpssDocumentSymbols(content: string, _uri: string = "model.gp
     }
 
     for (const [name, def] of model.storages) {
-      const r = lineRange(def.line - 1, lines[def.line - 1] ?? "");
+      const r = lineRange(cstIndex, def.line - 1);
       children.push({
         name,
         detail: `Storage (Capacity: ${def.capacity})`,
@@ -175,7 +235,7 @@ export function getGpssDocumentSymbols(content: string, _uri: string = "model.gp
       const stmt = model.blocks.find(
         (b) => (b.opcode === "QUEUE" || b.opcode === "DEPART") && (b.operands[0] ?? "").toUpperCase() === q,
       );
-      const r = stmt ? lineRange(stmt.line - 1, lines[stmt.line - 1] ?? "") : DEFAULT_RANGE;
+      const r = stmt ? lineRange(cstIndex, stmt.line - 1) : DEFAULT_RANGE;
       children.push({
         name: q,
         detail: "Queue",
@@ -186,7 +246,7 @@ export function getGpssDocumentSymbols(content: string, _uri: string = "model.gp
     }
 
     for (const [name, fn] of model.functions) {
-      const r = lineRange(fn.line - 1, lines[fn.line - 1] ?? "");
+      const r = lineRange(cstIndex, fn.line - 1);
       children.push({
         name,
         detail: `Function (${fn.argument}, ${fn.mode}${fn.points.length})`,
@@ -197,7 +257,7 @@ export function getGpssDocumentSymbols(content: string, _uri: string = "model.gp
     }
 
     for (const [name, tbl] of model.tables) {
-      const r = lineRange(tbl.line - 1, lines[tbl.line - 1] ?? "");
+      const r = lineRange(cstIndex, tbl.line - 1);
       children.push({
         name,
         detail: `Table (${tbl.argument})`,
@@ -209,7 +269,7 @@ export function getGpssDocumentSymbols(content: string, _uri: string = "model.gp
 
     for (const [label, blkIdx] of model.labels) {
       const blk = model.blocks[blkIdx];
-      const r = blk ? lineRange(blk.line - 1, lines[blk.line - 1] ?? "") : DEFAULT_RANGE;
+      const r = blk ? lineRange(cstIndex, blk.line - 1) : DEFAULT_RANGE;
       children.push({
         name: label,
         detail: `Block Label (${blk?.opcode ?? "BLOCK"})`,
@@ -220,8 +280,8 @@ export function getGpssDocumentSymbols(content: string, _uri: string = "model.gp
     }
 
     const fullRange: LspRange = {
-      start: { line: 0, character: 0 },
-      end: { line: Math.max(0, lines.length - 1), character: (lines[lines.length - 1] ?? "").length },
+      start: { line: 0, character: cstIndex.byRow.get(0)?.startCol ?? 0 },
+      end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
     };
 
     return [
@@ -243,10 +303,9 @@ export function getGpssDocumentSymbols(content: string, _uri: string = "model.gp
  * Extracts the word/token under a cursor position in a line.
  */
 function tokenAtPosition(line: string, character: number): string {
-  if (!line) return "";
-  const idx = Math.min(Math.max(0, character), line.length);
-  let start = idx;
-  let end = idx;
+  if (!line || character < 0 || character > line.length) return "";
+  let start = character;
+  let end = character;
   const isWordChar = (ch: string) => /[A-Za-z0-9_$]/.test(ch);
   while (start > 0 && isWordChar(line[start - 1] ?? "")) start--;
   while (end < line.length && isWordChar(line[end] ?? "")) end++;
@@ -259,9 +318,10 @@ function tokenAtPosition(line: string, character: number): string {
 export function getGpssHover(content: string, position: LspPosition, _uri: string = "model.gps"): LspHover | undefined {
   try {
     const model = parseGpss(content);
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
-    const word = tokenAtPosition(line, position.character).toUpperCase();
+    const cstIndex = buildGpssCstIndex(content);
+    const entry = cstIndex.byRow.get(position.line);
+    if (!entry) return undefined;
+    const word = tokenAtPosition(entry.text, position.character - entry.startCol).toUpperCase();
     if (!word) return undefined;
 
     // 1. Check Standard Numerical Attribute prefix (Q$, F$, S$, R$, FR$, SR$)
@@ -352,9 +412,9 @@ export function getGpssHover(content: string, position: LspPosition, _uri: strin
  * Provides code completion items for GPSS block opcodes, control statements, SNAs, and user-defined entities.
  */
 export function getGpssCompletions(content: string, position: LspPosition): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line] ?? "";
-  const prefix = tokenAtPosition(line, position.character).toUpperCase();
+  const cstIndex = buildGpssCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  const prefix = entry ? tokenAtPosition(entry.text, position.character - entry.startCol).toUpperCase() : "";
   const items: LspCompletionItem[] = [];
 
   // 1. Cleanroom GPSS blocks & SNAs

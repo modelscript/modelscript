@@ -8,6 +8,9 @@
  * - `getRinexCompletions`: Completions for RINEX v2 header labels and observation type codes
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { RINEX_CLEANROOM_SPECS } from "./catalog/rinex-std-schemas.js";
 import { lintRinex } from "./lints/index.js";
 import { formatRinexTimestamp, parseRinex } from "./parser/index.js";
@@ -92,10 +95,65 @@ const RINEX_HEADER_DOCS: Record<string, string> = {
   "END OF HEADER": "**END OF HEADER** — Mandatory delimiter terminating the RINEX v2 header block.",
 };
 
-function makeLineRange(lineZeroBased: number, lineText: string): LspRange {
+interface RinexCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface RinexCstIndex {
+  byRow: Map<number, RinexCstLine>;
+  lastRow: number;
+}
+
+function buildRinexCstIndex(content: string): RinexCstIndex {
+  const byRow = new Map<number, RinexCstLine>();
+  let lastRow = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("rinex", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row > lastRow) lastRow = row;
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+    }
+  }
+
+  return { byRow, lastRow };
+}
+
+function makeLineRange(lineZeroBased: number, entry?: RinexCstLine): LspRange {
+  const startChar = entry?.startCol ?? 0;
+  const endChar = Math.max(startChar + 1, entry?.endCol ?? 1);
   return {
-    start: { line: lineZeroBased, character: 0 },
-    end: { line: lineZeroBased, character: Math.max(1, lineText.length) },
+    start: { line: lineZeroBased, character: startChar },
+    end: { line: lineZeroBased, character: endChar },
   };
 }
 
@@ -105,13 +163,13 @@ function makeLineRange(lineZeroBased: number, lineText: string): LspRange {
 export function validateRinex(content: string, _uri: string = "station.obs"): LspDiagnostic[] {
   const doc = parseRinex(content);
   const diags = lintRinex(doc);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildRinexCstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
+    const entry = cstIndex.byRow.get(lineIdx);
     const startCol = Math.max(0, d.column - 1);
-    const endCol = Math.max(startCol + 1, lineText.length);
+    const endCol = Math.max(startCol + 1, entry?.endCol ?? startCol + 1);
     return {
       range: {
         start: { line: lineIdx, character: startCol },
@@ -130,15 +188,15 @@ export function validateRinex(content: string, _uri: string = "station.obs"): Ls
  */
 export function getRinexDocumentSymbols(content: string): LspDocumentSymbol[] {
   const doc = parseRinex(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildRinexCstIndex(content);
   const symbols: LspDocumentSymbol[] = [];
 
   // Header symbol
   if (doc.header.rawLines.length > 0) {
-    const endLine = (doc.header.endOfHeaderLine ?? doc.header.rawLines.length) - 1;
+    const endLine = Math.max(0, (doc.header.endOfHeaderLine ?? doc.header.rawLines.length) - 1);
     const headerChildren: LspDocumentSymbol[] = doc.header.rawLines.map((h) => {
       const idx = Math.max(0, h.line - 1);
-      const rng = makeLineRange(idx, lines[idx] ?? "");
+      const rng = makeLineRange(idx, cstIndex.byRow.get(idx));
       return {
         name: h.label,
         detail: h.data.trim() || undefined,
@@ -153,9 +211,9 @@ export function getRinexDocumentSymbols(content: string): LspDocumentSymbol[] {
       kind: LspSymbolKind.Namespace,
       range: {
         start: { line: 0, character: 0 },
-        end: { line: Math.max(0, endLine), character: (lines[endLine] ?? "").length },
+        end: { line: endLine, character: cstIndex.byRow.get(endLine)?.endCol ?? 0 },
       },
-      selectionRange: makeLineRange(0, lines[0] ?? ""),
+      selectionRange: makeLineRange(0, cstIndex.byRow.get(0)),
       children: headerChildren,
     });
   }
@@ -163,10 +221,10 @@ export function getRinexDocumentSymbols(content: string): LspDocumentSymbol[] {
   // OBS Epochs
   for (const ep of doc.epochs) {
     const idx = Math.max(0, ep.line - 1);
-    const rng = makeLineRange(idx, lines[idx] ?? "");
+    const rng = makeLineRange(idx, cstIndex.byRow.get(idx));
     const satChildren: LspDocumentSymbol[] = ep.satellites.map((s) => {
       const sIdx = Math.max(0, s.line - 1);
-      const sRng = makeLineRange(sIdx, lines[sIdx] ?? "");
+      const sRng = makeLineRange(sIdx, cstIndex.byRow.get(sIdx));
       return {
         name: s.prn,
         detail: Object.keys(s.observations).join(", "),
@@ -188,16 +246,16 @@ export function getRinexDocumentSymbols(content: string): LspDocumentSymbol[] {
   // NAV Ephemerides
   for (const ephem of doc.ephemerides) {
     const idx = Math.max(0, ephem.line - 1);
-    const endIdx = Math.min(lines.length - 1, idx + 7);
+    const endIdx = Math.min(cstIndex.lastRow, idx + 7);
     symbols.push({
       name: `${ephem.prn} Ephemeris`,
       detail: `Toc ${formatRinexTimestamp(ephem.toc)} · Toe ${ephem.toe}s`,
       kind: LspSymbolKind.Struct,
       range: {
-        start: { line: idx, character: 0 },
-        end: { line: endIdx, character: (lines[endIdx] ?? "").length },
+        start: { line: idx, character: cstIndex.byRow.get(idx)?.startCol ?? 0 },
+        end: { line: endIdx, character: cstIndex.byRow.get(endIdx)?.endCol ?? 0 },
       },
-      selectionRange: makeLineRange(idx, lines[idx] ?? ""),
+      selectionRange: makeLineRange(idx, cstIndex.byRow.get(idx)),
     });
   }
 
@@ -208,9 +266,10 @@ export function getRinexDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides hover documentation at a given cursor position in a RINEX v2 document.
  */
 export function getRinexHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (line === undefined) return null;
+  const cstIndex = buildRinexCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = entry.colLine;
 
   // Check column 61-80 header label when cursor is in the label zone
   const label = line.slice(60).trim().toUpperCase();
@@ -312,8 +371,8 @@ export function getRinexHover(content: string, position: LspPosition): LspHover 
  * Provides RINEX v2 header label and observation code completions.
  */
 export function getRinexCompletions(content: string, position: LspPosition): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line] ?? "";
+  const cstIndex = buildRinexCstIndex(content);
+  const line = cstIndex.byRow.get(position.line)?.colLine ?? "";
   const items: LspCompletionItem[] = [];
 
   if (position.character >= 55) {

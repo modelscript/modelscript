@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
-import { parseXml, type XmlElement } from "@modelscript/dsl/xml";
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { createWasmParserSync, type SyntaxNode } from "@modelscript/openadr/wasm-parser";
 import type { OadrEvent, OadrEventStatus, OadrInterval, OadrProgram, OadrSignalType, OpenAdrDeck } from "../types.js";
 
@@ -129,7 +129,7 @@ function parseIsoDurationSeconds(raw: string): number | undefined {
 }
 
 function parseXmlOpenAdr(xmlStr: string): OpenAdrDeck {
-  const doc = parseXml(xmlStr);
+  const doc = parseXmlSync(xmlStr);
   if (!doc.root) return { programs: [], events: [] };
 
   const lineStarts = computeLineStarts(xmlStr);

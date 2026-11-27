@@ -2804,7 +2804,7 @@ export function renderLandingPageHtml(): string {
         if (persist) {
           try {
             localStorage.setItem('vitepress-theme-appearance', mode);
-          } catch (e) {}
+          } catch (e) { /* ignore: localStorage unavailable in restricted/private contexts */ }
         }
       }
 
@@ -2821,11 +2821,11 @@ export function renderLandingPageHtml(): string {
                 if (!localStorage.getItem('vitepress-theme-appearance')) {
                   applyTheme(e.matches ? 'dark' : 'light', false);
                 }
-              } catch (err) {}
+              } catch (err) { /* ignore: localStorage unavailable when checking theme override */ }
             });
           }
         }
-      } catch (e) {}
+      } catch (e) { /* ignore: storage or matchMedia unavailable; keep default theme */ }
 
       if (themeBtn) {
         themeBtn.addEventListener('click', function() {

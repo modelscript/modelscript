@@ -1578,7 +1578,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is VariableDeclNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];

@@ -17,6 +17,7 @@ import {
 } from "@modelscript/diagram/water-network-diff";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -158,11 +159,14 @@ export class WaterDiffPanel extends BaseWebviewPanel {
 
   private _getHtmlForWebview(diff: EpanetNetworkDiff, svgMarkup: string): string {
     const stats = diff.stats;
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Water Network Diff Visualizer</title>
   <style>

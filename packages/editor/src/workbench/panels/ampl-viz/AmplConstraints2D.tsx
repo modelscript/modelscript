@@ -41,6 +41,22 @@ interface Pt {
   y: number;
 }
 
+interface ParsedConstraintLine {
+  name: string;
+  a: number;
+  b: number;
+  rhs: number;
+  sense: "<=" | ">=" | "=";
+  color: string;
+  binding: boolean;
+}
+
+interface ObjectiveContour {
+  seg: [Pt, Pt];
+  level: number;
+  isOpt: boolean;
+}
+
 const LINE_COLORS = ["#3b82f6", "#f59e0b", "#ec4899", "#8b5cf6", "#06b6d4", "#ef4444", "#84cc16"];
 
 /** Clips a convex polygon against half-plane a*x + b*y <= rhs. */
@@ -134,17 +150,8 @@ export const AmplConstraints2D: React.FC<{
         yMin: 0,
         yMax: 1,
         feasiblePoly: [] as Pt[],
-        lines: [] as Array<{
-          name: string;
-          a: number;
-          b: number;
-          rhs: number;
-          sense: "<=" | ">=" | "=";
-          color: string;
-          slack?: number;
-          dual?: number;
-        }>,
-        contours: [] as Array<{ level: number; p1: Pt; p2: Pt }>,
+        lines: [] as ParsedConstraintLine[],
+        contours: [] as ObjectiveContour[],
         optPt: null as Pt | null,
       };
     }
@@ -159,15 +166,7 @@ export const AmplConstraints2D: React.FC<{
     if (varY.lb !== null) ys.push(varY.lb);
     if (varY.ub !== null) ys.push(varY.ub);
 
-    const parsedLines: Array<{
-      name: string;
-      a: number;
-      b: number;
-      rhs: number;
-      sense: "<=" | ">=" | "=";
-      color: string;
-      binding: boolean;
-    }> = [];
+    const parsedLines: ParsedConstraintLine[] = [];
 
     geometry.constraints.forEach((con, idx) => {
       const a = con.linearCoeffs[effectiveX] ?? 0;
@@ -500,11 +499,15 @@ export const AmplConstraints2D: React.FC<{
               })}
 
               {/* Optimal Point */}
-              <circle cx={sx(optPt.x)} cy={sy(optPt.y)} r={7} fill="rgba(34, 197, 94, 0.28)" />
-              <circle cx={sx(optPt.x)} cy={sy(optPt.y)} r={4.5} fill="#22c55e" stroke="#ffffff" strokeWidth={1.5} />
-              <text x={sx(optPt.x) + 10} y={sy(optPt.y) - 8} fontSize="11" fontWeight="700" fill="#22c55e">
-                Optimum ({optPt.x.toFixed(2)}, {optPt.y.toFixed(2)})
-              </text>
+              {optPt && (
+                <>
+                  <circle cx={sx(optPt.x)} cy={sy(optPt.y)} r={7} fill="rgba(34, 197, 94, 0.28)" />
+                  <circle cx={sx(optPt.x)} cy={sy(optPt.y)} r={4.5} fill="#22c55e" stroke="#ffffff" strokeWidth={1.5} />
+                  <text x={sx(optPt.x) + 10} y={sy(optPt.y) - 8} fontSize="11" fontWeight="700" fill="#22c55e">
+                    Optimum ({optPt.x.toFixed(2)}, {optPt.y.toFixed(2)})
+                  </text>
+                </>
+              )}
             </g>
 
             {/* Plot Frame */}

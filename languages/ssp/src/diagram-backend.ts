@@ -14,10 +14,17 @@ import {
   type DiagramPalette,
   type PropertyFieldConfig,
 } from "@modelscript/diagram/protocol";
-import { applySspDiagramEdits, buildSspDiagramData, getSspPaletteCategories } from "./diagram.js";
+import { CstSessionCache } from "@modelscript/dsl/unparser";
+import {
+  applySspDiagramEditsOnSession,
+  buildSspDiagramData,
+  createSspCstSession,
+  getSspPaletteCategories,
+} from "./diagram.js";
 import { parseSsd } from "./ssd-parser.js";
 
 export function createSspDiagramBackend(backends: DiagramBackendHost): DiagramBackend {
+  const sessionCache = new CstSessionCache(16);
   const readSsdSource = async (targetUri: string): Promise<string | null> => {
     const memText = getHostDocumentText(backends, targetUri);
     if (typeof memText === "string") return memText;
@@ -136,9 +143,10 @@ export function createSspDiagramBackend(backends: DiagramBackendHost): DiagramBa
         }
         const text = await readSsdSource(params.uri);
         if (text === null || text === undefined) return { seq: params.seq, edits: [], renderHint: "none" };
-        const rawEdits = applySspDiagramEdits(
-          text,
-          params.actions as unknown as Parameters<typeof applySspDiagramEdits>[1],
+        const session = sessionCache.getOrUpdate(params.uri, text, () => createSspCstSession(text, params.uri));
+        const rawEdits = applySspDiagramEditsOnSession(
+          session,
+          params.actions as unknown as Parameters<typeof applySspDiagramEditsOnSession>[1],
         );
         const hasStructural = params.actions.some(
           (a) =>

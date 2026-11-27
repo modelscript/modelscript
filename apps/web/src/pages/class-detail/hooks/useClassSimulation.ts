@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ClassDetail } from "../../../api";
 import { extractParametersFromCode, type ParameterRibbonItem } from "../../../util/modelica-params";
+import { simulateInWasmWorker } from "../../../util/sim-worker-client";
 
 export interface ExperimentConfig {
   startTime: number;
@@ -199,23 +200,18 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
   // Baseline Comparison
   const [baselineData, setBaselineData] = useState<Record<string, number | string>[] | null>(null);
 
-  // Document registration in LSP Worker
+  // Clean up LSP document on unmount if the full LSP fallback worker was used
   const isDocOpenRef = useRef(false);
   useEffect(() => {
-    if (!active) return;
-    didOpen(documentUri, sourceCode, "modelica").then(() => {
-      isDocOpenRef.current = true;
-    });
-
     return () => {
       if (isDocOpenRef.current) {
         didClose(documentUri);
         isDocOpenRef.current = false;
       }
     };
-  }, [documentUri, sourceCode, active]);
+  }, [documentUri]);
 
-  // 7. Core Simulation Runner
+  // 7. Core Simulation Runner (100% client-side WebAssembly)
   const runSimulation = useCallback(
     async (customOverrides?: Map<string, number>, customExp?: ExperimentConfig) => {
       if (isSimulating) return;
@@ -224,37 +220,71 @@ export function useClassSimulation({ libraryName, version, className, cls, activ
 
       const tStart = performance.now();
       try {
-        // Ensure doc is open
-        if (!isDocOpenRef.current) {
-          await didOpen(documentUri, sourceCode, "modelica");
-          isDocOpenRef.current = true;
-        }
-
-        // The model's source references types from its owning library (and that library's dependencies);
-        // without the library mounted in the LSP worker nothing resolves and the flattened DAE is empty.
-        const libraryMounted = await ensureLibraryMounted(libraryName, version);
-
         const effectiveOverrides = customOverrides ?? parameterOverrides;
         const effectiveExp = customExp ?? experimentConfig;
         const overridesObj = Object.fromEntries(effectiveOverrides);
 
-        const shortName = className.split(".").pop() || className;
-        const targetClass = libraryMounted
-          ? className
-          : sourceCode.includes(`model ${shortName}`)
-            ? shortName
-            : className;
+        // Fast client-side path (uniform for all packages with binary index.msidx):
+        // Dedicated lightweight WASM simulation worker + on-demand static .mo fetching.
+        let res: SimulateResult | null = null;
+        if (libraryName && version && className) {
+          try {
+            const fastRes = await simulateInWasmWorker({
+              libraryName,
+              version,
+              className,
+              parameterOverrides: overridesObj,
+              startTime: effectiveExp.startTime,
+              stopTime: effectiveExp.stopTime,
+              numberOfIntervals: effectiveExp.numberOfIntervals,
+              rtol: effectiveExp.tolerance,
+              solver: effectiveExp.solver,
+            });
+            if (fastRes.ok && fastRes.t && fastRes.y && fastRes.states) {
+              res = {
+                t: fastRes.t,
+                y: fastRes.y,
+                states: fastRes.states,
+                experiment: fastRes.experiment,
+              };
+            } else if (!fastRes.fallbackToLsp && fastRes.error) {
+              res = { t: [], y: [], states: [], error: fastRes.error };
+            }
+          } catch {
+            // Fall back to full LSP WASM worker below
+          }
+        }
 
-        const res: SimulateResult = await simulate(documentUri, {
-          className: targetClass,
-          parameterOverrides: overridesObj,
-          startTime: effectiveExp.startTime,
-          stopTime: effectiveExp.stopTime,
-          numberOfIntervals: effectiveExp.numberOfIntervals,
-          rtol: effectiveExp.tolerance,
-          solver: effectiveExp.solver,
-          flattenerBackend: "hybrid",
-        });
+        // Fallback path: full client-side LSP WebWorker
+        if (!res) {
+          if (!isDocOpenRef.current) {
+            await didOpen(documentUri, sourceCode, "modelica");
+            isDocOpenRef.current = true;
+          }
+
+          // The model's source references types from its owning library (and that library's dependencies);
+          // without the library mounted in the LSP worker nothing resolves and the flattened DAE is empty.
+          const libraryMounted = await ensureLibraryMounted(libraryName, version);
+
+          const shortName = className.split(".").pop() || className;
+          const targetClass = libraryMounted
+            ? className
+            : sourceCode.includes(`model ${shortName}`)
+              ? shortName
+              : className;
+
+          res = await simulate(documentUri, {
+            className: targetClass,
+            parameterOverrides: overridesObj,
+            startTime: effectiveExp.startTime,
+            stopTime: effectiveExp.stopTime,
+            numberOfIntervals: effectiveExp.numberOfIntervals,
+            rtol: effectiveExp.tolerance,
+            solver: effectiveExp.solver,
+            flattenerBackend: "hybrid",
+            skipValidation: true,
+          });
+        }
 
         const duration = Math.round(performance.now() - tStart);
         setLastSolveDurationMs(duration);

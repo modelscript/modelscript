@@ -1788,7 +1788,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ExcitationCardNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     tag(node: SyntaxNode | null | undefined): SyntaxNode | null;
     tagList(node: SyntaxNode | null | undefined): SyntaxNode[];

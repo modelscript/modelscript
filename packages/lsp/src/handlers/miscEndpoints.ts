@@ -71,7 +71,7 @@ interface DiffParserLike {
 }
 
 interface DiffWorkspaceIndexLike {
-  reindexDocument?: (uri: string, getRoot: () => unknown) => void;
+  reindexDocument?: (uri: string, getRoot: () => never) => void;
   getIndex?: () => SymbolIndex;
   symbols?: SymbolIndex["symbols"];
   childrenOf?: SymbolIndex["childrenOf"];
@@ -196,14 +196,8 @@ export function registerMiscEndpoints(context: LspContext) {
     },
   );
 
-  const globalMisc = globalThis as {
-    savedLoaderCtx?: Parameters<typeof loadRegistryPackages>[1];
-    serverDistBase?: string;
-    sysml2Parser?: DiffParserLike;
-    parser?: DiffParserLike;
-  };
-  const getLoaderCtx = () => context.parserService?.getOrCreateLoaderContext?.() ?? globalMisc.savedLoaderCtx;
-  const getServerDistBase = () => globalMisc.serverDistBase ?? context.parserService?.getServerDistBase?.();
+  const getLoaderCtx = () => context.parserService?.getOrCreateLoaderContext?.();
+  const getServerDistBase = () => context.parserService?.getServerDistBase?.();
 
   const syncAndRevalidateAll = () => {
     (context.validationService as { syncWorkspaceStateAfterIndex?: () => void }).syncWorkspaceStateAfterIndex?.();
@@ -300,7 +294,7 @@ export function registerMiscEndpoints(context: LspContext) {
       message: `Loading ${params.name}@${params.version}...`,
     });
     try {
-      await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase(), true);
+      const swapped = await ensureLibraryVersionMounted(params, loaderCtx, getServerDistBase(), true);
       try {
         const packagesRoot = path.resolve(process.cwd(), ".modelscript", "packages");
         const pkgDir = path.resolve(packagesRoot, params.name);
@@ -322,14 +316,19 @@ export function registerMiscEndpoints(context: LspContext) {
         message: `Loaded ${params.name}@${params.version}`,
       });
 
-      void (async () => {
-        for (const langId of ["modelica", "sysml2"] as const) {
-          const idx = context.workspaceManager.getWorkspaceIndex(langId);
-          await idx?.indexRemainingInBackground?.(100);
-        }
-        syncAndRevalidateAll();
-        context.connection.sendNotification("modelscript/projectTreeChanged");
-      })();
+      if (swapped) {
+        // Defer background indexing so immediate requests (e.g. modelscript/simulate) are not starved on the worker thread.
+        setTimeout(() => {
+          void (async () => {
+            for (const langId of ["modelica", "sysml2"] as const) {
+              const idx = context.workspaceManager.getWorkspaceIndex(langId);
+              await idx?.indexRemainingInBackground?.(15);
+            }
+            syncAndRevalidateAll();
+            context.connection.sendNotification("modelscript/projectTreeChanged");
+          })();
+        }, 2000);
+      }
       return {
         ok: true,
         name: params.name,
@@ -599,7 +598,13 @@ export function registerMiscEndpoints(context: LspContext) {
                 while (stack.length > 0) {
                   const n = stack.pop();
                   if (!n) continue;
-                  if (n.type === "StringLiteral" && n.startIndex >= startOff && n.endIndex <= endOff) {
+                  if (
+                    n.type === "StringLiteral" &&
+                    n.startIndex !== undefined &&
+                    n.endIndex !== undefined &&
+                    n.startIndex >= startOff &&
+                    n.endIndex <= endOff
+                  ) {
                     valueText = extractFirstQuotedLiteral(n.text);
                     if (valueText !== undefined) break;
                   }
@@ -663,9 +668,8 @@ export function registerMiscEndpoints(context: LspContext) {
 
         scopeStr = isSysml ? "sysml" : "modelica";
 
-        const langParser =
-          (context.parserService.getParser(isSysml ? "sysml2" : "modelica") as DiffParserLike | null | undefined) ??
-          (isSysml ? globalMisc.sysml2Parser : globalMisc.parser);
+        const langParser = context.parserService.getParser(isSysml ? "sysml2" : "modelica") as
+          DiffParserLike | null | undefined;
 
         if (!langParser) continue;
 
@@ -754,8 +758,7 @@ export function registerMiscEndpoints(context: LspContext) {
 
       const langParser =
         ((langId ? context.parserService.getParser(langId) : null) as DiffParserLike | null | undefined) ??
-        (context.parserService.getParserForUri(params.uri) as DiffParserLike | null | undefined) ??
-        (isSysml ? globalMisc.sysml2Parser : globalMisc.parser);
+        (context.parserService.getParserForUri(params.uri) as DiffParserLike | null | undefined);
 
       if (!langParser) return { diffs: [] };
 
@@ -767,22 +770,15 @@ export function registerMiscEndpoints(context: LspContext) {
         const newDoc = TextDocument.create(params.uri, docLang, 1, params.newText);
 
         const createWsIndex = (): DiffWorkspaceIndexLike => {
-          if (isSysml) return createSysML2WorkspaceIndex() as unknown as DiffWorkspaceIndexLike;
-          if (isModelica) return createModelicaWorkspaceIndex() as unknown as DiffWorkspaceIndexLike;
+          if (isSysml) return createSysML2WorkspaceIndex();
+          if (isModelica) return createModelicaWorkspaceIndex();
           if (langId) {
-            const norm = langId.toLowerCase();
-            const globalRecord = globalThis as unknown as Record<string, unknown>;
-            const pluginWithFactory = plugin as unknown as
-              { createWorkspaceIndex?: () => DiffWorkspaceIndexLike } | undefined;
-            const factory =
-              pluginWithFactory?.createWorkspaceIndex ??
-              globalRecord[`create_${norm}_workspace_index`] ??
-              globalRecord[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}WorkspaceIndex`];
-            if (typeof factory === "function") {
-              return (factory as () => DiffWorkspaceIndexLike)();
+            const pluginWithFactory = plugin as { createWorkspaceIndex?: () => DiffWorkspaceIndexLike } | undefined;
+            if (typeof pluginWithFactory?.createWorkspaceIndex === "function") {
+              return pluginWithFactory.createWorkspaceIndex();
             }
           }
-          return createModelicaWorkspaceIndex() as unknown as DiffWorkspaceIndexLike;
+          return createModelicaWorkspaceIndex();
         };
 
         const createDb = (idx: SymbolIndex) => {
@@ -801,7 +797,7 @@ export function registerMiscEndpoints(context: LspContext) {
         oldTree = langParser.parse(params.oldText);
         const oldWs = createWsIndex();
         if (typeof oldWs.reindexDocument === "function") {
-          oldWs.reindexDocument(params.uri, () => oldTree!.rootNode);
+          oldWs.reindexDocument(params.uri, () => oldTree!.rootNode as never);
         }
         const oldIndex = (typeof oldWs.getIndex === "function" ? oldWs.getIndex() : oldWs) as SymbolIndex;
         const oldDb = createDb(oldIndex);
@@ -810,7 +806,7 @@ export function registerMiscEndpoints(context: LspContext) {
         newTree = langParser.parse(params.newText);
         const newWs = createWsIndex();
         if (typeof newWs.reindexDocument === "function") {
-          newWs.reindexDocument(params.uri, () => newTree!.rootNode);
+          newWs.reindexDocument(params.uri, () => newTree!.rootNode as never);
         }
         const newIndex = (typeof newWs.getIndex === "function" ? newWs.getIndex() : newWs) as SymbolIndex;
         const newDb = createDb(newIndex);
@@ -948,7 +944,7 @@ export function registerMiscEndpoints(context: LspContext) {
   );
 
   context.connection.onRequest("modelscript/runVerification", async (params: { uri: string }) => {
-    return runVerificationForUri(params.uri);
+    return context.validationService.runVerificationForUri(params.uri);
   });
 
   context.connection.onRequest(
@@ -975,9 +971,9 @@ export function registerMiscEndpoints(context: LspContext) {
 
       try {
         const liveDoc = context.documents.get(targetUri);
-        const wm = context.workspaceManager as unknown as {
+        const wm: typeof context.workspaceManager & {
           getFileContent?: (uri: string) => Promise<string | undefined>;
-        };
+        } = context.workspaceManager;
         const docText =
           liveDoc?.getText() ??
           (await wm.getFileContent?.(targetUri)) ??
@@ -1159,33 +1155,28 @@ export function registerMiscEndpoints(context: LspContext) {
                 },
               );
               ctx.load(docText, targetUri);
-              const ctxWithWsIndex = ctx as unknown as {
-                workspaceIndex?: {
-                  getUnifiedIndex?: () => {
-                    symbols?: {
-                      values?: () => Iterable<{ kind?: string; name?: string; resourceId?: string }>;
-                    };
+              const wsIdx: typeof ctx.workspaceIndex & {
+                getUnifiedIndex?: () => {
+                  symbols?: {
+                    values?: () => Iterable<{ kind?: string; name?: string; resourceId?: string }>;
                   };
                 };
-              };
-              const loadedSymbols = Array.from(
-                ctxWithWsIndex.workspaceIndex?.getUnifiedIndex?.()?.symbols?.values?.() ?? [],
-              ).filter((s) => (s.kind === "Class" || s.kind === "Def") && s.name);
+              } = ctx.workspaceIndex;
+              const loadedSymbols = Array.from(wsIdx?.getUnifiedIndex?.()?.symbols?.values?.() ?? []).filter(
+                (s) => (s.kind === "Class" || s.kind === "Def") && s.name,
+              );
               const targetClass = loadedSymbols.length > 0 ? loadedSymbols[loadedSymbols.length - 1]!.name : undefined;
-              if (targetClass && typeof (ctx as { verifyFormal?: unknown }).verifyFormal === "function") {
-                const formalDiags = (
-                  ctx as unknown as {
-                    verifyFormal(name: string): Array<{
-                      severity?: string;
-                      code?: number;
-                      message: string;
-                      range?: {
-                        startPosition: { row: number; column: number };
-                        endPosition: { row: number; column: number };
-                      };
-                    }>;
-                  }
-                ).verifyFormal(targetClass);
+              if (targetClass && typeof ctx.verifyFormal === "function") {
+                const rawFormal: unknown = Reflect.apply(ctx.verifyFormal, ctx, [targetClass]);
+                const formalDiags = (Array.isArray(rawFormal) ? rawFormal : []) as Array<{
+                  severity?: string;
+                  code?: number;
+                  message: string;
+                  range?: {
+                    startPosition: { row: number; column: number };
+                    endPosition: { row: number; column: number };
+                  };
+                }>;
                 for (const fd of formalDiags) {
                   const sev: 1 | 2 | 3 = fd.severity === "error" ? 1 : fd.severity === "warning" ? 2 : 3;
                   const startPos = fd.range

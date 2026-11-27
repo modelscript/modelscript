@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  computeMinimalTextEdit,
   deduplicateAndSort,
   getHostDocumentText,
   type ComponentPropertyData,
@@ -18,6 +17,16 @@ import {
   type PropertyFieldConfig,
   type DiagramTextEdit as TextEdit,
 } from "@modelscript/diagram/protocol";
+import {
+  CstDocumentSession,
+  CstSessionCache,
+  CstTransaction,
+  CstXmlAdapter,
+  type CstIncrementalParser,
+  type CstTextEdit,
+} from "@modelscript/dsl/unparser";
+import type { SyntaxNode } from "@modelscript/dsl/utils";
+import { getXmlWasmParser } from "@modelscript/dsl/xml";
 
 interface SimulinkBlockLike {
   id?: string;
@@ -45,7 +54,219 @@ function getUnifiedIndexFromDeps(backends: DiagramBackendHost): unknown {
   );
 }
 
+export function createSimulinkXmlCstSession(text: string, uri = "file:///model.slx.xml"): CstDocumentSession {
+  let parser: CstIncrementalParser | null = null;
+  try {
+    parser = getXmlWasmParser() as unknown as CstIncrementalParser | null;
+  } catch {
+    parser = null;
+  }
+  return new CstDocumentSession({ uri, text, parser, xmlFallback: true });
+}
+
+/**
+ * CST-backed Simulink XML diagram edit planner operating directly on a live {@link CstDocumentSession}.
+ * Zero regex patching; error-tolerant against malformed sibling `<Block>`/`<Line>` elements.
+ */
+export function planSimulinkXmlEditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<DiagramApplyEditsParams["actions"][number]>,
+): { edits: CstTextEdit[]; hasStructural: boolean } {
+  const text = session.text;
+  const root = session.rootNode;
+  const tx = new CstTransaction(session);
+  let hasStructural = false;
+
+  const stripBlk = (n: string): string => (n.startsWith("block_") ? n.slice(6) : n);
+
+  const findBlockNode = (blockName: string): SyntaxNode | null =>
+    root ? CstXmlAdapter.findElementByAttr(root, text, "Name", blockName, "Block") : null;
+
+  const findChildParam = (parent: SyntaxNode, paramName: string): SyntaxNode | null => {
+    const want = paramName.toLowerCase();
+    for (const ch of CstXmlAdapter.getChildElements(parent)) {
+      if ((CstXmlAdapter.getTagName(ch, text) ?? "").toLowerCase() !== "p") continue;
+      if ((CstXmlAdapter.getAttribute(ch, "Name", text)?.value ?? "").toLowerCase() === want) {
+        return ch;
+      }
+    }
+    return null;
+  };
+
+  const upsertBlockParam = (blockName: string, key: string, value: string): void => {
+    const blk = findBlockNode(blockName);
+    if (!blk) return;
+    const pNode = findChildParam(blk, key);
+    if (pNode) {
+      CstXmlAdapter.setElementText(tx, pNode, value);
+    } else {
+      CstXmlAdapter.appendChild(tx, blk, `<P Name="${key}">${value}</P>`);
+    }
+  };
+
+  const sysNodes = root ? CstXmlAdapter.findElements(root, text, (_n, t) => t.toLowerCase() === "system") : [];
+  const targetSys = sysNodes[0] ?? null;
+
+  const getLineNodes = (): SyntaxNode[] =>
+    root ? CstXmlAdapter.findElements(root, text, (_n, t) => t.toLowerCase() === "line") : [];
+
+  const getLineEndpoint = (lineNode: SyntaxNode, key: "SrcBlock" | "DstBlock"): string => {
+    const p = findChildParam(lineNode, key);
+    return p ? CstXmlAdapter.getElementText(p, text) : "";
+  };
+
+  const appendLine = (src: string, dst: string, srcPort = "1", dstPort = "1"): void => {
+    if (!targetSys) return;
+    const snippet = [
+      `<Line>`,
+      `    <P Name="SrcBlock">${src}</P>`,
+      `    <P Name="SrcPort">${srcPort}</P>`,
+      `    <P Name="DstBlock">${dst}</P>`,
+      `    <P Name="DstPort">${dstPort}</P>`,
+      `  </Line>`,
+    ].join("\n");
+    CstXmlAdapter.appendChild(tx, targetSys, snippet);
+  };
+
+  for (const action of actions) {
+    if (action.type === "move") {
+      for (const item of action.items) {
+        const name = stripBlk(item.name);
+        const x1 = Math.round(item.x);
+        const y1 = Math.round(item.y);
+        const x2 = Math.round(item.x + (item.width ?? 80));
+        const y2 = Math.round(item.y + (item.height ?? 50));
+        upsertBlockParam(name, "Position", `[${x1}, ${y1}, ${x2}, ${y2}]`);
+      }
+    } else if (action.type === "resize") {
+      const item = action.item;
+      const name = stripBlk(item.name);
+      const x1 = Math.round(item.x);
+      const y1 = Math.round(item.y);
+      const x2 = Math.round(item.x + (item.width ?? 80));
+      const y2 = Math.round(item.y + (item.height ?? 50));
+      upsertBlockParam(name, "Position", `[${x1}, ${y1}, ${x2}, ${y2}]`);
+    } else if (action.type === "updateParameter") {
+      upsertBlockParam(stripBlk(action.name), action.parameter, String(action.value));
+    } else if (action.type === "updateProperty") {
+      upsertBlockParam(stripBlk(action.name), action.key, String(action.value ?? ""));
+    } else if (action.type === "updateName") {
+      const oldN = stripBlk(action.oldName);
+      const newN = stripBlk(action.newName);
+      const blk = findBlockNode(oldN);
+      if (blk) {
+        CstXmlAdapter.setAttribute(tx, blk, "Name", newN);
+        for (const lineNode of getLineNodes()) {
+          const srcP = findChildParam(lineNode, "SrcBlock");
+          if (srcP && CstXmlAdapter.getElementText(srcP, text) === oldN) {
+            CstXmlAdapter.setElementText(tx, srcP, newN);
+          }
+          const dstP = findChildParam(lineNode, "DstBlock");
+          if (dstP && CstXmlAdapter.getElementText(dstP, text) === oldN) {
+            CstXmlAdapter.setElementText(tx, dstP, newN);
+          }
+        }
+        hasStructural = true;
+      }
+    } else if (action.type === "deleteComponents") {
+      const deleted = new Set<string>();
+      for (const rawName of action.names) {
+        const name = stripBlk(rawName);
+        deleted.add(name);
+        const blk = findBlockNode(name);
+        if (blk) {
+          CstXmlAdapter.deleteElement(tx, blk);
+          hasStructural = true;
+        }
+      }
+      if (deleted.size > 0) {
+        for (const lineNode of getLineNodes()) {
+          if (
+            deleted.has(getLineEndpoint(lineNode, "SrcBlock")) ||
+            deleted.has(getLineEndpoint(lineNode, "DstBlock"))
+          ) {
+            CstXmlAdapter.deleteElement(tx, lineNode);
+            hasStructural = true;
+          }
+        }
+      }
+    } else if (action.type === "connect") {
+      const src = stripBlk(action.source);
+      const dst = stripBlk(action.target);
+      const sp = action.sourcePort?.replace(/\D+/g, "") || "1";
+      const dp = action.targetPort?.replace(/\D+/g, "") || "1";
+      appendLine(src, dst, sp, dp);
+      hasStructural = true;
+    } else if (action.type === "disconnect") {
+      const src = stripBlk(action.source);
+      const dst = stripBlk(action.target);
+      for (const lineNode of getLineNodes()) {
+        if (getLineEndpoint(lineNode, "SrcBlock") === src && getLineEndpoint(lineNode, "DstBlock") === dst) {
+          CstXmlAdapter.deleteElement(tx, lineNode);
+          hasStructural = true;
+        }
+      }
+    } else if (action.type === "addComponent") {
+      if (targetSys) {
+        const rawCls = action.className.trim();
+        const blockType = rawCls.includes(":")
+          ? rawCls.slice(rawCls.lastIndexOf(":") + 1)
+          : rawCls.includes(".")
+            ? rawCls.slice(rawCls.lastIndexOf(".") + 1)
+            : rawCls;
+        const baseName = action.name?.trim() || blockType.replace(/[^A-Za-z0-9_]/g, "_") || "Block";
+        let name = baseName;
+        let idx = 1;
+        while (findBlockNode(name)) {
+          name = `${baseName}${idx++}`;
+        }
+        const x1 = Math.round(action.x);
+        const y1 = Math.round(action.y);
+        const x2 = x1 + 80;
+        const y2 = y1 + 50;
+        const snippet = [
+          `<Block BlockType="${blockType}" Name="${name}">`,
+          `    <P Name="Position">[${x1}, ${y1}, ${x2}, ${y2}]</P>`,
+          `  </Block>`,
+        ].join("\n");
+        CstXmlAdapter.appendChild(tx, targetSys, snippet);
+        hasStructural = true;
+      }
+    } else if (action.type === "reconnect") {
+      const oldS = stripBlk(action.oldSource);
+      const oldD = stripBlk(action.oldTarget);
+      for (const lineNode of getLineNodes()) {
+        if (getLineEndpoint(lineNode, "SrcBlock") === oldS && getLineEndpoint(lineNode, "DstBlock") === oldD) {
+          CstXmlAdapter.deleteElement(tx, lineNode);
+        }
+      }
+      const newS = stripBlk(action.newSource);
+      const newD = stripBlk(action.newTarget);
+      const sp = action.newSourcePort?.replace(/\D+/g, "") || "1";
+      const dp = action.newTargetPort?.replace(/\D+/g, "") || "1";
+      appendLine(newS, newD, sp, dp);
+      hasStructural = true;
+    }
+  }
+
+  return { edits: tx.commit().edits, hasStructural };
+}
+
+export function planSimulinkXmlEdits(
+  text: string,
+  actions: ReadonlyArray<DiagramApplyEditsParams["actions"][number]>,
+  uri = "file:///model.slx.xml",
+): { edits: CstTextEdit[]; hasStructural: boolean } {
+  const session = createSimulinkXmlCstSession(text, uri);
+  try {
+    return planSimulinkXmlEditsOnSession(session, actions);
+  } finally {
+    session.dispose();
+  }
+}
+
 export function createSimulinkDiagramBackend(backends: DiagramBackendHost): DiagramBackend {
+  const sessionCache = new CstSessionCache(16);
   const createDropBatchState = () => backends.crossLanguageDrop?.createDropBatchState?.() ?? {};
   const mergeCoincidentInsertEdits = (edits: TextEdit[]) =>
     backends.crossLanguageDrop?.mergeCoincidentInsertEdits?.(edits) ?? edits;
@@ -218,44 +439,8 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const batchState = createDropBatchState();
         const addEdits: TextEdit[] = [];
-        let workingText = raw;
+        const xmlActions: DiagramApplyEditsParams["actions"] = [];
         let hasStructural = false;
-
-        const stripBlk = (n: string): string => (n.startsWith("block_") ? n.slice(6) : n);
-        const escRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const findBlockRange = (text: string, blockName: string): { start: number; end: number } | null => {
-          const openRe = new RegExp(`<Block\\b[^>]*\\bName=["']${escRe(blockName)}["'][^>]*>`, "i");
-          const m = openRe.exec(text);
-          if (!m) return null;
-          if (m[0].endsWith("/>")) return { start: m.index, end: m.index + m[0].length };
-          const closeIdx = text.indexOf("</Block>", m.index + m[0].length);
-          if (closeIdx === -1) return null;
-          return { start: m.index, end: closeIdx + "</Block>".length };
-        };
-        const upsertBlockParam = (text: string, blockName: string, key: string, value: string): string => {
-          const range = findBlockRange(text, blockName);
-          if (!range) return text;
-          const blockXml = text.slice(range.start, range.end);
-          const pRe = new RegExp(`(<P\\b[^>]*\\bName=["']${escRe(key)}["'][^>]*>)([\\s\\S]*?)(</P>)`, "i");
-          let nextBlock: string;
-          if (pRe.test(blockXml)) {
-            nextBlock = blockXml.replace(pRe, `$1${value}$3`);
-          } else {
-            const closeTag = "</Block>";
-            const idx = blockXml.lastIndexOf(closeTag);
-            if (idx === -1) return text;
-            nextBlock = `${blockXml.slice(0, idx)}  <P Name="${key}">${value}</P>\n${blockXml.slice(idx)}`;
-          }
-          return text.slice(0, range.start) + nextBlock + text.slice(range.end);
-        };
-        const insertLineXml = (text: string, src: string, dst: string, srcPort = "1", dstPort = "1"): string => {
-          const lineXml = `  <Line>\n    <P Name="SrcBlock">${src}</P>\n    <P Name="SrcPort">${srcPort}</P>\n    <P Name="DstBlock">${dst}</P>\n    <P Name="DstPort">${dstPort}</P>\n  </Line>\n`;
-          const sysClose = text.lastIndexOf("</System>");
-          if (sysClose === -1) return text;
-          return text.slice(0, sysClose) + lineXml + text.slice(sysClose);
-        };
-        const removeLinesXml = (text: string, matchFn: (lineXml: string) => boolean): string =>
-          text.replace(/^[ \t]*<Line\b[\s\S]*?<\/Line>[ \t]*\r?\n?/gim, (m) => (matchFn(m) ? "" : m));
 
         for (const action of params.actions) {
           if (action.type === "addComponent") {
@@ -271,95 +456,17 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
             });
             addEdits.push(...edits);
             if (edits.length > 0) hasStructural = true;
-          } else if (isCurlyMdl) {
-            continue;
-          } else if (action.type === "move") {
-            for (const item of action.items) {
-              const name = stripBlk(item.name);
-              const x1 = Math.round(item.x);
-              const y1 = Math.round(item.y);
-              const x2 = Math.round(item.x + (item.width ?? 80));
-              const y2 = Math.round(item.y + (item.height ?? 50));
-              workingText = upsertBlockParam(workingText, name, "Position", `[${x1}, ${y1}, ${x2}, ${y2}]`);
-            }
-          } else if (action.type === "resize") {
-            const item = action.item;
-            const name = stripBlk(item.name);
-            const x1 = Math.round(item.x);
-            const y1 = Math.round(item.y);
-            const x2 = Math.round(item.x + (item.width ?? 80));
-            const y2 = Math.round(item.y + (item.height ?? 50));
-            workingText = upsertBlockParam(workingText, name, "Position", `[${x1}, ${y1}, ${x2}, ${y2}]`);
-          } else if (action.type === "updateParameter") {
-            workingText = upsertBlockParam(workingText, stripBlk(action.name), action.parameter, String(action.value));
-          } else if (action.type === "updateProperty") {
-            workingText = upsertBlockParam(workingText, stripBlk(action.name), action.key, String(action.value ?? ""));
-          } else if (action.type === "updateName") {
-            const oldN = stripBlk(action.oldName);
-            const newN = stripBlk(action.newName);
-            const range = findBlockRange(workingText, oldN);
-            if (range) {
-              const blockXml = workingText.slice(range.start, range.end);
-              const renamedBlock = blockXml.replace(
-                new RegExp(`(\\bName=["'])${escRe(oldN)}(["'])`, "i"),
-                `$1${newN}$2`,
-              );
-              workingText = workingText.slice(0, range.start) + renamedBlock + workingText.slice(range.end);
-              workingText = workingText.replace(
-                new RegExp(`(<P\\b[^>]*\\bName=["'](?:SrcBlock|DstBlock)["'][^>]*>)${escRe(oldN)}(</P>)`, "gi"),
-                `$1${newN}$2`,
-              );
-              hasStructural = true;
-            }
-          } else if (action.type === "deleteComponents") {
-            for (const rawName of action.names) {
-              const name = stripBlk(rawName);
-              const range = findBlockRange(workingText, name);
-              if (range) {
-                let start = range.start;
-                while (start > 0 && (workingText[start - 1] === " " || workingText[start - 1] === "\t")) start--;
-                let end = range.end;
-                if (workingText[end] === "\r") end++;
-                if (workingText[end] === "\n") end++;
-                workingText = workingText.slice(0, start) + workingText.slice(end);
-                hasStructural = true;
-              }
-              const blkRe = new RegExp(`<P\\b[^>]*\\bName=["'](?:SrcBlock|DstBlock)["'][^>]*>${escRe(name)}</P>`, "i");
-              workingText = removeLinesXml(workingText, (lineXml) => blkRe.test(lineXml));
-            }
-          } else if (action.type === "connect") {
-            const src = stripBlk(action.source);
-            const dst = stripBlk(action.target);
-            const sp = action.sourcePort?.replace(/\D+/g, "") || "1";
-            const dp = action.targetPort?.replace(/\D+/g, "") || "1";
-            workingText = insertLineXml(workingText, src, dst, sp, dp);
-            hasStructural = true;
-          } else if (action.type === "disconnect") {
-            const src = stripBlk(action.source);
-            const dst = stripBlk(action.target);
-            const sRe = new RegExp(`<P\\b[^>]*\\bName=["']SrcBlock["'][^>]*>${escRe(src)}</P>`, "i");
-            const dRe = new RegExp(`<P\\b[^>]*\\bName=["']DstBlock["'][^>]*>${escRe(dst)}</P>`, "i");
-            workingText = removeLinesXml(workingText, (lineXml) => sRe.test(lineXml) && dRe.test(lineXml));
-            hasStructural = true;
-          } else if (action.type === "reconnect") {
-            const oldS = stripBlk(action.oldSource);
-            const oldD = stripBlk(action.oldTarget);
-            const sRe = new RegExp(`<P\\b[^>]*\\bName=["']SrcBlock["'][^>]*>${escRe(oldS)}</P>`, "i");
-            const dRe = new RegExp(`<P\\b[^>]*\\bName=["']DstBlock["'][^>]*>${escRe(oldD)}</P>`, "i");
-            workingText = removeLinesXml(workingText, (lineXml) => sRe.test(lineXml) && dRe.test(lineXml));
-            const newS = stripBlk(action.newSource);
-            const newD = stripBlk(action.newTarget);
-            const sp = action.newSourcePort?.replace(/\D+/g, "") || "1";
-            const dp = action.newTargetPort?.replace(/\D+/g, "") || "1";
-            workingText = insertLineXml(workingText, newS, newD, sp, dp);
-            hasStructural = true;
+          } else if (!isCurlyMdl) {
+            xmlActions.push(action);
           }
         }
 
         const allEdits: TextEdit[] = [...addEdits];
-        const textEdit = computeMinimalTextEdit(raw, workingText);
-        if (textEdit) {
-          allEdits.push(textEdit);
+        if (xmlActions.length > 0) {
+          const session = sessionCache.getOrUpdate(params.uri, raw, () => createSimulinkXmlCstSession(raw, params.uri));
+          const planned = planSimulinkXmlEditsOnSession(session, xmlActions);
+          allEdits.push(...planned.edits);
+          if (planned.hasStructural) hasStructural = true;
         }
 
         const renderHint: "none" | "immediate" | "debounced" = hasStructural ? "immediate" : "none";

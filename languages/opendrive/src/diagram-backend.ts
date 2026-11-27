@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
-  computeMinimalTextEdit,
   deduplicateAndSort,
   getHostDocumentText,
   type ComponentPropertyData,
@@ -17,8 +16,191 @@ import {
   type DiagramPalette,
   type PropertyFieldConfig,
 } from "@modelscript/diagram/protocol";
+import {
+  CstDocumentSession,
+  CstSessionCache,
+  CstTransaction,
+  CstXmlAdapter,
+  encodeXmlAttrValue,
+  type CstIncrementalParser,
+  type CstTextEdit,
+} from "@modelscript/dsl/unparser";
+import { getOpenDriveWasmParser } from "./parser/wasm-loader.js";
+
+export function createOpenDriveCstSession(text: string, uri = "file:///road.xodr"): CstDocumentSession {
+  let parser: CstIncrementalParser | null = null;
+  try {
+    parser = getOpenDriveWasmParser() as unknown as CstIncrementalParser;
+  } catch {
+    parser = null;
+  }
+  return new CstDocumentSession({ uri, text, parser, xmlFallback: true });
+}
+
+/**
+ * CST-backed OpenDRIVE (`.xodr`) diagram edit planner operating directly on a live
+ * {@link CstDocumentSession}. Zero regex patching; error-tolerant against broken sibling XML.
+ */
+export function planOpenDriveEditsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<DiagramApplyEditsParams["actions"][number]>,
+): { edits: CstTextEdit[]; spatialActions: DiagramApplyEditsParams["actions"]; hasStructural: boolean } {
+  const text = session.text;
+  const root = session.rootNode;
+  const tx = new CstTransaction(session);
+  const spatialActions: DiagramApplyEditsParams["actions"] = [];
+  let hasStructural = false;
+
+  const parseEntity = (id: string): { kind: "road" | "junction"; id: string } | null => {
+    if (id.startsWith("road_")) return { kind: "road", id: id.slice(5) };
+    if (id.startsWith("junc_")) return { kind: "junction", id: id.slice(5) };
+    return null;
+  };
+
+  const allocatedIds = new Map<"road" | "junction", number>();
+  const nextId = (tag: "road" | "junction"): string => {
+    let maxId = allocatedIds.get(tag) ?? 0;
+    if (maxId === 0 && root) {
+      for (const el of CstXmlAdapter.findElements(root, text, (_n, t) => t.toLowerCase() === tag)) {
+        const raw = CstXmlAdapter.getAttribute(el, "id", text)?.value ?? "0";
+        const n = Number.parseInt(raw, 10);
+        if (Number.isFinite(n) && n > maxId) maxId = n;
+      }
+    }
+    const next = maxId + 1;
+    allocatedIds.set(tag, next);
+    return String(next);
+  };
+
+  const openDriveEl = root
+    ? (CstXmlAdapter.findElements(root, text, (_n, t) => t.toLowerCase() === "opendrive")[0] ?? null)
+    : null;
+
+  for (const action of actions) {
+    if (action.type === "move" || action.type === "resize" || action.type === "rotate" || action.type === "moveEdge") {
+      spatialActions.push(action);
+    } else if (action.type === "addComponent") {
+      if (!openDriveEl) continue;
+      const isJunc = /junction/i.test(action.className);
+      if (isJunc) {
+        const id = nextId("junction");
+        const juncName = encodeXmlAttrValue(action.name || `Junction_${id}`);
+        CstXmlAdapter.appendChild(tx, openDriveEl, `<junction id="${id}" name="${juncName}">\n  </junction>`);
+      } else {
+        const id = nextId("road");
+        const roadName = encodeXmlAttrValue(action.name || `Road_${id}`);
+        const snippet = [
+          `<road name="${roadName}" length="100.0" id="${id}" junction="-1">`,
+          `    <planView>`,
+          `      <geometry s="0.0" x="${Math.round(action.x)}" y="${Math.round(action.y)}" hdg="0.0" length="100.0">`,
+          `        <line/>`,
+          `      </geometry>`,
+          `    </planView>`,
+          `    <lanes><laneSection s="0.0"><center><lane id="0" type="none" level="false"/></center></laneSection></lanes>`,
+          `  </road>`,
+        ].join("\n");
+        CstXmlAdapter.appendChild(tx, openDriveEl, snippet);
+      }
+      hasStructural = true;
+    } else if (action.type === "deleteComponents") {
+      for (const rawName of action.names) {
+        const ent = parseEntity(rawName);
+        if (!ent || !root) continue;
+        const el = CstXmlAdapter.findElementByAttr(root, text, "id", ent.id, ent.kind);
+        if (el) {
+          CstXmlAdapter.deleteElement(tx, el);
+          hasStructural = true;
+        }
+      }
+    } else if (action.type === "updateName") {
+      const ent = parseEntity(action.oldName);
+      if (ent && root) {
+        const el = CstXmlAdapter.findElementByAttr(root, text, "id", ent.id, ent.kind);
+        if (el && CstXmlAdapter.setAttribute(tx, el, "name", action.newName)) {
+          hasStructural = true;
+        }
+      }
+    } else if (action.type === "updateParameter" || action.type === "updateProperty") {
+      const ent = parseEntity(action.name);
+      const key = action.type === "updateParameter" ? action.parameter : action.key;
+      if (ent && root) {
+        const el = CstXmlAdapter.findElementByAttr(root, text, "id", ent.id, ent.kind);
+        if (el) {
+          CstXmlAdapter.setAttribute(tx, el, key, String(action.value ?? ""));
+        }
+      }
+    } else if (action.type === "connect" || action.type === "reconnect") {
+      const srcId = action.type === "connect" ? action.source : action.newSource;
+      const dstId = action.type === "connect" ? action.target : action.newTarget;
+      const src = parseEntity(srcId);
+      const dst = parseEntity(dstId);
+      if (src?.kind === "road" && dst?.kind === "road" && root) {
+        const roadEl = CstXmlAdapter.findElementByAttr(root, text, "id", src.id, "road");
+        if (roadEl) {
+          const linkEl = CstXmlAdapter.getChildElements(roadEl).find(
+            (c) => (CstXmlAdapter.getTagName(c, text) ?? "").toLowerCase() === "link",
+          );
+          const succTag = `<successor elementType="road" elementId="${encodeXmlAttrValue(dst.id)}" contactPoint="start"/>`;
+          if (linkEl) {
+            const existingSucc = CstXmlAdapter.getChildElements(linkEl).find(
+              (c) => (CstXmlAdapter.getTagName(c, text) ?? "").toLowerCase() === "successor",
+            );
+            if (existingSucc) {
+              CstXmlAdapter.setAttribute(tx, existingSucc, "elementType", "road");
+              CstXmlAdapter.setAttribute(tx, existingSucc, "elementId", dst.id);
+              CstXmlAdapter.setAttribute(tx, existingSucc, "contactPoint", "start");
+            } else {
+              CstXmlAdapter.appendChild(tx, linkEl, succTag);
+            }
+          } else {
+            CstXmlAdapter.appendChild(tx, roadEl, `<link>\n      ${succTag}\n    </link>`);
+          }
+          hasStructural = true;
+        }
+      }
+    } else if (action.type === "disconnect") {
+      const src = parseEntity(action.source);
+      const dst = parseEntity(action.target);
+      if (src?.kind === "road" && dst?.kind === "road" && root) {
+        const roadEl = CstXmlAdapter.findElementByAttr(root, text, "id", src.id, "road");
+        const linkEl = roadEl
+          ? CstXmlAdapter.getChildElements(roadEl).find(
+              (c) => (CstXmlAdapter.getTagName(c, text) ?? "").toLowerCase() === "link",
+            )
+          : undefined;
+        if (linkEl) {
+          for (const child of CstXmlAdapter.getChildElements(linkEl)) {
+            if (
+              (CstXmlAdapter.getTagName(child, text) ?? "").toLowerCase() === "successor" &&
+              CstXmlAdapter.getAttribute(child, "elementId", text)?.value === dst.id
+            ) {
+              CstXmlAdapter.deleteElement(tx, child);
+              hasStructural = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return { edits: tx.commit().edits, spatialActions, hasStructural };
+}
+
+export function planOpenDriveEdits(
+  text: string,
+  actions: ReadonlyArray<DiagramApplyEditsParams["actions"][number]>,
+  uri = "file:///road.xodr",
+): { edits: CstTextEdit[]; spatialActions: DiagramApplyEditsParams["actions"]; hasStructural: boolean } {
+  const session = createOpenDriveCstSession(text, uri);
+  try {
+    return planOpenDriveEditsOnSession(session, actions);
+  } finally {
+    session.dispose();
+  }
+}
 
 export function createOpenDriveDiagramBackend(backends: DiagramBackendHost): DiagramBackend {
+  const sessionCache = new CstSessionCache(16);
   const readOpenDriveSource = async (targetUri: string): Promise<string | null> => {
     const memText = getHostDocumentText(backends, targetUri);
     if (typeof memText === "string") return memText;
@@ -260,153 +442,8 @@ export function createOpenDriveDiagramBackend(backends: DiagramBackendHost): Dia
           : { seq: params.seq, edits: [], renderHint: "none" };
       }
 
-      const spatialActions: DiagramApplyEditsParams["actions"] = [];
-      let workingText = text;
-      let hasStructural = false;
-
-      const escRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const parseEntity = (id: string): { kind: "road" | "junction"; id: string } | null => {
-        if (id.startsWith("road_")) return { kind: "road", id: id.slice(5) };
-        if (id.startsWith("junc_")) return { kind: "junction", id: id.slice(5) };
-        return null;
-      };
-      const nextId = (tag: "road" | "junction"): string => {
-        const re = new RegExp(`<${tag}\\b[^>]*\\bid=["'](\\d+)["']`, "gi");
-        let maxId = 0;
-        let m: RegExpExecArray | null;
-        while ((m = re.exec(workingText)) !== null) {
-          const n = Number.parseInt(m[1] ?? "0", 10);
-          if (Number.isFinite(n) && n > maxId) maxId = n;
-        }
-        return String(maxId + 1);
-      };
-      const updateEntityAttr = (kind: "road" | "junction", id: string, attr: string, value: string): void => {
-        const openRe = new RegExp(`<${kind}\\b[^>]*\\bid=["']${escRe(id)}["'][^>]*>`, "i");
-        workingText = workingText.replace(openRe, (tag) => {
-          const attrRe = new RegExp(`(\\b${escRe(attr)}=["'])([^"']*)(["'])`, "i");
-          if (attrRe.test(tag)) return tag.replace(attrRe, `$1${value}$3`);
-          return tag.replace(/>$/, ` ${attr}="${value}">`);
-        });
-      };
-
-      for (const action of params.actions) {
-        if (
-          action.type === "move" ||
-          action.type === "resize" ||
-          action.type === "rotate" ||
-          action.type === "moveEdge"
-        ) {
-          spatialActions.push(action);
-        } else if (action.type === "addComponent") {
-          const isJunc = /junction/i.test(action.className);
-          const closeIdx = workingText.lastIndexOf("</OpenDRIVE>");
-          if (closeIdx !== -1) {
-            if (isJunc) {
-              const id = nextId("junction");
-              const juncName = action.name || `Junction_${id}`;
-              const snippet = `  <junction id="${id}" name="${juncName}">\n  </junction>\n`;
-              workingText = workingText.slice(0, closeIdx) + snippet + workingText.slice(closeIdx);
-            } else {
-              const id = nextId("road");
-              const roadName = action.name || `Road_${id}`;
-              const snippet =
-                `  <road name="${roadName}" length="100.0" id="${id}" junction="-1">\n` +
-                `    <planView>\n` +
-                `      <geometry s="0.0" x="${Math.round(action.x)}" y="${Math.round(action.y)}" hdg="0.0" length="100.0">\n` +
-                `        <line/>\n` +
-                `      </geometry>\n` +
-                `    </planView>\n` +
-                `    <lanes><laneSection s="0.0"><center><lane id="0" type="none" level="false"/></center></laneSection></lanes>\n` +
-                `  </road>\n`;
-              workingText = workingText.slice(0, closeIdx) + snippet + workingText.slice(closeIdx);
-            }
-            hasStructural = true;
-          }
-        } else if (action.type === "deleteComponents") {
-          for (const rawName of action.names) {
-            const ent = parseEntity(rawName);
-            if (!ent) continue;
-            const blockRe = new RegExp(
-              `^[ \\t]*<${ent.kind}\\b[^>]*\\bid=["']${escRe(ent.id)}["'][^>]*>[\\s\\S]*?<\\/${ent.kind}>[ \\t]*\\r?\\n?`,
-              "gim",
-            );
-            const next = workingText.replace(blockRe, "");
-            if (next !== workingText) {
-              workingText = next;
-              hasStructural = true;
-            }
-          }
-        } else if (action.type === "updateName") {
-          const ent = parseEntity(action.oldName);
-          if (ent) {
-            updateEntityAttr(ent.kind, ent.id, "name", action.newName);
-            hasStructural = true;
-          }
-        } else if (action.type === "updateParameter" || action.type === "updateProperty") {
-          const ent = parseEntity(action.name);
-          const key = action.type === "updateParameter" ? action.parameter : action.key;
-          if (ent) {
-            updateEntityAttr(ent.kind, ent.id, key, String(action.value ?? ""));
-          }
-        } else if (action.type === "connect" || action.type === "reconnect") {
-          const srcId = action.type === "connect" ? action.source : action.newSource;
-          const dstId = action.type === "connect" ? action.target : action.newTarget;
-          const src = parseEntity(srcId);
-          const dst = parseEntity(dstId);
-          if (src?.kind === "road" && dst?.kind === "road") {
-            const roadRe = new RegExp(
-              `(<road\\b[^>]*\\bid=["']${escRe(src.id)}["'][^>]*>)([\\s\\S]*?)(<\\/road>)`,
-              "i",
-            );
-            workingText = workingText.replace(roadRe, (_m, open: string, body: string, close: string) => {
-              const succTag = `<successor elementType="road" elementId="${dst.id}" contactPoint="start"/>`;
-              if (/<link\b[^>]*>[\s\S]*?<\/link>/i.test(body)) {
-                const updatedBody = body.replace(
-                  /<link\b[^>]*>([\s\S]*?)<\/link>/i,
-                  (_lm: string, linkInner: string) => {
-                    if (/<successor\b[^>]*\/?>/i.test(linkInner)) {
-                      return `<link>${linkInner.replace(/<successor\b[^>]*\/?>/i, succTag)}</link>`;
-                    }
-                    return `<link>${linkInner}\n      ${succTag}\n    </link>`;
-                  },
-                );
-                return `${open}${updatedBody}${close}`;
-              }
-              return `${open}\n    <link>\n      ${succTag}\n    </link>${body}${close}`;
-            });
-            hasStructural = true;
-          }
-        } else if (action.type === "disconnect") {
-          const src = parseEntity(action.source);
-          const dst = parseEntity(action.target);
-          if (src?.kind === "road" && dst?.kind === "road") {
-            const roadRe = new RegExp(
-              `(<road\\b[^>]*\\bid=["']${escRe(src.id)}["'][^>]*>)([\\s\\S]*?)(<\\/road>)`,
-              "i",
-            );
-            workingText = workingText.replace(roadRe, (_m, open: string, body: string, close: string) => {
-              const updatedBody = body.replace(
-                new RegExp(
-                  `^[ \\t]*<successor\\b[^>]*\\belementId=["']${escRe(dst.id)}["'][^>]*\\/>[ \\t]*\\r?\\n?`,
-                  "gim",
-                ),
-                "",
-              );
-              return `${open}${updatedBody}${close}`;
-            });
-            hasStructural = true;
-          }
-        }
-      }
-
-      const edits: Array<{
-        range: { start: { line: number; character: number }; end: { line: number; character: number } };
-        newText: string;
-      }> = [];
-      const textEdit = computeMinimalTextEdit(text, workingText);
-      if (textEdit) {
-        edits.push(textEdit);
-      }
+      const session = sessionCache.getOrUpdate(params.uri, text, () => createOpenDriveCstSession(text, params.uri));
+      const { edits, spatialActions, hasStructural } = planOpenDriveEditsOnSession(session, params.actions);
 
       if (spatialActions.length > 0 && backends.generic?.applyEdits) {
         const genericRes = await backends.generic.applyEdits({ ...params, actions: spatialActions });

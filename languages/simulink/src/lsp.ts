@@ -4,6 +4,9 @@
  * @modelscript/simulink — Language Server Protocol (LSP) Service Integration.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lowerSimulinkToDae } from "./dae/index.js";
 import { lintSimulinkModel } from "./lints/index.js";
 import { parseSimulink } from "./parser/index.js";
@@ -106,15 +109,27 @@ export function validateSimulink(
     const msg = err instanceof Error ? err.message : String(err);
     let range = DEFAULT_RANGE;
     if (typeof content === "string") {
-      const lines = content.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        const match = /\S+/.exec(lines[i] ?? "");
-        if (match) {
+      let rootNode: unknown = cstTree?.rootNode ?? null;
+      if (!rootNode) {
+        try {
+          rootNode =
+            getOrLoadLanguageWasmParser("simulink", import.meta.url, createWasmParserSync).parse(content)?.rootNode ??
+            null;
+        } catch {
+          rootNode = null;
+        }
+      }
+      if (rootNode) {
+        const grouped = groupAllCstTokensByLine(rootNode as CstNodeLike);
+        const firstLine = grouped[0];
+        const firstTok = firstLine?.tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+        if (firstLine && firstTok) {
+          const startCol = firstTok.startPosition?.column ?? 0;
+          const endCol = firstTok.endPosition?.column ?? startCol + Math.max(1, firstTok.text?.length ?? 1);
           range = {
-            start: { line: i, character: match.index },
-            end: { line: i, character: match.index + match[0].length },
+            start: { line: firstLine.row, character: startCol },
+            end: { line: firstLine.row, character: Math.max(startCol + 1, endCol) },
           };
-          break;
         }
       }
     }

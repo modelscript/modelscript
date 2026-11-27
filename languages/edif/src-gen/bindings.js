@@ -6980,7 +6980,7 @@ export function collectWasmSyntaxErrors(rootNode, maxErrors = 25) {
   return out;
 }
 
-export const semanticLegend = { tokenTypes: [], tokenModifiers: [] };
+export const semanticLegend = { tokenTypes: ["keyword","type","class","variable","parameter","function","string","number","operator","comment","namespace","enumMember"], tokenModifiers: ["declaration","readonly"] };
 
 export const SyntaxKind = {
   ERROR: 0,
@@ -7266,7 +7266,7 @@ export const Cst = {
     typeId: 42,
     type: "CellType",
     is(node) { return node != null && node.typeId === 42; },
-    type(node) {
+    typeField(node) {
       return node ? node.childForFieldId(6) : null;
     },
     typeList(node) {
@@ -7288,7 +7288,7 @@ export const Cst = {
     typeId: 44,
     type: "ViewType",
     is(node) { return node != null && node.typeId === 44; },
-    type(node) {
+    typeField(node) {
       return node ? node.childForFieldId(6) : null;
     },
     typeList(node) {

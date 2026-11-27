@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
 import { lookupApdlElementSchema } from "./catalog/library-package-adapter.js";
 import { lintApdl } from "./lints/index.js";
 import { parseApdl } from "./parser/deck-parser.js";
+import { getApdlWasmParser } from "./wasm-loader.js";
 
 export interface LspPosition {
   line: number;
@@ -215,17 +217,56 @@ const APDL_COMMAND_DOCS: Record<string, { detail: string; doc: string; snippet?:
   },
 };
 
+interface ApdlCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+function buildApdlCstLineMap(content: string): Map<number, ApdlCstLineEntry> {
+  const byRow = new Map<number, ApdlCstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode = getApdlWasmParser().parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+    }
+    return byRow;
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  return byRow;
+}
+
 /**
  * Validates an APDL script and returns LSP diagnostics (`APDL1001`–`APDL5006`).
  */
 export function validateApdl(content: string): LspDiagnostic[] {
   const diags = lintApdl(content);
-  const lines = content.split(/\r?\n/);
+  const cstLines = buildApdlCstLineMap(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
     const colIdx = Math.max(0, d.column - 1);
-    const lineLen = lines[lineIdx]?.length ?? 1;
+    const lineLen = cstLines.get(lineIdx)?.endCol ?? 1;
     return {
       range: {
         start: { line: lineIdx, character: colIdx },
@@ -244,15 +285,17 @@ export function validateApdl(content: string): LspDiagnostic[] {
  */
 export function getApdlDocumentSymbols(content: string): LspDocumentSymbol[] {
   const deck = parseApdl(content);
-  const lines = content.split(/\r?\n/);
+  const cstLines = buildApdlCstLineMap(content);
   const symbols: LspDocumentSymbol[] = [];
 
   const makeRange = (line: number): LspRange => {
     const idx = Math.max(0, line - 1);
-    const len = lines[idx]?.length ?? 1;
+    const entry = cstLines.get(idx);
+    const startCol = entry?.startCol ?? 0;
+    const endCol = entry?.endCol ?? Math.max(1, startCol + 1);
     return {
-      start: { line: idx, character: 0 },
-      end: { line: idx, character: len },
+      start: { line: idx, character: startCol },
+      end: { line: idx, character: endCol },
     };
   };
 
@@ -323,9 +366,10 @@ export function getApdlDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides LSP hover documentation for APDL processors, commands, macros, and standard library element types.
  */
 export function getApdlHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstLines = buildApdlCstLineMap(content);
+  const entry = cstLines.get(position.line);
+  if (!entry) return null;
+  const line = " ".repeat(entry.startCol) + entry.text;
 
   // Extract token around cursor (including leading `/` or `*`)
   let start = position.character;

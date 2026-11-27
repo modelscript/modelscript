@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { offsetToLspPosition, parseXmlSync, xmlErrorToLspRange } from "@modelscript/dsl/xml";
 import { lowerAutosarToDae } from "./dae/autosar-to-dae.js";
 import { lintAutosarModel } from "./lints/rules.js";
 import { parseArxml } from "./parser/arxml-parser.js";
@@ -101,17 +102,19 @@ export function validateAutosar(
     }));
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    const lines = content.split(/\r?\n/);
     let range = DEFAULT_RANGE;
-    for (let i = 0; i < lines.length; i++) {
-      const match = /\S+/.exec(lines[i] ?? "");
-      if (match) {
+    try {
+      const xmlDoc = parseXmlSync(content);
+      if (xmlDoc.errors.length > 0) {
+        range = xmlErrorToLspRange(content, xmlDoc.errors[0]!);
+      } else if (xmlDoc.root) {
         range = {
-          start: { line: i, character: match.index },
-          end: { line: i, character: match.index + match[0].length },
+          start: offsetToLspPosition(content, xmlDoc.root.start),
+          end: offsetToLspPosition(content, Math.max(xmlDoc.root.start + 1, xmlDoc.root.openEnd)),
         };
-        break;
       }
+    } catch {
+      range = DEFAULT_RANGE;
     }
     return [
       {

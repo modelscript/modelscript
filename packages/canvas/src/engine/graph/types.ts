@@ -156,6 +156,16 @@ export interface UnifiedGraphOptionsBase<TCell> {
               targetPort?: string | null | undefined;
             }) => boolean)
           | undefined;
+        getConnectionRejectionReason?:
+          | ((args: {
+              sourceCell?: TCell | null | undefined;
+              targetCell?: TCell | null | undefined;
+              sourceMagnet?: Element | null | undefined;
+              targetMagnet?: Element | null | undefined;
+              sourcePort?: string | null | undefined;
+              targetPort?: string | null | undefined;
+            }) => string | null | undefined)
+          | undefined;
         validateEdge?: ((args: { edge: TCell }) => boolean) | undefined;
         createEdge?: (() => TCell) | undefined;
       }

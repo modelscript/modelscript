@@ -152,8 +152,23 @@ export function generateJavaScriptWrapper(
     .replace(/__FIELD_NAMES_LITERAL__/g, fieldNamesStr)
     .replace(/"__EXTRAS_PATTERN_LITERAL__"/g, JSON.stringify(extrasPatternStr));
 
-  const tokenTypesMap = new Map<string, number>();
-  const tokenModifiersMap = new Map<string, number>();
+  const CANONICAL_TOKEN_TYPES = [
+    "keyword",
+    "type",
+    "class",
+    "variable",
+    "parameter",
+    "function",
+    "string",
+    "number",
+    "operator",
+    "comment",
+    "namespace",
+    "enumMember",
+  ];
+  const CANONICAL_TOKEN_MODIFIERS = ["declaration", "readonly"];
+  const tokenTypesMap = new Map<string, number>(CANONICAL_TOKEN_TYPES.map((t, i) => [t, i]));
+  const tokenModifiersMap = new Map<string, number>(CANONICAL_TOKEN_MODIFIERS.map((m, i) => [m, i]));
 
   const sortedProds = [...normalized.productions].sort((a, b) => a.id - b.id);
   for (const p of sortedProds) {
@@ -399,17 +414,19 @@ export declare function cstKind(node: SyntaxNode | null | undefined): string;
     cstNamespacesDts += `    is(node: SyntaxNode | null | undefined): node is ${pascal}Node;\n`;
 
     if (fieldsMap) {
+      const RESERVED_CST_PROPS = new Set(["type", "typeId", "is"]);
       for (const [fieldName, fieldId] of fieldsMap.entries()) {
         const camelField = toCamel(fieldName);
         if (!camelField) continue;
-        cstNamespacesJs += `    ${camelField}(node) {\n`;
+        const methodName = RESERVED_CST_PROPS.has(camelField) ? `${camelField}Field` : camelField;
+        cstNamespacesJs += `    ${methodName}(node) {\n`;
         cstNamespacesJs += `      return node ? node.childForFieldId(${fieldId}) : null;\n`;
         cstNamespacesJs += `    },\n`;
         cstNamespacesJs += `    ${camelField}List(node) {\n`;
         cstNamespacesJs += `      return node ? node.childrenForFieldId(${fieldId}) : [];\n`;
         cstNamespacesJs += `    },\n`;
 
-        cstNamespacesDts += `    ${camelField}(node: SyntaxNode | null | undefined): SyntaxNode | null;\n`;
+        cstNamespacesDts += `    ${methodName}(node: SyntaxNode | null | undefined): SyntaxNode | null;\n`;
         cstNamespacesDts += `    ${camelField}List(node: SyntaxNode | null | undefined): SyntaxNode[];\n`;
       }
     }

@@ -4,6 +4,9 @@
  * Language Server Protocol (LSP) services for `@modelscript/usgs-dem`.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getUsgsDemSchemasFromLibraries } from "./catalog/index.js";
 import { lintUsgsDem } from "./lints/index.js";
 import { parseUsgsDem } from "./parser/index.js";
@@ -101,13 +104,54 @@ export function validateUsgsDem(text: string): LspDiagnostic[] {
   });
 }
 
+interface UsgsDemCstLine {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  tokens: CstNodeLike[];
+}
+
+interface UsgsDemCstIndex {
+  byRow: Map<number, UsgsDemCstLine>;
+  maxRow: number;
+}
+
+function buildUsgsDemCstIndex(text: string, cstTree?: { rootNode?: unknown } | null): UsgsDemCstIndex {
+  const byRow = new Map<number, UsgsDemCstLine>();
+  let maxRow = 0;
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("usgs-dem", import.meta.url, createWasmParserSync).parse(text)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+  if (!rootNode) return { byRow, maxRow };
+
+  for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+    const lineText = cstLineText(text, tokens);
+    const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const startCol = first?.startPosition?.column ?? 0;
+    const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+    byRow.set(row, { row, text: lineText, startCol, endCol, tokens });
+    if (row > maxRow) maxRow = row;
+  }
+  return { byRow, maxRow };
+}
+
 /**
  * Extract hierarchical LSP document symbols for Type A header, Type B profiles, and Type C accuracy.
  */
-export function getUsgsDemDocumentSymbols(text: string): LspDocumentSymbol[] {
+export function getUsgsDemDocumentSymbols(text: string, cstTree?: { rootNode?: unknown } | null): LspDocumentSymbol[] {
   const model = parseUsgsDem(text);
-  const lines = text.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
+  const cstIndex = buildUsgsDemCstIndex(text, cstTree);
+  const lastLine = cstIndex.maxRow;
+
+  const lineEndCol = (lineIdx: number): number => cstIndex.byRow.get(lineIdx)?.endCol ?? 0;
 
   const children: LspDocumentSymbol[] = [];
 
@@ -116,7 +160,7 @@ export function getUsgsDemDocumentSymbols(text: string): LspDocumentSymbol[] {
     name: `Type A Header (${model.header.quadrangleName})`,
     detail: `REF=${model.header.groundRefSystem} ZONE=${model.header.groundRefZone} ${model.grid.numCols}x${model.grid.numRows}`,
     kind: LspSymbolKind.Struct,
-    range: { start: { line: hdrLine, character: 0 }, end: { line: hdrLine, character: (lines[hdrLine] ?? "").length } },
+    range: { start: { line: hdrLine, character: 0 }, end: { line: hdrLine, character: lineEndCol(hdrLine) } },
     selectionRange: { start: { line: hdrLine, character: 0 }, end: { line: hdrLine, character: 6 } },
   });
 
@@ -126,7 +170,7 @@ export function getUsgsDemDocumentSymbols(text: string): LspDocumentSymbol[] {
       name: `Profile Col ${p.colIndex}`,
       detail: `${p.elevations.length} pts [${p.minElevation.toFixed(1)}, ${p.maxElevation.toFixed(1)}]`,
       kind: LspSymbolKind.Field,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: (lines[l] ?? "").length } },
+      range: { start: { line: l, character: 0 }, end: { line: l, character: lineEndCol(l) } },
       selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: 6 } },
     });
   }
@@ -137,7 +181,7 @@ export function getUsgsDemDocumentSymbols(text: string): LspDocumentSymbol[] {
       name: "Type C Accuracy (RMSE)",
       detail: `RMSE=[${model.accuracy.rmseDem.join(", ")}]`,
       kind: LspSymbolKind.Constant,
-      range: { start: { line: l, character: 0 }, end: { line: l, character: (lines[l] ?? "").length } },
+      range: { start: { line: l, character: 0 }, end: { line: l, character: lineEndCol(l) } },
       selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: 6 } },
     });
   }
@@ -147,10 +191,10 @@ export function getUsgsDemDocumentSymbols(text: string): LspDocumentSymbol[] {
       name: model.header.quadrangleName || "USGS DEM",
       detail: model.format,
       kind: LspSymbolKind.Package,
-      range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: (lines[lastLine] ?? "").length } },
+      range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lineEndCol(lastLine) } },
       selectionRange: {
         start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.min(20, (lines[0] ?? "").length) },
+        end: { line: 0, character: Math.min(20, lineEndCol(0)) },
       },
       children,
     },
@@ -160,16 +204,27 @@ export function getUsgsDemDocumentSymbols(text: string): LspDocumentSymbol[] {
 /**
  * Provide markdown hover documentation for USGS DEM keywords, parameters, and datum schemas.
  */
-export function getUsgsDemHover(text: string, position: LspPosition): LspHover | null {
-  const lines = text.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+export function getUsgsDemHover(
+  text: string,
+  position: LspPosition,
+  cstTree?: { rootNode?: unknown } | null,
+): LspHover | null {
+  const cstIndex = buildUsgsDemCstIndex(text, cstTree);
+  const lineEntry = cstIndex.byRow.get(position.line);
+  if (!lineEntry) return null;
 
-  let start = position.character;
-  let end = position.character;
-  while (start > 0 && /[A-Za-z0-9_]/.test(line[start - 1] ?? "")) start--;
-  while (end < line.length && /[A-Za-z0-9_]/.test(line[end] ?? "")) end++;
-  const word = line.slice(start, end).toUpperCase();
+  let word = "";
+  for (const tok of lineEntry.tokens) {
+    const t = tok as CstNodeLike & { endPosition?: { column: number } };
+    const tokText = (t.text ?? "").trim();
+    if (!tokText) continue;
+    const start = t.startPosition?.column ?? 0;
+    const end = t.endPosition?.column ?? start + tokText.length;
+    if (position.character >= start && position.character <= end) {
+      word = tokText.toUpperCase();
+      break;
+    }
+  }
   if (!word) return null;
 
   const doc = KEYWORD_DOCS[word];

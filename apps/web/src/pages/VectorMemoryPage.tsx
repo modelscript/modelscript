@@ -193,22 +193,62 @@ export default function VectorMemoryPage() {
   };
 
   return (
-    <div style={{ maxWidth: 1120, margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: 1120, margin: "0 auto", padding: "20px 20px 56px", color: "var(--color-text-primary)" }}>
       <div
-        style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          padding: "16px 18px",
+          borderRadius: 12,
+          border: "1px solid var(--color-border)",
+          background: "var(--color-bg-card)",
+          boxShadow: "var(--ms-shadow-card)",
+        }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: 24 }}>DiskANN Vector Memory & Curation Console</h1>
-          <p style={{ margin: "4px 0 0", color: "var(--color-fg-muted)", fontSize: 14 }}>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--color-text-heading)" }}>
+            DiskANN Vector Memory &amp; Curation Console
+          </h1>
+          <p style={{ margin: "4px 0 0", color: "var(--color-text-muted)", fontSize: 13 }}>
             Inspect INT8 RAM Vamana / NVMe FP32 memory chunks, enforce quarantines, compact dead vector slots, and
             manage federated peers.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={() => void loadAll()} disabled={loading}>
+          <button
+            type="button"
+            onClick={() => void loadAll()}
+            disabled={loading}
+            style={{
+              padding: "7px 13px",
+              borderRadius: 8,
+              border: "1px solid var(--color-border-default)",
+              background: "var(--color-bg-surface)",
+              color: "var(--color-text-primary)",
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: loading ? "wait" : "pointer",
+            }}
+          >
             {loading ? "Refreshing..." : "Refresh"}
           </button>
-          <button type="button" onClick={() => void handleCompact()}>
+          <button
+            type="button"
+            onClick={() => void handleCompact()}
+            style={{
+              padding: "7px 13px",
+              borderRadius: 8,
+              border: "1px solid var(--ms-brand)",
+              background: "var(--ms-brand)",
+              color: "var(--ms-brand-contrast, #ffffff)",
+              fontSize: 12.5,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
             Compact Index
           </button>
         </div>

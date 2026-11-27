@@ -713,6 +713,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "packages/cad-viewer": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "packages/canvas": {
       "explicitAny": 0,
       "tsComments": 0
@@ -757,6 +761,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "packages/ide-packager": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "packages/lsp": {
       "explicitAny": 0,
       "tsComments": 0
@@ -770,6 +778,10 @@
       "tsComments": 0
     },
     "packages/react": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/rotunda": {
       "explicitAny": 0,
       "tsComments": 0
     },

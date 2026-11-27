@@ -21,6 +21,7 @@ import {
 } from "@modelscript/diagram/optical-bench";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -145,20 +146,24 @@ export class OpticalBenchPanel extends BaseWebviewPanel {
         <tr>
           <td><strong>${escapeXml(e.id)}</strong></td>
           <td>${escapeXml(e.name)}</td>
-          <td><span class="type-badge ${e.type}">${e.type}</span></td>
+          <td><span class="type-badge ${escapeXml(e.type)}">${escapeXml(e.type)}</span></td>
           <td>${e.positionZMm.toFixed(1)} mm</td>
           <td>${e.diameterMm.toFixed(1)} mm</td>
           <td>${e.radiusFrontMm ? e.radiusFrontMm.toFixed(1) + " mm" : "Flat"}</td>
           <td>${e.radiusBackMm ? e.radiusBackMm.toFixed(1) + " mm" : "Flat"}</td>
-          <td>${e.glass ?? "Air"}</td>
+          <td>${escapeXml(e.glass ?? "Air")}</td>
         </tr>`,
       )
       .join("");
+
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <style>
     body {
       margin: 0;
@@ -376,7 +381,7 @@ export class OpticalBenchPanel extends BaseWebviewPanel {
     ${diagsHtml}
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     ['checkRays', 'checkSpot'].forEach(id => {

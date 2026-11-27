@@ -23,11 +23,11 @@ import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createLogger, createServer, type Plugin, type PluginOption } from "vite";
+import { generateTextMate } from "../../packages/dsl/src/codegen/parser/textmate.js";
 import {
   discoverSingleLanguage,
   type DiscoveredSingleLanguageResult,
-} from "../../packages/dsl/src/codegen/ide/language-discovery.js";
-import { generateTextMate } from "../../packages/dsl/src/codegen/parser/textmate.js";
+} from "../../packages/ide-packager/src/language-discovery.js";
 import { buildLanguagePluginFromModule, createLspRuntime, type LspRuntime } from "../../packages/lsp/src/core/index.js";
 
 const __filename = fileURLToPath(import.meta.url);

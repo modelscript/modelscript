@@ -324,11 +324,17 @@ export const AnsatzOptimizationUqPanel: React.FC<AnsatzOptimizationUqPanelProps>
           const { getModelParameters } = await import("../util/lsp-bridge");
           const modelInfo = await getModelParameters(documentUri);
           const rawParams = Array.isArray(modelInfo?.parameters) ? modelInfo.parameters : [];
+          const paramValues = modelInfo?.parameterValues ?? {};
           uncertainParams = rawParams
-            .filter((p) => typeof p.name === "string" && Number.isFinite(Number(p.value)))
+            .map((paramName): { name: string; value: number } | null => {
+              if (typeof paramName !== "string") return null;
+              const val = Number(paramValues[paramName]);
+              return Number.isFinite(val) ? { name: paramName, value: val } : null;
+            })
+            .filter((p): p is { name: string; value: number } => p !== null)
             .slice(0, 6)
             .map((p) => {
-              const mean = Number(p.value);
+              const mean = p.value;
               const spread = Math.abs(mean) > 1e-9 ? Math.abs(mean) * relFrac : relFrac;
               return mcDistribution === "uniform"
                 ? {

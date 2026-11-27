@@ -1437,18 +1437,23 @@ export declare const semanticLegend: { tokenTypes: string[]; tokenModifiers: str
 
 export declare enum SyntaxKind {
   ERROR = 0,
-  Document = 9,
-  Element = 10,
-  START = 11,
-  _START = 11,
-  EmptyTag = 15,
-  StartTag = 16,
-  CloseTag = 17,
-  Text = 18,
-  CData = 19,
-  COMMENT = 20,
-  PROCESSINGINSTRUCTION = 21,
-  PROCESSING_INSTRUCTION = 21,
+  Document = 16,
+  Element = 17,
+  TagHead = 18,
+  EmptyTag = 19,
+  StartTag = 20,
+  CloseTag = 21,
+  Attribute = 22,
+  Text = 23,
+  START = 24,
+  _START = 24,
+  XmlName = 29,
+  AttrValue = 30,
+  TextChunk = 31,
+  CData = 33,
+  COMMENT = 34,
+  PROCESSINGINSTRUCTION = 35,
+  PROCESSING_INSTRUCTION = 35,
   EOF = 1023,
 }
 
@@ -1461,6 +1466,12 @@ export declare enum FieldId {
   children = 3,
   EndName = 4,
   endName = 4,
+  Name = 5,
+  name = 5,
+  Attr = 6,
+  attr = 6,
+  Value = 7,
+  value = 7,
 }
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -1476,6 +1487,10 @@ export interface ElementNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Element;
 }
 export declare function isElement(node: SyntaxNode | null | undefined): node is ElementNode;
+export interface TagHeadNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TagHead;
+}
+export declare function isTagHead(node: SyntaxNode | null | undefined): node is TagHeadNode;
 export interface EmptyTagNode extends SyntaxNode {
   readonly typeId: SyntaxKind.EmptyTag;
 }
@@ -1488,10 +1503,26 @@ export interface CloseTagNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CloseTag;
 }
 export declare function isCloseTag(node: SyntaxNode | null | undefined): node is CloseTagNode;
+export interface AttributeNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.Attribute;
+}
+export declare function isAttribute(node: SyntaxNode | null | undefined): node is AttributeNode;
 export interface TextNode extends SyntaxNode {
   readonly typeId: SyntaxKind.Text;
 }
 export declare function isText(node: SyntaxNode | null | undefined): node is TextNode;
+export interface XmlNameNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.XmlName;
+}
+export declare function isXmlName(node: SyntaxNode | null | undefined): node is XmlNameNode;
+export interface AttrValueNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.AttrValue;
+}
+export declare function isAttrValue(node: SyntaxNode | null | undefined): node is AttrValueNode;
+export interface TextChunkNode extends SyntaxNode {
+  readonly typeId: SyntaxKind.TextChunk;
+}
+export declare function isTextChunk(node: SyntaxNode | null | undefined): node is TextChunkNode;
 export interface CDataNode extends SyntaxNode {
   readonly typeId: SyntaxKind.CData;
 }
@@ -1525,6 +1556,15 @@ export declare namespace Cst {
     children(node: SyntaxNode | null | undefined): SyntaxNode | null;
     childrenList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
+  export const TagHead: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TagHeadNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    attr(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    attrList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
   export const EmptyTag: {
     readonly typeId: number;
     readonly type: string;
@@ -1539,11 +1579,37 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is CloseTagNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+  };
+  export const Attribute: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AttributeNode;
+    name(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
+    value(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    valueList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const Text: {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is TextNode;
+  };
+  export const XmlName: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is XmlNameNode;
+  };
+  export const AttrValue: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is AttrValueNode;
+  };
+  export const TextChunk: {
+    readonly typeId: number;
+    readonly type: string;
+    is(node: SyntaxNode | null | undefined): node is TextChunkNode;
   };
   export const CData: {
     readonly typeId: number;

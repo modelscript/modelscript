@@ -7,6 +7,13 @@
  * contextual hover tooltips, and intelligent completions for CGMES RDF/XML models.
  */
 
+import {
+  offsetToLspPosition,
+  parseXmlSync,
+  xmlErrorToLspRange,
+  type XmlAttribute,
+  type XmlElement,
+} from "@modelscript/dsl/xml";
 import { lintCgmesModel } from "./lints/index.js";
 import { parseCgmesRdf } from "./parser/cgmes-rdf-parser.js";
 import type { CgmesModel } from "./types.js";
@@ -83,23 +90,80 @@ export interface LspCompletionItem {
   insertText?: string | undefined;
 }
 
+interface CgmesXmlMridEntry {
+  elem: XmlElement;
+  attr?: XmlAttribute | undefined;
+}
+
+interface CgmesXmlIndex {
+  root: XmlElement | null;
+  byMrid: Map<string, CgmesXmlMridEntry>;
+}
+
+function buildCgmesXmlIndex(xmlSource: string): {
+  index: CgmesXmlIndex;
+  errors: ReturnType<typeof parseXmlSync>["errors"];
+} {
+  const xmlDoc = parseXmlSync(xmlSource);
+  const byMrid = new Map<string, CgmesXmlMridEntry>();
+
+  if (xmlDoc.root) {
+    const stack: XmlElement[] = [xmlDoc.root];
+    while (stack.length > 0) {
+      const elem = stack.pop()!;
+      for (const attr of elem.attributes) {
+        const lower = attr.name.toLowerCase();
+        if (lower === "rdf:id" || lower === "rdf:about" || lower === "id") {
+          const val = attr.value.trim();
+          const stripped = val.startsWith("#") ? val.slice(1) : val;
+          if (val && !byMrid.has(val)) byMrid.set(val, { elem, attr });
+          if (stripped && !byMrid.has(stripped)) byMrid.set(stripped, { elem, attr });
+        }
+      }
+      for (let i = elem.children.length - 1; i >= 0; i--) {
+        stack.push(elem.children[i]!);
+      }
+    }
+  }
+
+  return { index: { root: xmlDoc.root, byMrid }, errors: xmlDoc.errors };
+}
+
+function xmlElementRange(source: string, elem: XmlElement): LspRange {
+  return {
+    start: offsetToLspPosition(source, elem.start),
+    end: offsetToLspPosition(source, Math.max(elem.start + 1, elem.end)),
+  };
+}
+
+function xmlOpenTagRange(source: string, elem: XmlElement): LspRange {
+  return {
+    start: offsetToLspPosition(source, elem.start),
+    end: offsetToLspPosition(source, Math.max(elem.start + 1, elem.openEnd)),
+  };
+}
+
 /**
  * Validates a CGMES RDF/XML document and emits LSP diagnostics.
  */
 export function validateCgmes(xmlSource: string): LspDiagnostic[] {
   const diags: LspDiagnostic[] = [];
-  const lines = xmlSource.split(/\r?\n/);
+  const { index, errors } = buildCgmesXmlIndex(xmlSource);
 
   let model: CgmesModel;
   try {
     model = parseCgmesRdf(xmlSource);
   } catch (err: unknown) {
+    const range =
+      errors.length > 0
+        ? xmlErrorToLspRange(xmlSource, errors[0]!)
+        : {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 1 },
+          };
     return [
       {
-        range: {
-          start: { line: 0, character: 0 },
-          end: { line: 0, character: 1 },
-        },
+        range,
         severity: 1,
         code: "C1000",
         source: "cgmes-parser",
@@ -108,29 +172,26 @@ export function validateCgmes(xmlSource: string): LspDiagnostic[] {
     ];
   }
 
+  const fallbackRange: LspRange = index.root
+    ? xmlOpenTagRange(xmlSource, index.root)
+    : { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+
   const rawLints = lintCgmesModel(model);
   for (const lint of rawLints) {
-    let lineIdx = 0;
+    let range: LspRange = fallbackRange;
     if (lint.mRID) {
-      const matchIdx = lines.findIndex((l) => l.includes(lint.mRID!));
-      if (matchIdx >= 0) lineIdx = matchIdx;
-    }
-    const lt = lines[lineIdx] ?? "";
-    let startChar = 0;
-    let endChar = Math.min(lt.length, 1);
-    if (lint.mRID) {
-      const mridIdx = lt.indexOf(lint.mRID);
-      if (mridIdx >= 0) {
-        startChar = mridIdx;
-        endChar = mridIdx + lint.mRID.length;
+      const stripped = lint.mRID.startsWith("#") ? lint.mRID.slice(1) : lint.mRID;
+      const entry = index.byMrid.get(lint.mRID) ?? index.byMrid.get(stripped);
+      if (entry) {
+        if (entry.attr) {
+          range = {
+            start: offsetToLspPosition(xmlSource, entry.attr.valueStart),
+            end: offsetToLspPosition(xmlSource, Math.max(entry.attr.valueStart + 1, entry.attr.valueEnd)),
+          };
+        } else {
+          range = xmlOpenTagRange(xmlSource, entry.elem);
+        }
       }
-    }
-    if (endChar <= startChar) {
-      while (startChar < lt.length && (lt[startChar] === " " || lt[startChar] === "\t")) {
-        startChar++;
-      }
-      const tagMatch = lt.slice(startChar).match(/^<\/?[A-Za-z0-9_:-]+|^\S+/);
-      endChar = Math.min(lt.length, startChar + (tagMatch ? tagMatch[0].length : 1));
     }
 
     let sev: 1 | 2 | 3 | 4 = 1;
@@ -138,10 +199,7 @@ export function validateCgmes(xmlSource: string): LspDiagnostic[] {
     else if (lint.severity === "info") sev = 3;
 
     diags.push({
-      range: {
-        start: { line: lineIdx, character: startChar },
-        end: { line: lineIdx, character: endChar },
-      },
+      range,
       severity: sev,
       code: lint.code,
       source: "cgmes-linter",
@@ -157,7 +215,7 @@ export function validateCgmes(xmlSource: string): LspDiagnostic[] {
  */
 export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] {
   const symbols: LspDocumentSymbol[] = [];
-  const lines = xmlSource.split(/\r?\n/);
+  const { index } = buildCgmesXmlIndex(xmlSource);
 
   let model: CgmesModel;
   try {
@@ -166,42 +224,43 @@ export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] 
     return symbols;
   }
 
-  const findLine = (needle: string): number => {
-    const idx = lines.findIndex((l) => l.includes(needle));
-    return idx >= 0 ? idx : 0;
+  const defaultRange: LspRange = index.root
+    ? xmlOpenTagRange(xmlSource, index.root)
+    : { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } };
+
+  const lookupRange = (mrid: string): { range: LspRange; selectionRange: LspRange } => {
+    const stripped = mrid.startsWith("#") ? mrid.slice(1) : mrid;
+    const entry = index.byMrid.get(mrid) ?? index.byMrid.get(stripped);
+    if (!entry) return { range: defaultRange, selectionRange: defaultRange };
+    return {
+      range: xmlElementRange(xmlSource, entry.elem),
+      selectionRange: xmlOpenTagRange(xmlSource, entry.elem),
+    };
   };
 
   // 1. Group by Substation
   for (const [subId, sub] of model.substations.entries()) {
-    const subLine = findLine(subId);
-    const subRange: LspRange = {
-      start: { line: subLine, character: 0 },
-      end: { line: subLine, character: 20 },
-    };
+    const subLoc = lookupRange(subId);
 
     const vlChildren: LspDocumentSymbol[] = [];
 
     // Find voltage levels for this substation
     for (const [vlId, vl] of model.voltageLevels.entries()) {
       if (vl.substationId === subId) {
-        const vlLine = findLine(vlId);
-        const vlRange: LspRange = {
-          start: { line: vlLine, character: 0 },
-          end: { line: vlLine, character: 20 },
-        };
+        const vlLoc = lookupRange(vlId);
 
         const eqChildren: LspDocumentSymbol[] = [];
 
         // Busbars
         for (const [bbId, bb] of model.busbars.entries()) {
           if (bb.voltageLevelId === vlId) {
-            const bbLine = findLine(bbId);
+            const bbLoc = lookupRange(bbId);
             eqChildren.push({
               name: `Busbar: ${bb.name || bbId}`,
               detail: `mRID: ${bbId}`,
               kind: LspSymbolKind.Field,
-              range: { start: { line: bbLine, character: 0 }, end: { line: bbLine, character: 20 } },
-              selectionRange: { start: { line: bbLine, character: 0 }, end: { line: bbLine, character: 20 } },
+              range: bbLoc.range,
+              selectionRange: bbLoc.selectionRange,
             });
           }
         }
@@ -210,8 +269,8 @@ export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] 
           name: `VoltageLevel ${vl.baseVoltageKv} kV: ${vl.name || vlId}`,
           detail: `${vl.baseVoltageKv} kV`,
           kind: LspSymbolKind.Namespace,
-          range: vlRange,
-          selectionRange: vlRange,
+          range: vlLoc.range,
+          selectionRange: vlLoc.selectionRange,
           children: eqChildren,
         });
       }
@@ -221,8 +280,8 @@ export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] 
       name: `Substation: ${sub.name || subId}`,
       detail: sub.region ? `Region: ${sub.region}` : `mRID: ${subId}`,
       kind: LspSymbolKind.Package,
-      range: subRange,
-      selectionRange: subRange,
+      range: subLoc.range,
+      selectionRange: subLoc.selectionRange,
       children: vlChildren,
     });
   }
@@ -231,17 +290,13 @@ export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] 
   if (model.lines.size > 0) {
     const lineSymbols: LspDocumentSymbol[] = [];
     for (const [lineId, line] of model.lines.entries()) {
-      const lLine = findLine(lineId);
-      const lRange: LspRange = {
-        start: { line: lLine, character: 0 },
-        end: { line: lLine, character: 20 },
-      };
+      const lLoc = lookupRange(lineId);
       lineSymbols.push({
         name: `ACLine: ${line.name || lineId}`,
         detail: `R=${line.r} Ω, X=${line.x} Ω`,
         kind: LspSymbolKind.Class,
-        range: lRange,
-        selectionRange: lRange,
+        range: lLoc.range,
+        selectionRange: lLoc.selectionRange,
       });
     }
 
@@ -249,8 +304,8 @@ export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] 
       name: "Transmission Lines",
       detail: `${model.lines.size} segments`,
       kind: LspSymbolKind.Module,
-      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
+      range: defaultRange,
+      selectionRange: defaultRange,
       children: lineSymbols,
     });
   }
@@ -259,17 +314,13 @@ export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] 
   if (model.generators.size > 0) {
     const genSymbols: LspDocumentSymbol[] = [];
     for (const [genId, gen] of model.generators.entries()) {
-      const gLine = findLine(genId);
-      const gRange: LspRange = {
-        start: { line: gLine, character: 0 },
-        end: { line: gLine, character: 20 },
-      };
+      const gLoc = lookupRange(genId);
       genSymbols.push({
         name: `Generator: ${gen.name || genId}`,
         detail: `${gen.pMw} MW / ${gen.qMvar} Mvar`,
         kind: LspSymbolKind.Method,
-        range: gRange,
-        selectionRange: gRange,
+        range: gLoc.range,
+        selectionRange: gLoc.selectionRange,
       });
     }
 
@@ -277,8 +328,8 @@ export function getCgmesDocumentSymbols(xmlSource: string): LspDocumentSymbol[] 
       name: "Synchronous Machines",
       detail: `${model.generators.size} units`,
       kind: LspSymbolKind.Module,
-      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
+      range: defaultRange,
+      selectionRange: defaultRange,
       children: genSymbols,
     });
   }
@@ -298,16 +349,82 @@ const CIM_CLASS_DOCS: Record<string, string> = {
   TopologicalNode: "### `cim:TopologicalNode`\nA collection of connectivity nodes combined by closed switches.",
 };
 
+function computeLineBounds(text: string, targetLine: number): { lineStart: number; lineEnd: number } | null {
+  let line = 0;
+  let lineStart = 0;
+  const len = text.length;
+
+  for (let i = 0; i < len; i++) {
+    if (line === targetLine) {
+      let lineEnd = i;
+      while (lineEnd < len && text.charCodeAt(lineEnd) !== 10 && text.charCodeAt(lineEnd) !== 13) {
+        lineEnd++;
+      }
+      return { lineStart, lineEnd };
+    }
+    if (text.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+
+  return line === targetLine ? { lineStart, lineEnd: len } : null;
+}
+
+function findDeepestXmlElementAtOffset(root: XmlElement, offset: number): XmlElement | null {
+  if (offset < root.start || offset > root.end) return null;
+  let current: XmlElement = root;
+  while (true) {
+    let next: XmlElement | null = null;
+    for (const child of current.children) {
+      if (offset >= child.start && offset <= child.end) {
+        next = child;
+        break;
+      }
+    }
+    if (!next) return current;
+    current = next;
+  }
+}
+
+function findXmlElementsStartingOnLine(root: XmlElement, lineStart: number, lineEnd: number): XmlElement[] {
+  const hits: XmlElement[] = [];
+  const stack: XmlElement[] = [root];
+  while (stack.length > 0) {
+    const elem = stack.pop()!;
+    if (elem.start >= lineStart && elem.start <= lineEnd) {
+      hits.push(elem);
+    }
+    for (let i = elem.children.length - 1; i >= 0; i--) {
+      stack.push(elem.children[i]!);
+    }
+  }
+  return hits;
+}
+
 /**
  * Provides contextual hover details for CIM RDF elements under the cursor.
  */
 export function getCgmesHover(xmlSource: string, pos: LspPosition): LspHover | undefined {
-  const lines = xmlSource.split(/\r?\n/);
-  if (pos.line >= lines.length) return undefined;
-  const line = lines[pos.line] ?? "";
+  const bounds = computeLineBounds(xmlSource, pos.line);
+  if (!bounds) return undefined;
 
-  for (const [className, doc] of Object.entries(CIM_CLASS_DOCS)) {
-    if (line.includes(`cim:${className}`) || line.includes(`<${className}`)) {
+  const xmlDoc = parseXmlSync(xmlSource);
+  if (!xmlDoc.root) return undefined;
+
+  const offset = Math.min(bounds.lineStart + Math.max(0, pos.character), bounds.lineEnd);
+  const candidates: XmlElement[] = [];
+  const exactElem = findDeepestXmlElementAtOffset(xmlDoc.root, offset);
+  if (exactElem) candidates.push(exactElem);
+  for (const lineElem of findXmlElementsStartingOnLine(xmlDoc.root, bounds.lineStart, bounds.lineEnd)) {
+    if (!candidates.includes(lineElem)) candidates.push(lineElem);
+  }
+
+  for (const elem of candidates) {
+    const colonIdx = elem.name.indexOf(":");
+    const localName = colonIdx >= 0 ? elem.name.slice(colonIdx + 1) : elem.name;
+    const doc = CIM_CLASS_DOCS[localName];
+    if (doc) {
       return {
         contents: {
           kind: "markdown",
@@ -317,15 +434,19 @@ export function getCgmesHover(xmlSource: string, pos: LspPosition): LspHover | u
     }
   }
 
-  // Check for mRID
-  const mridMatch = line.match(/(?:rdf:ID|rdf:about)="([^"]+)"/);
-  if (mridMatch) {
-    return {
-      contents: {
-        kind: "markdown",
-        value: `**mRID:** \`${mridMatch[1]}\`\n\n*ENTSO-E Unique Master Resource Identifier*`,
-      },
-    };
+  // Check for mRID attribute (rdf:ID or rdf:about)
+  for (const elem of candidates) {
+    for (const attr of elem.attributes) {
+      const lower = attr.name.toLowerCase();
+      if (lower === "rdf:id" || lower === "rdf:about") {
+        return {
+          contents: {
+            kind: "markdown",
+            value: `**mRID:** \`${attr.value}\`\n\n*ENTSO-E Unique Master Resource Identifier*`,
+          },
+        };
+      }
+    }
   }
 
   return undefined;

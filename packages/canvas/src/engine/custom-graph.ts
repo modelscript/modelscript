@@ -215,20 +215,41 @@ export class UnifiedGraph {
         syncAlignmentGuidesDom: (guides) => syncAlignmentGuidesDom(this.dom?.guidesG ?? null, guides),
         syncMarqueeDom: (rect) => syncMarqueeDom(this.dom?.marqueeRectEl ?? null, rect),
         syncMagnetHighlightsDom: (preview) =>
-          syncMagnetHighlightsDom(this.dom?.nodesG ?? null, preview, (sId, sPort, tId, tPort) => {
-            const validator = this.options.connecting?.validateConnection;
-            if (!validator) return true;
-            try {
-              return validator({
-                sourceCell: this.cells.get(sId) ?? null,
-                targetCell: this.cells.get(tId) ?? null,
-                sourcePort: sPort,
-                targetPort: tPort,
-              });
-            } catch {
-              return true;
-            }
-          }),
+          syncMagnetHighlightsDom(
+            this.dom?.nodesG ?? null,
+            preview,
+            (sId, sPort, tId, tPort) => {
+              const validator = this.options.connecting?.validateConnection;
+              if (!validator) return true;
+              try {
+                return validator({
+                  sourceCell: this.cells.get(sId) ?? null,
+                  targetCell: this.cells.get(tId) ?? null,
+                  sourcePort: sPort,
+                  targetPort: tPort,
+                });
+              } catch {
+                return true;
+              }
+            },
+            (sId, sPort, tId, tPort) => {
+              const reasonFn = this.options.connecting?.getConnectionRejectionReason;
+              if (!reasonFn) return null;
+              try {
+                return (
+                  reasonFn({
+                    sourceCell: this.cells.get(sId) ?? null,
+                    targetCell: this.cells.get(tId) ?? null,
+                    sourcePort: sPort,
+                    targetPort: tPort,
+                  }) ?? null
+                );
+              } catch {
+                return null;
+              }
+            },
+            this.dom?.guidesG ?? null,
+          ),
         applyViewportTransformDom: (panOnly) => this.applyViewportTransformDom(panOnly),
         scheduleCanvas2DRender: () => this.scheduleCanvas2DRender(),
         emit: (event, args) => this.emit(event, args),

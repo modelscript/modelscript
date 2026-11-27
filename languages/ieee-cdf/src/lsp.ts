@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintIeeeCdf } from "./lints/index.js";
 import { parseIeeeCdf } from "./parser/ieee-cdf-parser.js";
 
@@ -74,19 +77,73 @@ const BRANCH_TYPE_LABELS: Record<number, string> = {
   4: "Type 4 — Phase-Shifting Transformer",
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface IeeeCdfCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildIeeeCdfCstIndex(content: string): IeeeCdfCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("ieee-cdf", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates an IEEE CDF / BPA IPF document and returns LSP diagnostics.
  */
 export function validateIeeeCdf(content: string, _uri = "network.cdf"): LspDiagnostic[] {
   const network = parseIeeeCdf(content);
   const diags = lintIeeeCdf(network);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildIeeeCdfCstIndex(content);
 
   return diags.map((d) => {
-    const lineIdx = d.line ? Math.max(0, Math.min(lines.length - 1, d.line - 1)) : 0;
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const lineIdx = d.line ? Math.max(0, d.line - 1) : 0;
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
 
     return {
       range: {
@@ -106,19 +163,20 @@ export function validateIeeeCdf(content: string, _uri = "network.cdf"): LspDiagn
  */
 export function getIeeeCdfDocumentSymbols(content: string): LspDocumentSymbol[] {
   const network = parseIeeeCdf(content);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
+  const cstIndex = buildIeeeCdfCstIndex(content);
+  const firstEntry = cstIndex.byRow.get(0);
   const fullRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: lastLine, character: (lines[lastLine] ?? "").length },
+    start: { line: 0, character: firstEntry?.startCol ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   const busChildren: LspDocumentSymbol[] = network.buses.map((b) => {
     const lineIdx = Math.max(0, (b.line ?? 1) - 1);
-    const len = (lines[lineIdx] ?? "").length;
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = entry?.startCol ?? 0;
     const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: Math.max(1, len) },
+      start: { line: lineIdx, character: startChar },
+      end: { line: lineIdx, character: Math.max(startChar + 1, entry?.endCol ?? 1) },
     };
     return {
       name: `Bus ${b.busNumber} (${b.name})`,
@@ -131,10 +189,11 @@ export function getIeeeCdfDocumentSymbols(content: string): LspDocumentSymbol[] 
 
   const branchChildren: LspDocumentSymbol[] = network.branches.map((br) => {
     const lineIdx = Math.max(0, (br.line ?? 1) - 1);
-    const len = (lines[lineIdx] ?? "").length;
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = entry?.startCol ?? 0;
     const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: Math.max(1, len) },
+      start: { line: lineIdx, character: startChar },
+      end: { line: lineIdx, character: Math.max(startChar + 1, entry?.endCol ?? 1) },
     };
     return {
       name: `Branch ${br.fromBus}-${br.toBus} (ckt ${br.circuit})`,
@@ -152,8 +211,8 @@ export function getIeeeCdfDocumentSymbols(content: string): LspDocumentSymbol[] 
       kind: LspSymbolKind.Package,
       range: fullRange,
       selectionRange: {
-        start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.max(1, (lines[0] ?? "").length) },
+        start: { line: 0, character: firstEntry?.startCol ?? 0 },
+        end: { line: 0, character: Math.max(1, firstEntry?.endCol ?? 1) },
       },
       children: [...busChildren, ...branchChildren],
     },
@@ -166,8 +225,8 @@ export function getIeeeCdfDocumentSymbols(content: string): LspDocumentSymbol[] 
 export function getIeeeCdfHover(content: string, position: LspPosition): LspHover | null {
   const network = parseIeeeCdf(content);
   const targetLine = position.line + 1;
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line] ?? "";
+  const cstIndex = buildIeeeCdfCstIndex(content);
+  const lineText = cstIndex.byRow.get(position.line)?.text ?? "";
 
   if (/^\s*BUS\s+DATA\s+FOLLOWS/i.test(lineText)) {
     return {

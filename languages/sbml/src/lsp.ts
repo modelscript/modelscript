@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { lowerSbmlToDae } from "./dae/sbml-to-dae.js";
 import { lintSbml } from "./lints/index.js";
 import { parseSbml } from "./parser/sbml-parser.js";
@@ -174,50 +175,150 @@ export function getSbmlDocumentSymbols(text: string): LspDocumentSymbol[] {
   return symbols;
 }
 
-export function getSbmlHover(text: string, position: LspPosition): LspHover | null {
-  const doc = parseSbml(text);
-  const model = doc.model;
-  const lines = text.split("\n");
-  const lineText = lines[position.line] ?? "";
+function computeLineBounds(text: string, targetLine: number): { lineStart: number; lineEnd: number } {
+  let line = 0;
+  let lineStart = 0;
+  const len = text.length;
 
-  // Check Species match
-  for (const s of model.species.values()) {
-    if (lineText.includes(`id="${s.id}"`) || lineText.includes(`species="${s.id}"`)) {
-      return {
-        contents: {
-          kind: "markdown",
-          value: [
-            `### SBML Species: **${s.id}** ${s.name ? `(${s.name})` : ""}`,
-            `- **Compartment:** \`${s.compartment}\``,
-            `- **Initial Quantity:** ${s.initialConcentration ?? s.initialAmount ?? 0}`,
-            `- **Boundary Condition:** \`${s.boundaryCondition}\``,
-            `- **Constant:** \`${s.constant}\``,
-          ].join("\n"),
-        },
-      };
+  for (let i = 0; i < len; i++) {
+    if (line === targetLine) {
+      let lineEnd = i;
+      while (lineEnd < len && text.charCodeAt(lineEnd) !== 10 && text.charCodeAt(lineEnd) !== 13) {
+        lineEnd++;
+      }
+      return { lineStart, lineEnd };
+    }
+    if (text.charCodeAt(i) === 10) {
+      line++;
+      lineStart = i + 1;
     }
   }
 
-  // Check Reaction match
-  for (const r of model.reactions.values()) {
-    if (lineText.includes(`id="${r.id}"`)) {
-      const reactStr = r.reactants
-        .map((ref) => `${ref.stoichiometry > 1 ? ref.stoichiometry : ""}${ref.species}`)
-        .join(" + ");
-      const prodStr = r.products
-        .map((ref) => `${ref.stoichiometry > 1 ? ref.stoichiometry : ""}${ref.species}`)
-        .join(" + ");
-      return {
-        contents: {
-          kind: "markdown",
-          value: [
-            `### SBML Reaction: **${r.id}** ${r.name ? `(${r.name})` : ""}`,
-            `- **Stoichiometry:** ${reactStr} ${r.reversible ? "<=>" : "=>"} ${prodStr}`,
-            `- **Reversible:** \`${r.reversible}\``,
-            r.kineticLaw ? `- **Kinetic Law:** \`${r.kineticLaw.formula}\`` : "- **Kinetic Law:** None",
-          ].join("\n"),
-        },
-      };
+  return { lineStart, lineEnd: len };
+}
+
+function getXmlAttrValue(elem: XmlElement, attrNameLower: string): string | undefined {
+  for (const attr of elem.attributes) {
+    if (attr.name.toLowerCase() === attrNameLower) {
+      return attr.value;
+    }
+  }
+  return undefined;
+}
+
+function findDeepestElementAtOffset(root: XmlElement, offset: number): XmlElement | null {
+  if (offset < root.start || offset > root.end) return null;
+  let current: XmlElement = root;
+  while (true) {
+    let next: XmlElement | null = null;
+    for (const child of current.children) {
+      if (offset >= child.start && offset <= child.end) {
+        next = child;
+        break;
+      }
+    }
+    if (!next) return current;
+    current = next;
+  }
+}
+
+function findElementStartingOnLine(root: XmlElement, lineStart: number, lineEnd: number): XmlElement | null {
+  const stack: XmlElement[] = [root];
+  while (stack.length > 0) {
+    const elem = stack.pop();
+    if (!elem) continue;
+    if (elem.start >= lineStart && elem.start <= lineEnd) {
+      const tag = elem.name.toLowerCase();
+      if (tag === "species" || tag === "speciesreference" || tag === "modifierspeciesreference" || tag === "reaction") {
+        return elem;
+      }
+    }
+    for (let i = elem.children.length - 1; i >= 0; i--) {
+      const child = elem.children[i];
+      if (child) stack.push(child);
+    }
+  }
+  return null;
+}
+
+export function getSbmlHover(text: string, position: LspPosition): LspHover | null {
+  const doc = parseSbml(text);
+  const model = doc.model;
+  const xmlDoc = parseXmlSync(text);
+  if (!xmlDoc.root) return null;
+
+  const { lineStart, lineEnd } = computeLineBounds(text, position.line);
+  const offset = Math.min(lineStart + Math.max(0, position.character), lineEnd);
+
+  const exactElem = findDeepestElementAtOffset(xmlDoc.root, offset);
+  const lineElem = findElementStartingOnLine(xmlDoc.root, lineStart, lineEnd);
+
+  const candidates: XmlElement[] = [];
+  if (exactElem) candidates.push(exactElem);
+  if (lineElem && lineElem !== exactElem) candidates.push(lineElem);
+
+  for (const elem of candidates) {
+    const tag = elem.name.toLowerCase();
+    const idVal = getXmlAttrValue(elem, "id");
+    const speciesVal = getXmlAttrValue(elem, "species");
+
+    if (tag === "species" && idVal) {
+      const s = model.species.get(idVal);
+      if (s) {
+        return {
+          contents: {
+            kind: "markdown",
+            value: [
+              `### SBML Species: **${s.id}** ${s.name ? `(${s.name})` : ""}`,
+              `- **Compartment:** \`${s.compartment}\``,
+              `- **Initial Quantity:** ${s.initialConcentration ?? s.initialAmount ?? 0}`,
+              `- **Boundary Condition:** \`${s.boundaryCondition}\``,
+              `- **Constant:** \`${s.constant}\``,
+            ].join("\n"),
+          },
+        };
+      }
+    }
+
+    if ((tag === "speciesreference" || tag === "modifierspeciesreference") && speciesVal) {
+      const s = model.species.get(speciesVal);
+      if (s) {
+        return {
+          contents: {
+            kind: "markdown",
+            value: [
+              `### SBML Species: **${s.id}** ${s.name ? `(${s.name})` : ""}`,
+              `- **Compartment:** \`${s.compartment}\``,
+              `- **Initial Quantity:** ${s.initialConcentration ?? s.initialAmount ?? 0}`,
+              `- **Boundary Condition:** \`${s.boundaryCondition}\``,
+              `- **Constant:** \`${s.constant}\``,
+            ].join("\n"),
+          },
+        };
+      }
+    }
+
+    if (tag === "reaction" && idVal) {
+      const r = model.reactions.get(idVal);
+      if (r) {
+        const reactStr = r.reactants
+          .map((ref) => `${ref.stoichiometry > 1 ? ref.stoichiometry : ""}${ref.species}`)
+          .join(" + ");
+        const prodStr = r.products
+          .map((ref) => `${ref.stoichiometry > 1 ? ref.stoichiometry : ""}${ref.species}`)
+          .join(" + ");
+        return {
+          contents: {
+            kind: "markdown",
+            value: [
+              `### SBML Reaction: **${r.id}** ${r.name ? `(${r.name})` : ""}`,
+              `- **Stoichiometry:** ${reactStr} ${r.reversible ? "<=>" : "=>"} ${prodStr}`,
+              `- **Reversible:** \`${r.reversible}\``,
+              r.kineticLaw ? `- **Kinetic Law:** \`${r.kineticLaw.formula}\`` : "- **Kinetic Law:** None",
+            ].join("\n"),
+          },
+        };
+      }
     }
   }
 

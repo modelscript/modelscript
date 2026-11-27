@@ -8,6 +8,9 @@
  * - `getJcampDxCompletions`
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintJcampDx } from "./lints/index.js";
 import { parseJcampDx } from "./parser/jcamp-parser.js";
 
@@ -145,18 +148,72 @@ const LDR_DOCS: Record<string, { detail: string; doc: string; insert: string }> 
   },
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface JcampDxCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildJcampDxCstIndex(content: string): JcampDxCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("jcamp-dx", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates a JCAMP-DX document and returns LSP diagnostics.
  */
 export function validateJcampDx(content: string, _uri: string = "spectrum.jdx"): LspDiagnostic[] {
   const diags = lintJcampDx(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildJcampDxCstIndex(content);
 
   return diags.map((d) => {
-    const lineIdx = Math.max(0, Math.min(lines.length - 1, d.line - 1));
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const lineIdx = Math.max(0, d.line - 1);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
     const severity: 1 | 2 | 3 = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
 
     return {
@@ -177,28 +234,36 @@ export function validateJcampDx(content: string, _uri: string = "spectrum.jdx"):
  */
 export function getJcampDxDocumentSymbols(content: string): LspDocumentSymbol[] {
   const doc = parseJcampDx(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildJcampDxCstIndex(content);
 
   return doc.blocks.map((block) => {
     const startLine = Math.max(0, block.startLine - 1);
     const endLine = Math.max(startLine, block.endLine - 1);
-    const endChar = (lines[endLine] ?? "").length;
+    const startEntry = cstIndex.byRow.get(startLine);
+    const endEntry = cstIndex.byRow.get(endLine);
+    const endChar = endEntry?.endCol ?? 0;
 
     const children: LspDocumentSymbol[] = block.ldrs.map((ldr) => {
       const lStart = Math.max(0, ldr.line - 1);
       const lEnd = Math.max(lStart, ldr.endLine - 1);
-      const lEndChar = (lines[lEnd] ?? "").length;
+      const lsEntry = cstIndex.byRow.get(lStart);
+      const leEntry = cstIndex.byRow.get(lEnd);
+      const lsCol = lsEntry?.startCol ?? 0;
+      const lEndChar = leEntry?.endCol ?? 0;
       return {
         name: `##${ldr.label}`,
         detail: ldr.label === "XYDATA" ? `${block.points.length} pts` : ldr.value.slice(0, 48),
         kind: ldr.label === "XYDATA" || ldr.label === "PEAK TABLE" ? LspSymbolKind.Variable : LspSymbolKind.Property,
         range: {
-          start: { line: lStart, character: 0 },
+          start: { line: lStart, character: lsCol },
           end: { line: lEnd, character: lEndChar },
         },
         selectionRange: {
-          start: { line: lStart, character: 0 },
-          end: { line: lStart, character: Math.min((lines[lStart] ?? "").length, ldr.rawLabel.length + 3) },
+          start: { line: lStart, character: lsCol },
+          end: {
+            line: lStart,
+            character: Math.min(lsEntry?.endCol ?? lsCol + ldr.rawLabel.length + 3, lsCol + ldr.rawLabel.length + 3),
+          },
         },
       };
     });
@@ -208,12 +273,12 @@ export function getJcampDxDocumentSymbols(content: string): LspDocumentSymbol[] 
       detail: block.dataType || "SPECTRUM",
       kind: LspSymbolKind.Package,
       range: {
-        start: { line: startLine, character: 0 },
+        start: { line: startLine, character: startEntry?.startCol ?? 0 },
         end: { line: endLine, character: endChar },
       },
       selectionRange: {
-        start: { line: startLine, character: 0 },
-        end: { line: startLine, character: (lines[startLine] ?? "").length },
+        start: { line: startLine, character: startEntry?.startCol ?? 0 },
+        end: { line: startLine, character: startEntry?.endCol ?? 0 },
       },
       children,
     };
@@ -224,11 +289,11 @@ export function getJcampDxDocumentSymbols(content: string): LspDocumentSymbol[] 
  * Provides Markdown hover documentation for JCAMP-DX Labeled Data Records at a cursor position.
  */
 export function getJcampDxHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildJcampDxCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
 
-  const trimmed = line.trim();
+  const trimmed = entry.text.trim();
   if (!trimmed.startsWith("##")) return null;
   const eqIdx = trimmed.indexOf("=");
   if (eqIdx < 0) return null;
@@ -243,8 +308,8 @@ export function getJcampDxHover(content: string, position: LspPosition): LspHove
       value: `**\`##${label}=\`** — *${info.detail}*\n\n${info.doc}`,
     },
     range: {
-      start: { line: position.line, character: 0 },
-      end: { line: position.line, character: eqIdx + 1 },
+      start: { line: position.line, character: entry.startCol },
+      end: { line: position.line, character: entry.startCol + eqIdx + 1 },
     },
   };
 }
@@ -253,8 +318,14 @@ export function getJcampDxHover(content: string, position: LspPosition): LspHove
  * Provides JCAMP-DX Labeled Data Record completion items.
  */
 export function getJcampDxCompletions(content: string, position: LspPosition): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const line = (lines[position.line] ?? "").slice(0, position.character).trim().toUpperCase();
+  const cstIndex = buildJcampDxCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  const line = entry
+    ? entry.text
+        .slice(0, Math.max(0, position.character - entry.startCol))
+        .trim()
+        .toUpperCase()
+    : "";
   const prefix = line.startsWith("##") ? line.slice(2) : line;
 
   const items: LspCompletionItem[] = [];

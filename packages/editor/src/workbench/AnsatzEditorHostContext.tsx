@@ -12,4 +12,4 @@ export {
   useEditorHost,
   type EditorHostAdapter as AnsatzHostAdapter,
   type EditorHostAdapter,
-} from "@modelscript/editor";
+} from "../host.js";

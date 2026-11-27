@@ -1687,7 +1687,7 @@ export declare namespace Cst {
     positiveNodeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     negativeNode(node: SyntaxNode | null | undefined): SyntaxNode | null;
     negativeNodeList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     value(node: SyntaxNode | null | undefined): SyntaxNode | null;
     valueList(node: SyntaxNode | null | undefined): SyntaxNode[];

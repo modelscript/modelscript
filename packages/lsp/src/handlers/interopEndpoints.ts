@@ -68,11 +68,14 @@ export function registerInteropEndpoints(context: LspContext) {
           (doc ? context.workspaceManager.documentContexts.get(doc.uri) : undefined) ??
           context.state.sharedContext ??
           context.parserService?.sharedContext;
-        const flattenFn = (
-          globalThis as unknown as {
-            flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder | null;
-          }
-        ).flattenArenaFromInstance;
+        // Prefer injected DI hook; fall back to globalThis only for legacy unit tests (export-fmu-endpoint.test.ts).
+        const flattenFn =
+          context.flattenArenaFromInstance ??
+          (
+            globalThis as {
+              flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder | null;
+            }
+          ).flattenArenaFromInstance;
         if (typeof flattenFn === "function") {
           try {
             arena = flattenFn(targetInstance, ctx) as DAEBuilder | null;

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
-import { discoverWorkspaceLanguages } from "../../../packages/dsl/src/codegen/ide/language-discovery.js";
+import { discoverWorkspaceLanguages } from "../../../packages/ide-packager/src/language-discovery.js";
 
 describe("Modelica Icon Editor Top Toolbar Integration", () => {
   it("discovers all 5 shape buttons from Modelica DSL ui.toolbarButtons scoped to icon view", async () => {

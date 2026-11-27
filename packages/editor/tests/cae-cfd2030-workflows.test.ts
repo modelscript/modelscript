@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { computeLaminateABD, StepMesher } from "@modelscript/simulate";
-import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
-import { describe, it } from "node:test";
-import type { CadStudyWizardConfig, StudyArchetypeId } from "../src/workbench/cad-viewer/CadStudyWizardModal.js";
+import type { CadStudyWizardConfig, StudyArchetypeId } from "@modelscript/cad-viewer/CadStudyWizardModal.js";
 import {
   computeCfrpLaminateSummary,
   computeYPlusMetrics,
   createDefaultCaePhysicsConfig,
   serializePhysicsToDeckDirectives,
-} from "../src/workbench/cad-viewer/CaePhysicsInspector.js";
-import { extractTemplateParameters } from "../src/workbench/cad-viewer/SweepConfigDrawer.js";
+} from "@modelscript/cad-viewer/CaePhysicsInspector.js";
+import { extractTemplateParameters, generateDoeSamples } from "@modelscript/cad-viewer/SweepConfigDrawer.js";
+import { computeLaminateABD, StepMesher } from "@modelscript/simulate";
+import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
+import { describe, it } from "node:test";
 import {
   exportCaeToCgnsJson,
   runAdjointSensitivityStudy,
@@ -31,7 +31,7 @@ registerHooks({
 });
 
 const { computeWindTunnelBounds, generateStudyDeckFromCad } =
-  await import("../src/workbench/cad-viewer/CadStudyWizardModal.js");
+  await import("@modelscript/cad-viewer/CadStudyWizardModal.js");
 
 function makeWizardConfig(
   archetype: StudyArchetypeId,
@@ -310,6 +310,28 @@ describe("SweepConfigDrawer helpers", () => {
     assert.deepEqual(params, ["mach", "aoa", "load_n"]);
     assert.deepEqual(extractTemplateParameters("SOLVER= RANS\nITER= 100\n"), []);
   });
+
+  it("generateDoeSamples produces bounded multi-dimensional samples for lhs, sobol, grid, and random", () => {
+    const vars = [
+      { name: "aoa", min: 0, max: 12, nominal: 4 },
+      { name: "v_inlet", min: 15, max: 45, nominal: 25 },
+    ];
+    for (const strategy of ["lhs", "sobol", "grid", "random"] as const) {
+      const samples = generateDoeSamples(vars, 9, strategy, 123);
+      assert.equal(samples.length, 9, `expected 9 samples for ${strategy}`);
+      for (const s of samples) {
+        assert.ok(s.aoa! >= 0 && s.aoa! <= 12, `${strategy} aoa out of bounds: ${s.aoa}`);
+        assert.ok(s.v_inlet! >= 15 && s.v_inlet! <= 45, `${strategy} v_inlet out of bounds: ${s.v_inlet}`);
+      }
+    }
+    // Verify LHS does NOT collapse onto a 1D diagonal ramp
+    const lhs = generateDoeSamples(vars, 8, "lhs", 7);
+    const ratios = lhs.map((s) => s.aoa! / 12 - (s.v_inlet! - 15) / 30);
+    assert.ok(
+      ratios.some((r) => Math.abs(r) > 0.05),
+      "LHS samples must explore off-diagonal space",
+    );
+  });
 });
 
 describe("Local CFD 2030 & FEA runner (cae-local-runner.ts)", () => {
@@ -470,7 +492,7 @@ REYNOLDS_NUMBER= 1.5e6
     assert.ok(dgRes.vtkBuffer.byteLength > 200);
   });
 
-  it("runAdjointSensitivityStudy returns finite objectiveDragPower and sensitivityField", () => {
+  it("runAdjointSensitivityStudy returns finite objectiveDragPower and sensitivityField without fabricated NILSS", () => {
     const adj = runAdjointSensitivityStudy(sampleCfdCfg, {
       numSteps: 4,
       enableNilss: true,
@@ -480,8 +502,8 @@ REYNOLDS_NUMBER= 1.5e6
     assert.ok(Number.isFinite(adj.maxSensitivity) && adj.maxSensitivity >= 0);
     assert.equal(adj.sensitivityField.length, adj.nx * adj.ny * adj.nz);
     assert.ok(adj.sensitivityField.every((v) => Number.isFinite(v)));
-    assert.ok(adj.nilssGradient !== undefined && Number.isFinite(adj.nilssGradient));
-    assert.ok(adj.logs.length > 0);
+    assert.equal(adj.nilssGradient, undefined);
+    assert.ok(adj.logs.some((l) => l.includes("Chaotic wake shadowing requires unsteady CFD trajectory coupling")));
   });
 
   it("exportCaeToCgnsJson returns a valid CGNS SIDS JSON tree", () => {

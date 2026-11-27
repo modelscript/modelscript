@@ -9,6 +9,7 @@ import {
   installDependency,
   unloadAllMountedLibraries,
 } from "@modelscript/editor/workbench/util/lsp-bridge";
+import { startLsp } from "@modelscript/editor/workbench/util/lsp-worker";
 import {
   buildAnsatzEmbedHtmlPage,
   compressAnsatzPayload,
@@ -240,32 +241,54 @@ export const AnsatzEditorPage: React.FC = () => {
     : null;
 
   const isInitialLaunchWithoutTarget = !hasInitialTarget && !langParam && !titleParam;
-  const defaultInitialCode = initialHashPayload?.code ?? (hasInitialTarget ? "" : "");
+  const initialTemplateKey = templateParam || modelParam;
+  const initialHeroMatch = useMemo(() => {
+    if (!initialTemplateKey || initialHashPayload?.code) return null;
+    const normalizedKey = TEMPLATE_ALIASES[initialTemplateKey.toLowerCase()] || initialTemplateKey;
+    return (
+      HERO_EXAMPLES.find(
+        (ex) =>
+          ex.id.toLowerCase() === normalizedKey.toLowerCase() ||
+          ex.id.toLowerCase() === initialTemplateKey.toLowerCase() ||
+          ex.title.toLowerCase().includes(initialTemplateKey.toLowerCase()),
+      ) ?? null
+    );
+  }, [initialTemplateKey, initialHashPayload?.code]);
+  const initialHeroResolved = useMemo(
+    () => (initialHeroMatch ? resolveTemplateFiles(initialHeroMatch) : null),
+    [initialHeroMatch],
+  );
+  const defaultInitialCode =
+    initialHashPayload?.code ??
+    (initialHeroResolved
+      ? (initialHeroResolved.files[initialHeroResolved.activeFile] ?? initialHeroMatch?.code ?? "")
+      : "");
   const defaultInitialTitle =
     initialHashPayload?.title ||
     titleParam ||
+    initialHeroMatch?.title ||
     (hasInitialArtifactTarget ? "Loading Artifact…" : hasInitialTarget ? "" : "Untitled Workspace");
-  const initialTemplateKey = templateParam || modelParam;
-  const initialTemplateLang = initialTemplateKey
-    ? (() => {
-        const normalizedKey = TEMPLATE_ALIASES[initialTemplateKey.toLowerCase()] || initialTemplateKey;
-        const match = HERO_EXAMPLES.find(
-          (ex) =>
-            ex.id.toLowerCase() === normalizedKey.toLowerCase() ||
-            ex.id.toLowerCase() === initialTemplateKey.toLowerCase() ||
-            ex.title.toLowerCase().includes(initialTemplateKey.toLowerCase()),
-        );
-        return match?.lang ?? null;
-      })()
-    : null;
+  const initialTemplateLang = initialHeroMatch?.lang ?? null;
   const defaultInitialLang = initialLangFromHash || langParam || initialTemplateLang || "modelica";
+
+  // Pre-spawn the LSP WebWorker as early as possible so it boots in parallel with Monaco & React.
+  useEffect(() => {
+    void startLsp(defaultInitialLang).catch(() => {});
+  }, [defaultInitialLang]);
 
   const [isLoadingArtifact, setIsLoadingArtifact] = useState<boolean>(hasInitialArtifactTarget);
   const [currentCode, setCurrentCode] = useState<string>(defaultInitialCode);
   const [projectFiles, setProjectFiles] = useState<Record<string, string> | null>(
-    initialFilesFromHash ?? (isInitialLaunchWithoutTarget ? {} : null),
+    initialFilesFromHash ??
+      (initialHeroResolved && Object.keys(initialHeroResolved.files).length > 1 ? initialHeroResolved.files : null) ??
+      (isInitialLaunchWithoutTarget ? {} : null),
   );
-  const [activeFile, setActiveFile] = useState<string | null>(initialActiveFromHash);
+  const [activeFile, setActiveFile] = useState<string | null>(
+    initialActiveFromHash ??
+      (initialHeroResolved && Object.keys(initialHeroResolved.files).length > 1
+        ? initialHeroResolved.activeFile
+        : null),
+  );
   const [currentTitle, setCurrentTitle] = useState<string>(defaultInitialTitle);
   const [currentLang, setCurrentLang] = useState<string>(defaultInitialLang);
   const [initialSubview] = useState<string | null>(subviewParam);
@@ -1581,25 +1604,44 @@ export const AnsatzEditorPage: React.FC = () => {
     applyAddFilesToWorkspace(baseFiles, incomingFiles, incomingActiveFile, ex.lang, ex.title);
   };
 
-  type AnsatzEditorView = "diagram" | "code" | "split" | "simulation" | "3d" | "inspector";
+  type AnsatzEditorView = "diagram" | "code" | "split" | "simulation" | "3d" | "inspector" | "studio";
   const splitParam = searchParams.get("split");
   const initialDefaultLangView = getDefaultLanguageView(getLanguageInfo(defaultInitialLang));
   const [isSplit, setIsSplit] = useState<boolean>(() => {
     if (viewParam === "split" || splitParam === "1") return true;
     if (splitParam === "0" || viewParam === "code") return false;
-    if (viewParam === "diagram" || viewParam === "3d" || viewParam === "simulation" || viewParam === "inspector") {
+    if (
+      viewParam === "diagram" ||
+      viewParam === "3d" ||
+      viewParam === "simulation" ||
+      viewParam === "inspector" ||
+      viewParam === "studio"
+    ) {
       return false;
     }
+    if (trainingStudioParams.isTrainingStudio) return true;
     return initialDefaultLangView.isSplit;
   });
   const [currentView, setCurrentView] = useState<AnsatzEditorView>(() => {
     if (viewParam === "code") return "code";
+    if (viewParam === "studio" || subviewParam === "studio" || trainingStudioParams.isTrainingStudio) return "studio";
     if (viewParam === "simulation" || subviewParam === "simulation") return "simulation";
     if (viewParam === "3d" || subviewParam === "3d") return "3d";
     if (viewParam === "inspector" || subviewParam === "inspector") return "inspector";
     if (viewParam === "diagram" || subviewParam === "diagram") return "diagram";
     return initialDefaultLangView.view;
   });
+  const [showHypergraphOverlay, setShowHypergraphOverlay] = useState<boolean>(() =>
+    Boolean(trainingStudioParams.isTrainingStudio),
+  );
+  const [isAiOpen, setIsAiOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (trainingStudioParams.isTrainingStudio) {
+      setCurrentView("studio");
+      setShowHypergraphOverlay(true);
+    }
+  }, [trainingStudioParams.isTrainingStudio]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
@@ -1694,7 +1736,7 @@ export const AnsatzEditorPage: React.FC = () => {
   }, [compilerDiagnostics]);
 
   const handleActiveViewChange = useCallback(
-    (nextView: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => {
+    (nextView: "diagram" | "simulation" | "3d" | "inspector" | "studio" | "code" | "split") => {
       if (nextView === "split") {
         setIsSplit(true);
         setCurrentView((prev) => (prev === "code" || prev === "split" ? "diagram" : prev));
@@ -1708,7 +1750,7 @@ export const AnsatzEditorPage: React.FC = () => {
           lang: currentLang,
           code: currentCode,
           title: currentTitle,
-          view: nextView,
+          view: nextView === "studio" ? "inspector" : nextView,
         };
       });
     },
@@ -1716,7 +1758,7 @@ export const AnsatzEditorPage: React.FC = () => {
   );
 
   const handleViewChange = useCallback(
-    (nextView: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector") => {
+    (nextView: "diagram" | "code" | "split" | "simulation" | "3d" | "inspector" | "studio") => {
       if (nextView === "split") {
         handleToggleSplit();
         return;
@@ -1803,6 +1845,12 @@ export const AnsatzEditorPage: React.FC = () => {
         } else if (e.key === "6") {
           e.preventDefault();
           handleViewChange("split");
+        } else if (e.key === "7") {
+          e.preventDefault();
+          handleViewChange("studio");
+        } else if (e.code === "KeyA" || e.key.toLowerCase() === "a") {
+          e.preventDefault();
+          setIsAiOpen((prev) => !prev);
         } else if (e.code === "KeyV" || e.key.toLowerCase() === "v") {
           e.preventDefault();
           handleToggleVrMode();
@@ -1855,6 +1903,10 @@ export const AnsatzEditorPage: React.FC = () => {
         onToggleSplit={handleToggleSplit}
         isVrMode={isVrMode}
         onToggleVrMode={handleToggleVrMode}
+        showHypergraphOverlay={showHypergraphOverlay}
+        onToggleHypergraphOverlay={() => setShowHypergraphOverlay((v) => !v)}
+        isAiOpen={isAiOpen}
+        onToggleAi={() => setIsAiOpen((v) => !v)}
         isDirty={isDirty}
         isSimulating={isSimulating}
         runStatus={{
@@ -1946,6 +1998,11 @@ export const AnsatzEditorPage: React.FC = () => {
               )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              {currentView !== "studio" && (
+                <Button size="small" variant="default" onClick={() => handleViewChange("studio")}>
+                  Open AI Studio
+                </Button>
+              )}
               <Button size="small" variant="primary" onClick={() => setTrainingComposerOpen((open) => !open)}>
                 {trainingComposerOpen ? "Hide Recipe Composer" : "Draft Lab Report"}
               </Button>
@@ -2092,18 +2149,26 @@ export const AnsatzEditorPage: React.FC = () => {
               colorMode={theme === "dark" ? "dark" : "light"}
               isVrMode={isVrMode}
               onVrModeChange={setIsVrMode}
+              defaultShowHypergraphOverlay={trainingStudioParams.isTrainingStudio}
+              showHypergraphOverlay={showHypergraphOverlay}
+              onShowHypergraphOverlayChange={setShowHypergraphOverlay}
+              isAiOpen={isAiOpen}
+              onAiOpenChange={setIsAiOpen}
+              trainingStudioContext={trainingStudioParams}
               splitOrientation={splitOrientation === "vertical" ? "rows" : "columns"}
               initialVisualizerSubview={
                 currentView === "simulation" ||
                 currentView === "3d" ||
                 currentView === "inspector" ||
+                currentView === "studio" ||
                 currentView === "diagram"
                   ? currentView
                   : (subviewParam ?? initialSubview) === "simulation" ||
                       (subviewParam ?? initialSubview) === "3d" ||
                       (subviewParam ?? initialSubview) === "inspector" ||
+                      (subviewParam ?? initialSubview) === "studio" ||
                       (subviewParam ?? initialSubview) === "diagram"
-                    ? ((subviewParam ?? initialSubview) as "simulation" | "3d" | "inspector" | "diagram")
+                    ? ((subviewParam ?? initialSubview) as "simulation" | "3d" | "inspector" | "studio" | "diagram")
                     : undefined
               }
               initialSimulationVariables={initialSimVars}

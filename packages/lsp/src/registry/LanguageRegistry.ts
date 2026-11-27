@@ -121,6 +121,7 @@ export interface WasmFacadeInstance {
     | null
     | undefined;
   getDocumentSymbols?(rootPtr: number): unknown[] | null | undefined;
+  getSemanticTokens?(rootPtr: number, sourceCode?: string): Uint32Array | null | undefined;
   getFoldingRanges?(rootPtr: number):
     | Array<{
         startLine?: number;
@@ -338,6 +339,8 @@ export interface LanguagePlugin {
   parser?: WasmParserInstance | null | undefined;
   /** WASM LspFacade providing instant symbols, completions, folding, and AST queries */
   facade?: WasmFacadeInstance | null | undefined;
+  /** Per-language semantic token legend exported by @modelscript/dsl bindings */
+  semanticLegend?: { tokenTypes: string[]; tokenModifiers: string[] } | undefined;
   /** Monaco Monarch token definition rules for client-side syntax highlighting */
   monarch?: MonarchLanguageDef | undefined;
   /** TextMate grammar JSON structure */

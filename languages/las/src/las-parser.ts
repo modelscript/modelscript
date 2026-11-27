@@ -1,7 +1,63 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine } from "@modelscript/runtime";
 import type { IndexedDataset } from "@modelscript/simulate/charts";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { LasErrorCode } from "./errors.js";
+
+interface LasCstLine {
+  lineNumber: number;
+  text: string;
+  startOffset: number;
+  endOffset: number;
+}
+
+/**
+ * Extracts structured lines with exact character offsets from the LAS WASM CST,
+ * falling back cleanly to raw line iteration only when the WASM parser is unavailable.
+ */
+function extractLasCstLines(text: string): LasCstLine[] {
+  try {
+    const parser = getOrLoadLanguageWasmParser("las", import.meta.url, createWasmParserSync);
+    const tree = parser.parse(text);
+    if (tree?.rootNode) {
+      const grouped = groupAllCstTokensByLine(tree.rootNode);
+      if (grouped.length > 0 || text.trim().length === 0) {
+        return grouped.map(({ row, tokens }) => {
+          const lineText = cstLineText(text, tokens);
+          const first = tokens[0];
+          const last = tokens[tokens.length - 1];
+          const startOffset = first?.startIndex ?? 0;
+          const endOffset = last?.endIndex ?? startOffset + lineText.length;
+          return {
+            lineNumber: row + 1,
+            text: lineText,
+            startOffset,
+            endOffset,
+          };
+        });
+      }
+    }
+  } catch {
+    // Fall back cleanly when WASM parser is unavailable
+  }
+
+  const lines: LasCstLine[] = [];
+  const rawLines = text.split(/\r?\n/);
+  let offset = 0;
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i]!;
+    lines.push({
+      lineNumber: i + 1,
+      text: raw,
+      startOffset: offset,
+      endOffset: offset + raw.length,
+    });
+    offset += raw.length + 1;
+  }
+  return lines;
+}
 
 export type LasDelimiter = "whitespace" | "," | "\t";
 
@@ -112,7 +168,7 @@ function isNullNumeric(val: number, nullValue: number): boolean {
  * Sentinel null values (e.g., `-999.25`) are normalized to `NaN` in `rows`, while `nullValue` preserves the header value.
  */
 export function parseLas(text: string): LasDocument {
-  const lines = text.split(/\r?\n/);
+  const cstLines = extractLasCstLines(text);
 
   let version = "2.0";
   let wrap = false;
@@ -155,10 +211,10 @@ export function parseLas(text: string): LasDocument {
     sec.pendingTokens = [];
   };
 
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
+  for (const cstLine of cstLines) {
+    const rawLine = cstLine.text;
     const trimmed = rawLine.trim();
-    const lineNum = i + 1;
+    const lineNum = cstLine.lineNumber;
 
     if (trimmed.startsWith("~")) {
       flushPending(current);
@@ -408,7 +464,7 @@ export function datasetToLas(
  */
 export function lintLas(text: string, baseOffset = 0): LasDiagnostic[] {
   const diags: LasDiagnostic[] = [];
-  const lines = text.split(/\r?\n/);
+  const cstLines = extractLasCstLines(text);
 
   let hasVersionSection = false;
   let hasVersMnemonic = false;
@@ -421,7 +477,6 @@ export function lintLas(text: string, baseOffset = 0): LasDiagnostic[] {
   const curveLineSeen = new Map<string, number>();
 
   let section: "none" | "V" | "W" | "C" | "P" | "O" | "A" = "none";
-  let offset = baseOffset;
   let recordIdx = 0;
   let prevIndexVal: number | null = null;
   let indexDirection: 1 | -1 | 0 = 0;
@@ -443,12 +498,10 @@ export function lintLas(text: string, baseOffset = 0): LasDiagnostic[] {
     });
   };
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const lineLen = line.length;
-    const lineStart = offset;
-    const lineEnd = offset + lineLen;
-    offset += lineLen + 1;
+  for (const cstLine of cstLines) {
+    const line = cstLine.text;
+    const lineStart = baseOffset + cstLine.startOffset;
+    const lineEnd = baseOffset + cstLine.endOffset;
 
     const trimmed = line.trim();
     if (trimmed.startsWith("~")) {
@@ -484,7 +537,7 @@ export function lintLas(text: string, baseOffset = 0): LasDiagnostic[] {
     if (section === "O" || !trimmed || trimmed.startsWith("#")) continue;
 
     if (section === "V") {
-      const item = parseHeaderLine(line, i + 1);
+      const item = parseHeaderLine(line, cstLine.lineNumber);
       if (item) {
         if (item.mnemonic === "VERS") hasVersMnemonic = true;
         else if (item.mnemonic === "WRAP") wrap = item.value.toUpperCase().startsWith("YES");
@@ -496,7 +549,7 @@ export function lintLas(text: string, baseOffset = 0): LasDiagnostic[] {
         }
       }
     } else if (section === "C") {
-      const item = parseHeaderLine(line, i + 1);
+      const item = parseHeaderLine(line, cstLine.lineNumber);
       if (item) {
         const prevLine = curveLineSeen.get(item.mnemonic);
         if (prevLine !== undefined) {
@@ -507,7 +560,7 @@ export function lintLas(text: string, baseOffset = 0): LasDiagnostic[] {
             lineEnd,
           );
         } else {
-          curveLineSeen.set(item.mnemonic, i + 1);
+          curveLineSeen.set(item.mnemonic, cstLine.lineNumber);
         }
         curveNames.push(item.mnemonic);
       }

@@ -406,10 +406,16 @@ export function SimulationExperimentSettings({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { preferences: modelingPrefs } = useModelingPreferences();
 
-  const prefStopTime = modelingPrefs.defaultStopTime ?? 10;
-  const prefIntervals = modelingPrefs.defaultNumberOfIntervals ?? 500;
-  const prefTolerance = modelingPrefs.solverTolerance ?? modelingPrefs.defaultRelativeTolerance ?? 1e-4;
-  const prefSolver = modelingPrefs.defaultSolver ?? "cvode";
+  const prefStopTime = typeof modelingPrefs.defaultStopTime === "number" ? modelingPrefs.defaultStopTime : 10;
+  const prefIntervals =
+    typeof modelingPrefs.defaultNumberOfIntervals === "number" ? modelingPrefs.defaultNumberOfIntervals : 500;
+  const prefTolerance =
+    typeof modelingPrefs.solverTolerance === "number"
+      ? modelingPrefs.solverTolerance
+      : typeof modelingPrefs.defaultRelativeTolerance === "number"
+        ? modelingPrefs.defaultRelativeTolerance
+        : 1e-4;
+  const prefSolver = typeof modelingPrefs.defaultSolver === "string" ? modelingPrefs.defaultSolver : "cvode";
 
   const expStartTime = experiment?.startTime ?? experiment?.StartTime ?? 0;
   const expStopTime = experiment?.stopTime ?? experiment?.StopTime ?? prefStopTime;

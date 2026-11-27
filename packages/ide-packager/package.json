@@ -1,0 +1,65 @@
+{
+  "name": "@modelscript/ide-packager",
+  "version": "0.1.0",
+  "description": "VS Code extension packager, workspace language discovery, manifest generator, and esbuild bundler for ModelScript",
+  "keywords": [
+    "modelscript",
+    "vscode",
+    "ide",
+    "extension",
+    "packager",
+    "esbuild"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/ide-packager"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/ci/test-runner.js --timeout=120000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/dsl": "workspace:*",
+    "esbuild": "^0.28.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.2",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "core"
+  }
+}

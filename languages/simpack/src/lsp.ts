@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { analyzeMobility } from "./kinematics/mobility.js";
 import { lintSimpackModel } from "./lints/index.js";
 import { parseSimDeck, parseSpckXml } from "./parser/index.js";
@@ -69,16 +72,65 @@ export interface LspHover {
   range?: LspRange | undefined;
 }
 
-function findLineAndCol(text: string, searchPattern: string | RegExp): LspRange {
-  const lines = text.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
+interface SimpackCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+  tokens: CstNodeLike[];
+}
+
+interface SimpackCstIndex {
+  entries: SimpackCstLine[];
+}
+
+function buildSimpackCstIndex(text: string): SimpackCstIndex {
+  const entries: SimpackCstLine[] = [];
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("simpack", import.meta.url, createWasmParserSync).parse(text)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(text, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      entries.push({ row, text: lineText, colLine, startCol, endCol, tokens });
+    }
+  } else {
+    const rawLines = text.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      entries.push({ row: i, text: trimmed, colLine: raw, startCol, endCol, tokens: [] });
+    }
+  }
+
+  return { entries };
+}
+
+function findLineAndCol(cstIndex: SimpackCstIndex, searchPattern: string | RegExp): LspRange {
+  for (const entry of cstIndex.entries) {
+    const line = entry.colLine;
     const match = typeof searchPattern === "string" ? line.indexOf(searchPattern) : line.search(searchPattern);
     if (match >= 0) {
       const len = typeof searchPattern === "string" ? searchPattern.length : 10;
       return {
-        start: { line: i, character: match },
-        end: { line: i, character: match + len },
+        start: { line: entry.row, character: match },
+        end: { line: entry.row, character: match + len },
       };
     }
   }
@@ -100,6 +152,7 @@ export function getSimpackDocumentSymbols(content: string): LspDocumentSymbol[] 
     return [];
   }
 
+  const cstIndex = buildSimpackCstIndex(content);
   const symbols: LspDocumentSymbol[] = [];
 
   // Group markers by body
@@ -112,9 +165,9 @@ export function getSimpackDocumentSymbols(content: string): LspDocumentSymbol[] 
 
   // Bodies
   for (const [id, body] of model.bodies.entries()) {
-    const range = findLineAndCol(content, id);
+    const range = findLineAndCol(cstIndex, id);
     const markerChildren: LspDocumentSymbol[] = (markersByBody.get(id) ?? []).map((m) => {
-      const mRange = findLineAndCol(content, m.id);
+      const mRange = findLineAndCol(cstIndex, m.id);
       return {
         name: m.id,
         detail: `(${m.position.x}, ${m.position.y}, ${m.position.z})`,
@@ -136,7 +189,7 @@ export function getSimpackDocumentSymbols(content: string): LspDocumentSymbol[] 
 
   // Joints
   for (const [id, joint] of model.joints.entries()) {
-    const range = findLineAndCol(content, id);
+    const range = findLineAndCol(cstIndex, id);
     symbols.push({
       name: id,
       detail: `${joint.type} [${joint.fromMarker} -> ${joint.toMarker}]`,
@@ -148,7 +201,7 @@ export function getSimpackDocumentSymbols(content: string): LspDocumentSymbol[] 
 
   // Force Elements / Springs
   for (const [id, force] of model.forces.entries()) {
-    const range = findLineAndCol(content, id);
+    const range = findLineAndCol(cstIndex, id);
     symbols.push({
       name: id,
       detail: `${force.type} kz=${force.stiffness.z} N/m, cz=${force.damping.z} Ns/m`,
@@ -161,22 +214,41 @@ export function getSimpackDocumentSymbols(content: string): LspDocumentSymbol[] 
   return symbols;
 }
 
+function extractWordAtOffset(content: string, offset: number): string {
+  const cstIndex = buildSimpackCstIndex(content);
+  for (const entry of cstIndex.entries) {
+    for (const tok of entry.tokens) {
+      if (
+        typeof tok.startIndex === "number" &&
+        typeof tok.endIndex === "number" &&
+        offset >= tok.startIndex &&
+        offset <= tok.endIndex
+      ) {
+        const tokText = tok.text ?? content.slice(tok.startIndex, tok.endIndex);
+        const rel = offset - tok.startIndex;
+        let s = rel;
+        while (s > 0 && /[A-Za-z0-9_:-]/.test(tokText[s - 1] ?? "")) s--;
+        let e = rel;
+        while (e < tokText.length && /[A-Za-z0-9_:-]/.test(tokText[e] ?? "")) e++;
+        const candidate = tokText.slice(s, e).trim();
+        if (candidate) return candidate;
+      }
+    }
+  }
+  let start = offset;
+  while (start > 0 && /[A-Za-z0-9_:-]/.test(content[start - 1]!)) start--;
+  let end = offset;
+  while (end < content.length && /[A-Za-z0-9_:-]/.test(content[end]!)) end++;
+  return content.slice(start, end).trim();
+}
+
 /**
  * Evaluates Markdown Hover documentation for identifiers in SIMPACK models.
  */
 export function getSimpackHover(content: string, offset: number): LspHover | null {
   if (offset < 0 || offset >= content.length) return null;
 
-  // Extract word at offset
-  let start = offset;
-  while (start > 0 && /[A-Za-z0-9_:-]/.test(content[start - 1]!)) {
-    start--;
-  }
-  let end = offset;
-  while (end < content.length && /[A-Za-z0-9_:-]/.test(content[end]!)) {
-    end++;
-  }
-  const word = content.slice(start, end).trim();
+  const word = extractWordAtOffset(content, offset);
   if (!word) return null;
 
   const isXml = content.trimStart().startsWith("<");
@@ -280,12 +352,13 @@ export function validateSimpack(content: string): LspDiagnostic[] {
     ];
   }
 
+  const cstIndex = buildSimpackCstIndex(content);
   const diags = lintSimpackModel(model);
   return diags.map((d) => {
     const match = d.message.match(/'([^']+)'/);
     const identifier = match ? match[1]! : "";
     const range = identifier
-      ? findLineAndCol(content, identifier)
+      ? findLineAndCol(cstIndex, identifier)
       : {
           start: { line: 0, character: 0 },
           end: { line: 0, character: 1 },

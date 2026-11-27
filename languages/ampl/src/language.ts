@@ -4,7 +4,7 @@
  * @modelscript/ampl — AMPL Language Definition and Action Handlers.
  */
 
-import { cardDeckRules, language, type ActionExecutionContext } from "@modelscript/dsl";
+import { cardDeckRules, language, semanticToken, type ActionExecutionContext } from "@modelscript/dsl";
 import { registerBuiltInAmplLibrarySync } from "./catalog/library-package-adapter.js";
 import { lowerAmplToDae } from "./dae/index.js";
 import { canIndexAmpl, indexAmplDocument } from "./indexing.js";
@@ -31,6 +31,8 @@ export const amplLanguage = language({
   },
   lsp: {
     fileExtensions: [".mod", ".dat", ".run", ".ampl", ".mps"],
+    folding: ["Document"],
+    outline: ["Document"],
   },
   ui: {
     panels: [
@@ -259,7 +261,13 @@ export const amplLanguage = language({
     },
   ],
   extras: () => [/[ \t\r\n]+/],
-  rules: cardDeckRules,
+  rules: {
+    ...cardDeckRules,
+    DeckNumber: () => semanticToken("number", /[-+]?[0-9]*\.?[0-9]+([eEdD][-+]?[0-9]+)?/),
+    DeckString: () => semanticToken("string", /'[^']*'|"[^"]*"/),
+    DeckIdentifier: () => semanticToken("variable", /[A-Za-z_@!$][A-Za-z0-9_@!$.-]*/),
+    DeckPunct: () => semanticToken("operator", /[,:;()[\]{}=+*<>~#%&$^|\\/?-]+/),
+  },
 });
 
 export default amplLanguage;

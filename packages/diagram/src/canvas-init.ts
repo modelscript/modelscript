@@ -40,7 +40,7 @@ import { ensureDiagramStyles, isEphemeralDiagramNode } from "./drop-placeholder.
 import { isGraphLayoutEditable } from "./graph-state.js";
 import { groupSelectedNodesOnGraph, ungroupSelectedNodesOnGraph, type GroupableGraphLike } from "./group-actions.js";
 import { destroyMinimapHud, ensureMinimapHud, updateMinimapHud } from "./minimap.js";
-import { evaluateModelScriptPortCompatibility } from "./port-compatibility.js";
+import { evaluateModelScriptPortCompatibility, type DiagramPortSignature } from "./port-compatibility.js";
 import {
   alignNodeSelectionBox,
   getEdgeToolConfig,
@@ -262,12 +262,35 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
         const tgtPortMeta = tPort ? targetCell.getPort?.(tPort) : undefined;
 
         const graphOpts = getOptionsForGraph(g);
+        const srcPortSig =
+          srcPortMeta?.["portSignature"] && typeof srcPortMeta["portSignature"] === "object"
+            ? (srcPortMeta["portSignature"] as DiagramPortSignature)
+            : srcData["portSignature"] && typeof srcData["portSignature"] === "object"
+              ? (srcData["portSignature"] as DiagramPortSignature)
+              : undefined;
+        const tgtPortSig =
+          tgtPortMeta?.["portSignature"] && typeof tgtPortMeta["portSignature"] === "object"
+            ? (tgtPortMeta["portSignature"] as DiagramPortSignature)
+            : tgtData["portSignature"] && typeof tgtData["portSignature"] === "object"
+              ? (tgtData["portSignature"] as DiagramPortSignature)
+              : undefined;
         const compat = evaluateModelScriptPortCompatibility(
           {
             nodeId: sourceCell.id,
             portId: sPort || "out",
             connectorType:
-              typeof srcPortMeta?.["connectorType"] === "string" ? srcPortMeta["connectorType"] : undefined,
+              typeof srcPortMeta?.["connectorType"] === "string"
+                ? srcPortMeta["connectorType"]
+                : typeof srcData["connectorType"] === "string"
+                  ? srcData["connectorType"]
+                  : undefined,
+            portSignature: srcPortSig,
+            isInsideConnector:
+              typeof srcPortMeta?.["isInsideConnector"] === "boolean"
+                ? srcPortMeta["isInsideConnector"]
+                : typeof srcData["isInsideConnector"] === "boolean"
+                  ? srcData["isInsideConnector"]
+                  : srcPortSig?.isInsideConnector,
             domain: typeof srcPortMeta?.["domain"] === "string" ? srcPortMeta["domain"] : undefined,
             direction:
               typeof srcPortMeta?.["direction"] === "string"
@@ -288,7 +311,18 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
             nodeId: targetCell.id,
             portId: tPort || "in",
             connectorType:
-              typeof tgtPortMeta?.["connectorType"] === "string" ? tgtPortMeta["connectorType"] : undefined,
+              typeof tgtPortMeta?.["connectorType"] === "string"
+                ? tgtPortMeta["connectorType"]
+                : typeof tgtData["connectorType"] === "string"
+                  ? tgtData["connectorType"]
+                  : undefined,
+            portSignature: tgtPortSig,
+            isInsideConnector:
+              typeof tgtPortMeta?.["isInsideConnector"] === "boolean"
+                ? tgtPortMeta["isInsideConnector"]
+                : typeof tgtData["isInsideConnector"] === "boolean"
+                  ? tgtData["isInsideConnector"]
+                  : tgtPortSig?.isInsideConnector,
             domain: typeof tgtPortMeta?.["domain"] === "string" ? tgtPortMeta["domain"] : undefined,
             direction:
               typeof tgtPortMeta?.["direction"] === "string"
@@ -307,7 +341,18 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           },
           { allowSameNode: true, languageId: graphOpts?.language },
         );
-        if (!compat.compatible) return false;
+        const reasonKey = `${sourceCell.id}.${sPort}->${targetCell.id}.${tPort}`;
+        let reasonMap = (g as unknown as { __compatRejectionReasons?: Map<string, string> }).__compatRejectionReasons;
+        if (!reasonMap) {
+          reasonMap = new Map<string, string>();
+          (g as unknown as { __compatRejectionReasons?: Map<string, string> }).__compatRejectionReasons = reasonMap;
+        }
+        if (!compat.compatible) {
+          if (compat.reason) reasonMap.set(reasonKey, compat.reason);
+          else reasonMap.delete(reasonKey);
+          return false;
+        }
+        reasonMap.delete(reasonKey);
 
         // Consult LSP-backed validator if provided (sync or cached async)
         const lspValidator = graphOpts?.onValidateConnection;
@@ -349,6 +394,23 @@ export function initGraph(isDark: boolean, targetContainer?: HTMLElement): Graph
           }
         }
         return true;
+      },
+      getConnectionRejectionReason: (
+        args: {
+          sourceCell?: { id: string } | null | undefined;
+          targetCell?: { id: string } | null | undefined;
+          sourceMagnet?: Element | null | undefined;
+          targetMagnet?: Element | null | undefined;
+          sourcePort?: string | null | undefined;
+          targetPort?: string | null | undefined;
+        } = {},
+      ) => {
+        const { sourceCell, targetCell, sourceMagnet, targetMagnet, sourcePort, targetPort } = args;
+        if (!sourceCell || !targetCell) return null;
+        const sPort = sourcePort ?? sourceMagnet?.getAttribute("port") ?? sourceMagnet?.getAttribute("port-id") ?? "";
+        const tPort = targetPort ?? targetMagnet?.getAttribute("port") ?? targetMagnet?.getAttribute("port-id") ?? "";
+        const reasonMap = (g as unknown as { __compatRejectionReasons?: Map<string, string> }).__compatRejectionReasons;
+        return reasonMap?.get(`${sourceCell.id}.${sPort}->${targetCell.id}.${tPort}`) ?? null;
       },
       validateEdge: () => true,
       createEdge: (): ReturnType<Graph["createEdge"]> => {

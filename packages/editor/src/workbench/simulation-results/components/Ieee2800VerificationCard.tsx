@@ -24,7 +24,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import styled from "styled-components";
+import {
+  ActionBtn,
+  ActionButtons,
+  CardContainer,
+  type ComplianceTone,
+  ExpandableHeader,
+  ExpandableRow,
+  HeaderRow,
+  StatusPill,
+  TitleGroup,
+} from "./ComplianceCardPrimitives";
 
 export interface Ieee2800VerificationCardProps {
   report?: Ieee2800ComplianceReport | null | undefined;
@@ -34,193 +44,23 @@ export interface Ieee2800VerificationCardProps {
   colorMode?: "light" | "dark" | undefined;
 }
 
-const CardContainer = styled.div<{ $isDark: boolean }>`
-  border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
-  border-radius: 10px;
-  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  font-family: inherit;
-  margin-top: 8px;
-`;
+const statusToTone = (status: "PASS" | "FAIL" | "WARN"): ComplianceTone =>
+  status === "PASS" ? "success" : status === "FAIL" ? "danger" : "warning";
 
-const HeaderRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-`;
-
-const TitleGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const Badge = styled.span<{ $status: "PASS" | "FAIL" | "WARN" }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: #ffffff;
-  background: ${(p) =>
-    p.$status === "PASS"
-      ? "var(--color-success-emphasis, #238636)"
-      : p.$status === "FAIL"
-        ? "var(--color-danger-emphasis, #da3633)"
-        : "var(--color-attention-emphasis, #9a6700)"};
-`;
-
-const ActionButtons = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const ActionBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--color-border-default, #30363d);
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  color: var(--color-fg-default, #c9d1d9);
-  cursor: pointer;
-  transition: background 0.15s ease;
-
-  &:hover {
-    background: var(--color-canvas-subtle, #21262d);
-  }
-`;
-
-const ClauseGrid = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-`;
-
-const ClauseRow = styled.div<{ $status: "PASS" | "FAIL" | "WARN"; $expanded: boolean }>`
-  display: flex;
-  flex-direction: column;
-  border: 1px solid
-    ${(p) =>
-      p.$status === "FAIL" ? "rgba(218, 54, 51, 0.4)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.08))"};
-  border-radius: 6px;
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  overflow: hidden;
-  transition: border-color 0.15s ease;
-`;
-
-const ClauseSummaryBar = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  cursor: pointer;
-  user-select: none;
-  font-size: 13px;
-
-  &:hover {
-    background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.03));
-  }
-`;
-
-const ClauseInfo = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
-`;
-
-const ClauseNumber = styled.span`
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--fgColor-accent, var(--ms-brand));
-  background: var(--ms-brand-soft);
-  padding: 2px 6px;
-  border-radius: 4px;
-`;
-
-const ClauseTitle = styled.span`
-  font-weight: 600;
-  color: var(--color-fg-default, #c9d1d9);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const MetricComparison = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
-  margin-right: 12px;
-`;
-
-const ClauseDetailBox = styled.div`
-  padding: 10px 14px;
-  font-size: 12px;
-  color: var(--color-fg-muted, #8b949e);
-  border-top: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.06));
-  background: var(--color-canvas-subtle, rgba(0, 0, 0, 0.15));
-  line-height: 1.5;
-`;
-
-const ChartBox = styled.div`
-  margin-top: 6px;
-  border: 1px solid var(--color-border-default, #30363d);
-  border-radius: 8px;
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
-
-const ChartTitle = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-fg-default, #c9d1d9);
-`;
-
-const ChartLegend = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 11px;
-  color: var(--color-fg-muted, #8b949e);
-`;
-
-const LegendItem = styled.div<{ $color: string }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  &::before {
-    content: "";
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
-    background: ${(p) => p.$color};
-  }
-`;
+const ChartLegendItem: React.FC<{ color: string; children: React.ReactNode }> = ({ color, children }) => (
+  <div style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+    <span
+      style={{
+        display: "inline-block",
+        width: 10,
+        height: 10,
+        borderRadius: 2,
+        background: color,
+      }}
+    />
+    {children}
+  </div>
+);
 
 export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> = ({
   report,
@@ -276,7 +116,7 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
 
   if (!activeReport) {
     return (
-      <CardContainer $isDark={isDark} data-testid="ieee2800-verification-card">
+      <CardContainer isDark={isDark} data-testid="ieee2800-verification-card">
         <HeaderRow>
           <TitleGroup>
             <ShieldCheckIcon size={20} fill={isDark ? "#8b949e" : "#57606a"} />
@@ -291,7 +131,7 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
           </TitleGroup>
           {onClose && (
             <ActionButtons>
-              <ActionBtn type="button" onClick={onClose} title="Dismiss Verification Card">
+              <ActionBtn isDark={isDark} onClick={onClose} title="Dismiss Verification Card">
                 <XIcon size={14} />
               </ActionBtn>
             </ActionButtons>
@@ -338,7 +178,7 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
   };
 
   return (
-    <CardContainer $isDark={isDark} data-testid="ieee2800-verification-card">
+    <CardContainer isDark={isDark} data-testid="ieee2800-verification-card">
       <HeaderRow>
         <TitleGroup>
           <ShieldCheckIcon size={20} fill={activeReport.overallStatus === "PASS" ? "#3fb950" : "#f85149"} />
@@ -350,21 +190,21 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
               {activeReport.projectName} · Evaluated: {new Date(activeReport.evaluatedAt).toLocaleTimeString()}
             </div>
           </div>
-          <Badge $status={activeReport.overallStatus}>
+          <StatusPill tone={statusToTone(activeReport.overallStatus)}>
             {activeReport.overallStatus === "PASS" ? <CheckIcon size={14} /> : <XIcon size={14} />}
             {activeReport.overallStatus}
-          </Badge>
+          </StatusPill>
         </TitleGroup>
 
         <ActionButtons>
-          <ActionBtn type="button" onClick={handleExport} title="Download JSON Compliance Report">
+          <ActionBtn isDark={isDark} onClick={handleExport} title="Download JSON Compliance Report">
             <DownloadIcon size={14} /> Export JSON
           </ActionBtn>
-          <ActionBtn type="button" onClick={handleExportHtml} title="Download Standalone HTML Compliance Report">
+          <ActionBtn isDark={isDark} onClick={handleExportHtml} title="Download Standalone HTML Compliance Report">
             <DownloadIcon size={14} /> Export HTML
           </ActionBtn>
           {onClose && (
-            <ActionBtn type="button" onClick={onClose} title="Dismiss Verification Card">
+            <ActionBtn isDark={isDark} onClick={onClose} title="Dismiss Verification Card">
               <XIcon size={14} />
             </ActionBtn>
           )}
@@ -372,14 +212,42 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
       </HeaderRow>
 
       {/* Ride-Through Envelope Plot */}
-      <ChartBox>
-        <ChartTitle>
+      <div
+        style={{
+          marginTop: 6,
+          border: `1px solid var(--ms-border, var(--color-border-default, ${isDark ? "#30363d" : "#d0d7de"}))`,
+          borderRadius: 8,
+          background: "var(--ms-bg-elv, var(--bgColor-muted, #1e1e22))",
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--ms-text, var(--color-fg-default, #c9d1d9))",
+          }}
+        >
           <span>Clause 7.2.2.1 Voltage Ride-Through (VRT) Trajectory vs Mandatory No-Trip Limit</span>
-          <ChartLegend>
-            <LegendItem $color="#58a6ff">POI Voltage (V1)</LegendItem>
-            <LegendItem $color="#f85149">NERC No-Trip Boundary</LegendItem>
-          </ChartLegend>
-        </ChartTitle>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 14,
+              fontSize: 11,
+              color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
+            }}
+          >
+            <ChartLegendItem color="#58a6ff">POI Voltage (V1)</ChartLegendItem>
+            <ChartLegendItem color="#f85149">NERC No-Trip Boundary</ChartLegendItem>
+          </div>
+        </div>
         <div style={{ width: "100%", height: 160 }}>
           <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 600, height: 160 }}>
             <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
@@ -420,27 +288,62 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </ChartBox>
+      </div>
 
       {/* Clause Breakdown Table */}
-      <ClauseGrid>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {activeReport.checks.map((chk) => {
           const isExpanded = expandedClauses.has(chk.clause);
           return (
-            <ClauseRow key={chk.clause} $status={chk.status} $expanded={isExpanded}>
-              <ClauseSummaryBar onClick={() => toggleClause(chk.clause)}>
-                <ClauseInfo>
-                  <ClauseNumber>Clause {chk.clause}</ClauseNumber>
-                  <ClauseTitle>{chk.title}</ClauseTitle>
-                </ClauseInfo>
-                <MetricComparison>
+            <ExpandableRow key={chk.clause} status={chk.status}>
+              <ExpandableHeader
+                onClick={() => toggleClause(chk.clause)}
+                style={{ padding: "8px 12px", fontSize: 13 }}
+                hoverBackground="var(--ms-bg-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.03)))"
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--ms-font-mono, var(--font-mono, monospace))",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "var(--ms-brand, var(--fgColor-accent, #58a6ff))",
+                      background: "var(--ms-brand-soft, rgba(88, 166, 255, 0.12))",
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                    }}
+                  >
+                    Clause {chk.clause}
+                  </span>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: "var(--ms-text, var(--color-fg-default, #c9d1d9))",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {chk.title}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 16,
+                    fontSize: 12,
+                    color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
+                    marginRight: 12,
+                  }}
+                >
                   <span>
                     Measured: <strong style={{ color: isDark ? "#ffffff" : "#24292f" }}>{chk.measuredValue}</strong>
                   </span>
                   <span>Limit: {chk.requiredLimit}</span>
-                </MetricComparison>
+                </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Badge $status={chk.status}>
+                  <StatusPill tone={statusToTone(chk.status)}>
                     {chk.status === "PASS" ? (
                       <CheckCircleFillIcon size={12} />
                     ) : chk.status === "FAIL" ? (
@@ -449,15 +352,29 @@ export const Ieee2800VerificationCard: React.FC<Ieee2800VerificationCardProps> =
                       <AlertIcon size={12} />
                     )}
                     {chk.status}
-                  </Badge>
+                  </StatusPill>
                   {isExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
                 </div>
-              </ClauseSummaryBar>
-              {isExpanded && <ClauseDetailBox>{chk.details}</ClauseDetailBox>}
-            </ClauseRow>
+              </ExpandableHeader>
+              {isExpanded && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    fontSize: 12,
+                    color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
+                    borderTop:
+                      "1px solid var(--ms-border-subtle, var(--color-border-subtle, rgba(255, 255, 255, 0.06)))",
+                    background: "var(--ms-bg-subtle, var(--color-canvas-subtle, rgba(0, 0, 0, 0.15)))",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {chk.details}
+                </div>
+              )}
+            </ExpandableRow>
           );
         })}
-      </ClauseGrid>
+      </div>
     </CardContainer>
   );
 };

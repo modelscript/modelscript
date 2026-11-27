@@ -14,6 +14,7 @@ import type {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../theme";
 import { usePageTitle } from "../util/title";
 
 interface FormalCert {
@@ -55,8 +56,8 @@ const PageRoot = styled.div`
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  background: var(--ms-bg-canvas, #0d1117);
-  color: var(--ms-text-1, #e6edf3);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
   overflow: hidden;
 `;
 
@@ -67,8 +68,8 @@ const TopBar = styled.header`
   justify-content: space-between;
   gap: 12px;
   padding: 12px 18px;
-  border-bottom: 1px solid var(--ms-border-default, #30363d);
-  background: var(--ms-surface-panel, #161b22);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
 `;
 
 const SplitGrid = styled.div<{ $columns: number }>`
@@ -77,14 +78,14 @@ const SplitGrid = styled.div<{ $columns: number }>`
   display: grid;
   grid-template-columns: repeat(${(p) => p.$columns}, minmax(0, 1fr));
   gap: 1px;
-  background: var(--ms-border-default, #30363d);
+  background: var(--color-border);
 `;
 
 const Pane = styled.section`
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--ms-bg-canvas, #0d1117);
+  background: var(--color-bg-primary);
 `;
 
 const PaneHeader = styled.div`
@@ -93,8 +94,9 @@ const PaneHeader = styled.div`
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--ms-border-default, #30363d);
-  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-heading);
   font-size: 12px;
 `;
 
@@ -105,20 +107,20 @@ const QuickTokenPillBar = styled.div`
   justify-content: space-between;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(56, 189, 248, 0.4);
-  background: rgba(56, 189, 248, 0.1);
-  color: #e0f2fe;
+  border-bottom: 1px solid var(--color-accent-blue-border);
+  background: var(--ms-brand-soft);
+  color: var(--color-text-heading);
   font-size: 12px;
 `;
 
 const GateBadge = styled.span<{ $pass: boolean }>`
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 2px 6px;
   border-radius: 6px;
-  background: ${(p) => (p.$pass ? "rgba(52, 211, 153, 0.14)" : "rgba(248, 113, 113, 0.16)")};
-  color: ${(p) => (p.$pass ? "#34d399" : "#f87171")};
-  border: 1px solid ${(p) => (p.$pass ? "rgba(52, 211, 153, 0.4)" : "rgba(248, 113, 113, 0.45)")};
+  background: ${(p) => (p.$pass ? "var(--status-verified-bg)" : "var(--status-danger-bg)")};
+  color: ${(p) => (p.$pass ? "var(--status-verified-fg)" : "var(--status-danger-fg)")};
+  border: 1px solid ${(p) => (p.$pass ? "var(--status-verified-border)" : "var(--status-danger-border)")};
 `;
 
 const FooterBar = styled.footer`
@@ -128,8 +130,8 @@ const FooterBar = styled.footer`
   justify-content: space-between;
   gap: 12px;
   padding: 10px 18px;
-  border-top: 1px solid var(--ms-border-default, #30363d);
-  background: var(--ms-surface-panel, #161b22);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
 `;
 
 const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean }>`
@@ -138,14 +140,11 @@ const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean }>`
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid ${(p) => (p.$active || p.$primary ? "#38bdf8" : "var(--ms-border, #30363d)")};
+  border: 1px solid ${(p) => (p.$active || p.$primary ? "var(--ms-brand)" : "var(--color-border-default)")};
   background: ${(p) =>
-    p.$primary
-      ? "linear-gradient(135deg, #0284c7, #6366f1)"
-      : p.$active
-        ? "rgba(56, 189, 248, 0.18)"
-        : "var(--ms-bg-elevated, #21262d)"};
-  color: #f8fafc;
+    p.$primary ? "var(--ms-brand)" : p.$active ? "var(--ms-brand-soft)" : "var(--color-bg-surface)"};
+  color: ${(p) =>
+    p.$primary ? "var(--ms-brand-contrast, #ffffff)" : p.$active ? "var(--ms-brand)" : "var(--color-text-primary)"};
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -242,6 +241,8 @@ function renderGateBadges(cert: FormalCert | null) {
 }
 
 export const RlhfAnnotatorPage: React.FC = () => {
+  const { theme } = useTheme();
+  const editorColorMode = theme === "dark" ? "dark" : "light";
   const { challengeId } = useParams<{ challengeId: string }>();
   const [challenge, setChallenge] = useState<ChallengeDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -471,6 +472,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
                 <AnsatzEditor
                   dataUrl={null}
                   embed
+                  colorMode={editorColorMode}
                   initialCode={cand.code}
                   initialDialect={cand.dialect}
                   cameraSyncGroup={syncCameras ? `rlhf-${challenge.id}` : undefined}
@@ -493,6 +495,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
               <AnsatzEditor
                 dataUrl={null}
                 embed
+                colorMode={editorColorMode}
                 initialCode={fixCode}
                 initialDialect={challenge.dialect}
                 onCodeChange={setFixCode}
@@ -572,7 +575,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
                 uri={`rlhf://challenge/${challenge.id}/source.${challenge.dialect}`}
                 languageId={challenge.dialect}
                 setEditor={() => {}}
-                theme="vs-dark"
+                theme={editorColorMode === "dark" ? "vs-dark" : "light"}
                 embed={false}
                 readOnly
                 showHypergraphOverlay
@@ -664,9 +667,9 @@ export const RlhfAnnotatorPage: React.FC = () => {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional engineering note…"
             style={{
-              background: "var(--ms-bg-canvas, #0d1117)",
-              color: "var(--ms-text-1, #e6edf3)",
-              border: "1px solid var(--ms-border, #30363d)",
+              background: "var(--color-canvas-inset)",
+              color: "var(--color-text-primary)",
+              border: "1px solid var(--color-border-default)",
               borderRadius: 6,
               padding: "6px 10px",
               fontSize: 12,

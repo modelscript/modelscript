@@ -9,8 +9,8 @@
  * `evaluateRuleBackward`) and `@modelscript/dsl` lossless XML CST splicing.
  */
 
-import { xml } from "@modelscript/dsl";
-import type { Splice, XmlElement } from "@modelscript/dsl/xml";
+import { CstDocumentSession, CstTransaction, CstXmlAdapter } from "@modelscript/dsl/unparser";
+import { getXmlWasmParser } from "@modelscript/dsl/xml";
 import { PolyglotTransformer } from "@modelscript/runtime";
 import { parseMdl, serializeMdl } from "../parser/mdl-parser.js";
 import { parseSlxXml } from "../parser/slx-xml-parser.js";
@@ -19,13 +19,6 @@ import type { SimulinkBlock, SimulinkModel } from "../types.js";
 import { parseModelicaBlocks } from "./modelica-parser.js";
 import { simulinkPolyglotConfig, simulinkTggRules } from "./simulink-rules.js";
 import type { ReconciledChange, SyncOptions, SyncResult } from "./types.js";
-
-function findXmlElements(el: XmlElement | null, tagName: string, out: XmlElement[] = []): XmlElement[] {
-  if (!el) return out;
-  if (el.name.toUpperCase() === tagName.toUpperCase()) out.push(el);
-  for (const c of el.children) findXmlElements(c, tagName, out);
-  return out;
-}
 
 /**
  * Projects a Simulink (.mdl or .slx XML) model to Modelica 3.x using declarative TGG rules
@@ -494,84 +487,89 @@ function formatFloatVecElem(n: number): string {
 }
 
 /**
- * Applies surgical XML CST splices (`@modelscript/dsl/xml`) to `<System>` SLX XML,
+ * Applies surgical XML CST transactions (`@modelscript/dsl/unparser`) to `<System>` SLX XML,
  * preserving XML comments, unmapped `<P>` tags, `SID` attributes, and formatting.
  */
 function patchSlxXmlViaCst(originalXml: string, model: SimulinkModel): string {
-  const xmlDoc = xml.parseXml(originalXml);
-  if (!xmlDoc.root) {
-    return serializeSlxXmlFallback(model);
+  let parser: unknown = null;
+  try {
+    parser = getXmlWasmParser();
+  } catch {
+    parser = null;
   }
+  const session = new CstDocumentSession({
+    uri: "file:///simulink-tgg.xml",
+    text: originalXml,
+    parser: parser as never,
+    xmlFallback: true,
+  });
+  try {
+    const root = session.rootNode;
+    if (!root) return serializeSlxXmlFallback(model);
+    const tx = new CstTransaction(session);
+    const sysEl = CstXmlAdapter.findElements(root, originalXml, (_n, t) => t.toUpperCase() === "SYSTEM")[0] ?? null;
 
-  const splices: Splice[] = [];
-  const sysEl = xmlDoc.root.name.toUpperCase() === "SYSTEM" ? xmlDoc.root : findXmlElements(xmlDoc.root, "System")[0];
-
-  if (sysEl && model.name && model.name !== "SimulinkModel") {
-    const nameAttr = sysEl.attributes.find((a) => a.name === "Name");
-    if (nameAttr && nameAttr.value !== model.name) {
-      splices.push(xml.setAttributeSplice(sysEl, "Name", model.name, originalXml));
+    if (sysEl && model.name && model.name !== "SimulinkModel") {
+      const nameAttr = CstXmlAdapter.getAttribute(sysEl, "Name", originalXml, false);
+      if (nameAttr && nameAttr.value !== model.name) {
+        CstXmlAdapter.setAttribute(tx, sysEl, "Name", model.name);
+      }
     }
-  }
 
-  const blockEls = findXmlElements(xmlDoc.root, "Block");
-  const matchedBlockNames = new Set<string>();
+    const blockEls = CstXmlAdapter.findElements(root, originalXml, (_n, t) => t.toUpperCase() === "BLOCK");
+    for (const block of model.rootSystem.blocks.values()) {
+      const blockEl = blockEls.find(
+        (el) =>
+          CstXmlAdapter.getAttribute(el, "SID", originalXml, false)?.value === block.id ||
+          CstXmlAdapter.getAttribute(el, "Name", originalXml, false)?.value === block.name,
+      );
 
-  for (const block of model.rootSystem.blocks.values()) {
-    const blockEl = blockEls.find(
-      (el) =>
-        el.attributes.find((a) => a.name === "SID")?.value === block.id ||
-        el.attributes.find((a) => a.name === "Name")?.value === block.name,
-    );
-
-    if (blockEl) {
-      matchedBlockNames.add(block.name);
-      const nameAttr = blockEl.attributes.find((a) => a.name === "Name");
-      if (nameAttr && nameAttr.value !== block.name) {
-        splices.push(xml.setAttributeSplice(blockEl, "Name", block.name, originalXml));
-      }
-
-      const pEls = blockEl.children.filter((c) => c.name === "P");
-      for (const [k, v] of block.parameters) {
-        let formatted = String(v);
-        if (k === "Gain" && typeof v === "number" && Number.isInteger(v)) {
-          formatted = `${v}.0`;
+      if (blockEl) {
+        const nameAttr = CstXmlAdapter.getAttribute(blockEl, "Name", originalXml, false);
+        if (nameAttr && nameAttr.value !== block.name) {
+          CstXmlAdapter.setAttribute(tx, blockEl, "Name", block.name);
         }
-        const pEl = pEls.find((p) => p.attributes.find((a) => a.name === "Name")?.value === k);
-        if (pEl && !pEl.selfClosing) {
-          if (pEl.text !== formatted) {
-            splices.push(xml.setElementTextSplice(pEl, formatted));
-          }
-        } else if (!blockEl.selfClosing) {
-          splices.push(xml.appendChildSplice(blockEl, `<P Name="${k}">${formatted}</P>`, originalXml));
-        }
-      }
-    } else if (sysEl && !sysEl.selfClosing) {
-      matchedBlockNames.add(block.name);
-      const sidAttr = block.id && block.id !== block.name ? ` SID="${block.id}"` : "";
-      if (block.parameters.size === 0) {
-        splices.push(
-          xml.appendChildSplice(
-            sysEl,
-            `<Block BlockType="${block.type}" Name="${block.name}"${sidAttr}/>`,
-            originalXml,
-          ),
+
+        const pEls = CstXmlAdapter.getChildElements(blockEl).filter(
+          (c) => CstXmlAdapter.getTagName(c, originalXml) === "P",
         );
-      } else {
-        const paramLines: string[] = [];
         for (const [k, v] of block.parameters) {
           let formatted = String(v);
           if (k === "Gain" && typeof v === "number" && Number.isInteger(v)) {
             formatted = `${v}.0`;
           }
-          paramLines.push(`    <P Name="${k}">${formatted}</P>`);
+          const pEl = pEls.find((p) => CstXmlAdapter.getAttribute(p, "Name", originalXml, false)?.value === k);
+          if (pEl && !CstXmlAdapter.isSelfClosing(pEl, originalXml)) {
+            if (CstXmlAdapter.getElementText(pEl, originalXml) !== formatted) {
+              CstXmlAdapter.setElementText(tx, pEl, formatted);
+            }
+          } else {
+            CstXmlAdapter.appendChild(tx, blockEl, `<P Name="${k}">${formatted}</P>`);
+          }
         }
-        const blockXml = `<Block BlockType="${block.type}" Name="${block.name}"${sidAttr}>\n${paramLines.join("\n")}\n  </Block>`;
-        splices.push(xml.appendChildSplice(sysEl, blockXml, originalXml));
+      } else if (sysEl) {
+        const sidAttr = block.id && block.id !== block.name ? ` SID="${block.id}"` : "";
+        if (block.parameters.size === 0) {
+          CstXmlAdapter.appendChild(tx, sysEl, `<Block BlockType="${block.type}" Name="${block.name}"${sidAttr}/>`);
+        } else {
+          const paramLines: string[] = [];
+          for (const [k, v] of block.parameters) {
+            let formatted = String(v);
+            if (k === "Gain" && typeof v === "number" && Number.isInteger(v)) {
+              formatted = `${v}.0`;
+            }
+            paramLines.push(`    <P Name="${k}">${formatted}</P>`);
+          }
+          const blockXml = `<Block BlockType="${block.type}" Name="${block.name}"${sidAttr}>\n${paramLines.join("\n")}\n  </Block>`;
+          CstXmlAdapter.appendChild(tx, sysEl, blockXml);
+        }
       }
     }
-  }
 
-  return xml.applySplices(originalXml, splices);
+    return tx.commit().applyToString(originalXml);
+  } finally {
+    session.dispose();
+  }
 }
 
 function serializeSlxXmlFallback(model: SimulinkModel): string {

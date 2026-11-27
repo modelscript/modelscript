@@ -36,7 +36,8 @@ export function CustomInspectionTooltip({
       if (entry.baseline === undefined) entry.baseline = item.value;
     } else {
       entry.current = item.value;
-      if (item.color || item.stroke) entry.color = item.color || item.stroke;
+      const resolvedColor = item.color || item.stroke;
+      if (resolvedColor) entry.color = resolvedColor;
     }
   }
 

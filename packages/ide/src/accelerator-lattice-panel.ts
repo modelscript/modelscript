@@ -20,6 +20,7 @@ import {
 } from "@modelscript/diagram/accelerator-lattice";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -176,10 +177,14 @@ export class AcceleratorLatticePanel extends BaseWebviewPanel {
       if (pt.envelopeY > maxSigmaY) maxSigmaY = pt.envelopeY;
     }
 
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <style>
     body {
       margin: 0;
@@ -363,7 +368,7 @@ export class AcceleratorLatticePanel extends BaseWebviewPanel {
     ${diagsHtml}
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     ['checkBeta', 'checkDispersion', 'checkEnvelope', 'checkAperture', 'checkBadges'].forEach(id => {

@@ -1605,7 +1605,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is InstanceStmtNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const ConnectStmt: {

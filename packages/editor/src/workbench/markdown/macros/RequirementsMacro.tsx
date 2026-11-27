@@ -1,57 +1,53 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import styled from "styled-components";
+import React from "react";
 
 interface RequirementsMacroProps {
   target?: string | undefined;
 }
 
-const Box = styled.div`
-  margin: 8px 0;
-  padding: 16px;
-  border: 1px solid var(--ms-border);
-  border-radius: 10px;
-  background: var(--ms-bg-alt);
-  font-size: 14px;
-
-  h4 {
-    margin: 0 0 8px;
-    font-weight: 600;
-  }
-  table {
-    width: 100%;
-    text-align: left;
-    border-collapse: collapse;
-  }
-  th {
-    padding: 4px 8px;
-    border-bottom: 1px solid var(--ms-divider);
-  }
-  td {
-    padding: 4px 8px;
-    color: var(--ms-text-2);
-    font-style: italic;
-  }
-`;
+const thStyle: React.CSSProperties = {
+  padding: "4px 8px",
+  borderBottom: "1px solid var(--ms-divider)",
+};
 
 export function RequirementsMacro(props: RequirementsMacroProps) {
   return (
-    <Box className="requirements-macro">
-      <h4>Requirements: {props.target || "All"}</h4>
-      <table>
+    <div
+      className="requirements-macro"
+      style={{
+        margin: "8px 0",
+        padding: "16px",
+        border: "1px solid var(--ms-border)",
+        borderRadius: "10px",
+        background: "var(--ms-bg-alt)",
+        fontSize: "14px",
+      }}
+    >
+      <h4 style={{ margin: "0 0 8px", fontWeight: 600 }}>Requirements: {props.target || "All"}</h4>
+      <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Text</th>
-            <th>Status</th>
+            <th style={thStyle}>ID</th>
+            <th style={thStyle}>Text</th>
+            <th style={thStyle}>Status</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td colSpan={3}>Verification data will be populated by the backend...</td>
+            <td
+              colSpan={3}
+              style={{
+                padding: "4px 8px",
+                color: "var(--ms-text-2)",
+                fontStyle: "italic",
+              }}
+            >
+              Verification data will be populated by the backend...
+            </td>
           </tr>
         </tbody>
       </table>
-    </Box>
+    </div>
   );
 }

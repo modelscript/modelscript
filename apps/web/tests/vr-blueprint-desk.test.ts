@@ -37,7 +37,7 @@ import {
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
   rotundaReducer,
-} from "@modelscript/editor/workbench/vr-rotunda/index.js";
+} from "@modelscript/rotunda/index.js";
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
 import React from "react";

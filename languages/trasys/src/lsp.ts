@@ -8,6 +8,9 @@
  *   - Domain actions (lint, solve, to_dae, to_sinda, to_modelica, to_cad)
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { computeSurfaceArea, lowerTrasysToCadAssembly } from "./cad/index.js";
 import { trasysToDae } from "./dae/index.js";
 import { lintTrasys } from "./lints/index.js";
@@ -72,25 +75,71 @@ const DEFAULT_RANGE: LspRange = {
   end: { line: 0, character: 1 },
 };
 
+interface TrasysCstLine {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+  tokens: CstNodeLike[];
+}
+
+const ORBIT_KEYWORDS = new Set(["ORBIT", "PLANET", "ALTITUDE", "BETA", "SOLAR", "ALBEDO", "PLANETIR"]);
+const OPERATION_KEYWORDS = new Set(["FFCAL", "RKCAL", "QCAL"]);
+
+function buildTrasysCstLineMap(content: string, cstTree?: { rootNode?: unknown } | null): Map<number, TrasysCstLine> {
+  const byRow = new Map<number, TrasysCstLine>();
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("trasys", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+  if (!rootNode) return byRow;
+
+  for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+    const lineText = cstLineText(content, tokens);
+    const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+    const startCol = first?.startPosition?.column ?? 0;
+    const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+    byRow.set(row, { row, text: lineText, startCol, endCol, tokens });
+  }
+  return byRow;
+}
+
 /**
  * Validates a TRASYS deck and returns LSP diagnostics.
  */
-export function validateTrasys(content: string, _uri: string = "model.tra"): LspDiagnostic[] {
+export function validateTrasys(
+  content: string,
+  _uri: string = "model.tra",
+  cstTree?: { rootNode?: unknown } | null,
+): LspDiagnostic[] {
   try {
     const deck = parseTrasysDeck(content);
     const diags = lintTrasys(deck);
-    const lines = content.split(/\r?\n/);
+    const lineMap = buildTrasysCstLineMap(content, cstTree);
 
     return diags.map((d) => {
       const lineNum = d.line ? Math.max(0, d.line - 1) : 0;
-      const lineText = lines[lineNum] ?? "";
-      let startChar = d.column ? Math.max(0, d.column - 1) : 0;
-      let endChar = Math.max(startChar + 1, lineText.length);
-      if (!d.column && d.surfaceId) {
-        const idx = lineText.indexOf(d.surfaceId);
-        if (idx >= 0) {
-          startChar = idx;
-          endChar = idx + d.surfaceId.length;
+      const lineEntry = lineMap.get(lineNum);
+      let startChar = d.column ? Math.max(0, d.column - 1) : (lineEntry?.startCol ?? 0);
+      let endChar = Math.max(startChar + 1, lineEntry?.endCol ?? startChar + 1);
+      if (!d.column && d.surfaceId && lineEntry) {
+        const matchedTok = lineEntry.tokens.find((t) => (t.text ?? "") === d.surfaceId) as
+          (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+        if (matchedTok) {
+          startChar = matchedTok.startPosition?.column ?? startChar;
+          endChar = matchedTok.endPosition?.column ?? startChar + d.surfaceId.length;
+        } else {
+          const idx = lineEntry.text.indexOf(d.surfaceId);
+          if (idx >= 0) {
+            startChar = lineEntry.startCol + idx;
+            endChar = startChar + d.surfaceId.length;
+          }
         }
       }
 
@@ -194,14 +243,18 @@ export function getTrasysHover(
   content: string,
   position: LspPosition,
   _uri: string = "model.tra",
+  cstTree?: { rootNode?: unknown } | null,
 ): LspHover | undefined {
   try {
     const deck = parseTrasysDeck(content);
-    const lines = content.split(/\r?\n/);
-    const line = lines[position.line] ?? "";
+    const lineMap = buildTrasysCstLineMap(content, cstTree);
+    const lineEntry = lineMap.get(position.line);
+    if (!lineEntry) return undefined;
+
+    const upperTokens = lineEntry.tokens.map((t) => (t.text ?? "").trim().toUpperCase());
 
     for (const surf of deck.surfaces) {
-      if (line.includes(surf.id)) {
+      if (lineEntry.tokens.some((t) => (t.text ?? "") === surf.id) || lineEntry.text.includes(surf.id)) {
         const area = computeSurfaceArea(surf);
         const value = [
           `### TRASYS Surface \`${surf.id}\``,
@@ -215,7 +268,7 @@ export function getTrasysHover(
       }
     }
 
-    if (deck.orbit && /\b(ORBIT|PLANET|ALTITUDE|BETA|SOLAR|ALBEDO|PLANETIR)\b/i.test(line)) {
+    if (deck.orbit && upperTokens.some((tok) => ORBIT_KEYWORDS.has(tok))) {
       const o = deck.orbit;
       const value = [
         `### TRASYS Orbital Environment (\`${o.planet}\`)`,
@@ -227,9 +280,8 @@ export function getTrasysHover(
       return { contents: { kind: "markdown", value } };
     }
 
-    if (/\b(FFCAL|RKCAL|QCAL)\b/i.test(line)) {
-      const m = /\b(FFCAL|RKCAL|QCAL)\b/i.exec(line);
-      const op = (m?.[1] ?? "FFCAL").toUpperCase();
+    const op = upperTokens.find((tok) => OPERATION_KEYWORDS.has(tok));
+    if (op) {
       const desc: Record<string, string> = {
         FFCAL: "Computes diffuse radiative view factors ($F_{ij}$) between active surfaces.",
         RKCAL: "Computes Gebhart absorption factors ($B_{ij}$) and SINDA radiation conductors (`RADK`).",

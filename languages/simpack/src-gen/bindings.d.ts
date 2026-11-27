@@ -1553,7 +1553,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is JointCardNode;
     id(node: SyntaxNode | null | undefined): SyntaxNode | null;
     idList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     from(node: SyntaxNode | null | undefined): SyntaxNode | null;
     fromList(node: SyntaxNode | null | undefined): SyntaxNode[];

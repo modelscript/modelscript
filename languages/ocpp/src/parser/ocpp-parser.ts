@@ -176,110 +176,291 @@ function normalizeStation(s: RawOcppStation, defaultLine: number): ChargingStati
 }
 
 function parseDeclarativeOcpp(text: string): OcppNetwork {
-  const lines = text.split(/\r?\n/);
+  const tokens = tokenizeDeclarativeOcpp(text);
+  return parseDeclarativeOcppTokens(tokens);
+}
+
+interface OcppToken {
+  kind: "ident" | "string" | "number" | "punct";
+  value: string;
+  line: number;
+}
+
+function isOcppIdentStart(code: number): boolean {
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code === 95;
+}
+
+function isOcppIdentPart(code: number): boolean {
+  return isOcppIdentStart(code) || (code >= 48 && code <= 57) || code === 45;
+}
+
+function isOcppDigit(code: number): boolean {
+  return code >= 48 && code <= 57;
+}
+
+function tokenizeDeclarativeOcpp(text: string): OcppToken[] {
+  const tokens: OcppToken[] = [];
+  const len = text.length;
+  let i = 0;
+  let line = 1;
+
+  while (i < len) {
+    const ch = text.charCodeAt(i);
+
+    if (ch === 10) {
+      line++;
+      i++;
+      continue;
+    }
+    if (ch <= 32) {
+      i++;
+      continue;
+    }
+
+    // Comments: '#' or '//'
+    if (ch === 35 || (ch === 47 && i + 1 < len && text.charCodeAt(i + 1) === 47)) {
+      while (i < len && text.charCodeAt(i) !== 10) i++;
+      continue;
+    }
+
+    // Quoted strings
+    if (ch === 34 || ch === 39) {
+      const quote = ch;
+      const startLine = line;
+      i++;
+      let val = "";
+      while (i < len) {
+        const c = text.charCodeAt(i);
+        if (c === 92 && i + 1 < len) {
+          val += text[i + 1]!;
+          i += 2;
+          continue;
+        }
+        if (c === quote) {
+          i++;
+          break;
+        }
+        if (c === 10) line++;
+        val += text[i]!;
+        i++;
+      }
+      tokens.push({ kind: "string", value: val, line: startLine });
+      continue;
+    }
+
+    // Punctuation
+    if (ch === 123 || ch === 125 || ch === 58 || ch === 61 || ch === 44 || ch === 59) {
+      tokens.push({ kind: "punct", value: text[i]!, line });
+      i++;
+      continue;
+    }
+
+    // Numbers (including negative and scientific notation)
+    if (
+      isOcppDigit(ch) ||
+      ((ch === 45 || ch === 43) &&
+        i + 1 < len &&
+        (isOcppDigit(text.charCodeAt(i + 1)) || text.charCodeAt(i + 1) === 46))
+    ) {
+      const start = i;
+      if (ch === 45 || ch === 43) i++;
+      while (i < len && isOcppDigit(text.charCodeAt(i))) i++;
+      if (i < len && text.charCodeAt(i) === 46) {
+        i++;
+        while (i < len && isOcppDigit(text.charCodeAt(i))) i++;
+      }
+      if (i < len && (text.charCodeAt(i) === 101 || text.charCodeAt(i) === 69)) {
+        let e = i + 1;
+        if (e < len && (text.charCodeAt(e) === 43 || text.charCodeAt(e) === 45)) e++;
+        if (e < len && isOcppDigit(text.charCodeAt(e))) {
+          i = e;
+          while (i < len && isOcppDigit(text.charCodeAt(i))) i++;
+        }
+      }
+      tokens.push({ kind: "number", value: text.slice(start, i), line });
+      continue;
+    }
+
+    // Identifiers
+    if (isOcppIdentStart(ch)) {
+      const start = i;
+      i++;
+      while (i < len && isOcppIdentPart(text.charCodeAt(i))) i++;
+      tokens.push({ kind: "ident", value: text.slice(start, i), line });
+      continue;
+    }
+
+    i++;
+  }
+
+  return tokens;
+}
+
+function parseDeclarativeOcppTokens(tokens: OcppToken[]): OcppNetwork {
   const stations: ChargingStation[] = [];
+  let pos = 0;
 
-  let currentStation: ChargingStation | null = null;
-  let currentEvse: Evse | null = null;
-  let currentConnector: Connector | null = null;
-  let currentSession: ChargingSession | null = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const rawLine = lines[i]!;
-    const line = rawLine.trim();
-    if (!line || line.startsWith("//") || line.startsWith("#")) continue;
-
-    // Station header: station "ID" {
-    const stMatch = /^station\s+["']?([^"'{]+)["']?\s*\{?/.exec(line);
-    if (stMatch) {
-      currentStation = {
-        id: stMatch[1]!.trim(),
-        gridLimitKW: 150.0,
-        evses: [],
-        line: i + 1,
-      };
-      stations.push(currentStation);
-      continue;
+  const peek = (offset = 0): OcppToken | undefined => tokens[pos + offset];
+  const next = (): OcppToken | undefined => tokens[pos++];
+  const skipSeparators = (): void => {
+    while (
+      pos < tokens.length &&
+      tokens[pos]!.kind === "punct" &&
+      (tokens[pos]!.value === "," || tokens[pos]!.value === ";")
+    ) {
+      pos++;
     }
-
-    // EVSE header: evse <id> {
-    const evseMatch = /^evse\s+(\d+)\s*\{?/.exec(line);
-    if (evseMatch && currentStation) {
-      currentEvse = {
-        id: parseInt(evseMatch[1]!, 10),
-        connectors: [],
-        line: i + 1,
-      };
-      currentStation.evses.push(currentEvse);
-      continue;
+  };
+  const consumePunct = (ch: string): boolean => {
+    const t = peek();
+    if (t && t.kind === "punct" && t.value === ch) {
+      pos++;
+      return true;
     }
+    return false;
+  };
 
-    // Connector header: connector <id> {
-    const connMatch = /^connector\s+(\d+)\s*\{?/.exec(line);
-    if (connMatch && currentEvse) {
-      currentConnector = {
-        id: parseInt(connMatch[1]!, 10),
-        type: "CCS2",
-        maxPowerKW: 50.0,
-        status: "Available",
-        line: i + 1,
-      };
-      currentEvse.connectors.push(currentConnector);
-      continue;
+  const parseSessionBlock = (connector: Connector): void => {
+    const session: ChargingSession = {
+      transactionId: `TX-${connector.id}`,
+      evBatteryCapacityKWh: 80.0,
+      currentSoC: 0.2,
+      targetSoC: 0.8,
+      departureMinutes: 60,
+    };
+    connector.currentSession = session;
+    connector.status = "Charging";
+
+    consumePunct("{");
+    while (pos < tokens.length) {
+      skipSeparators();
+      if (consumePunct("}")) break;
+      const keyTok = next();
+      if (!keyTok) break;
+      if (consumePunct(":") || consumePunct("=")) {
+        const valTok = next();
+        if (valTok) {
+          const val = valTok.value;
+          if (keyTok.value === "transactionId") session.transactionId = val;
+          else if (keyTok.value === "evBatteryCapacityKWh") session.evBatteryCapacityKWh = Number.parseFloat(val);
+          else if (keyTok.value === "currentSoC") session.currentSoC = Number.parseFloat(val);
+          else if (keyTok.value === "targetSoC") session.targetSoC = Number.parseFloat(val);
+          else if (keyTok.value === "departureMinutes") session.departureMinutes = Number.parseFloat(val);
+        }
+      }
+      skipSeparators();
     }
+  };
 
-    // Current Session block: currentSession: {
-    if (line.includes("currentSession") && line.includes("{") && currentConnector) {
-      currentSession = {
-        transactionId: `TX-${currentConnector.id}`,
-        evBatteryCapacityKWh: 80.0,
-        currentSoC: 0.2,
-        targetSoC: 0.8,
-        departureMinutes: 60,
-      };
-      currentConnector.currentSession = currentSession;
-      currentConnector.status = "Charging";
-      continue;
-    }
+  const parseConnectorBlock = (evse: Evse, startLine: number): void => {
+    const idTok = peek();
+    const id = idTok && idTok.kind === "number" ? Number.parseInt(next()!.value, 10) : evse.connectors.length + 1;
+    const connector: Connector = {
+      id,
+      type: "CCS2",
+      maxPowerKW: 50.0,
+      status: "Available",
+      line: startLine,
+    };
+    evse.connectors.push(connector);
 
-    // Key-value pairs
-    const kvMatch = /^([A-Za-z0-9_]+)\s*[:=]\s*(.+)/.exec(line);
-    if (kvMatch) {
-      const key = kvMatch[1]!;
-      let val = kvMatch[2]!.replace(/[;,]/g, "").trim();
-      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.substring(1, val.length - 1);
+    consumePunct("{");
+    while (pos < tokens.length) {
+      skipSeparators();
+      if (consumePunct("}")) break;
+      const keyTok = next();
+      if (!keyTok) break;
+
+      if (keyTok.value === "currentSession") {
+        consumePunct(":");
+        consumePunct("=");
+        if (peek()?.kind === "punct" && peek()?.value === "{") {
+          parseSessionBlock(connector);
+        }
+        continue;
       }
 
-      if (currentSession) {
-        if (key === "transactionId") currentSession.transactionId = val;
-        else if (key === "evBatteryCapacityKWh") currentSession.evBatteryCapacityKWh = parseFloat(val);
-        else if (key === "currentSoC") currentSession.currentSoC = parseFloat(val);
-        else if (key === "targetSoC") currentSession.targetSoC = parseFloat(val);
-        else if (key === "departureMinutes") currentSession.departureMinutes = parseFloat(val);
-      } else if (currentConnector) {
-        if (key === "type") currentConnector.type = val;
-        else if (key === "maxPowerKW") currentConnector.maxPowerKW = parseFloat(val);
-        else if (key === "status") currentConnector.status = val as Connector["status"];
-      } else if (currentStation) {
-        if (key === "model") currentStation.model = val;
-        else if (key === "vendor") currentStation.vendor = val;
-        else if (key === "gridLimitKW") currentStation.gridLimitKW = parseFloat(val);
+      if (consumePunct(":") || consumePunct("=")) {
+        const valTok = next();
+        if (valTok) {
+          const val = valTok.value;
+          if (keyTok.value === "type") connector.type = val;
+          else if (keyTok.value === "maxPowerKW") connector.maxPowerKW = Number.parseFloat(val);
+          else if (keyTok.value === "status") connector.status = val as Connector["status"];
+        }
       }
-      continue;
+      skipSeparators();
     }
+  };
 
-    // Block closes
-    if (line === "}" || line.startsWith("}")) {
-      if (currentSession) {
-        currentSession = null;
-      } else if (currentConnector) {
-        currentConnector = null;
-      } else if (currentEvse) {
-        currentEvse = null;
-      } else if (currentStation) {
-        currentStation = null;
+  const parseEvseBlock = (station: ChargingStation, startLine: number): void => {
+    const idTok = peek();
+    const id = idTok && idTok.kind === "number" ? Number.parseInt(next()!.value, 10) : station.evses.length + 1;
+    const evse: Evse = {
+      id,
+      connectors: [],
+      line: startLine,
+    };
+    station.evses.push(evse);
+
+    consumePunct("{");
+    while (pos < tokens.length) {
+      skipSeparators();
+      if (consumePunct("}")) break;
+      const tok = next();
+      if (!tok) break;
+      if (tok.kind === "ident" && tok.value === "connector") {
+        parseConnectorBlock(evse, tok.line);
       }
+      skipSeparators();
+    }
+  };
+
+  const parseStationBlock = (startLine: number): void => {
+    const nameTok = peek();
+    const id =
+      nameTok && (nameTok.kind === "string" || nameTok.kind === "ident")
+        ? next()!.value.trim()
+        : `Station_${stations.length + 1}`;
+    const station: ChargingStation = {
+      id,
+      gridLimitKW: 150.0,
+      evses: [],
+      line: startLine,
+    };
+    stations.push(station);
+
+    consumePunct("{");
+    while (pos < tokens.length) {
+      skipSeparators();
+      if (consumePunct("}")) break;
+      const tok = next();
+      if (!tok) break;
+
+      if (tok.kind === "ident" && tok.value === "evse") {
+        parseEvseBlock(station, tok.line);
+        continue;
+      }
+
+      if (consumePunct(":") || consumePunct("=")) {
+        const valTok = next();
+        if (valTok) {
+          const val = valTok.value;
+          if (tok.value === "model") station.model = val;
+          else if (tok.value === "vendor") station.vendor = val;
+          else if (tok.value === "gridLimitKW") station.gridLimitKW = Number.parseFloat(val);
+        }
+      }
+      skipSeparators();
+    }
+  };
+
+  while (pos < tokens.length) {
+    skipSeparators();
+    const tok = next();
+    if (!tok) break;
+    if (tok.kind === "ident" && tok.value === "station") {
+      parseStationBlock(tok.line);
     }
   }
 

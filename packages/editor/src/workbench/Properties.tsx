@@ -11,7 +11,6 @@ import {
   resolveActivePropertyTabId,
   validatePropertyValue,
   type ComponentPropertyData,
-  type PropertyChoice,
   type PropertyConflict,
   type PropertyFieldConfig,
   type PropertyGroupConfig,
@@ -153,14 +152,16 @@ function CollapsibleSection({
         }}
       >
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <ChevronRightIcon
-            size={14}
+          <span
             style={{
+              display: "inline-flex",
               transform: isOpen ? "rotate(90deg)" : "rotate(0deg)",
               transition: "transform 0.18s cubic-bezier(0.2, 0, 0, 1)",
               flexShrink: 0,
             }}
-          />
+          >
+            <ChevronRightIcon size={14} />
+          </span>
           <span>{title}</span>
           {badge}
         </span>
@@ -360,7 +361,7 @@ function ParameterRow({
       lastCommittedRef.current = localValue;
       onParameterChangeRef.current?.(parameter.name, localValue);
       setIsSaving(false);
-    }, 200);
+    }, 60);
     debounceTimerRef.current = timeoutId;
 
     return () => {
@@ -503,7 +504,6 @@ function ParameterRow({
           {isBoolean ? (
             <ToggleSwitch
               size="small"
-              statusLabelPosition="hidden"
               checked={isChecked}
               aria-labelledby={`param-label-${parameter.name}`}
               onClick={() => {
@@ -695,9 +695,10 @@ function SchemaFieldRow({
   }, [currentValue, field.defaultValue]);
 
   const validationErr = validatePropertyValue(field, localVal, contextValues);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (field.kind === "boolean") return;
+    if (field.kind === "boolean" || field.kind === "choice" || field.kind === "color") return;
     if (localVal === "-" || localVal === lastCommittedRef.current || validationErr) {
       setIsSaving(false);
       return;
@@ -705,11 +706,18 @@ function SchemaFieldRow({
 
     setIsSaving(true);
     const timeout = setTimeout(() => {
+      debounceTimerRef.current = null;
       lastCommittedRef.current = localVal;
       onParameterChangeRef.current?.(field.key, localVal);
       setIsSaving(false);
-    }, 200);
-    return () => clearTimeout(timeout);
+    }, 60);
+    debounceTimerRef.current = timeout;
+    return () => {
+      clearTimeout(timeout);
+      if (debounceTimerRef.current === timeout) {
+        debounceTimerRef.current = null;
+      }
+    };
   }, [localVal, field.key, field.kind, validationErr]);
   const unitStr = field.unit ? formatUnit(field.unit) : undefined;
   const defaultValueStr =
@@ -901,13 +909,13 @@ function SchemaFieldRow({
           {field.kind === "boolean" ? (
             <ToggleSwitch
               size="small"
-              statusLabelPosition="hidden"
               aria-labelledby={`schema-field-${field.key}`}
               checked={localVal === "true" || localVal === "1"}
               disabled={!isEnabled}
               onClick={() => {
                 if (!isEnabled) return;
                 const next = localVal === "true" || localVal === "1" ? "false" : "true";
+                lastCommittedRef.current = next;
                 setLocalVal(next);
                 onParameterChange?.(field.key, next);
               }}
@@ -918,8 +926,10 @@ function SchemaFieldRow({
               value={localVal}
               disabled={!isEnabled}
               onChange={(e) => {
-                setLocalVal(e.target.value);
-                onParameterChange?.(field.key, e.target.value);
+                const next = e.target.value;
+                lastCommittedRef.current = next;
+                setLocalVal(next);
+                onParameterChange?.(field.key, next);
               }}
               style={{
                 width: 130,
@@ -933,8 +943,8 @@ function SchemaFieldRow({
                 fontFamily: "inherit",
               }}
             >
-              {field.choices.map((c: PropertyChoice | string) => {
-                const val = typeof c === "string" ? c : c.value;
+              {field.choices.map((c) => {
+                const val = typeof c === "string" ? c : String(c.value ?? "");
                 const rawLbl = typeof c === "string" ? c : c.label;
                 const lbl = formatChoiceLabel(rawLbl, val);
                 return (
@@ -969,6 +979,7 @@ function SchemaFieldRow({
                     const outVal = tupleMatch
                       ? `{${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)}}`
                       : hex;
+                    lastCommittedRef.current = outVal;
                     setLocalVal(outVal);
                     onParameterChange?.(field.key, outVal);
                   }}
@@ -1054,6 +1065,10 @@ function SchemaFieldRow({
                   }
                 }}
                 onBlur={() => {
+                  if (debounceTimerRef.current !== null) {
+                    clearTimeout(debounceTimerRef.current);
+                    debounceTimerRef.current = null;
+                  }
                   if (localVal !== "-" && localVal !== lastCommittedRef.current && !validationErr) {
                     lastCommittedRef.current = localVal;
                     onParameterChangeRef.current?.(field.key, localVal);

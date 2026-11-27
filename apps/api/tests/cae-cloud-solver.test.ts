@@ -11,6 +11,7 @@ import * as path from "node:path";
 import { createApp } from "../src/app.js";
 import { LibraryDatabase } from "../src/database.js";
 import { CaeResultProcessor } from "../src/services/cae-result-processor.js";
+import { CaeSolverRunner } from "../src/services/cae-solver-runner.js";
 import { CaeTelemetryStreamer } from "../src/services/cae-telemetry-streamer.js";
 
 test("Cloud Open-Source CAE Solver Backend Execution (@modelscript/api)", async (t) => {
@@ -24,6 +25,23 @@ test("Cloud Open-Source CAE Solver Backend Execution (@modelscript/api)", async 
       database.close();
       fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {}
+  });
+
+  await t.test("CaeSolverRunner.stageOpenFoamCase writes complete 0/, constant/, and system/ case files", () => {
+    const foamDir = fs.mkdtempSync(path.join(os.tmpdir(), "cae-foam-stage-"));
+    try {
+      CaeSolverRunner.stageOpenFoamCase(foamDir, "FREESTREAM_VELOCITY= 22.5\nKINEMATIC_VISCOSITY= 1.8e-5\nITER= 300\n");
+      assert.ok(fs.existsSync(path.join(foamDir, "0", "U")));
+      assert.ok(fs.existsSync(path.join(foamDir, "0", "p")));
+      assert.ok(fs.existsSync(path.join(foamDir, "constant", "transportProperties")));
+      assert.ok(fs.existsSync(path.join(foamDir, "system", "controlDict")));
+      assert.ok(fs.existsSync(path.join(foamDir, "system", "fvSchemes")));
+      assert.ok(fs.existsSync(path.join(foamDir, "system", "fvSolution")));
+      assert.ok(fs.readFileSync(path.join(foamDir, "0", "U"), "utf8").includes("22.5"));
+      assert.ok(fs.readFileSync(path.join(foamDir, "system", "controlDict"), "utf8").includes("endTime 300;"));
+    } finally {
+      fs.rmSync(foamDir, { recursive: true, force: true });
+    }
   });
 
   await t.test("CaeTelemetryStreamer: parses CalculiX (ccx) stdout logs", () => {

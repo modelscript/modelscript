@@ -45,11 +45,11 @@
     "*"
   ],
   "devDependencies": {
-    "@types/vscode": "^1.72.0",
+    "@types/vscode": "^1.90.0",
     "esbuild": "^0.28.1"
   },
   "engines": {
-    "vscode": "^1.72.0"
+    "vscode": "^1.90.0"
   },
   "modelscript": {
     "tier": "beta",

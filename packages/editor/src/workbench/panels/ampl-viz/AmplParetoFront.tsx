@@ -20,24 +20,28 @@ export const AmplParetoFront: React.FC<{
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   interface ParetoPoint {
-    index: number;
-    epsilon: number | null;
-    feasible: boolean;
-    obj1: number | null;
-    obj2: number | null;
+    paramValue: number;
+    obj1Val: number;
+    obj2Val: number;
     isPareto: boolean;
+    status: string;
     variables: Record<string, number>;
   }
   interface ParetoResultData {
-    obj1Name: string;
-    obj2Name: string;
-    obj1Direction?: string;
-    obj2Direction?: string;
-    constraintName?: string | null;
+    mode: "bi-objective" | "constraint-tradeoff";
+    obj1: { name: string; direction: "minimize" | "maximize" };
+    obj2: { name: string; direction: "minimize" | "maximize" };
     points: ParetoPoint[];
   }
   const [paretoResult, setParetoResult] = useState<ParetoResultData | null>(null);
   const [selectedPt, setSelectedPt] = useState<ParetoPoint | null>(null);
+
+  const handleSelectPoint = (item: { payload?: unknown }) => {
+    const raw = item.payload ?? item;
+    if (raw && typeof raw === "object" && "obj1Val" in raw && "obj2Val" in raw) {
+      setSelectedPt(raw as ParetoPoint);
+    }
+  };
 
   const borderCol = "var(--color-border-default, var(--ms-border, rgba(148, 163, 184, 0.18)))";
   const cardBg = "var(--bgColor-muted, var(--ms-bg-elv))";
@@ -244,14 +248,19 @@ export const AmplParetoFront: React.FC<{
                   }}
                 />
                 {dominatedPts.length > 0 && (
-                  <Scatter name="Dominated" data={dominatedPts} fill="#64748b" onClick={(pt) => setSelectedPt(pt)} />
+                  <Scatter
+                    name="Dominated"
+                    data={dominatedPts}
+                    fill="#64748b"
+                    onClick={(pt) => handleSelectPoint(pt)}
+                  />
                 )}
                 <Scatter
                   name="Pareto Optimal"
                   data={paretoPts}
                   fill="#22c55e"
                   line={{ stroke: "#22c55e", strokeWidth: 2 }}
-                  onClick={(pt) => setSelectedPt(pt)}
+                  onClick={(pt) => handleSelectPoint(pt)}
                 />
               </ScatterChart>
             </ResponsiveContainer>

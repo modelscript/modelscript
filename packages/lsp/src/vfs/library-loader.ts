@@ -65,8 +65,8 @@ export interface LoaderWorkspaceIndexLike {
   clear?(uri: string): void;
   fileLoaders?: Map<string, unknown> | undefined;
   fileSymbols?: Map<string, unknown> | undefined;
-  unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string }> } | undefined;
-  getIndex?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
+  unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string | undefined }> } | undefined;
+  getIndex?(): { symbols?: Map<number, { resourceId?: string | undefined }> } | undefined;
   getLanguageDef?(langId: string): unknown;
   registerLanguageDef?(langId: string, langDef: unknown): void;
   indexDocumentText?(uri: string, text: string, langId: string): void;
@@ -84,9 +84,8 @@ interface CachedLspBundle {
   binaryFilesBase64: Record<string, string>;
 }
 
-interface GlobalLoaderEnv {
-  globalModelicaQueryEngine?: LoaderQueryEngineLike;
-  serverDistBase?: string;
+export interface LoaderParserLike {
+  parse(input: string, ...rest: unknown[]): { rootNode: SyntaxNode } | null;
 }
 
 export interface LoaderContext {
@@ -96,8 +95,10 @@ export interface LoaderContext {
   sharedContext: LoaderSharedContextLike | null | undefined;
   globalWorkspaceIndex: LoaderWorkspaceIndexLike | null | undefined;
   sysml2WorkspaceIndex: LoaderWorkspaceIndexLike | null | undefined;
-  documentTrees: Map<string, { text: string; tree: Tree | null; classCache: Map<string, unknown> }>;
-  sysml2Parser: Parser | null;
+  globalModelicaQueryEngine?: LoaderQueryEngineLike | null | undefined;
+  serverDistBase?: string | undefined;
+  documentTrees: Map<string, { text: string; tree: unknown; classCache?: Map<string, unknown> | undefined }>;
+  sysml2Parser: Parser | LoaderParserLike | null;
   cacheStore?: FederatedQueryCacheStore | undefined;
   registryUrl?: string | undefined;
   federatedEndpoints: string[];
@@ -154,8 +155,7 @@ function mountSysmlEntriesInContext(
     ctx.documentTrees?.set(uri, { text: content, tree: null, classCache: new Map() });
     if (registerWorkspace && ctx.sysml2WorkspaceIndex) {
       ctx.sysml2WorkspaceIndex.register?.(uri, () => {
-        if (!ctx.sysml2Parser)
-          return null as unknown as ReturnType<NonNullable<LoaderContext["sysml2Parser"]>["parse"]>["rootNode"];
+        if (!ctx.sysml2Parser) return null;
         const tree = ctx.sysml2Parser.parse(content);
         if (tree) {
           setTimeout(() => {
@@ -166,9 +166,7 @@ function mountSysmlEntriesInContext(
             }
           }, 0);
         }
-        return (tree ? tree.rootNode : null) as unknown as ReturnType<
-          NonNullable<LoaderContext["sysml2Parser"]>["parse"]
-        >["rootNode"];
+        return tree ? tree.rootNode : null;
       });
       registeredUris.push(uri);
     }
@@ -462,7 +460,8 @@ export async function loadRegistryPackage(
     if (ctx.cacheStore) {
       const activeQueryEngine =
         (ctx.sharedContext?.queryEngine as LoaderQueryEngineLike | undefined) ??
-        (globalThis as GlobalLoaderEnv).globalModelicaQueryEngine;
+        ctx.globalModelicaQueryEngine ??
+        undefined;
       const msidxCacheKey = `msidx:abi${MSIDX_COMPILER_ABI_VERSION}:${pkg.name}@${pkg.version}`;
       const legacyCacheKey = `${pkg.name}@${pkg.version}`;
       let hydratedFromMsidx = false;
@@ -524,7 +523,7 @@ export async function loadRegistryPackage(
 
         if (dbBuffer) {
           ctx.logger.log(`[registry] Cache hit — loading salsa-index for ${label} from IndexedDB`);
-          const { memos } = await ingestSalsaIndex(dbBuffer, ctx.cacheStore, activeQueryEngine);
+          const { memos } = await ingestSalsaIndex(dbBuffer, ctx.cacheStore, activeQueryEngine, ctx.serverDistBase);
           ctx.logger.log(`[registry] Hydrated ${memos} memos from cached index for ${label}`);
         } else if (baseUrl) {
           const indexUrl = `${baseUrl}/api/v1/libraries/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}/salsa-index.db`;
@@ -532,7 +531,7 @@ export async function loadRegistryPackage(
             const resp = await fetch(indexUrl);
             if (resp.ok) {
               const buffer = await resp.arrayBuffer();
-              const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore, activeQueryEngine);
+              const { memos } = await ingestSalsaIndex(buffer, ctx.cacheStore, activeQueryEngine, ctx.serverDistBase);
               ctx.logger.log(`[registry] Loaded pre-computed index for ${label} (hydrated ${memos} memos)`);
 
               try {
@@ -1041,6 +1040,8 @@ export async function loadDependencyFromRegistry(
 
 export const SYSML_VERSION_KEY = "SysML-v2-Release-2026-03";
 
+const inflightMslLoads = new Map<string, Promise<void>>();
+
 export async function loadMSL(
   serverDistBase: string,
   ctx: LoaderContext,
@@ -1048,266 +1049,284 @@ export async function loadMSL(
   options?: { skipRegistryRetry?: boolean },
 ): Promise<void> {
   const existingMeta = mountedLibraryMetadata.get("Modelica");
-  if (existingMeta && existingMeta.version !== version) {
-    unloadLibraryPackage("Modelica", ctx);
+  if (existingMeta && existingMeta.version === version) {
+    return;
   }
-  const cacheKey = version === "4.1.0" ? MSL_VERSION_KEY : `ModelicaStandardLibrary_v${version}`;
-  const zipFilename = `ModelicaStandardLibrary_v${version}.zip`;
-  try {
-    loadingLibraryState.set("Modelica", {
-      name: "Modelica",
-      version,
-      message: `Loading MSL v${version}...`,
-    });
-    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
-    ctx.connectionState.sendNotification("modelscript/status", {
-      state: "loading",
-      message: `Loading Modelica Standard Library v${version}...`,
-    });
+  const inflight = inflightMslLoads.get(version);
+  if (inflight) {
+    return inflight;
+  }
 
-    let fileEntries: Record<string, Uint8Array> | null = null;
-
-    try {
-      const db = await openMSLCache();
-      try {
-        const cached = await idbGet<Record<string, ArrayBuffer>>(db, cacheKey);
-        if (cached) {
-          ctx.logger.log("[msl-cache] Cache hit — loading from IndexedDB");
-          ctx.connectionState.sendNotification("modelscript/status", {
-            state: "loading",
-            message: "Loading MSL from cache...",
-          });
-          fileEntries = {};
-          for (const [name, buf] of Object.entries(cached)) {
-            fileEntries[name] = new Uint8Array(buf);
-          }
-        }
-      } finally {
-        db.close();
-      }
-    } catch (cacheErr) {
-      ctx.logger.warn(`[msl-cache] IndexedDB read failed, falling back to network: ${cacheErr}`);
+  const loadPromise = (async () => {
+    if (existingMeta && existingMeta.version !== version) {
+      unloadLibraryPackage("Modelica", ctx);
     }
+    const cacheKey = version === "4.1.0" ? MSL_VERSION_KEY : `ModelicaStandardLibrary_v${version}`;
+    const zipFilename = `ModelicaStandardLibrary_v${version}.zip`;
+    try {
+      loadingLibraryState.set("Modelica", {
+        name: "Modelica",
+        version,
+        message: `Loading MSL v${version}...`,
+      });
+      ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+      ctx.connectionState.sendNotification("modelscript/status", {
+        state: "loading",
+        message: `Loading Modelica Standard Library v${version}...`,
+      });
 
-    if (!fileEntries) {
-      let zipData: Uint8Array | null = null;
-      if (
-        serverDistBase.startsWith("file://") ||
-        (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://"))
-      ) {
-        const filePath = serverDistBase.startsWith("file://")
-          ? serverDistBase.replace(/^file:\/\//, "")
-          : serverDistBase;
-        const zipPath = `${filePath}/${zipFilename}`;
-        const nodeFs = await import("node:fs");
-        if (nodeFs.existsSync(zipPath)) {
-          zipData = nodeFs.readFileSync(zipPath);
-        }
-      } else {
-        const response = await fetch(`${serverDistBase}/${zipFilename}`);
-        if (response.ok) {
-          ctx.connectionState.sendNotification("modelscript/status", {
-            state: "loading",
-            message: "Decompressing MSL...",
-          });
-          const buffer = await response.arrayBuffer();
-          zipData = new Uint8Array(buffer);
-        }
-      }
+      let fileEntries: Record<string, Uint8Array> | null = null;
 
-      if (!zipData) {
-        if (!options?.skipRegistryRetry && (ctx.registryUrl || version !== "4.1.0")) {
-          try {
-            await loadDependencyFromRegistry({ name: "Modelica", version }, ctx);
-            return;
-          } catch {
-            // Fall through to warning
-          }
-        }
-        loadingLibraryState.delete("Modelica");
-        ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
-        ctx.logger.warn("MSL zip not found — library features will be unavailable");
-        return;
-      }
-
-      fileEntries = unzipSync(zipData);
-
-      // Cache extracted MSL in IndexedDB in the background so it doesn't block startup requests
-      const entriesToCache = fileEntries;
-      setTimeout(async () => {
+      try {
+        const db = await openMSLCache();
         try {
-          const db = await openMSLCache();
-          try {
-            const serializable: Record<string, ArrayBuffer> = {};
-            for (const [name, data] of Object.entries(entriesToCache)) {
-              serializable[name] =
-                data.byteOffset === 0 && data.byteLength === data.buffer.byteLength
-                  ? (data.buffer as ArrayBuffer)
-                  : (data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+          const cached = await idbGet<Record<string, ArrayBuffer>>(db, cacheKey);
+          if (cached) {
+            ctx.logger.log("[msl-cache] Cache hit — loading from IndexedDB");
+            ctx.connectionState.sendNotification("modelscript/status", {
+              state: "loading",
+              message: "Loading MSL from cache...",
+            });
+            fileEntries = {};
+            for (const [name, buf] of Object.entries(cached)) {
+              fileEntries[name] = new Uint8Array(buf);
             }
-            await idbPut(db, cacheKey, serializable);
-            ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");
-          } finally {
-            db.close();
           }
-        } catch (cacheErr) {
-          ctx.logger.warn(`[msl-cache] IndexedDB write failed: ${cacheErr}`);
+        } finally {
+          db.close();
         }
-      }, 500);
-    }
-
-    let fileCount = 0;
-    for (const [name, data] of Object.entries(fileEntries)) {
-      if (name.endsWith("/")) {
-        ctx.sharedFs.addDir(`/lib/${name.slice(0, -1)}`);
-        continue;
+      } catch (cacheErr) {
+        ctx.logger.warn(`[msl-cache] IndexedDB read failed, falling back to network: ${cacheErr}`);
       }
-      ctx.sharedFs.addFile(`/lib/${name}`, data);
-      fileCount++;
-    }
-    ctx.logger.log(`MSL loaded: ${fileCount} files`);
-    try {
-      await loadPrebakedMslIcons(iconCache, serverDistBase);
-    } catch {
-      // non-fatal
-    }
-    ctx.connectionState.sendNotification("modelscript/status", {
-      state: "loading",
-      message: "Processing MSL classes...",
-    });
 
-    const moFiles: { fullPath: string; uri: string; parentFQN: string }[] = [];
-    let modelicaPkgUri: string | null = null;
-    let complexUri: string | null = null;
-    let iconsUri: string | null = null;
-
-    for (const name of Object.keys(fileEntries)) {
-      if (name.endsWith(".mo")) {
-        if (name.startsWith("ModelicaReference")) continue;
-        const fullPath = `/lib/${name}`;
-        const uri = `modelica:/${fullPath}`;
-        let parentFQN = "";
-        const parts = name.split("/");
-        if (parts[parts.length - 1] === "package.mo") {
-          parts.pop(); // Remove "package.mo"
-          parts.pop(); // Remove the package dir name itself
-        } else {
-          parts.pop(); // Remove "Filename.mo"
-        }
-        if (parts.length > 0) {
-          parts[0] = parts[0]!.split(" ")[0]!; // "Modelica 4.1.0" -> "Modelica"
-        }
-        parentFQN = parts.join(".");
-        moFiles.push({ fullPath, uri, parentFQN });
-
+      if (!fileEntries) {
+        let zipData: Uint8Array | null = null;
         if (
-          name === `Modelica ${version}/package.mo` ||
-          name === "Modelica 4.1.0/package.mo" ||
-          name === "Modelica/package.mo"
+          serverDistBase.startsWith("file://") ||
+          (!serverDistBase.startsWith("http://") && !serverDistBase.startsWith("https://"))
         ) {
-          modelicaPkgUri = uri;
-        } else if (name === "Complex.mo") {
-          complexUri = uri;
-        } else if (
-          name === `Modelica ${version}/Icons.mo` ||
-          name === "Modelica 4.1.0/Icons.mo" ||
-          name === "Modelica/Icons.mo"
-        ) {
-          iconsUri = uri;
+          const filePath = serverDistBase.startsWith("file://")
+            ? serverDistBase.replace(/^file:\/\//, "")
+            : serverDistBase;
+          const zipPath = `${filePath}/${zipFilename}`;
+          const nodeFs = await import("node:fs");
+          if (nodeFs.existsSync(zipPath)) {
+            zipData = nodeFs.readFileSync(zipPath);
+          }
+        } else {
+          const response = await fetch(`${serverDistBase}/${zipFilename}`);
+          if (response.ok) {
+            ctx.connectionState.sendNotification("modelscript/status", {
+              state: "loading",
+              message: "Decompressing MSL...",
+            });
+            const buffer = await response.arrayBuffer();
+            zipData = new Uint8Array(buffer);
+          }
+        }
+
+        if (!zipData) {
+          if (!options?.skipRegistryRetry && (ctx.registryUrl || version !== "4.1.0")) {
+            try {
+              await loadDependencyFromRegistry({ name: "Modelica", version }, ctx);
+              return;
+            } catch {
+              // Fall through to warning
+            }
+          }
+          loadingLibraryState.delete("Modelica");
+          ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+          ctx.logger.warn("MSL zip not found — library features will be unavailable");
+          return;
+        }
+
+        fileEntries = unzipSync(zipData);
+
+        // Cache extracted MSL in IndexedDB in the background so it doesn't block startup requests
+        const entriesToCache = fileEntries;
+        setTimeout(async () => {
+          try {
+            const db = await openMSLCache();
+            try {
+              const serializable: Record<string, ArrayBuffer> = {};
+              for (const [name, data] of Object.entries(entriesToCache)) {
+                serializable[name] =
+                  data.byteOffset === 0 && data.byteLength === data.buffer.byteLength
+                    ? (data.buffer as ArrayBuffer)
+                    : (data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer);
+              }
+              await idbPut(db, cacheKey, serializable);
+              ctx.logger.log("[msl-cache] Cached extracted MSL in IndexedDB");
+            } finally {
+              db.close();
+            }
+          } catch (cacheErr) {
+            ctx.logger.warn(`[msl-cache] IndexedDB write failed: ${cacheErr}`);
+          }
+        }, 500);
+      }
+
+      let fileCount = 0;
+      for (const [name, data] of Object.entries(fileEntries)) {
+        if (name.endsWith("/")) {
+          ctx.sharedFs.addDir(`/lib/${name.slice(0, -1)}`);
+          continue;
+        }
+        ctx.sharedFs.addFile(`/lib/${name}`, data);
+        fileCount++;
+      }
+      ctx.logger.log(`MSL loaded: ${fileCount} files`);
+      // Defer prebaked icon loading so it never blocks MSL mounting or simulation.
+      setTimeout(() => {
+        void loadPrebakedMslIcons(iconCache, serverDistBase).catch(() => {
+          // non-fatal
+        });
+      }, 0);
+      ctx.connectionState.sendNotification("modelscript/status", {
+        state: "loading",
+        message: "Processing MSL classes...",
+      });
+
+      const moFiles: { fullPath: string; uri: string; parentFQN: string }[] = [];
+      let modelicaPkgUri: string | null = null;
+      let complexUri: string | null = null;
+      let iconsUri: string | null = null;
+
+      for (const name of Object.keys(fileEntries)) {
+        if (name.endsWith(".mo")) {
+          if (name.startsWith("ModelicaReference")) continue;
+          const fullPath = `/lib/${name}`;
+          const uri = `modelica:/${fullPath}`;
+          let parentFQN = "";
+          const parts = name.split("/");
+          if (parts[parts.length - 1] === "package.mo") {
+            parts.pop(); // Remove "package.mo"
+            parts.pop(); // Remove the package dir name itself
+          } else {
+            parts.pop(); // Remove "Filename.mo"
+          }
+          if (parts.length > 0) {
+            parts[0] = parts[0]!.split(" ")[0]!; // "Modelica 4.1.0" -> "Modelica"
+          }
+          parentFQN = parts.join(".");
+          moFiles.push({ fullPath, uri, parentFQN });
+
+          if (
+            name === `Modelica ${version}/package.mo` ||
+            name === "Modelica 4.1.0/package.mo" ||
+            name === "Modelica/package.mo"
+          ) {
+            modelicaPkgUri = uri;
+          } else if (name === "Complex.mo") {
+            complexUri = uri;
+          } else if (
+            name === `Modelica ${version}/Icons.mo` ||
+            name === "Modelica 4.1.0/Icons.mo" ||
+            name === "Modelica/Icons.mo"
+          ) {
+            iconsUri = uri;
+          }
         }
       }
-    }
 
-    moFiles.sort((a, b) => {
-      const aIsPkg = a.uri.endsWith("/package.mo") ? 0 : 1;
-      const bIsPkg = b.uri.endsWith("/package.mo") ? 0 : 1;
-      if (aIsPkg !== bIsPkg) return aIsPkg - bIsPkg;
-      return a.parentFQN.length - b.parentFQN.length;
-    });
+      moFiles.sort((a, b) => {
+        const aIsPkg = a.uri.endsWith("/package.mo") ? 0 : 1;
+        const bIsPkg = b.uri.endsWith("/package.mo") ? 0 : 1;
+        if (aIsPkg !== bIsPkg) return aIsPkg - bIsPkg;
+        return a.parentFQN.length - b.parentFQN.length;
+      });
 
-    for (const file of moFiles) {
-      ctx.globalWorkspaceIndex?.register?.(
-        file.uri,
-        () => {
-          let tree: Tree | null = null;
-          try {
-            let text = ctx.sharedFs.read(file.fullPath);
-            if (text) {
-              if (text.length > SAFE_PACKAGE_SIZE_LIMIT) {
-                text = getSafePackageSource(text, file.fullPath, ctx);
+      for (const file of moFiles) {
+        ctx.globalWorkspaceIndex?.register?.(
+          file.uri,
+          () => {
+            let tree: Tree | null = null;
+            try {
+              let text = ctx.sharedFs.read(file.fullPath);
+              if (text) {
+                if (text.length > SAFE_PACKAGE_SIZE_LIMIT) {
+                  text = getSafePackageSource(text, file.fullPath, ctx);
+                }
+                tree = ctx.sharedContext?.parse(".mo", text) ?? null;
               }
-              tree = ctx.sharedContext?.parse(".mo", text) ?? null;
+            } catch (err: unknown) {
+              ctx.logger.error(`[loader] Error parsing ${file.fullPath}:`, err);
             }
-          } catch (err: unknown) {
-            ctx.logger.error(`[loader] Error parsing ${file.fullPath}:`, err);
-          }
-          if (tree) {
-            setTimeout(() => {
-              try {
-                (tree as { delete?(): void }).delete?.();
-              } catch {
-                /* ignore */
-              }
-            }, 0);
-          }
-          return tree?.rootNode ?? null;
-        },
-        file.parentFQN,
-      );
-    }
-
-    // Eagerly index root packages so "Modelica", "Complex", and "Icons" exist in byName immediately
-    if (modelicaPkgUri) {
-      try {
-        ctx.logger.log(`[loadMSL] Ensuring indexed: ${modelicaPkgUri}`);
-        ctx.globalWorkspaceIndex?.ensureIndexed?.(modelicaPkgUri);
-        ctx.logger.log(
-          `[loadMSL] After ensureIndexed(${modelicaPkgUri}), symbols=${ctx.globalWorkspaceIndex?.getIndex?.()?.symbols?.size}`,
+            if (tree) {
+              setTimeout(() => {
+                try {
+                  (tree as { delete?(): void }).delete?.();
+                } catch {
+                  /* ignore */
+                }
+              }, 0);
+            }
+            return tree?.rootNode ?? null;
+          },
+          file.parentFQN,
         );
-      } catch (err: unknown) {
-        ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${modelicaPkgUri}:`, err);
       }
-    }
-    if (complexUri) {
-      try {
-        ctx.logger.log(`[loadMSL] Ensuring indexed: ${complexUri}`);
-        ctx.globalWorkspaceIndex?.ensureIndexed?.(complexUri);
-        ctx.logger.log(
-          `[loadMSL] After ensureIndexed(${complexUri}), symbols=${ctx.globalWorkspaceIndex?.getIndex?.()?.symbols?.size}`,
-        );
-      } catch (err: unknown) {
-        ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${complexUri}:`, err);
-      }
-    }
-    if (iconsUri) {
-      try {
-        ctx.globalWorkspaceIndex?.ensureIndexed?.(iconsUri);
-      } catch {
-        /* ignore */
-      }
-    }
 
-    loadingLibraryState.delete("Modelica");
-    mountedLibraryMetadata.set("Modelica", {
-      name: "Modelica",
-      version,
-      language: "modelica",
-    });
+      // Eagerly index root packages so "Modelica", "Complex", and "Icons" exist in byName immediately
+      if (modelicaPkgUri) {
+        try {
+          ctx.logger.log(`[loadMSL] Ensuring indexed: ${modelicaPkgUri}`);
+          ctx.globalWorkspaceIndex?.ensureIndexed?.(modelicaPkgUri);
+          ctx.logger.log(
+            `[loadMSL] After ensureIndexed(${modelicaPkgUri}), symbols=${ctx.globalWorkspaceIndex?.getIndex?.()?.symbols?.size}`,
+          );
+        } catch (err: unknown) {
+          ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${modelicaPkgUri}:`, err);
+        }
+      }
+      if (complexUri) {
+        try {
+          ctx.logger.log(`[loadMSL] Ensuring indexed: ${complexUri}`);
+          ctx.globalWorkspaceIndex?.ensureIndexed?.(complexUri);
+          ctx.logger.log(
+            `[loadMSL] After ensureIndexed(${complexUri}), symbols=${ctx.globalWorkspaceIndex?.getIndex?.()?.symbols?.size}`,
+          );
+        } catch (err: unknown) {
+          ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${complexUri}:`, err);
+        }
+      }
+      if (iconsUri) {
+        try {
+          ctx.globalWorkspaceIndex?.ensureIndexed?.(iconsUri);
+        } catch {
+          /* ignore */
+        }
+      }
 
-    ctx.logger.log(`[polyglot] Registered ${moFiles.length} MSL files in globalWorkspaceIndex`);
-    ctx.connectionState.sendNotification("modelscript/status", {
-      state: "ready",
-      message: "ModelScript",
-    });
-    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
-  } catch (e) {
-    loadingLibraryState.delete("Modelica");
-    ctx.logger.error("Failed to load MSL zip:", e);
-    ctx.connectionState.sendNotification("modelscript/status", {
-      state: "ready",
-      message: "ModelScript",
-    });
-    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+      loadingLibraryState.delete("Modelica");
+      mountedLibraryMetadata.set("Modelica", {
+        name: "Modelica",
+        version,
+        language: "modelica",
+      });
+
+      ctx.logger.log(`[polyglot] Registered ${moFiles.length} MSL files in globalWorkspaceIndex`);
+      ctx.connectionState.sendNotification("modelscript/status", {
+        state: "ready",
+        message: "ModelScript",
+      });
+      ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+    } catch (e) {
+      loadingLibraryState.delete("Modelica");
+      ctx.logger.error("Failed to load MSL zip:", e);
+      ctx.connectionState.sendNotification("modelscript/status", {
+        state: "ready",
+        message: "ModelScript",
+      });
+      ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+    }
+  })();
+
+  inflightMslLoads.set(version, loadPromise);
+  try {
+    await loadPromise;
+  } finally {
+    inflightMslLoads.delete(version);
   }
 }
 
@@ -1764,8 +1783,8 @@ export function unloadLibraryPackage(packageName: string, ctx: LoaderContext): n
     clear?(uri: string): void;
     fileLoaders?: Map<string, unknown> | undefined;
     fileSymbols?: Map<string, unknown> | undefined;
-    unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string }> } | undefined;
-    getIndex?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
+    unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string | undefined }> } | undefined;
+    getIndex?(): { symbols?: Map<number, { resourceId?: string | undefined }> } | undefined;
   };
 
   const evictFromWorkspaceIndex = (wsIdx: WorkspaceIndexEvictionTarget | null | undefined) => {
@@ -1939,7 +1958,7 @@ export async function ensureLibraryVersionMounted(
     }
   }
 
-  const effectiveDistBase = serverDistBase || (globalThis as GlobalLoaderEnv).serverDistBase || "";
+  const effectiveDistBase = serverDistBase || ctx.serverDistBase || "";
 
   if (normName === "Modelica" && effectiveDistBase) {
     await loadMSL(effectiveDistBase, ctx, dep.version);

@@ -410,7 +410,7 @@ export async function validateStepDocumentImpl(
       effectiveUri: textDocument.uri,
       text,
       langId: "step",
-      tree: existingTreeEntry?.tree,
+      tree: existingTreeEntry?.tree && "edit" in existingTreeEntry.tree ? existingTreeEntry.tree : undefined,
       textDocument,
       diagnostics: [...cachedStep.diagnostics],
       hasSyntaxErrors: cachedStep.diagnostics.some((d) => d.severity === DiagnosticSeverity.Error),
@@ -446,9 +446,7 @@ export async function validateStepDocumentImpl(
       }
 
       const { indexStepDocument } = await import("@modelscript/step");
-      const parserWithBase = ctx.parserService as unknown as { serverDistBase?: string };
-      const globalWithBase = globalThis as unknown as { serverDistBase?: string };
-      const serverDistBase = parserWithBase?.serverDistBase ?? globalWithBase.serverDistBase;
+      const serverDistBase = ctx.parserService?.getServerDistBase?.() || undefined;
       await indexStepDocument(
         ctx.workspaceManager.unifiedWorkspace,
         textDocument.uri,
@@ -516,12 +514,13 @@ export async function validateStepDocumentImpl(
     const contentChanged = ctx.lastIndexedText.get(textDocument.uri) !== text;
     ctx.lastIndexedText.set(textDocument.uri, text);
     ctx.lastStepOwnDiagnostics.set(textDocument.uri, { text, diagnostics: [...stepDiagnostics] });
+    const storedStepTree = ctx.documentManager.documentTrees.get(textDocument.uri)?.tree;
     await ctx.finalizeCrossLanguageValidation({
       uri: textDocument.uri,
       effectiveUri: textDocument.uri,
       text,
       langId: "step",
-      tree: ctx.documentManager.documentTrees.get(textDocument.uri)?.tree,
+      tree: storedStepTree && "edit" in storedStepTree ? storedStepTree : undefined,
       textDocument,
       diagnostics: stepDiagnostics,
       hasSyntaxErrors: stepDiagnostics.some((d) => d.severity === DiagnosticSeverity.Error),

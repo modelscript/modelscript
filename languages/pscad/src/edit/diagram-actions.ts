@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { CstDocumentSession, CstXmlAdapter, type CstTextEdit } from "@modelscript/dsl/unparser";
 import { getMasterComponentSchema } from "../catalog/master-library-schemas.js";
+import { buildPscadComponentDropEdits, type PscadForeignDropInfo } from "../drop-edits.js";
 import { buildProjectModel, type Pt } from "../model/pscad-model.js";
 import { registeredExternalDefinitions } from "../model/workspace-registry.js";
 import { computePortWorldPosition, parsePscx } from "../parser/pscx-parser.js";
 import type { PscxModule } from "../types.js";
-import { findElementById, planPscadEdits, splicesToTextEdits, type PscadEditOp } from "./edit-engine.js";
+import {
+  createPscadCstSession,
+  findElementById,
+  planPscadEditsOnSession,
+  splicesToTextEdits,
+  type PscadEditOp,
+} from "./edit-engine.js";
 
 /**
  * Translates diagram-protocol actions (move, connect, updateParameter, ...) into structural
@@ -58,7 +66,15 @@ export type DiagramAction =
   | { type: "updateParameter"; name: string; parameter: string; value: unknown }
   | { type: "updateProperty"; name: string; key: string; value: unknown }
   | { type: "updateName"; oldName: string; newName: string }
-  | { type: "addComponent"; className: string; name?: string; x: number; y: number; section?: string }
+  | {
+      type: "addComponent";
+      className: string;
+      name?: string;
+      x: number;
+      y: number;
+      section?: string;
+      foreignInfo?: PscadForeignDropInfo;
+    }
   | { type: "deleteComponents"; names: string[] }
   | {
       type: "connect";
@@ -233,16 +249,156 @@ export function orthogonalize(points: Pt[], obstacles?: ObstacleBox[]): Pt[] {
 }
 
 export function planDiagramActions(text: string, actions: DiagramAction[]): PlannedDiagramEdits {
+  const session = createPscadCstSession(text);
+  try {
+    return planDiagramActionsOnSession(session, actions);
+  } finally {
+    session.dispose();
+  }
+}
+
+/**
+ * CST-backed diagram action planner operating directly on a live incremental {@link CstDocumentSession}.
+ *
+ * Reuses the session's live CST tree (zero redundant full re-parses) and remains resilient when
+ * unrelated regions of the XML document contain syntax errors: healthy `<User>`, `<Wire>`, `<Bus>`,
+ * `<Sticky>`, and `<schematic>` CST nodes are still indexed and surgically edited via {@link CstTransaction}.
+ */
+export function planDiagramActionsOnSession(
+  session: CstDocumentSession,
+  actions: ReadonlyArray<DiagramAction>,
+): PlannedDiagramEdits {
+  const text = session.text;
   const external = registeredExternalDefinitions();
-  const model = buildProjectModel(text, external);
-  const project = parsePscx(text);
-  const modules: PscxModule[] = [project.rootModule, ...project.subModules.values()];
+
+  let model: ReturnType<typeof buildProjectModel> | null = null;
+  try {
+    model = buildProjectModel(text, external);
+  } catch {
+    model = null;
+  }
+
+  let project: ReturnType<typeof parsePscx> | null = null;
+  try {
+    project = parsePscx(text, session.tree ? { cstTree: session.tree } : undefined);
+  } catch {
+    project = null;
+  }
+
+  const modules: PscxModule[] = project ? [project.rootModule, ...project.subModules.values()] : [];
   const legacyCmps = modules.flatMap((m) => m.components);
   const legacyBuses = modules.flatMap((m) => m.buses);
   const legacyWires = modules.flatMap((m) => m.wires);
 
-  const instances = [...model.definitions.values()].flatMap((d) => d.instances.map((i) => ({ d, i })));
-  const wires = [...model.definitions.values()].flatMap((d) => d.wires.map((w) => ({ d, w })));
+  // Build healthy CST-backed component/wire index, merging model entries with direct CST walk
+  // so healthy elements remain editable even when syntax errors broke full-file model building.
+  interface LightInstance {
+    id: string;
+    defnName: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    params: Map<string, string>;
+  }
+  interface LightWire {
+    id: string;
+    tagName: string;
+    vertices: Pt[];
+  }
+
+  const instanceList: Array<{ i: LightInstance }> = model
+    ? [...model.definitions.values()].flatMap((d) =>
+        d.instances.map((i) => ({
+          i: {
+            id: i.id,
+            defnName: i.defnName,
+            x: i.x,
+            y: i.y,
+            w: i.w,
+            h: i.h,
+            params: i.params,
+          },
+        })),
+      )
+    : [];
+  const knownInstIds = new Set(instanceList.map(({ i }) => i.id));
+
+  const wireList: Array<{ w: LightWire }> = model
+    ? [...model.definitions.values()].flatMap((d) =>
+        d.wires.map((w) => ({
+          w: { id: w.id, tagName: w.element.name, vertices: w.vertices },
+        })),
+      )
+    : [];
+  const knownWireIds = new Set(wireList.map(({ w }) => w.id));
+
+  // Direct healthy CST fallback harvest (catches any healthy nodes missed due to syntax errors elsewhere)
+  if (session.rootNode) {
+    const cstUsers = CstXmlAdapter.findElements(session.rootNode, text, (_n, tag) => {
+      const l = tag.toLowerCase();
+      return l === "user" || l === "component";
+    });
+    for (const uNode of cstUsers) {
+      const id = CstXmlAdapter.getAttribute(uNode, "id", text)?.value;
+      if (!id || knownInstIds.has(id)) continue;
+      knownInstIds.add(id);
+      const params = new Map<string, string>();
+      const pl = CstXmlAdapter.getChildElements(uNode).find(
+        (c) => (CstXmlAdapter.getTagName(c, text) ?? "").toLowerCase() === "paramlist",
+      );
+      if (pl) {
+        for (const p of CstXmlAdapter.getChildElements(pl)) {
+          if ((CstXmlAdapter.getTagName(p, text) ?? "").toLowerCase() !== "param") continue;
+          const pn = CstXmlAdapter.getAttribute(p, "name", text)?.value;
+          const pv = CstXmlAdapter.getAttribute(p, "value", text)?.value;
+          if (pn !== undefined && pv !== undefined) params.set(pn, pv);
+        }
+      }
+      instanceList.push({
+        i: {
+          id,
+          defnName:
+            CstXmlAdapter.getAttribute(uNode, "defn", text)?.value ??
+            CstXmlAdapter.getAttribute(uNode, "name", text)?.value ??
+            "",
+          x: Number(CstXmlAdapter.getAttribute(uNode, "x", text)?.value ?? "0"),
+          y: Number(CstXmlAdapter.getAttribute(uNode, "y", text)?.value ?? "0"),
+          w: Number(CstXmlAdapter.getAttribute(uNode, "w", text)?.value ?? "54"),
+          h: Number(CstXmlAdapter.getAttribute(uNode, "h", text)?.value ?? "36"),
+          params,
+        },
+      });
+    }
+
+    const cstWires = CstXmlAdapter.findElements(session.rootNode, text, (_n, tag) => {
+      const l = tag.toLowerCase();
+      return l === "wire" || l === "bus";
+    });
+    for (const wNode of cstWires) {
+      const id = CstXmlAdapter.getAttribute(wNode, "id", text)?.value;
+      if (!id || knownWireIds.has(id)) continue;
+      knownWireIds.add(id);
+      const bx = Number(CstXmlAdapter.getAttribute(wNode, "x", text)?.value ?? "0");
+      const by = Number(CstXmlAdapter.getAttribute(wNode, "y", text)?.value ?? "0");
+      const verts = CstXmlAdapter.getChildElements(wNode)
+        .filter((c) => (CstXmlAdapter.getTagName(c, text) ?? "").toLowerCase() === "vertex")
+        .map((v) => ({
+          x: bx + Number(CstXmlAdapter.getAttribute(v, "x", text)?.value ?? "0"),
+          y: by + Number(CstXmlAdapter.getAttribute(v, "y", text)?.value ?? "0"),
+        }));
+      wireList.push({
+        w: {
+          id,
+          tagName: CstXmlAdapter.getTagName(wNode, text) ?? "Wire",
+          vertices: verts,
+        },
+      });
+    }
+  }
+
+  const instances = instanceList;
+  const wires = wireList;
   const obstacles: ObstacleBox[] = instances.map(({ i }) => ({
     id: i.id,
     x: i.x,
@@ -547,9 +703,7 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
           const isBus =
             Boolean(busHit) ||
             item.name.startsWith("bus_") ||
-            [...model.definitions.values()].some((d) =>
-              d.wires.some((w) => (w.id === cleanId || w.id === item.name) && w.element.name === "Bus"),
-            );
+            wires.some(({ w }) => (w.id === cleanId || w.id === item.name) && w.tagName.toLowerCase() === "bus");
           if (isBus) {
             ops.push({
               type: "resizeBus",
@@ -563,7 +717,9 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
             continue;
           }
           const isSticky =
-            item.name.startsWith("sticky_") || findElementById(model.root, cleanId, new Set(["Sticky"])) !== undefined;
+            item.name.startsWith("sticky_") ||
+            (model ? findElementById(model.root, cleanId, new Set(["Sticky"])) !== undefined : false) ||
+            CstXmlAdapter.findElementByAttr(session.rootNode, text, "id", cleanId, "Sticky") !== null;
           if (isSticky) {
             ops.push({
               type: "editSticky",
@@ -878,12 +1034,208 @@ export function planDiagramActions(text: string, actions: DiagramAction[]): Plan
     }
   }
 
-  const plan = planPscadEdits(text, ops, external);
+  const plan = planPscadEditsOnSession(session, ops, external);
   unresolved.push(...plan.errors);
   return {
-    edits: splicesToTextEdits(text, plan.splices),
+    edits: plan.edits,
     createdIds: plan.createdIds,
     unresolved,
     renderHint,
   };
+}
+
+export interface LocalPscadEditResult {
+  edits: CstTextEdit[];
+  createdIds: string[];
+  renderHint: "none" | "immediate" | "debounced";
+}
+
+function sanitizeLocalId(raw: string, fallback = "comp"): string {
+  const clean = raw.replace(/[^A-Za-z0-9_]/g, "_").replace(/^_+|_+$/g, "");
+  if (!clean) return fallback;
+  return /^[A-Za-z_]/.test(clean) ? clean : `${fallback}_${clean}`;
+}
+
+function allocateLocalIdentifier(docText: string, baseName: string, usedNames: Set<string>): string {
+  const base = sanitizeLocalId(baseName, "comp");
+  let idx = 1;
+  while (usedNames.has(`${base}${idx}`) || docText.includes(`"${base}${idx}"`)) {
+    idx++;
+  }
+  const chosen = `${base}${idx}`;
+  usedNames.add(chosen);
+  return chosen;
+}
+
+/**
+ * CST-backed local PSCAD edit planner operating on a live {@link CstDocumentSession} (or raw text).
+ *
+ * Handles native PSCAD edits, empty-document scaffolding, error-isolated partial documents,
+ * AND cross-language foreign drops (whenever `foreignInfo` is provided on `addComponent`)
+ * without any LSP roundtrip. Returns `null` only for `pasteSubgraph` or foreign drops that
+ * lack `foreignInfo` and require workspace symbol lookup.
+ */
+export function tryPlanPscadLocalEdits(
+  textOrSession: string | CstDocumentSession,
+  actions: ReadonlyArray<DiagramAction>,
+  options?: { uri?: string | undefined; className?: string | undefined },
+): LocalPscadEditResult | null {
+  if (!actions || actions.length === 0) return null;
+  if (actions.some((a) => a.type === "pasteSubgraph")) return null;
+
+  const providedSession = typeof textOrSession === "string" ? null : textOrSession;
+  const text = providedSession ? providedSession.text : (textOrSession as string);
+  let session = providedSession ?? createPscadCstSession(text, options?.uri);
+  const ownsInitialSession = !providedSession;
+  let scaffoldSession: CstDocumentSession | null = null;
+
+  try {
+    const hasAddComponent = actions.some((a) => a.type === "addComponent");
+    const hasSchematic =
+      session.rootNode !== null &&
+      CstXmlAdapter.findElements(session.rootNode, session.text, (_n, tag) => tag.toLowerCase() === "schematic")
+        .length > 0;
+
+    let workingText = text;
+    let didScaffold = false;
+    if (hasAddComponent && !hasSchematic) {
+      const rawUri = options?.uri ?? "Main.pscx";
+      const base =
+        rawUri
+          .split("/")
+          .pop()
+          ?.replace(/\.[^.]+$/, "")
+          .replace(/[^A-Za-z0-9_]/g, "_") || "Main";
+      const projName = /^[A-Za-z_]/.test(base) ? base : `P_${base}`;
+      workingText = [
+        `<project name="${projName}" version="5.0.2">`,
+        `  <definitions>`,
+        `    <Definition name="Main" classid="UserCmpDefn">`,
+        `      <schematic>`,
+        `      </schematic>`,
+        `    </Definition>`,
+        `  </definitions>`,
+        `</project>`,
+        "",
+      ].join("\n");
+      didScaffold = true;
+      scaffoldSession = createPscadCstSession(workingText, options?.uri);
+      session = scaffoldSession;
+    }
+
+    const localDefNames = new Set<string>();
+    for (const defNode of CstXmlAdapter.findElements(
+      session.rootNode,
+      session.text,
+      (_n, tag) => tag.toLowerCase() === "definition",
+    )) {
+      const defName = CstXmlAdapter.getAttribute(defNode, "name", session.text)?.value;
+      if (defName) localDefNames.add(defName);
+    }
+
+    const activeSection = options?.className;
+    const normalizedActions: DiagramAction[] = [];
+    const foreignEdits: CstTextEdit[] = [];
+    const dropBatchState = { usedNames: new Set<string>(), usedIds: new Set<number>() };
+
+    for (const rawAction of actions) {
+      let action =
+        activeSection && !(rawAction as { section?: string }).section
+          ? ({ ...rawAction, section: activeSection } as DiagramAction)
+          : rawAction;
+
+      if (action.type === "addComponent") {
+        const addAct = action as Extract<DiagramAction, { type: "addComponent" }>;
+        const stripped = addAct.className.replace(/^__LIB__:/, "").replace(/^PSCAD\./i, "");
+        const nativeSchema = getMasterComponentSchema(stripped);
+        if (nativeSchema) {
+          action = { ...addAct, className: nativeSchema.className };
+        } else if (addAct.foreignInfo) {
+          const dropEdits = buildPscadComponentDropEdits({
+            docText: workingText,
+            session,
+            info: addAct.foreignInfo,
+            x: addAct.x,
+            y: addAct.y,
+            instanceName: addAct.name,
+            section: addAct.section,
+            hasNativeSchema: false,
+            schematicEndLine: 0,
+            batchState: dropBatchState,
+            sanitizeIdentifier: sanitizeLocalId,
+            allocateUniqueIdentifier: (doc, base) => allocateLocalIdentifier(doc, base, dropBatchState.usedNames),
+            allocateUniqueNumericId: (_root, seed) => seed,
+          });
+          if (dropEdits && dropEdits.length > 0) {
+            foreignEdits.push(...dropEdits);
+            continue;
+          }
+        } else {
+          const shortName = stripped.includes(":") ? stripped.split(":").pop()! : stripped;
+          const isNativeLocalOrMaster =
+            stripped.startsWith("master:") ||
+            localDefNames.has(stripped) ||
+            localDefNames.has(shortName) ||
+            !stripped.includes(".");
+          if (!isNativeLocalOrMaster) {
+            // Foreign cross-language symbol without pre-attached foreignInfo — defer to workspace lookup
+            return null;
+          }
+          if (stripped !== addAct.className) {
+            action = { ...addAct, className: stripped };
+          }
+        }
+      }
+      normalizedActions.push(action);
+    }
+
+    const planned =
+      normalizedActions.length > 0
+        ? planDiagramActionsOnSession(session, normalizedActions)
+        : { edits: [], createdIds: [], unresolved: [], renderHint: "none" as const };
+
+    const combinedEdits: CstTextEdit[] = [...planned.edits, ...foreignEdits];
+    if (combinedEdits.length === 0) {
+      return null;
+    }
+
+    const renderHint: "none" | "immediate" | "debounced" =
+      foreignEdits.length > 0 || planned.renderHint === "immediate" ? "immediate" : planned.renderHint;
+
+    if (didScaffold) {
+      const wLines = workingText.split("\n");
+      const toOff = (p: { line: number; character: number }) =>
+        wLines.slice(0, p.line).reduce((acc, l) => acc + l.length + 1, 0) + p.character;
+      let finalText = workingText;
+      for (const ed of [...combinedEdits].sort((a, b) => toOff(b.range.start) - toOff(a.range.start))) {
+        finalText = finalText.slice(0, toOff(ed.range.start)) + ed.newText + finalText.slice(toOff(ed.range.end));
+      }
+      const origLines = text.split("\n");
+      const lastLine = Math.max(0, origLines.length - 1);
+      const lastChar = origLines[lastLine]?.length ?? 0;
+      return {
+        edits: [
+          {
+            range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
+            newText: finalText,
+          },
+        ],
+        createdIds: planned.createdIds,
+        renderHint: "immediate",
+      };
+    }
+
+    return {
+      edits: combinedEdits,
+      createdIds: planned.createdIds,
+      renderHint,
+    };
+  } catch {
+    return null;
+  } finally {
+    scaffoldSession?.dispose();
+    if (ownsInitialSession && session !== scaffoldSession) {
+      session.dispose();
+    }
+  }
 }

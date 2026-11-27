@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { Ieee2800ComplianceReport } from "@modelscript/pscad";
 import type { CursorState, ViewportRange } from "@modelscript/simulate/charts";
 import Papa from "papaparse";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -15,6 +16,7 @@ import { SimulationToolbar } from "./simulation-results/components/SimulationToo
 import { StatisticsDrawer } from "./simulation-results/components/StatisticsDrawer";
 import { TrajectoryChart } from "./simulation-results/components/TrajectoryChart";
 import type { SimulationResultsProps, VariableStatEntry } from "./simulation-results/types";
+import { loadInitialSnapshotFromJson } from "./util/initial-snapshot-store";
 
 export type { SimulationResultsProps };
 
@@ -205,7 +207,9 @@ export function SimulationResults({
           setLoading(false);
           return;
         }
-        const csvText = await editorHost.getSimulationJobResult(jobId);
+        const rawResult = await editorHost.getSimulationJobResult(jobId);
+        const csvText =
+          typeof rawResult === "string" ? rawResult : typeof rawResult?.csv === "string" ? rawResult.csv : "";
 
         Papa.parse(csvText, {
           header: true,
@@ -442,7 +446,9 @@ export function SimulationResults({
           sessionStorage.setItem(baselineScopeKey, serialized);
         }
         sessionStorage.setItem(BASELINE_GLOBAL_KEY, serialized);
-      } catch {}
+      } catch {
+        // Ignore sessionStorage quota/availability errors in restricted contexts
+      }
       setBaselineData(copy);
     }
     setIsComparingBaseline(true);
@@ -455,7 +461,9 @@ export function SimulationResults({
         try {
           if (baselineScopeKey) sessionStorage.removeItem(baselineScopeKey);
           sessionStorage.removeItem(BASELINE_GLOBAL_KEY);
-        } catch {}
+        } catch {
+          // Ignore sessionStorage removal errors in restricted contexts
+        }
         setBaselineData(null);
         setIsComparingBaseline(false);
       } else {
@@ -471,7 +479,9 @@ export function SimulationResults({
         sessionStorage.removeItem(baselineScopeKey);
       }
       sessionStorage.removeItem(BASELINE_GLOBAL_KEY);
-    } catch {}
+    } catch {
+      // Ignore sessionStorage removal errors in restricted contexts
+    }
     setPinnedRuns([]);
     setBaselineData(null);
     setIsComparingBaseline(false);
@@ -955,13 +965,8 @@ export function SimulationResults({
               inp.onchange = async () => {
                 const file = inp.files?.[0];
                 if (!file) return;
-                try {
-                  const text = await file.text();
-                  (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot =
-                    JSON.parse(text);
-                } catch {
-                  (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot = undefined;
-                }
+                const text = await file.text();
+                loadInitialSnapshotFromJson(text);
               };
               inp.click();
             }}
@@ -1108,7 +1113,7 @@ export function SimulationResults({
       />
 
       {/* IEEE 2800 & PSCAD Instruments Toggles */}
-      {(complianceReport || hasIeee2800Channels || allVars.length > 0) && (
+      {(Boolean(complianceReport) || hasIeee2800Channels || allVars.length > 0) && (
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", flexWrap: "wrap" }}>
           {allVars.length > 0 && data.length >= 4 && (
             <button
@@ -1167,9 +1172,9 @@ export function SimulationResults({
         />
       )}
 
-      {complianceReport && showIeee2800 && (
+      {Boolean(complianceReport) && showIeee2800 && (
         <Ieee2800VerificationCard
-          report={complianceReport}
+          report={complianceReport as Ieee2800ComplianceReport}
           data={data}
           colorMode={colorMode}
           onClose={() => setShowIeee2800(false)}

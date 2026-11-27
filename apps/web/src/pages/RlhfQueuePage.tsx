@@ -19,6 +19,7 @@ import type {
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import styled from "styled-components";
+import { useTheme } from "../theme";
 import { usePageTitle } from "../util/title";
 
 interface FormalCert {
@@ -105,8 +106,8 @@ const PageRoot = styled.div`
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  background: var(--ms-bg-canvas, #0d1117);
-  color: var(--ms-text-1, #e6edf3);
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
   overflow: hidden;
 `;
 
@@ -117,8 +118,8 @@ const HudBar = styled.div`
   justify-content: space-between;
   gap: 10px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--ms-border-default, #30363d);
-  background: linear-gradient(90deg, rgba(14, 165, 233, 0.12), rgba(99, 102, 241, 0.1));
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
   font-size: 12px;
 `;
 
@@ -127,7 +128,7 @@ const HudMetrics = styled.div`
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-family: monospace;
+  font-family: var(--font-mono);
 `;
 
 const HudPill = styled.span<{ $tone?: "sky" | "emerald" | "amber" | "neutral" }>`
@@ -138,28 +139,28 @@ const HudPill = styled.span<{ $tone?: "sky" | "emerald" | "amber" | "neutral" }>
   border: 1px solid
     ${(p) =>
       p.$tone === "emerald"
-        ? "rgba(52, 211, 153, 0.45)"
+        ? "var(--status-verified-border)"
         : p.$tone === "amber"
-          ? "rgba(251, 191, 36, 0.45)"
+          ? "var(--status-warning-border)"
           : p.$tone === "sky"
-            ? "rgba(56, 189, 248, 0.5)"
-            : "rgba(139, 148, 158, 0.35)"};
+            ? "var(--color-accent-blue-border)"
+            : "var(--color-border)"};
   background: ${(p) =>
     p.$tone === "emerald"
-      ? "rgba(52, 211, 153, 0.14)"
+      ? "var(--status-verified-bg)"
       : p.$tone === "amber"
-        ? "rgba(251, 191, 36, 0.14)"
+        ? "var(--status-warning-bg)"
         : p.$tone === "sky"
-          ? "rgba(56, 189, 248, 0.14)"
-          : "rgba(139, 148, 158, 0.12)"};
+          ? "var(--ms-brand-soft)"
+          : "var(--color-badge-bg)"};
   color: ${(p) =>
     p.$tone === "emerald"
-      ? "#34d399"
+      ? "var(--status-verified-fg)"
       : p.$tone === "amber"
-        ? "#fbbf24"
+        ? "var(--status-warning-fg)"
         : p.$tone === "sky"
-          ? "#38bdf8"
-          : "var(--ms-text-2, #c9d1d9)"};
+          ? "var(--ms-brand)"
+          : "var(--color-text-secondary)"};
 `;
 
 const TopBar = styled.header`
@@ -169,8 +170,8 @@ const TopBar = styled.header`
   justify-content: space-between;
   gap: 12px;
   padding: 10px 16px;
-  border-bottom: 1px solid var(--ms-border-default, #30363d);
-  background: var(--ms-surface-panel, #161b22);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
 `;
 
 const SplitGrid = styled.div<{ $columns: number }>`
@@ -179,15 +180,15 @@ const SplitGrid = styled.div<{ $columns: number }>`
   display: grid;
   grid-template-columns: repeat(${(p) => p.$columns}, minmax(0, 1fr));
   gap: 1px;
-  background: var(--ms-border-default, #30363d);
+  background: var(--color-border);
 `;
 
 const Pane = styled.section<{ $selected?: boolean }>`
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--ms-bg-canvas, #0d1117);
-  outline: ${(p) => (p.$selected ? "2px solid #38bdf8" : "none")};
+  background: var(--color-bg-primary);
+  outline: ${(p) => (p.$selected ? "2px solid var(--ms-brand)" : "none")};
   outline-offset: -2px;
 `;
 
@@ -198,8 +199,9 @@ const PaneHeader = styled.div`
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--ms-border-default, #30363d);
-  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-heading);
   font-size: 12px;
 `;
 
@@ -210,9 +212,9 @@ const QuickTokenPillBar = styled.div`
   justify-content: space-between;
   gap: 8px;
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(56, 189, 248, 0.4);
-  background: rgba(56, 189, 248, 0.1);
-  color: #e0f2fe;
+  border-bottom: 1px solid var(--color-accent-blue-border);
+  background: var(--ms-brand-soft);
+  color: var(--color-text-heading);
   font-size: 12px;
 `;
 
@@ -222,21 +224,21 @@ const MutationStrip = styled.div`
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  border-bottom: 1px solid rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.09);
-  color: #fde68a;
+  border-bottom: 1px solid var(--status-warning-border);
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
 `;
 
 const GateBadge = styled.span<{ $pass: boolean }>`
   font-size: 11px;
-  font-family: monospace;
+  font-family: var(--font-mono);
   padding: 2px 6px;
   border-radius: 6px;
-  background: ${(p) => (p.$pass ? "rgba(52, 211, 153, 0.14)" : "rgba(248, 113, 113, 0.16)")};
-  color: ${(p) => (p.$pass ? "#34d399" : "#f87171")};
-  border: 1px solid ${(p) => (p.$pass ? "rgba(52, 211, 153, 0.4)" : "rgba(248, 113, 113, 0.45)")};
+  background: ${(p) => (p.$pass ? "var(--status-verified-bg)" : "var(--status-danger-bg)")};
+  color: ${(p) => (p.$pass ? "var(--status-verified-fg)" : "var(--status-danger-fg)")};
+  border: 1px solid ${(p) => (p.$pass ? "var(--status-verified-border)" : "var(--status-danger-border)")};
 `;
 
 const FooterBar = styled.footer`
@@ -246,8 +248,8 @@ const FooterBar = styled.footer`
   justify-content: space-between;
   gap: 10px;
   padding: 10px 16px;
-  border-top: 1px solid var(--ms-border-default, #30363d);
-  background: var(--ms-surface-panel, #161b22);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-surface);
 `;
 
 const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean; $danger?: boolean; $amber?: boolean }>`
@@ -259,23 +261,32 @@ const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean; $dan
   border: 1px solid
     ${(p) =>
       p.$danger
-        ? "rgba(248, 113, 113, 0.55)"
+        ? "var(--status-danger-border)"
         : p.$amber
-          ? "rgba(251, 191, 36, 0.65)"
+          ? "var(--status-warning-border)"
           : p.$active || p.$primary
-            ? "#38bdf8"
-            : "var(--ms-border, #30363d)"};
+            ? "var(--ms-brand)"
+            : "var(--color-border-default)"};
   background: ${(p) =>
     p.$primary
-      ? "linear-gradient(135deg, #0284c7, #6366f1)"
+      ? "var(--ms-brand)"
       : p.$danger
-        ? "rgba(248, 113, 113, 0.16)"
+        ? "var(--status-danger-bg)"
         : p.$amber
-          ? "rgba(251, 191, 36, 0.18)"
+          ? "var(--status-warning-bg)"
           : p.$active
-            ? "rgba(56, 189, 248, 0.18)"
-            : "var(--ms-bg-elevated, #21262d)"};
-  color: ${(p) => (p.$danger ? "#fca5a5" : p.$amber ? "#fde68a" : "#f8fafc")};
+            ? "var(--ms-brand-soft)"
+            : "var(--color-bg-surface)"};
+  color: ${(p) =>
+    p.$primary
+      ? "var(--ms-brand-contrast, #ffffff)"
+      : p.$danger
+        ? "var(--status-danger-fg)"
+        : p.$amber
+          ? "var(--status-warning-fg)"
+          : p.$active
+            ? "var(--ms-brand)"
+            : "var(--color-text-primary)"};
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -283,9 +294,9 @@ const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean; $dan
 `;
 
 const SelectControl = styled.select`
-  background: var(--ms-bg-canvas, #0d1117);
-  color: var(--ms-text-1, #e6edf3);
-  border: 1px solid var(--ms-border, #30363d);
+  background: var(--color-canvas-inset);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 11px;
@@ -296,9 +307,10 @@ const KbdHint = styled.kbd`
   padding: 1px 5px;
   margin-left: 4px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  background: rgba(0, 0, 0, 0.28);
-  font-family: monospace;
+  border: 1px solid var(--color-border-default);
+  background: var(--color-badge-bg);
+  color: inherit;
+  font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
 `;
@@ -308,8 +320,9 @@ const EmptyCard = styled.div`
   max-width: 520px;
   padding: 28px;
   border-radius: 12px;
-  border: 1px solid var(--ms-border, #30363d);
-  background: var(--ms-bg-surface, #161b22);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -448,6 +461,8 @@ function buildWorstCaseCornerForCandidate(cand: BlindCandidateDetail): WorstCase
 }
 
 export const RlhfQueuePage: React.FC = () => {
+  const { theme } = useTheme();
+  const editorColorMode = theme === "dark" ? "dark" : "light";
   const [searchParams, setSearchParams] = useSearchParams();
   const dialectFilter = searchParams.get("dialect") ?? "";
   const campaignIdFilter = searchParams.get("campaignId") ?? "";
@@ -1103,6 +1118,7 @@ export const RlhfQueuePage: React.FC = () => {
                         key={`${challenge.id}-${cand.id}-${worstCaseActive ? `xi-${deltaFraction}` : "nominal"}`}
                         dataUrl={null}
                         embed
+                        colorMode={editorColorMode}
                         initialCode={displayedCode}
                         initialDialect={cand.dialect}
                         cameraSyncGroup={syncCameras ? `rlhf-${challenge.id}` : undefined}
@@ -1127,6 +1143,7 @@ export const RlhfQueuePage: React.FC = () => {
                     key={`fix-${challenge.id}`}
                     dataUrl={null}
                     embed
+                    colorMode={editorColorMode}
                     initialCode={fixCode}
                     initialDialect={challenge.dialect}
                     onCodeChange={setFixCode}
@@ -1206,7 +1223,7 @@ export const RlhfQueuePage: React.FC = () => {
                     uri={`rlhf://queue/challenge/${challenge.id}/source.${challenge.dialect}`}
                     languageId={challenge.dialect}
                     setEditor={() => {}}
-                    theme="vs-dark"
+                    theme={editorColorMode === "dark" ? "vs-dark" : "light"}
                     embed={false}
                     readOnly
                     showHypergraphOverlay
@@ -1319,9 +1336,9 @@ export const RlhfQueuePage: React.FC = () => {
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Optional engineering note…"
                 style={{
-                  background: "var(--ms-bg-canvas, #0d1117)",
-                  color: "var(--ms-text-1, #e6edf3)",
-                  border: "1px solid var(--ms-border, #30363d)",
+                  background: "var(--color-canvas-inset)",
+                  color: "var(--color-text-primary)",
+                  border: "1px solid var(--color-border-default)",
                   borderRadius: 6,
                   padding: "6px 10px",
                   fontSize: 12,

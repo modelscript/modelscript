@@ -33,6 +33,7 @@ import {
   type RegistryPackage,
 } from "./componentGalleryCatalog";
 import { startPlacement } from "./placement";
+import { publishCstWorkerForeignSymbols } from "./util/cst-edit-client";
 import type { Translations } from "./util/i18n";
 import {
   getClassIcons,
@@ -179,16 +180,24 @@ const SchematicPreview: React.FC<{
   );
 });
 
-const DomainGlyph: React.FC<{ svgInner: string; size?: number }> = ({ svgInner, size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 16 16"
-    fill="none"
-    style={{ flexShrink: 0, display: "block" }}
-    dangerouslySetInnerHTML={{ __html: svgInner }}
-  />
-);
+const DomainGlyph: React.FC<{ svgInner: string; size?: number }> = ({ svgInner, size = 14 }) => {
+  const sanitizedInner = useMemo(() => {
+    if (!svgInner) return "";
+    return DOMPurify.sanitize(`<svg viewBox="0 0 16 16">${svgInner}</svg>`, {
+      USE_PROFILES: { svg: true, svgFilters: true },
+    }).replace(/^<svg[^>]*>|<\/svg>$/gi, "");
+  }, [svgInner]);
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      style={{ flexShrink: 0, display: "block" }}
+      dangerouslySetInnerHTML={{ __html: sanitizedInner }}
+    />
+  );
+};
 
 const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
   isOpen,
@@ -465,7 +474,8 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
             const kind = (node.classKind || "class").toLowerCase();
             if (kind === "package") continue;
             const rootPkg = fqn.split(".")[0] || "Workspace";
-            const domain = inferDomainForFqn(fqn, node.language);
+            const nodeLang = (node as { language?: string | undefined }).language;
+            const domain = inferDomainForFqn(fqn, nodeLang);
             const mountedVer = mountedMap.get(rootPkg.toLowerCase())?.version || "1.0.0";
             if (node.iconSvg && node.iconSvg.includes("<svg")) {
               globalClassIconCache.set(fqn, node.iconSvg);
@@ -875,6 +885,24 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
   const handleComponentDragStart = useCallback(
     (e: React.DragEvent, item: GalleryComponentItem) => {
       const iconSvg = globalClassIconCache.get(item.fqn) || item.schematicSvg;
+      const inferredLang = item.packageName.toLowerCase().includes("sysml")
+        ? "sysml2"
+        : item.packageName.toLowerCase().includes("pscad")
+          ? "pscad"
+          : item.packageName.toLowerCase().includes("psse")
+            ? "psse"
+            : "modelica";
+      if (inferredLang !== "pscad") {
+        publishCstWorkerForeignSymbols({
+          [item.fqn]: {
+            cleanName: item.fqn,
+            shortName: item.shortName,
+            sourceLanguage: inferredLang,
+            explicitLanguage: inferredLang,
+            params: [],
+          },
+        });
+      }
       const payload = {
         className: item.fqn,
         classKind: item.kind,
@@ -1065,7 +1093,7 @@ const AddLibraryModal: React.FC<AddLibraryModalProps> = ({
               }}
             >
               <SegmentedControl.Button selected={viewMode === "libraries"}>
-                Libraries ({mountedVisibleCount}/{allPackages.length})
+                {`Libraries (${mountedVisibleCount}/${allPackages.length})`}
               </SegmentedControl.Button>
               <SegmentedControl.Button selected={viewMode === "import"}>Import</SegmentedControl.Button>
             </SegmentedControl>

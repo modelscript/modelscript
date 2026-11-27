@@ -2,8 +2,8 @@
 
 // Subdirectory barrels
 export * from "./analysis/index.js";
+export * from "./browser-esbuild-utils.js";
 export * from "./emitters/index.js";
-export * from "./ide/index.js";
 export * from "./parser/index.js";
 export * from "./rewriting/index.js";
 export * from "./shared/index.js";

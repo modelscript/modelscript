@@ -3,7 +3,21 @@
 import { exportLcriInventoryCsv } from "@modelscript/epanet";
 import { CheckCircleFillIcon, DownloadIcon, ShieldCheckIcon, XCircleFillIcon, XIcon } from "@primer/octicons-react";
 import React from "react";
-import styled from "styled-components";
+import {
+  ActionBtn,
+  ActionButtons,
+  CardContainer,
+  type ComplianceTone,
+  HeaderRow,
+  MetricGrid,
+  MetricLabel,
+  MetricSub,
+  MetricTile,
+  MetricValue,
+  StackedBarSegment,
+  StatusPill,
+  TitleGroup,
+} from "./ComplianceCardPrimitives";
 
 export interface LcriServiceLineInventory {
   totalConnections: number;
@@ -50,159 +64,15 @@ export interface LcriComplianceCardProps {
   colorMode?: "light" | "dark" | undefined;
 }
 
-const CardContainer = styled.div<{ $isDark: boolean }>`
-  border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
-  border-radius: 10px;
-  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  font-family: inherit;
-  margin-top: 8px;
-`;
+const statusToTone = (status: "Compliant" | "Action Level Exceeded" | "At Risk"): ComplianceTone =>
+  status === "Compliant" ? "success" : status === "At Risk" ? "warning" : "danger";
 
-const HeaderRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-`;
-
-const TitleGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
-
-const StatusBadge = styled.span<{ $status: "Compliant" | "Action Level Exceeded" | "At Risk" }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: #ffffff;
-  background: ${(p) =>
-    p.$status === "Compliant"
-      ? "var(--color-success-emphasis, #238636)"
-      : p.$status === "At Risk"
-        ? "var(--color-attention-emphasis, #9a6700)"
-        : "var(--color-danger-emphasis, #da3633)"};
-`;
-
-const ActionButtons = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const ActionBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid var(--color-border-default, #d0d7de);
-  background: var(--color-canvas-default, #ffffff);
-  color: var(--color-fg-default, #24292f);
-  cursor: pointer;
-  transition: all 0.15s ease;
-
-  &:hover {
-    background: var(--color-canvas-subtle, #f6f8fa);
-  }
-`;
-
-const MetricGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 10px;
-`;
-
-const MetricTile = styled.div<{ $isDark: boolean; $alert?: boolean }>`
-  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
-  border: 1px solid
-    ${(p) => (p.$alert ? "var(--color-danger-emphasis, #da3633)" : "var(--color-border-subtle, #eaecef)")};
-  border-radius: 8px;
-  padding: 10px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-`;
-
-const MetricLabel = styled.span`
-  font-size: 11px;
-  color: var(--color-fg-muted, #57606a);
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-`;
-
-const MetricValue = styled.span<{ $color?: string }>`
-  font-size: 18px;
-  font-weight: 700;
-  color: ${(p) => p.$color || "var(--color-fg-default, #24292f)"};
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-`;
-
-const MetricSub = styled.span`
-  font-size: 11px;
-  color: var(--color-fg-muted, #57606a);
-`;
-
-const InventorySection = styled.div<{ $isDark: boolean }>`
-  background: var(--bgColor-muted, ${(p) => (p.$isDark ? "#1e1e22" : "#ffffff")});
-  border: 1px solid var(--color-border-subtle, #eaecef);
-  border-radius: 8px;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-`;
-
-const BarContainer = styled.div`
-  display: flex;
-  height: 16px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--color-border-muted, #d0d7de);
-`;
-
-const BarSegment = styled.div<{ $pct: number; $color: string }>`
-  width: ${(p) => p.$pct}%;
-  background: ${(p) => p.$color};
-  transition: width 0.3s ease;
-`;
-
-const LegendRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  font-size: 11px;
-  color: var(--color-fg-muted, #57606a);
-`;
-
-const LegendItem = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 5px;
-`;
-
-const LegendDot = styled.div<{ $color: string }>`
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-  background: ${(p) => p.$color};
-`;
+const LegendItem: React.FC<{ color: string; children: React.ReactNode }> = ({ color, children }) => (
+  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+    <div style={{ width: 9, height: 9, borderRadius: 2, background: color }} />
+    {children}
+  </div>
+);
 
 const DEFAULT_REPORT: LcriComplianceReport = {
   utilityName: "Metropolitan Water Authority",
@@ -333,19 +203,25 @@ export const LcriComplianceCard: React.FC<LcriComplianceCardProps> = ({
   };
 
   return (
-    <CardContainer $isDark={isDark}>
+    <CardContainer isDark={isDark}>
       <HeaderRow>
         <TitleGroup>
           <ShieldCheckIcon size={20} fill={computedStatus === "Compliant" ? "#238636" : "#da3633"} />
           <div>
             <div style={{ fontWeight: 700, fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
               <span>EPA LCRI Lead & Copper Rule Compliance</span>
-              <StatusBadge $status={computedStatus}>
+              <StatusPill tone={statusToTone(computedStatus)}>
                 {computedStatus === "Compliant" ? <CheckCircleFillIcon size={12} /> : <XCircleFillIcon size={12} />}
                 {computedStatus}
-              </StatusBadge>
+              </StatusPill>
             </div>
-            <div style={{ fontSize: "12px", color: "var(--color-fg-muted, #57606a)", marginTop: "2px" }}>
+            <div
+              style={{
+                fontSize: "12px",
+                color: "var(--ms-text-2, var(--color-fg-muted, #57606a))",
+                marginTop: "2px",
+              }}
+            >
               {data.utilityName} {data.pwsid ? `(${data.pwsid})` : ""} &bull; {data.sampling.samplingPeriod} &bull; 10
               ppb Action Level
             </div>
@@ -353,16 +229,16 @@ export const LcriComplianceCard: React.FC<LcriComplianceCardProps> = ({
         </TitleGroup>
 
         <ActionButtons>
-          <ActionBtn onClick={handleExportCsv} aria-label="Export EPA CSV">
+          <ActionBtn isDark={isDark} compact onClick={handleExportCsv} aria-label="Export EPA CSV">
             <DownloadIcon size={14} />
             Export EPA CSV
           </ActionBtn>
-          <ActionBtn onClick={handleExport} aria-label="Export JSON">
+          <ActionBtn isDark={isDark} compact onClick={handleExport} aria-label="Export JSON">
             <DownloadIcon size={14} />
             Export JSON
           </ActionBtn>
           {onClose && (
-            <ActionBtn onClick={onClose} aria-label="Close">
+            <ActionBtn isDark={isDark} compact onClick={onClose} aria-label="Close">
               <XIcon size={14} />
             </ActionBtn>
           )}
@@ -371,15 +247,15 @@ export const LcriComplianceCard: React.FC<LcriComplianceCardProps> = ({
 
       {/* Primary Compliance Metrics */}
       <MetricGrid>
-        <MetricTile $isDark={isDark} $alert={isLeadExceeded}>
+        <MetricTile isDark={isDark} alert={isLeadExceeded}>
           <MetricLabel>90th Percentile Lead</MetricLabel>
-          <MetricValue $color={isLeadExceeded ? "#da3633" : "#238636"}>
+          <MetricValue color={isLeadExceeded ? "#da3633" : "#238636"}>
             {data.sampling.p90LeadPpb.toFixed(1)} <span style={{ fontSize: "12px" }}>ppb</span>
           </MetricValue>
           <MetricSub>Action Level: &le; 10.0 ppb</MetricSub>
         </MetricTile>
 
-        <MetricTile $isDark={isDark}>
+        <MetricTile isDark={isDark}>
           <MetricLabel>90th Percentile Copper</MetricLabel>
           <MetricValue>
             {data.sampling.p90CopperPpb.toFixed(0)} <span style={{ fontSize: "12px" }}>ppb</span>
@@ -387,15 +263,15 @@ export const LcriComplianceCard: React.FC<LcriComplianceCardProps> = ({
           <MetricSub>Action Level: &le; 1,300 ppb</MetricSub>
         </MetricTile>
 
-        <MetricTile $isDark={isDark} $alert={isWqpLow}>
+        <MetricTile isDark={isDark} alert={isWqpLow}>
           <MetricLabel>Orthophosphate Residual</MetricLabel>
-          <MetricValue $color={isWqpLow ? "#9a6700" : undefined}>
+          <MetricValue color={isWqpLow ? "#9a6700" : undefined}>
             {data.corrosionControl.orthophosphateMgL.toFixed(2)} <span style={{ fontSize: "12px" }}>mg/L</span>
           </MetricValue>
           <MetricSub>Min Target: &ge; {data.corrosionControl.orthophosphateTarget.toFixed(2)} mg/L</MetricSub>
         </MetricTile>
 
-        <MetricTile $isDark={isDark}>
+        <MetricTile isDark={isDark}>
           <MetricLabel>Finished Water pH</MetricLabel>
           <MetricValue>{data.corrosionControl.phMean.toFixed(2)}</MetricValue>
           <MetricSub>
@@ -405,57 +281,79 @@ export const LcriComplianceCard: React.FC<LcriComplianceCardProps> = ({
       </MetricGrid>
 
       {/* Service Line Inventory (10-Year Mandatory Replacement) */}
-      <InventorySection $isDark={isDark}>
+      <div
+        style={{
+          background: `var(--ms-bg-elv, var(--bgColor-muted, ${isDark ? "#1e1e22" : "#ffffff"}))`,
+          border: `1px solid var(--ms-border-subtle, var(--color-border-subtle, ${isDark ? "#30363d" : "#eaecef"}))`,
+          borderRadius: 8,
+          padding: "12px 14px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", fontWeight: 600 }}>
           <span>Service Line Inventory ({data.inventory.totalConnections.toLocaleString()} connections)</span>
-          <span style={{ color: "var(--color-fg-muted, #57606a)" }}>
+          <span style={{ color: "var(--ms-text-2, var(--color-fg-muted, #57606a))" }}>
             Annual Replacement Pace: {data.inventory.annualReplacementRatePct?.toFixed(1) ?? "10.0"}% / yr (Req &ge;
             10%)
           </span>
         </div>
 
-        <BarContainer>
-          <BarSegment
-            $pct={leadPct}
-            $color="#da3633"
+        <div
+          style={{
+            display: "flex",
+            height: 16,
+            borderRadius: 4,
+            overflow: "hidden",
+            background: "var(--ms-border, var(--color-border-muted, #d0d7de))",
+          }}
+        >
+          <StackedBarSegment
+            pct={leadPct}
+            color="#da3633"
             title={`Lead: ${data.inventory.leadCount} (${leadPct.toFixed(1)}%)`}
           />
-          <BarSegment
-            $pct={grrPct}
-            $color="#d97706"
+          <StackedBarSegment
+            pct={grrPct}
+            color="#d97706"
             title={`GRR: ${data.inventory.grrCount} (${grrPct.toFixed(1)}%)`}
           />
-          <BarSegment
-            $pct={unknownPct}
-            $color="#ca8a04"
+          <StackedBarSegment
+            pct={unknownPct}
+            color="#ca8a04"
             title={`Unknown: ${data.inventory.unknownCount} (${unknownPct.toFixed(1)}%)`}
           />
-          <BarSegment
-            $pct={nonLeadPct}
-            $color="#238636"
+          <StackedBarSegment
+            pct={nonLeadPct}
+            color="#238636"
             title={`Non-Lead: ${data.inventory.nonLeadCount} (${nonLeadPct.toFixed(1)}%)`}
           />
-        </BarContainer>
+        </div>
 
-        <LegendRow>
-          <LegendItem>
-            <LegendDot $color="#da3633" />
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 14,
+            fontSize: 11,
+            color: "var(--ms-text-2, var(--color-fg-muted, #57606a))",
+          }}
+        >
+          <LegendItem color="#da3633">
             Lead: {data.inventory.leadCount.toLocaleString()} ({leadPct.toFixed(1)}%)
           </LegendItem>
-          <LegendItem>
-            <LegendDot $color="#d97706" />
+          <LegendItem color="#d97706">
             Galvanized (GRR): {data.inventory.grrCount.toLocaleString()} ({grrPct.toFixed(1)}%)
           </LegendItem>
-          <LegendItem>
-            <LegendDot $color="#ca8a04" />
+          <LegendItem color="#ca8a04">
             Unknown: {data.inventory.unknownCount.toLocaleString()} ({unknownPct.toFixed(1)}%)
           </LegendItem>
-          <LegendItem>
-            <LegendDot $color="#238636" />
+          <LegendItem color="#238636">
             Non-Lead: {data.inventory.nonLeadCount.toLocaleString()} ({nonLeadPct.toFixed(1)}%)
           </LegendItem>
-        </LegendRow>
-      </InventorySection>
+        </div>
+      </div>
     </CardContainer>
   );
 };

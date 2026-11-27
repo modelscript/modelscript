@@ -154,7 +154,8 @@ export type AnsatzSyntaxFamily =
   | "csv"
   | "verilog-a"
   | "plcopen"
-  | "simulink";
+  | "simulink"
+  | "plaintext";
 
 export type AnsatzDefaultView = "diagram" | "3d" | "simulation" | "inspector" | "code";
 

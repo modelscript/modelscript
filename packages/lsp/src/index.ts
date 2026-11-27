@@ -20,6 +20,7 @@ export * from "./registry/index.js";
 export * from "./requirements.js";
 export * from "./rtm/index.js";
 export * from "./services/index.js";
+export { simpleHash } from "./services/server-lifecycle.js";
 export * from "./utils/hook-extractor.js";
 export { LineIndex, type TokenData } from "./utils/index.js";
 export * from "./vfs/index.js";

@@ -1786,7 +1786,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is DeclarationNode;
     storage(node: SyntaxNode | null | undefined): SyntaxNode | null;
     storageList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declarators(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaratorsList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -1840,7 +1840,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is StructFieldDeclarationNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declarators(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaratorsList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -1931,7 +1931,7 @@ export declare namespace Cst {
     readonly typeId: number;
     readonly type: string;
     is(node: SyntaxNode | null | undefined): node is ParameterDeclarationNode;
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     declarator(node: SyntaxNode | null | undefined): SyntaxNode | null;
     declaratorList(node: SyntaxNode | null | undefined): SyntaxNode[];
@@ -2056,7 +2056,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is UnaryExpressionNode;
     operand(node: SyntaxNode | null | undefined): SyntaxNode | null;
     operandList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const PostfixExpression: {

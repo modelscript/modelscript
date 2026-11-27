@@ -4,6 +4,9 @@
  * Language Server Protocol (LSP) services for USAF Stability and Control Digital DATCOM.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lookupDatcomModelSchema } from "./catalog/library-package-adapter.js";
 import { lintDatcom } from "./lints/index.js";
 import { parseDatcomDeck } from "./parser/deck-parser.js";
@@ -115,19 +118,67 @@ const CONTROL_CARD_DOCS: Record<string, string> = {
   "NEXT CASE": "**NEXT CASE** — Terminate current case and start a subsequent DATCOM case.",
 };
 
+interface DatcomCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface DatcomCstLineIndex {
+  byRow: Map<number, DatcomCstLineEntry>;
+  lastRow: number;
+}
+
+function buildDatcomCstLineIndex(content: string): DatcomCstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("datcom", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, DatcomCstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row > maxRow) maxRow = row;
+    }
+    const rootEndRow = (rootNode as { endPosition?: { row?: number } }).endPosition?.row ?? 0;
+    return { byRow, lastRow: Math.max(maxRow, rootEndRow) };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  return { byRow, lastRow: Math.max(0, rawLines.length - 1) };
+}
+
 /**
  * Validates a Digital DATCOM deck and returns LSP diagnostics.
  */
 export function validateDatcom(content: string, _uri: string = "aircraft.dcm"): LspDiagnostic[] {
   const deck = parseDatcomDeck(content);
   const diags = lintDatcom(deck);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildDatcomCstLineIndex(content);
 
   return diags.map((d) => {
-    const lineIdx = d.line ? Math.max(0, Math.min(lines.length - 1, d.line - 1)) : 0;
-    const lineText = lines[lineIdx] ?? "";
+    const lineIdx = d.line ? Math.max(0, Math.min(cstIndex.lastRow, d.line - 1)) : 0;
+    const lineEnd = cstIndex.byRow.get(lineIdx)?.endCol ?? 0;
     const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const endChar = Math.max(startChar + 1, lineEnd);
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -146,18 +197,18 @@ export function validateDatcom(content: string, _uri: string = "aircraft.dcm"): 
  */
 export function getDatcomDocumentSymbols(content: string): LspDocumentSymbol[] {
   const deck = parseDatcomDeck(content);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
+  const cstIndex = buildDatcomCstLineIndex(content);
+  const lastLine = cstIndex.lastRow;
 
   return deck.cases.map((c) => {
     const children: LspDocumentSymbol[] = [];
 
     for (const nl of c.namelists) {
       const lineIdx = Math.max(0, nl.line - 1);
-      const lineLen = (lines[lineIdx] ?? "").length;
+      const entry = cstIndex.byRow.get(lineIdx);
       const range: LspRange = {
-        start: { line: lineIdx, character: 0 },
-        end: { line: lineIdx, character: Math.max(1, lineLen) },
+        start: { line: lineIdx, character: entry?.startCol ?? 0 },
+        end: { line: lineIdx, character: Math.max((entry?.startCol ?? 0) + 1, entry?.endCol ?? 1) },
       };
       children.push({
         name: `$${nl.group}`,
@@ -170,10 +221,10 @@ export function getDatcomDocumentSymbols(content: string): LspDocumentSymbol[] {
 
     for (const naca of c.nacaCards) {
       const lineIdx = Math.max(0, naca.line - 1);
-      const lineLen = (lines[lineIdx] ?? "").length;
+      const entry = cstIndex.byRow.get(lineIdx);
       const range: LspRange = {
-        start: { line: lineIdx, character: 0 },
-        end: { line: lineIdx, character: Math.max(1, lineLen) },
+        start: { line: lineIdx, character: entry?.startCol ?? 0 },
+        end: { line: lineIdx, character: Math.max((entry?.startCol ?? 0) + 1, entry?.endCol ?? 1) },
       };
       children.push({
         name: naca.raw,
@@ -188,7 +239,7 @@ export function getDatcomDocumentSymbols(content: string): LspDocumentSymbol[] {
     const endLine = children.length > 0 ? children[children.length - 1]!.range.end.line : lastLine;
     const caseRange: LspRange = {
       start: { line: firstLine, character: 0 },
-      end: { line: endLine, character: Math.max(1, (lines[endLine] ?? "").length) },
+      end: { line: endLine, character: Math.max(1, cstIndex.byRow.get(endLine)?.endCol ?? 1) },
     };
 
     return {
@@ -206,9 +257,10 @@ export function getDatcomDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Returns hover documentation for NAMELIST groups, parameters, control cards, or NACA airfoils.
  */
 export function getDatcomHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildDatcomCstLineIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = " ".repeat(entry.startCol) + entry.text;
 
   const col = Math.max(0, Math.min(position.character, line.length));
   // Expand word around cursor (including $ and -)

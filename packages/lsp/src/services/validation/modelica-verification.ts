@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { createModelicaQueryEngine } from "@modelscript/modelica/factory";
 import {
   isTypeLikeSymbol,
   type SymbolEntry,
@@ -8,6 +9,7 @@ import {
   VerificationRunner,
 } from "@modelscript/runtime";
 import { simulateArena } from "@modelscript/simulate";
+import { createSysML2QueryEngine } from "@modelscript/sysml2/factory";
 import { type Connection, type Diagnostic, DiagnosticSeverity, type Range } from "vscode-languageserver";
 import type { TextDocument } from "vscode-languageserver-textdocument";
 import { type LSPBridge, PositionIndex } from "../../lsp-bridge.js";
@@ -31,6 +33,7 @@ import {
 } from "../compliance-profile-service.js";
 import type { DocumentManager } from "../document-manager.js";
 import type { ParserService } from "../parser-service.js";
+import { createFlattenArenaFromInstance } from "../server-lifecycle.js";
 import type { WorkspaceManager } from "../workspace-manager.js";
 import { hasWordMatch, splitLinesPreserve } from "./text-helpers.js";
 
@@ -101,18 +104,6 @@ interface QueryDbLike {
 
 interface QueryEngineFactoryLike {
   (db: SymbolIndex, cstWrapper: unknown): { toQueryDB: () => QueryDbLike };
-}
-
-interface FlattenArenaFnLike {
-  (model: { id: number; name: string; compositeName: string }, context: unknown): unknown;
-}
-
-interface GlobalVerificationHooks {
-  createSysML2QueryEngine?: QueryEngineFactoryLike;
-  create_sysml2_query_engine?: QueryEngineFactoryLike;
-  createModelicaQueryEngine?: QueryEngineFactoryLike;
-  create_modelica_query_engine?: QueryEngineFactoryLike;
-  flattenArenaFromInstance?: FlattenArenaFnLike;
 }
 
 interface ArenaWithExperiment {
@@ -728,7 +719,7 @@ export async function runVerificationForUriImpl(
           /* ignore */
         }
       }
-      return lazyCache;
+      return lazyCache?.tree ? { tree: lazyCache.tree, text: lazyCache.text } : undefined;
     };
 
     const verifyCstTreeWrapper = {
@@ -785,12 +776,9 @@ export async function runVerificationForUriImpl(
       },
     };
 
-    const gHooks = globalThis as unknown as GlobalVerificationHooks;
     const sysmlFactory =
-      gHooks.createSysML2QueryEngine ??
-      gHooks.create_sysml2_query_engine ??
       (globalLanguageRegistry.getPluginForLanguageIdOrUri("sysml2")?.createQueryEngine as
-        QueryEngineFactoryLike | undefined);
+        QueryEngineFactoryLike | undefined) ?? (createSysML2QueryEngine as unknown as QueryEngineFactoryLike);
     const sysmlEngine = typeof sysmlFactory === "function" ? sysmlFactory(db, verifyCstTreeWrapper) : null;
     if (!sysmlEngine) {
       progressReporter?.done("SysML v2 query engine unavailable");
@@ -870,10 +858,8 @@ export async function runVerificationForUriImpl(
         ) as { toQueryDB?: () => QueryDbLike } | undefined;
         if (!targetEngine && finalEntry.resourceId.endsWith(".mo")) {
           const moFactory =
-            gHooks.createModelicaQueryEngine ??
-            gHooks.create_modelica_query_engine ??
             (globalLanguageRegistry.getPluginForLanguageIdOrUri("modelica")?.createQueryEngine as
-              QueryEngineFactoryLike | undefined);
+              QueryEngineFactoryLike | undefined) ?? (createModelicaQueryEngine as unknown as QueryEngineFactoryLike);
           if (typeof moFactory === "function") {
             targetEngine = moFactory(db, verifyCstTreeWrapper);
           }
@@ -895,11 +881,7 @@ export async function runVerificationForUriImpl(
         progressReporter?.done("Context not initialized");
         return { ok: false, error: "Context not initialized" };
       }
-      const flattenFn = gHooks.flattenArenaFromInstance;
-      if (typeof flattenFn !== "function") {
-        progressReporter?.done("Flattener not available");
-        return { ok: false, error: "Flattener not available" };
-      }
+      const flattenFn = createFlattenArenaFromInstance(ctx.workspaceManager);
       const arena = flattenFn(targetModel, context);
       let arenaSimResult: ReturnType<typeof simulateArena>;
       const simParameters: { name: string; value: number | string | boolean }[] = [];

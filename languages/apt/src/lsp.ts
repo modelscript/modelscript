@@ -7,6 +7,9 @@
  * hover documentation (`getAptHover`), and completions (`getAptCompletions`).
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { solveAptToClData } from "./cad/geometry-solver.js";
 import { getAptSchemasFromLibraries, lookupAptModelSchema } from "./catalog/library-package-adapter.js";
 import { lintApt } from "./lints/index.js";
@@ -130,22 +133,78 @@ const APT_KEYWORD_DOCS: Record<string, { detail: string; doc: string }> = {
   },
 };
 
+interface AptCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface AptCstLineIndex {
+  byRow: Map<number, AptCstLineEntry>;
+  lastRow: number;
+  lastCol: number;
+}
+
+function buildAptCstLineIndex(content: string): AptCstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("apt", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, AptCstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    let maxCol = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row >= maxRow) {
+        maxRow = row;
+        maxCol = endCol;
+      }
+    }
+    const rootEnd = (rootNode as { endPosition?: { row?: number; column?: number } }).endPosition;
+    const lastRow = Math.max(maxRow, rootEnd?.row ?? 0);
+    const lastCol = lastRow === maxRow ? maxCol : (rootEnd?.column ?? 0);
+    return { byRow, lastRow, lastCol };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  const lastRow = Math.max(0, rawLines.length - 1);
+  return { byRow, lastRow, lastCol: (rawLines[lastRow] ?? "").length };
+}
+
 /**
  * Validates an APT part program and returns LSP diagnostics.
  */
 export function validateApt(content: string, _uri = "part.apt"): LspDiagnostic[] {
   const diags = lintApt(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildAptCstLineIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
+    const lineLen = cstIndex.byRow.get(lineIdx)?.endCol ?? 0;
     const startChar = Math.max(0, d.column - 1);
     const spanLen =
       d.startOffset !== undefined && d.endOffset !== undefined && d.endOffset > d.startOffset
         ? d.endOffset - d.startOffset
-        : Math.max(1, lineText.length - startChar);
-    const endChar = Math.max(startChar + 1, Math.min(lineText.length || startChar + 1, startChar + spanLen));
+        : Math.max(1, lineLen - startChar);
+    const endChar = Math.max(startChar + 1, Math.min(lineLen || startChar + 1, startChar + spanLen));
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -164,9 +223,9 @@ export function validateApt(content: string, _uri = "part.apt"): LspDiagnostic[]
  */
 export function getAptDocumentSymbols(content: string): LspDocumentSymbol[] {
   const program = parseAptProgram(content);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
-  const lastCol = (lines[lastLine] ?? "").length;
+  const cstIndex = buildAptCstLineIndex(content);
+  const lastLine = cstIndex.lastRow;
+  const lastCol = cstIndex.lastCol;
 
   const children: LspDocumentSymbol[] = [];
 
@@ -226,7 +285,7 @@ export function getAptDocumentSymbols(content: string): LspDocumentSymbol[] {
       },
       selectionRange: {
         start: { line: 0, character: 0 },
-        end: { line: 0, character: Math.min((lines[0] ?? "").length, Math.max(1, program.partno.length)) },
+        end: { line: 0, character: Math.min(cstIndex.byRow.get(0)?.endCol ?? 0, Math.max(1, program.partno.length)) },
       },
       children,
     },
@@ -237,9 +296,10 @@ export function getAptDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides hover documentation for APT keywords, surface modifiers, and user-defined geometry labels.
  */
 export function getAptHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (!lineText) return null;
+  const cstIndex = buildAptCstLineIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const lineText = " ".repeat(entry.startCol) + entry.text;
 
   let start = position.character;
   let end = position.character;

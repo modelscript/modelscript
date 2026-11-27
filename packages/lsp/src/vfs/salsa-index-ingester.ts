@@ -19,7 +19,7 @@ export interface SalsaQueryEngineLike {
 }
 
 let sqlPromise: Promise<SqlJsStatic> | null = null;
-function getSqlInstance(): Promise<SqlJsStatic> {
+function getSqlInstance(serverDistBase?: string): Promise<SqlJsStatic> {
   if (!sqlPromise) {
     let wasmBinary: ArrayBuffer | undefined;
     try {
@@ -40,9 +40,8 @@ function getSqlInstance(): Promise<SqlJsStatic> {
       ...(wasmBinary ? { wasmBinary } : {}),
       useOldExtensionFunctions: false,
       locateFile: (file: string) => {
-        const base = (globalThis as { serverDistBase?: string }).serverDistBase;
-        if (base) {
-          return `${base}/${file}`;
+        if (serverDistBase) {
+          return `${serverDistBase}/${file}`;
         }
         return file;
       },
@@ -58,8 +57,9 @@ export async function ingestSalsaIndex(
   buffer: ArrayBuffer,
   cacheStore: QueryCacheStore,
   queryEngine?: SalsaQueryEngineLike,
+  serverDistBase?: string,
 ): Promise<{ symbols: number; memos: number }> {
-  const SQL = await getSqlInstance();
+  const SQL = await getSqlInstance(serverDistBase);
 
   const db = new SQL.Database(new Uint8Array(buffer));
 

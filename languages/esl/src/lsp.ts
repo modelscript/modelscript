@@ -9,6 +9,9 @@
  *  - `executeEslAction` (domain actions: lint, simulate, to_modelica, to_dae)
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getEslSchemasFromLibraries, lookupEslModelSchema } from "./catalog/library-package-adapter.js";
 import { eslToDae } from "./dae/esl-to-dae.js";
 import { lintEsl } from "./lints/index.js";
@@ -175,9 +178,32 @@ export function getEslDocumentSymbols(content: string, _uri = "model.esl"): LspD
   return program.blocks.map(blockToSymbol);
 }
 
+function getEslCstLineAt(content: string, row: number): string | null {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("esl", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row: lineRow, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      if (lineRow === row) {
+        const text = cstLineText(content, tokens);
+        const first = tokens[0] as CstNodeLike | undefined;
+        const startCol = first?.startPosition?.column ?? 0;
+        return " ".repeat(startCol) + text;
+      }
+    }
+    return null;
+  }
+
+  return content.split(/\r?\n/)[row] ?? null;
+}
+
 function extractWordAtPosition(content: string, pos: LspPosition): { word: string; range: LspRange } | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[pos.line];
+  const lineText = getEslCstLineAt(content, pos.line);
   if (!lineText) return null;
   const col = Math.min(Math.max(0, pos.character), lineText.length);
 

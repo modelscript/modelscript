@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { CadComponent } from "@modelscript/cad-viewer/CadViewer.js";
+import { extractCadComponents } from "@modelscript/cad-viewer/parse-cad-annotations.js";
 import { ContactShadows, GizmoHelper, GizmoViewport, OrbitControls } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -7,8 +9,6 @@ import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import { AnimationController, type DynamicDeformationConfig } from "./cad-viewer/animation-controller.js";
 import { AnimationTimeline } from "./cad-viewer/animation-timeline.js";
-import type { CadComponent } from "./cad-viewer/cad-viewer.js";
-import { extractCadComponents } from "./cad-viewer/parse-cad-annotations.js";
 import { VrButton, registerSharedVsCodeApi } from "./cad-viewer/vr-mode.js";
 import type { StepMeshPayload } from "./step-viewer/step-viewer.js";
 

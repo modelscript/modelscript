@@ -95,6 +95,59 @@ export class CaeSolverRunner {
   private readonly activeNativeJobIds = new Map<string, string>();
   private readonly cancelledJobs = new Set<string>();
 
+  /**
+   * Stages a valid OpenFOAM case directory (`0/`, `constant/`, `system/`) from a
+   * CFD `.cfg` / parameter deck so `simpleFoam` can execute without missing-dict failures.
+   */
+  public static stageOpenFoamCase(caseDir: string, deckContent: string): void {
+    const uMatch = /FREESTREAM_VELOCITY\s*=\s*([0-9.eE+-]+)/i.exec(deckContent);
+    const nuMatch = /KINEMATIC_VISCOSITY\s*=\s*([0-9.eE+-]+)/i.exec(deckContent);
+    const iterMatch = /(?:^|\n)\s*ITER\s*=\s*(\d+)/i.exec(deckContent);
+    const uInlet = uMatch ? Math.max(0.01, parseFloat(uMatch[1]!)) : 10.0;
+    const nu = nuMatch ? Math.max(1e-8, parseFloat(nuMatch[1]!)) : 1.5e-5;
+    const endTime = iterMatch ? Math.max(10, Math.min(5000, parseInt(iterMatch[1]!, 10))) : 200;
+
+    for (const sub of ["0", "constant", "system"]) {
+      fs.mkdirSync(path.join(caseDir, sub), { recursive: true });
+    }
+
+    fs.writeFileSync(
+      path.join(caseDir, "0", "U"),
+      `FoamFile\n{\n    version 2.0;\n    format ascii;\n    class volVectorField;\n    object U;\n}\ndimensions [0 1 -1 0 0 0 0];\ninternalField uniform (${uInlet} 0 0);\nboundaryField\n{\n    inlet { type fixedValue; value uniform (${uInlet} 0 0); }\n    outlet { type zeroGradient; }\n    walls { type noSlip; }\n}\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(caseDir, "0", "p"),
+      `FoamFile\n{\n    version 2.0;\n    format ascii;\n    class volScalarField;\n    object p;\n}\ndimensions [0 2 -2 0 0 0 0];\ninternalField uniform 0;\nboundaryField\n{\n    inlet { type zeroGradient; }\n    outlet { type fixedValue; value uniform 0; }\n    walls { type zeroGradient; }\n}\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(caseDir, "constant", "transportProperties"),
+      `FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    object transportProperties;\n}\ntransportModel Newtonian;\nnu [0 2 -1 0 0 0 0] ${nu};\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(caseDir, "constant", "turbulenceProperties"),
+      `FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    object turbulenceProperties;\n}\nsimulationType laminar;\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(caseDir, "system", "controlDict"),
+      `FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    object controlDict;\n}\napplication simpleFoam;\nstartFrom startTime;\nstartTime 0;\nstopAt endTime;\nendTime ${endTime};\ndeltaT 1;\nwriteControl timeStep;\nwriteInterval ${Math.max(10, Math.floor(endTime / 4))};\nwriteFormat ascii;\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(caseDir, "system", "fvSchemes"),
+      `FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    object fvSchemes;\n}\nddtSchemes { default steadyState; }\ngradSchemes { default Gauss linear; }\ndivSchemes { default none; div(phi,U) bounded Gauss linearUpwind grad(U); }\nlaplacianSchemes { default Gauss linear corrected; }\ninterpolationSchemes { default linear; }\nsnGradSchemes { default corrected; }\n`,
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(caseDir, "system", "fvSolution"),
+      `FoamFile\n{\n    version 2.0;\n    format ascii;\n    class dictionary;\n    object fvSolution;\n}\nsolvers\n{\n    p { solver GAMG; tolerance 1e-6; relTol 0.05; smoother GaussSeidel; }\n    U { solver smoothSolver; smoother symGaussSeidel; tolerance 1e-6; relTol 0.05; }\n}\nSIMPLE { nNonOrthogonalCorrectors 0; residualControl { p 1e-4; U 1e-4; } }\nrelaxationFactors { fields { p 0.3; } equations { U 0.7; } }\n`,
+      "utf8",
+    );
+  }
+
   constructor(hpcEngine?: HpcEngine) {
     this.hpcEngine = hpcEngine || new HpcEngine();
   }
@@ -133,6 +186,9 @@ export class CaeSolverRunner {
       const deckFileName = spec.solver === "calculix" ? "job.inp" : "config.cfg";
       const deckPath = path.join(tmpDir, deckFileName);
       fs.writeFileSync(deckPath, spec.deckContent, "utf8");
+      if (spec.solver === "openfoam") {
+        CaeSolverRunner.stageOpenFoamCase(tmpDir, spec.deckContent);
+      }
 
       if (spec.geometryPath && typeof spec.geometryPath === "string") {
         const safeSource = getValidatedGeometryPath(spec.geometryPath);
@@ -316,7 +372,20 @@ export class CaeSolverRunner {
       return { command: "simpleFoam", args: [], simulatedFallback: false };
     }
 
-    // Built-in synthetic fallback runner for CI / local test
+    // Only permit synthetic fallback in automated tests or when explicitly opted in.
+    const allowFallback =
+      spec.runner === "fallback" ||
+      process.env["NODE_ENV"] === "test" ||
+      process.env["CAE_ALLOW_SYNTHETIC_FALLBACK"] === "true";
+
+    if (!allowFallback) {
+      const binaryName = spec.solver === "calculix" ? "ccx" : spec.solver === "su2" ? "SU2_CFD" : "simpleFoam";
+      throw new Error(
+        `SOLVER_UNAVAILABLE: Native ${spec.solver.toUpperCase()} binary ('${binaryName}') is not installed on this host and Docker execution (CAE_USE_DOCKER=true) is disabled.`,
+      );
+    }
+
+    // Built-in synthetic fallback runner for CI / automated test environments only
     const scriptPath = path.join(tmpDir, "fallback_runner.cjs");
     fs.writeFileSync(scriptPath, this.generateFallbackScript(spec), "utf8");
     return {

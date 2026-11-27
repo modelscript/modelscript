@@ -1443,19 +1443,23 @@ export declare enum SyntaxKind {
   SubsystemDef = 31,
   BodyDef = 32,
   WheelsetDef = 33,
-  BogieDef = 34,
-  CouplingDef = 35,
-  SpringCoupling = 36,
-  DamperCoupling = 37,
-  GenericCoupling = 38,
-  TrackDef = 39,
-  SimulationDef = 40,
-  START = 41,
-  _START = 41,
-  CommentLine = 81,
-  Identifier = 82,
-  NumberLiteral = 83,
-  StringLiteral = 84,
+  OptConicity = 34,
+  _OptConicity = 34,
+  OptProfile = 35,
+  _OptProfile = 35,
+  BogieDef = 36,
+  CouplingDef = 37,
+  SpringCoupling = 38,
+  DamperCoupling = 39,
+  GenericCoupling = 40,
+  TrackDef = 41,
+  SimulationDef = 42,
+  START = 43,
+  _START = 43,
+  CommentLine = 83,
+  Identifier = 84,
+  NumberLiteral = 85,
+  StringLiteral = 86,
   EOF = 1023,
 }
 
@@ -1726,7 +1730,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is GenericCouplingNode;
     name(node: SyntaxNode | null | undefined): SyntaxNode | null;
     nameList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
     body1(node: SyntaxNode | null | undefined): SyntaxNode | null;
     body1List(node: SyntaxNode | null | undefined): SyntaxNode[];

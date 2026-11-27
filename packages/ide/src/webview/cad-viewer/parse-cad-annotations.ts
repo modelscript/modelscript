@@ -5,7 +5,61 @@
  * into structured CadComponent objects for the CadViewer.
  */
 
-import type { CadAnnotation, CadComponent, CadPortAnnotation } from "./cad-viewer";
+export interface CadAnnotation {
+  uri: string;
+  feature?: string | undefined;
+  position?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined;
+  scale?: [number, number, number] | undefined;
+  dynamicPosition?: string | undefined;
+  dynamicRotation?: string | undefined;
+  dynamicScale?: string | undefined;
+  dynamicDeformation?: string | undefined;
+}
+
+export interface CadPortAnnotation {
+  feature: string;
+  offsetPosition?: [number, number, number] | undefined;
+  offsetRotation?: [number, number, number] | undefined;
+  offsetScale?: [number, number, number] | undefined;
+}
+
+export interface CadSourceMetadata {
+  parameterName?: string | undefined;
+  dimensionParams?: [string | undefined, string | undefined, string | undefined] | undefined;
+  dimensions?: [number, number, number] | undefined;
+  transformMethod?: string | undefined;
+  argIndex?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  primitiveStartOffset?: number | undefined;
+  primitiveEndOffset?: number | undefined;
+  translateRange?: { startOffset: number; endOffset: number } | undefined;
+  rotateRange?: { startOffset: number; endOffset: number } | undefined;
+  scaleRange?: { startOffset: number; endOffset: number } | undefined;
+  translation?: [number, number, number] | undefined;
+  rotation?: [number, number, number] | undefined;
+  scale?: [number, number, number] | undefined;
+  color?: [number, number, number, number] | undefined;
+}
+
+export interface ProceduralMeshData {
+  vertices: number[];
+  indices: number[];
+  normals: number[];
+  color?: [number, number, number, number] | undefined;
+}
+
+export interface CadComponent {
+  name: string;
+  cad: CadAnnotation;
+  ports?: { name: string; port: CadPortAnnotation }[] | undefined;
+  dynamicBindings?: { property: string; index: number; variable: string }[] | undefined;
+  sourceMetadata?: CadSourceMetadata | undefined;
+  proceduralMesh?: ProceduralMeshData | undefined;
+  defaults?: Record<string, unknown> | undefined;
+  shapeType?: string | undefined;
+}
 
 /**
  * Parse a CAD annotation string like:

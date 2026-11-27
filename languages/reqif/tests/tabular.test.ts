@@ -143,6 +143,11 @@ describe("ReqIF Bidirectional Tabular & Diagram Engine (@modelscript/reqif)", ()
       value: "overshoot <= 3.2 %",
     });
     assert.equal(contractEdit.success, true);
+    // Verify surgical CST writeback emitted a narrow edit rather than full-document replacement
+    assert.ok(
+      contractEdit.edits.length === 1 && contractEdit.edits[0]!.endOffset - contractEdit.edits[0]!.startOffset < 200,
+      "Expected narrow surgical CST writeback edit on contract cell update",
+    );
 
     const afterContractPayload = executeReqIfTabular(contractEdit.newText, "requirements");
     const updatedChild = afterContractPayload.rows.find((r) => r.id === "REQ-FCS-028")!;

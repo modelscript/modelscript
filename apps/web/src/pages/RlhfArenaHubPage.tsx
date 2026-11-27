@@ -146,18 +146,17 @@ const DIALECT_FILTERS = [
 ];
 
 const PageShell = styled.div`
-  min-height: 100vh;
-  background: var(--ms-bg-canvas, #0d1117);
-  color: var(--ms-text-1, #e6edf3);
-  padding: 24px 20px 64px;
+  background: transparent;
+  color: var(--color-text-primary);
+  padding: 20px 20px 56px;
 `;
 
 const Container = styled.div`
-  max-width: 1200px;
+  max-width: 1120px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 `;
 
 const HeroHeader = styled.header`
@@ -166,10 +165,11 @@ const HeroHeader = styled.header`
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 22px;
+  padding: 18px 20px;
   border-radius: 12px;
-  border: 1px solid var(--ms-border-default, #30363d);
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(99, 102, 241, 0.08));
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
 `;
 
 const TabRow = styled.nav`
@@ -178,8 +178,8 @@ const TabRow = styled.nav`
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid var(--ms-border-default, #30363d);
-  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
 `;
 
 const TabButtons = styled.div`
@@ -189,23 +189,33 @@ const TabButtons = styled.div`
 `;
 
 const TabButton = styled.button<{ $active: boolean }>`
-  padding: 8px 14px;
+  padding: 7px 14px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid ${(p) => (p.$active ? "#38bdf8" : "var(--ms-border, #30363d)")};
-  background: ${(p) => (p.$active ? "rgba(56, 189, 248, 0.16)" : "var(--ms-bg-surface, #161b22)")};
-  color: ${(p) => (p.$active ? "#38bdf8" : "var(--ms-text-2, #c9d1d9)")};
+  border: 1px solid ${(p) => (p.$active ? "var(--ms-brand)" : "var(--color-border-default)")};
+  background: ${(p) => (p.$active ? "var(--ms-brand-soft)" : "var(--color-bg-surface)")};
+  color: ${(p) => (p.$active ? "var(--ms-brand)" : "var(--color-text-secondary)")};
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    color: ${(p) => (p.$active ? "var(--ms-brand)" : "var(--color-text-heading)")};
+    border-color: ${(p) => (p.$active ? "var(--ms-brand)" : "var(--color-border-strong)")};
+  }
 `;
 
 const Card = styled.section`
-  border: 1px solid var(--ms-border-default, #30363d);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: var(--ms-surface-panel, #161b22);
+  background: var(--color-bg-card);
+  box-shadow: var(--ms-shadow-card);
   padding: 16px 18px;
   display: flex;
   flex-direction: column;
@@ -222,7 +232,7 @@ const ProgressTrack = styled.div`
   width: 100%;
   height: 8px;
   border-radius: 999px;
-  background: rgba(139, 148, 158, 0.22);
+  background: var(--color-neutral-muted);
   overflow: hidden;
 `;
 
@@ -230,7 +240,7 @@ const ProgressFill = styled.div<{ $pct: number }>`
   height: 100%;
   width: ${(p) => Math.max(0, Math.min(100, p.$pct))}%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #0ea5e9, #34d399);
+  background: var(--ms-brand);
   transition: width 220ms ease;
 `;
 
@@ -242,66 +252,90 @@ const Pill = styled.span<{ $tone?: "sky" | "emerald" | "amber" | "red" | "neutra
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  font-family: monospace;
+  font-family: var(--font-mono);
   border: 1px solid
     ${(p) =>
       p.$tone === "emerald"
-        ? "rgba(52, 211, 153, 0.45)"
+        ? "var(--status-verified-border)"
         : p.$tone === "amber"
-          ? "rgba(251, 191, 36, 0.5)"
+          ? "var(--status-warning-border)"
           : p.$tone === "red"
-            ? "rgba(248, 113, 113, 0.5)"
+            ? "var(--status-danger-border)"
             : p.$tone === "sky"
-              ? "rgba(56, 189, 248, 0.5)"
-              : "rgba(139, 148, 158, 0.35)"};
+              ? "var(--color-accent-blue-border)"
+              : "var(--color-border)"};
   background: ${(p) =>
     p.$tone === "emerald"
-      ? "rgba(52, 211, 153, 0.14)"
+      ? "var(--status-verified-bg)"
       : p.$tone === "amber"
-        ? "rgba(251, 191, 36, 0.14)"
+        ? "var(--status-warning-bg)"
         : p.$tone === "red"
-          ? "rgba(248, 113, 113, 0.16)"
+          ? "var(--status-danger-bg)"
           : p.$tone === "sky"
-            ? "rgba(56, 189, 248, 0.14)"
-            : "rgba(139, 148, 158, 0.12)"};
+            ? "var(--ms-brand-soft)"
+            : "var(--color-badge-bg)"};
   color: ${(p) =>
     p.$tone === "emerald"
-      ? "#34d399"
+      ? "var(--status-verified-fg)"
       : p.$tone === "amber"
-        ? "#fbbf24"
+        ? "var(--status-warning-fg)"
         : p.$tone === "red"
-          ? "#f87171"
+          ? "var(--status-danger-fg)"
           : p.$tone === "sky"
-            ? "#38bdf8"
-            : "var(--ms-text-2, #c9d1d9)"};
+            ? "var(--ms-brand)"
+            : "var(--color-text-secondary)"};
 `;
 
 const ActionButton = styled.button<{ $primary?: boolean; $emerald?: boolean; $danger?: boolean; $active?: boolean }>`
   padding: 7px 13px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid
     ${(p) =>
       p.$danger
-        ? "rgba(248, 113, 113, 0.55)"
+        ? "var(--status-danger-border)"
         : p.$emerald
-          ? "rgba(52, 211, 153, 0.55)"
+          ? "var(--status-verified-border)"
           : p.$primary || p.$active
-            ? "#38bdf8"
-            : "var(--ms-border, #30363d)"};
+            ? "var(--ms-brand)"
+            : "var(--color-border-default)"};
   background: ${(p) =>
     p.$primary
-      ? "linear-gradient(135deg, #0284c7, #6366f1)"
+      ? "var(--ms-brand)"
       : p.$emerald
-        ? "rgba(52, 211, 153, 0.16)"
+        ? "var(--status-verified-bg)"
         : p.$danger
-          ? "rgba(248, 113, 113, 0.16)"
+          ? "var(--status-danger-bg)"
           : p.$active
-            ? "rgba(56, 189, 248, 0.18)"
-            : "var(--ms-bg-elevated, #21262d)"};
-  color: ${(p) => (p.$emerald ? "#6ee7b7" : p.$danger ? "#fca5a5" : "#f8fafc")};
+            ? "var(--ms-brand-soft)"
+            : "var(--color-bg-surface)"};
+  color: ${(p) =>
+    p.$primary
+      ? "var(--ms-brand-contrast, #ffffff)"
+      : p.$emerald
+        ? "var(--status-verified-fg)"
+        : p.$danger
+          ? "var(--status-danger-fg)"
+          : p.$active
+            ? "var(--ms-brand)"
+            : "var(--color-text-primary)"};
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+  &:hover:not(:disabled) {
+    opacity: ${(p) => (p.$primary ? 0.92 : 1)};
+    background: ${(p) =>
+      p.$primary
+        ? "var(--ms-brand)"
+        : p.$emerald
+          ? "var(--status-verified-bg)"
+          : p.$danger
+            ? "var(--status-danger-bg)"
+            : "var(--surface-row-hover)"};
+  }
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -314,41 +348,54 @@ const LinkButton = styled(Link)<{ $primary?: boolean }>`
   gap: 6px;
   padding: 7px 13px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   text-decoration: none;
-  border: 1px solid ${(p) => (p.$primary ? "#38bdf8" : "var(--ms-border, #30363d)")};
-  background: ${(p) => (p.$primary ? "linear-gradient(135deg, #0284c7, #6366f1)" : "var(--ms-bg-elevated, #21262d)")};
-  color: #f8fafc;
+  border: 1px solid ${(p) => (p.$primary ? "var(--ms-brand)" : "var(--color-border-default)")};
+  background: ${(p) => (p.$primary ? "var(--ms-brand)" : "var(--color-bg-surface)")};
+  color: ${(p) => (p.$primary ? "var(--ms-brand-contrast, #ffffff)" : "var(--color-text-primary)")};
+  &:hover {
+    text-decoration: none;
+    opacity: ${(p) => (p.$primary ? 0.92 : 1)};
+    background: ${(p) => (p.$primary ? "var(--ms-brand)" : "var(--surface-row-hover)")};
+  }
 `;
 
 const InputControl = styled.input`
-  background: var(--ms-bg-canvas, #0d1117);
-  color: var(--ms-text-1, #e6edf3);
-  border: 1px solid var(--ms-border, #30363d);
-  border-radius: 6px;
+  background: var(--color-canvas-inset);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: 12.5px;
+  &:focus {
+    outline: none;
+    border-color: var(--ms-brand);
+  }
 `;
 
 const SelectControl = styled.select`
-  background: var(--ms-bg-canvas, #0d1117);
-  color: var(--ms-text-1, #e6edf3);
-  border: 1px solid var(--ms-border, #30363d);
-  border-radius: 6px;
+  background: var(--color-canvas-inset);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border-default);
+  border-radius: 8px;
   padding: 7px 10px;
-  font-size: 12px;
+  font-size: 12.5px;
+  &:focus {
+    outline: none;
+    border-color: var(--ms-brand);
+  }
 `;
 
 const CodePreview = styled.pre`
   margin: 0;
-  padding: 10px;
+  padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid var(--ms-border, #30363d);
-  background: var(--ms-bg-canvas, #0d1117);
-  color: var(--ms-text-1, #e6edf3);
-  font-size: 11px;
-  font-family: monospace;
+  border: 1px solid var(--color-border);
+  background: var(--color-pre-bg);
+  color: var(--color-text-primary);
+  font-size: 11.5px;
+  font-family: var(--font-mono);
   max-height: 180px;
   overflow: auto;
   white-space: pre;
@@ -362,13 +409,15 @@ const LeaderboardTable = styled.table`
   td {
     padding: 10px 12px;
     text-align: left;
-    border-bottom: 1px solid var(--ms-bg-elevated, #21262d);
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-primary);
   }
   th {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: var(--ms-text-3, #8b949e);
+    color: var(--color-text-muted);
+    background: var(--color-table-header-bg);
   }
 `;
 
@@ -680,8 +729,10 @@ export const RlhfArenaHubPage: React.FC = () => {
       <Container>
         <HeroHeader>
           <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>RLHF Arena Hub</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--ms-text-3, #8b949e)" }}>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "var(--color-text-heading)" }}>
+              RLHF Arena Hub
+            </h1>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--color-text-muted)" }}>
               Zonotope-prioritized human preference sprints, formal Set-Dominance adjudication, and signed{" "}
               <code>dataset-posttrain</code> releases.
             </p>
@@ -708,12 +759,17 @@ export const RlhfArenaHubPage: React.FC = () => {
         {(releaseError || releaseResult) && (
           <Card
             style={{
-              borderColor: releaseError ? "rgba(248, 113, 113, 0.55)" : "rgba(52, 211, 153, 0.55)",
-              background: releaseError ? "rgba(248, 113, 113, 0.08)" : "rgba(52, 211, 153, 0.08)",
+              borderColor: releaseError ? "var(--status-danger-border)" : "var(--status-verified-border)",
+              background: releaseError ? "var(--status-danger-bg)" : "var(--status-verified-bg)",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <strong style={{ fontSize: 13, color: releaseError ? "#fca5a5" : "#6ee7b7" }}>
+              <strong
+                style={{
+                  fontSize: 13,
+                  color: releaseError ? "var(--status-danger-fg)" : "var(--status-verified-fg)",
+                }}
+              >
                 {releaseError
                   ? "Post-Train Snapshot Release Error"
                   : `Signed Post-Train Release Created: ${releaseResult?.recipeName}@${releaseResult?.recipeVersion}`}
@@ -728,9 +784,17 @@ export const RlhfArenaHubPage: React.FC = () => {
                 Dismiss
               </ActionButton>
             </div>
-            {releaseError && <div style={{ fontSize: 12, color: "#fca5a5" }}>{releaseError}</div>}
+            {releaseError && <div style={{ fontSize: 12, color: "var(--status-danger-fg)" }}>{releaseError}</div>}
             {releaseResult && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12, fontFamily: "monospace" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  fontSize: 12,
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   <Pill $tone="emerald">Ed25519 Signed ✓</Pill>
                   <Pill $tone="sky">Challenges: {releaseResult.includedChallengeCount}</Pill>
@@ -738,7 +802,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                   <Pill $tone="neutral">Honeypots Excluded: {releaseResult.excludedHoneypotCount}</Pill>
                 </div>
                 {releaseResult.proof && (
-                  <div style={{ color: "var(--ms-text-2, #c9d1d9)", wordBreak: "break-all" }}>
+                  <div style={{ color: "var(--color-text-secondary)", wordBreak: "break-all" }}>
                     <div>payloadSha256: {releaseResult.proof.payloadSha256 ?? "—"}</div>
                     <div>signerPubkey: {releaseResult.proof.publicKeyMultibase ?? "—"}</div>
                     {releaseResult.proof.verificationMethod && (
@@ -749,7 +813,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                 {releaseResult.shards.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {releaseResult.shards.map((s) => (
-                      <div key={s.shardId} style={{ color: "#93c5fd" }}>
+                      <div key={s.shardId} style={{ color: "var(--ms-brand)" }}>
                         shard {s.shardId.slice(0, 16)}… · {s.dialect} · m_init∈[{s.mMin}, {s.mMax}] · {s.exampleCount}{" "}
                         examples ({s.byteSize} B)
                       </div>
@@ -1304,7 +1368,7 @@ export const RlhfArenaHubPage: React.FC = () => {
             ) : leaderboard.length === 0 ? (
               <div style={{ fontSize: 13, color: "var(--ms-text-3, #8b949e)", padding: 12 }}>
                 No annotator reputation records yet for this dialect. Complete tasks in the{" "}
-                <Link to="/annotate/queue" style={{ color: "#38bdf8" }}>
+                <Link to="/annotate/queue" style={{ color: "var(--ms-brand)", fontWeight: 600 }}>
                   Continuous Annotation Queue
                 </Link>{" "}
                 to appear here.

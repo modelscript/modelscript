@@ -587,7 +587,7 @@ export function collectDroneSimulationParityDiagnosticsImpl(
     const cachedTree = documentManager?.documentTrees?.get(uri);
     const rootNode = cachedTree?.tree?.rootNode;
     let handledViaCst = false;
-    if (rootNode && textDocument) {
+    if (rootNode && "tree" in rootNode && textDocument) {
       const compDecls = collectCstNodesByTypes(rootNode, ["component_declaration"]);
       for (const cd of compDecls) {
         const idNode = (cd.children || []).find((c: SyntaxNode) => c.type === "identifier");

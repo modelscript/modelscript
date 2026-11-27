@@ -5,6 +5,7 @@
 // live here. Clients and server implementations import from this file.
 
 import type { TextEdit } from "vscode-languageserver-protocol";
+import type { DiagramPortSignature } from "./port-compatibility.js";
 
 // ── LSP Method Constants ──
 
@@ -211,6 +212,8 @@ export interface DiagramPort {
   direction?: "in" | "out" | "inout" | string | undefined;
   /** Fully-qualified connector class (e.g. `Modelica.Electrical.Analog.Interfaces.PositivePin`) used for compatibility checks. */
   connectorType?: string | undefined;
+  /** Optional resolved structural connector signature for Modelica §9.3 plug-compatibility checks. */
+  portSignature?: DiagramPortSignature | undefined;
   /** Optional explicit physical domain hint (e.g. `electrical`, `signal`). */
   domain?: string | undefined;
 }
@@ -906,10 +909,15 @@ export function computeMinimalTextEdit(origText: string, nextText: string): Diag
 
 export {
   evaluateModelScriptPortCompatibility,
+  evaluateStructuralPortSignatureCompatibility,
   inferCanonicalPortDomain,
   normalizeConnectorTypeFamily,
   type CanonicalPortDomain,
   type CanonicalPortPolarity,
+  type DiagramPortDirection,
+  type DiagramPortFlowKind,
+  type DiagramPortSignature,
+  type DiagramPortVariable,
   type ModelScriptPortCompatibilityOptions,
   type ModelScriptPortCompatibilityResult,
   type ModelScriptPortDescriptor,

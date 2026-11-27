@@ -1,54 +1,66 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { AnnotationEvaluator } from "@modelscript/modelica/diagram";
-import { createModelicaQueryEngine, createModelicaWorkspaceIndex } from "@modelscript/modelica/factory";
+import {
+  createModelicaQueryEngine,
+  createModelicaWorkspaceIndex,
+  injectPredefinedTypes,
+} from "@modelscript/modelica/factory";
 import {
   AbstractDomainOracle,
   ConstraintTheoryOracle,
   type CSTTree,
   DigitalThreadHypergraph,
   DimensionalTheoryOracle,
-  DOMAIN_INDEX_TO_NAME,
-  DOMAIN_NAME_TO_INDEX,
-  extractCrossLanguageLinks,
   FlowAlgebraOracle,
-  isMemberLikeSymbol,
-  isTypeLikeSymbol,
   LanguageWorkspaceIndex,
   OntologyTheoryOracle,
-  parseSysmlRequirements,
   QueryEngine,
   SemanticTheoryCoordinator,
   SymbolEntry,
   type SymbolIndex,
   type SyntaxNode,
-  type TheoryLiteral,
   ThreadDomain,
-  type ThreadRecord,
   UnifiedWorkspace,
 } from "@modelscript/runtime";
 import type { AlignedDomainElement } from "../providers/threadDiagnosticsProvider.js";
 import { globalLanguageRegistry, type WorkspaceIndexLike } from "../registry/LanguageRegistry.js";
-import type { CstNodeLike, CstTreeLike } from "../utils/ast-utils.js";
-import { getCompositeName } from "../utils/hierarchy-utils.js";
+import type { CstTreeLike } from "../utils/ast-utils.js";
 import { extractIndexerHooks } from "../utils/hook-extractor.js";
 import {
-  extractModelicaTypeFromDeclLine,
-  extractWithinPackageName,
-  findAssignedNumberInLine,
-  skipWs,
-} from "../utils/lexical-utils.js";
+  DigitalThreadIndex,
+  mapLanguageToThreadDomain,
+  resolveCstNameSpan,
+  type ThreadElementMetadata,
+  type WorkspaceThreadRecord,
+} from "./digital-thread-index.js";
 import { DocumentManager, type SharedCompilerContext, type SharedCompilerFileSystem } from "./document-manager.js";
+import {
+  type AnnotationEvalContext,
+  type DescendantCstNode,
+  resolveModelicaClassInstanceWithHost,
+  type WorkspaceClassInstance,
+  type WorkspaceComponentInstance,
+  type WorkspaceConnectEquation,
+  type WorkspaceExtendsInstance,
+} from "./modelica-class-adapter.js";
+
+export {
+  resolveCstNameSpan,
+  type AnnotationEvalContext,
+  type ThreadElementMetadata,
+  type WorkspaceClassInstance,
+  type WorkspaceComponentInstance,
+  type WorkspaceConnectEquation,
+  type WorkspaceExtendsInstance,
+  type WorkspaceThreadRecord,
+};
 
 type NodeRequireFn = (id: string) => unknown;
 
 let nodeRequire: NodeRequireFn | null = null;
 try {
   if (typeof process !== "undefined" && process.versions?.node) {
-    const globalReq = (globalThis as unknown as { require?: NodeRequireFn | undefined }).require;
-    const modReq =
-      typeof module !== "undefined" ? (module as unknown as { require?: NodeRequireFn | undefined }).require : null;
-    const req = globalReq ?? modReq;
+    const req = typeof module !== "undefined" ? (module as { require?: NodeRequireFn }).require : null;
     if (typeof req === "function") {
       const nm = req("node:module") as { createRequire?: (url: string) => NodeRequireFn } | undefined;
       if (nm?.createRequire) {
@@ -95,79 +107,6 @@ export interface WorkspaceIndexHandle {
   version: number;
 }
 
-/** Digital thread record with optional legacy `id` alias. */
-export type WorkspaceThreadRecord = ThreadRecord & { id?: number | undefined };
-
-/** Annotation evaluation context passed to class-instance `annotation()` queries. */
-export interface AnnotationEvalContext {
-  ownOnly?: boolean | undefined;
-  classInstance?: WorkspaceClassInstance | null | undefined;
-  declaration?: unknown;
-  modification?: unknown;
-  cstNode?: unknown;
-}
-
-/** Resolved component instance adapter attached to a `WorkspaceClassInstance`. */
-export interface WorkspaceComponentInstance {
-  name: string;
-  annotations?: unknown[] | undefined;
-  declaration?: SymbolEntry | undefined;
-  defaultValue?: unknown;
-  unit?: unknown;
-  description?: string | null | undefined;
-  typeSpecifier?: string | undefined;
-  classInstance?: WorkspaceClassInstance | null | undefined;
-  parent?: WorkspaceClassInstance | undefined;
-  cstNode?: unknown;
-  abstractSyntaxNode?: unknown;
-  annotation?: ((annName: string) => unknown) | undefined;
-  [key: string]: unknown;
-}
-
-/** Resolved `extends` base-class adapter entry. */
-export interface WorkspaceExtendsInstance {
-  name: string;
-  classInstance: WorkspaceClassInstance;
-}
-
-/** Resolved `connect(a, b)` equation adapter entry. */
-export interface WorkspaceConnectEquation {
-  lhs: string;
-  rhs: string;
-  componentReference1: { parts: Array<{ identifier: { text: string } }> };
-  componentReference2: { parts: Array<{ identifier: { text: string } }> };
-  cstNode: unknown;
-  ast: unknown;
-  annotation: (annName: string) => unknown;
-}
-
-/** Rich class-instance adapter returned by `WorkspaceManager.resolveModelicaClassInstance`. */
-export interface WorkspaceClassInstance {
-  id: number;
-  db?: unknown;
-  entry?: SymbolEntry | undefined;
-  cstNode?: unknown;
-  abstractSyntaxNode?: unknown;
-  name: string;
-  kind?: string | undefined;
-  classKind?: string | undefined;
-  compositeName?: string | undefined;
-  description?: string | null | undefined;
-  isClassInstance?: boolean | undefined;
-  _iconOnly?: boolean | undefined;
-  components?: WorkspaceComponentInstance[] | undefined;
-  elements?: WorkspaceComponentInstance[] | undefined;
-  connectEquations?: WorkspaceConnectEquation[] | undefined;
-  extendsClassInstances?: WorkspaceExtendsInstance[] | undefined;
-  resolveName?: ((parts: string[] | string) => WorkspaceComponentInstance | null) | undefined;
-  annotation?: ((name: string, ctx?: AnnotationEvalContext | string) => unknown) | undefined;
-  jsSource?: string | undefined;
-  context?: unknown;
-  uri?: string | undefined;
-  instantiate?: (() => void) | undefined;
-  [key: string]: unknown;
-}
-
 /** Map storing `WorkspaceClassInstance[]` per URI while accepting untyped record arrays on write. */
 export class ClassInstanceListMap extends Map<string, [WorkspaceClassInstance, ...WorkspaceClassInstance[]]> {
   override set(key: string, value: ReadonlyArray<WorkspaceClassInstance | Record<string, unknown>>): this {
@@ -182,35 +121,6 @@ export class DocumentContextMap extends Map<string, SharedCompilerContext> {
   }
 }
 
-type AnnotationEvaluatorConstructor = new (scope: unknown) => {
-  evaluate(node: unknown, annotationName: string): unknown;
-};
-
-interface WorkspaceManagerGlobalHooks {
-  sharedFs?: SharedCompilerFileSystem | undefined;
-  sharedContext?: (SharedCompilerContext & { parsers?: Map<string, { parse(text: string): unknown }> }) | undefined;
-  modelicaParser?: { parse(text: string): unknown } | undefined;
-  parser?: { parse(text: string): unknown } | undefined;
-  injectPredefinedTypes?: ((index: SymbolIndex) => void) | undefined;
-  AnnotationEvaluator?: AnnotationEvaluatorConstructor | undefined;
-  [key: string]: unknown;
-}
-
-function getWorkspaceGlobals(): WorkspaceManagerGlobalHooks {
-  return globalThis as unknown as WorkspaceManagerGlobalHooks;
-}
-
-type DescendantCstNode = (CstNodeLike | SyntaxNode) & {
-  descendantForIndex?(start: number, end?: number): DescendantCstNode | null;
-  descendantForByteRange?(start: number, end?: number): DescendantCstNode | null;
-  parent?: DescendantCstNode | null;
-  children?: readonly DescendantCstNode[];
-  child?(index: number): DescendantCstNode | null;
-  childForFieldName?(name: string): DescendantCstNode | null;
-  lhs?: string | { text?: string };
-  rhs?: string | { text?: string };
-};
-
 interface CstTreeContainer {
   rootNode?: DescendantCstNode | null | undefined;
   tree?: { rootNode?: DescendantCstNode | null | undefined } | null | undefined;
@@ -224,119 +134,6 @@ export interface LanguageWorkspaceContext {
   index: WorkspaceIndexHandle | null;
   /** Memoized Salsa `QueryEngine` bound to `index`, or `null` if not yet initialized. */
   queryEngine: QueryEngine | null;
-}
-
-/**
- * Source location and property metadata for a domain element bound to a digital thread slot.
- */
-export interface ThreadElementMetadata {
-  /** Human-readable element name or identifier. */
-  name: string;
-  /** Document URI containing the element declaration. */
-  uri: string;
-  /** 1-based source line number of the declaration identifier. */
-  line: number;
-  /** 1-based source column number of the declaration identifier. */
-  column: number;
-  /** Optional character length of the declaration identifier. */
-  length?: number | undefined;
-  /** Originating SymbolId in the UnifiedSymbolIndex for CST span resolution. */
-  symbolId?: number | undefined;
-  /** Exact CST start offset of the declaration identifier. */
-  startOffset?: number | undefined;
-  /** Exact CST end offset of the declaration identifier. */
-  endOffset?: number | undefined;
-  /** Engineering domain key (e.g., `"sysml2"`, `"modelica"`, `"cad"`, `"fea"`). */
-  domain?: string | undefined;
-  /** Optional key-value map of extracted engineering parameters (e.g., `mass`, `frontalArea`). */
-  properties?: Record<string, unknown> | undefined;
-  /** Marks entries created by automatic workspace discovery so manual test seeders remain untouched. */
-  autoDiscovered?: boolean | undefined;
-}
-
-/**
- * Resolves the exact CST byte/character span of a `SymbolEntry`'s name identifier token.
- * Checks CST-indexed `fieldRanges` first, then walks the parsed CST subtree rooted at
- * `[entry.startOffset, entry.endOffset]` to locate the identifier token node.
- */
-export function resolveCstNameSpan(
-  entry: SymbolEntry,
-  tree?: { rootNode?: CstNodeLike | SyntaxNode | null | undefined } | null,
-): { startOffset: number; endOffset: number } | undefined {
-  const fieldRanges = (entry as { fieldRanges?: Record<string, { startOffset: number; endOffset: number }> })
-    .fieldRanges;
-  const namePath = (entry as { namePath?: string }).namePath;
-  const indexedRange = fieldRanges?.["name"] ?? (namePath ? fieldRanges?.[namePath] : undefined);
-  if (indexedRange && indexedRange.endOffset > indexedRange.startOffset) {
-    return { startOffset: indexedRange.startOffset, endOffset: indexedRange.endOffset };
-  }
-
-  const root = tree?.rootNode as DescendantCstNode | null | undefined;
-  if (root && typeof entry.startOffset === "number" && typeof root.descendantForIndex === "function") {
-    const endBound =
-      typeof entry.endOffset === "number" && entry.endOffset > entry.startOffset
-        ? entry.endOffset - 1
-        : entry.startOffset;
-    const declNode = root.descendantForIndex(entry.startOffset, endBound);
-    if (declNode) {
-      const nameField = typeof declNode.childForFieldName === "function" ? declNode.childForFieldName("name") : null;
-      if (
-        nameField &&
-        typeof nameField.startIndex === "number" &&
-        typeof nameField.endIndex === "number" &&
-        nameField.endIndex > nameField.startIndex
-      ) {
-        return { startOffset: nameField.startIndex, endOffset: nameField.endIndex };
-      }
-
-      // BFS the declaration CST subtree (bounded depth) for the exact identifier leaf matching entry.name
-      const targetName = entry.name;
-      if (targetName) {
-        const queue: Array<{ node: DescendantCstNode; depth: number }> = [{ node: declNode, depth: 0 }];
-        let firstIdentFallback: { startOffset: number; endOffset: number } | undefined;
-        while (queue.length > 0) {
-          const { node, depth } = queue.shift()!;
-          const childCount = typeof node.childCount === "number" ? node.childCount : (node.children?.length ?? 0);
-          if (childCount === 0) {
-            const nodeText = node.text;
-            if (
-              typeof node.startIndex === "number" &&
-              typeof node.endIndex === "number" &&
-              node.endIndex > node.startIndex
-            ) {
-              if (nodeText === targetName) {
-                return { startOffset: node.startIndex, endOffset: node.endIndex };
-              }
-              const kind = String(node.type ?? "").toLowerCase();
-              if (
-                !firstIdentFallback &&
-                (kind === "identifier" || kind === "ident" || kind === "name" || kind === "id")
-              ) {
-                firstIdentFallback = { startOffset: node.startIndex, endOffset: node.endIndex };
-              }
-            }
-            continue;
-          }
-          if (depth < 6) {
-            for (let i = 0; i < childCount; i++) {
-              const ch = typeof node.child === "function" ? node.child(i) : node.children?.[i];
-              if (ch) queue.push({ node: ch, depth: depth + 1 });
-            }
-          }
-        }
-        if (firstIdentFallback) return firstIdentFallback;
-      }
-    }
-  }
-
-  if (
-    typeof entry.startOffset === "number" &&
-    typeof entry.endOffset === "number" &&
-    entry.endOffset > entry.startOffset
-  ) {
-    return { startOffset: entry.startOffset, endOffset: entry.endOffset };
-  }
-  return undefined;
 }
 
 /**
@@ -365,22 +162,24 @@ export class WorkspaceManager {
   public documentInstances: ClassInstanceListMap = new ClassInstanceListMap();
   /** Cached compiler `Context` objects keyed by document URI. */
   public documentContexts: DocumentContextMap = new DocumentContextMap();
+  /** Optional injected virtual filesystem for resolving standard library and workspace files. */
+  public sharedFs?: SharedCompilerFileSystem | undefined;
+  /** Optional injected parser service for CST fallback parses and shared CST tree access. */
+  public parserService?:
+    | {
+        getParser?(langId: string): { parse(text: string): unknown } | null;
+        getSharedCstTreeWrapper?: () => CSTTree;
+      }
+    | undefined;
 
   /** Canonical Digital Thread Hypergraph tracking cross-domain node bindings and staleness/conflicts. */
   public hypergraph: DigitalThreadHypergraph = new DigitalThreadHypergraph();
   /** Metadata lookup table mapping `${domain}:${nodeId}` keys to source locations and properties. */
   public threadMetadataMap = new Map<string, ThreadElementMetadata>();
-  /** Tracks auto-asserted SemanticTheoryCoordinator literal IDs per hypergraph slot for clean cross-file retraction. */
-  private autoCoordinatorLiteralsBySlot = new Map<number, number[]>();
-  /** Tracks auto-discovered hypergraph slots touched by each document URI. */
-  private autoSlotsByUri = new Map<string, Set<number>>();
-  /** Tracks auto-bound thread slot/metadata keys owned by each document URI. */
-  private autoThreadKeysByUri = new Map<string, Array<{ slot: number; metaKey: string }>>();
-  /** Set of hypergraph slot indices created by automatic discovery (never manually seeded slots). */
-  private autoSlotIds = new Set<number>();
-
   /** Canonical Semantic Theory Coordinator for cross-domain formal consistency checking. */
   public coordinator: SemanticTheoryCoordinator = new SemanticTheoryCoordinator();
+  /** Focused digital-thread index coordinating hypergraph bindings, TGG sync, and theory literals. */
+  private readonly digitalThreadIndex: DigitalThreadIndex;
 
   /**
    * Returns the active `SemanticTheoryCoordinator` instance.
@@ -399,15 +198,7 @@ export class WorkspaceManager {
    * @returns Allocated or existing hypergraph slot index.
    */
   public bindThreadSlot(threadId: number, domain: ThreadDomain, nodeId: number, meta: ThreadElementMetadata): number {
-    let slot = this.hypergraph.findSlotByThreadId(threadId);
-    if (slot === null || slot === undefined) {
-      slot = this.hypergraph.createThread(threadId, 1);
-    }
-    this.hypergraph.bindDomainNode(slot, domain, nodeId);
-    const slotDomName = DOMAIN_INDEX_TO_NAME[domain] ?? "unknown";
-    const key = `${slotDomName}:${nodeId}`;
-    this.threadMetadataMap.set(key, { ...meta, domain: meta.domain ?? slotDomName });
-    return slot;
+    return this.digitalThreadIndex.bindThreadSlot(threadId, domain, nodeId, meta);
   }
 
   /**
@@ -420,44 +211,7 @@ export class WorkspaceManager {
     domain: string;
     nodeId: number;
   }[] {
-    const results: {
-      slot: number;
-      record: WorkspaceThreadRecord | null | undefined;
-      meta: ThreadElementMetadata;
-      domain: string;
-      nodeId: number;
-    }[] = [];
-    const seenSlotNodes = new Set<string>();
-
-    const normUri = uri.toLowerCase();
-    for (const [key, meta] of this.threadMetadataMap.entries()) {
-      if (meta.uri && (meta.uri.toLowerCase() === normUri || normUri.endsWith(meta.uri.toLowerCase()))) {
-        const parts = key.split(":");
-        const slotDomName = parts[0]!;
-        const nodeId = parseInt(parts[1]!, 10);
-        const domIdx = DOMAIN_NAME_TO_INDEX[slotDomName];
-        if (domIdx !== undefined) {
-          const slots =
-            typeof this.hypergraph.findSlotsByDomainNode === "function"
-              ? this.hypergraph.findSlotsByDomainNode(domIdx, nodeId)
-              : (() => {
-                  const s = this.hypergraph.findSlotByDomainNode(domIdx, nodeId);
-                  return s !== null && s !== undefined ? [s] : [];
-                })();
-          for (const slot of slots) {
-            if (typeof this.hypergraph.isRemoved === "function" && this.hypergraph.isRemoved(slot)) {
-              continue;
-            }
-            const dedupe = `${slot}:${slotDomName}:${nodeId}`;
-            if (seenSlotNodes.has(dedupe)) continue;
-            seenSlotNodes.add(dedupe);
-            const record = this.hypergraph.getRecord(slot);
-            results.push({ slot, record, meta, domain: meta.domain ?? slotDomName, nodeId });
-          }
-        }
-      }
-    }
-    return results;
+    return this.digitalThreadIndex.getThreadsForUri(uri);
   }
 
   /**
@@ -465,37 +219,7 @@ export class WorkspaceManager {
    * current synchronization status (`"synced"`, `"stale"`, or `"conflict"`).
    */
   public findAlignedElementsBySlot(slot: number): AlignedDomainElement[] {
-    const record = this.hypergraph.getRecord(slot);
-    if (!record) return [];
-
-    const domainElements: AlignedDomainElement[] = [];
-    const isConflict = this.hypergraph.isConflicted(slot);
-    const isStale = this.hypergraph.isStale(slot);
-    const status = isConflict ? "conflict" : isStale ? "stale" : "synced";
-
-    const isAutoSlot = this.autoSlotIds.has(slot);
-    for (let dom = 0; dom < 16; dom++) {
-      const nodeId = this.hypergraph.getDomainNode(slot, dom);
-      if (nodeId && nodeId > 0) {
-        const slotDomName = DOMAIN_INDEX_TO_NAME[dom] ?? "unknown";
-        const key = `${slotDomName}:${nodeId}`;
-        const meta = this.threadMetadataMap.get(key);
-        if (isAutoSlot && !meta) continue;
-        const reportedDomain = meta?.domain ?? slotDomName;
-        domainElements.push({
-          domain: reportedDomain,
-          name: meta?.name ?? `${reportedDomain}_node_${nodeId}`,
-          uri: meta?.uri,
-          line: meta?.line ?? 1,
-          column: meta?.column ?? 1,
-          length: meta?.length,
-          properties: meta?.properties,
-          status,
-        });
-      }
-    }
-    if (isAutoSlot && domainElements.length < 2) return [];
-    return domainElements;
+    return this.digitalThreadIndex.findAlignedElementsBySlot(slot);
   }
 
   private readonly resolvingWorkspaceIndex = new Set<string>();
@@ -524,16 +248,10 @@ export class WorkspaceManager {
       const s2 = this.getWorkspaceIndex("sysml2");
       if (s2) return s2;
     }
-    const gHooks = getWorkspaceGlobals();
-    const pluginFactory = (plugin as unknown as { createWorkspaceIndex?: () => WorkspaceIndexHandle } | undefined)
+    const pluginFactory = (plugin as { createWorkspaceIndex?: () => WorkspaceIndexHandle } | undefined)
       ?.createWorkspaceIndex;
-    const factory =
-      pluginFactory ??
-      (gHooks[`create_${norm}_workspace_index`] as (() => WorkspaceIndexHandle) | undefined) ??
-      (gHooks[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}WorkspaceIndex`] as
-        (() => WorkspaceIndexHandle) | undefined);
-    if (typeof factory === "function") {
-      const idx = factory();
+    if (typeof pluginFactory === "function") {
+      const idx = pluginFactory();
       this.setWorkspaceIndex(norm, idx);
       return idx;
     }
@@ -679,14 +397,8 @@ export class WorkspaceManager {
                 ? idx.getIndex()
                 : idx
           ) as SymbolIndex;
-          const injectFn = getWorkspaceGlobals().injectPredefinedTypes;
-          if (typeof injectFn === "function") {
-            injectFn(uIdx);
-          }
-          const selfWithParser = this as unknown as {
-            parserService?: { getSharedCstTreeWrapper?: () => CSTTree } | undefined;
-          };
-          const cstWrapper = selfWithParser.parserService?.getSharedCstTreeWrapper?.();
+          injectPredefinedTypes(uIdx);
+          const cstWrapper = this.parserService?.getSharedCstTreeWrapper?.();
           const qe = createModelicaQueryEngine(uIdx, cstWrapper);
           this.setQueryEngine(norm, qe);
           return qe;
@@ -776,6 +488,7 @@ export class WorkspaceManager {
     this.workspaceInstances.delete(uri);
     this.documentInstances.delete(uri);
     this.documentContexts.delete(uri);
+    this.digitalThreadIndex.disposeDocument(uri);
     type DisposableQueryEngine = QueryEngine & { disposeDocument?: (docUri: string) => void };
     const eng = globalLanguageRegistry.getQueryEngineForUri(uri) as DisposableQueryEngine | undefined;
     eng?.disposeDocument?.(uri);
@@ -784,7 +497,7 @@ export class WorkspaceManager {
   }
 
   /** Optional reference to the `DocumentManager` for accessing open text documents and CST trees. */
-  private documentManager?: DocumentManager | undefined;
+  public documentManager?: DocumentManager | undefined;
 
   /**
    * Creates a new `WorkspaceManager`, registers all formal semantic theory oracles,
@@ -792,6 +505,8 @@ export class WorkspaceManager {
    */
   constructor(documentManager?: DocumentManager, options?: WorkspaceManagerOptions) {
     this.documentManager = documentManager;
+    this.digitalThreadIndex = new DigitalThreadIndex(this);
+
     this.coordinator.registerOracle(new OntologyTheoryOracle());
     this.coordinator.registerOracle(new ConstraintTheoryOracle());
     this.coordinator.registerOracle(new AbstractDomainOracle());
@@ -863,8 +578,7 @@ export class WorkspaceManager {
     const docTree = this.documentManager?.documentTrees?.get?.(resourceId);
     if (docTree?.text) return docTree.text;
 
-    const gHooks = getWorkspaceGlobals();
-    const sfs = gHooks.sharedFs ?? gHooks.sharedContext?.fs ?? this.documentManager?.sharedContext?.fs;
+    const sfs = this.sharedFs ?? this.documentManager?.sharedContext?.fs;
     if (sfs) {
       let fsPath = resourceId;
       try {
@@ -935,20 +649,18 @@ export class WorkspaceManager {
     const resId = entry.resourceId;
     const normUri = resId ? resId.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///") : "";
     const oneSlashUri = resId ? resId.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:/") : "";
-    const uwWithTree = this.unifiedWorkspace as unknown as {
-      getDocumentTree?: (u: string) => CstTreeContainer | null | undefined;
+    const uw = this.unifiedWorkspace;
+    const getDocTree = (u: string): CstTreeContainer | null => {
+      const dmTree = this.documentManager?.getDocumentTree?.(u);
+      if (dmTree && typeof dmTree === "object") return dmTree as CstTreeContainer;
+      if ("getDocumentTree" in uw && typeof uw.getDocumentTree === "function") {
+        const uwTree = uw.getDocumentTree(u);
+        if (uwTree && typeof uwTree === "object") return uwTree as CstTreeContainer;
+      }
+      return null;
     };
-    let tree: CstTreeContainer | null | undefined =
-      (this.documentManager?.getDocumentTree?.(resId) as unknown as CstTreeContainer | null | undefined) ??
-      (normUri
-        ? (this.documentManager?.getDocumentTree?.(normUri) as unknown as CstTreeContainer | null | undefined)
-        : null) ??
-      (oneSlashUri
-        ? (this.documentManager?.getDocumentTree?.(oneSlashUri) as unknown as CstTreeContainer | null | undefined)
-        : null) ??
-      uwWithTree?.getDocumentTree?.(resId) ??
-      (normUri ? uwWithTree?.getDocumentTree?.(normUri) : null) ??
-      (oneSlashUri ? uwWithTree?.getDocumentTree?.(oneSlashUri) : null);
+    let tree: CstTreeContainer | null =
+      getDocTree(resId) ?? (normUri ? getDocTree(normUri) : null) ?? (oneSlashUri ? getDocTree(oneSlashUri) : null);
     const existingRoot = tree?.rootNode ?? tree?.tree?.rootNode;
     if (!existingRoot) {
       const text =
@@ -956,12 +668,10 @@ export class WorkspaceManager {
         (normUri ? this.getSourceText(normUri) : null) ??
         (oneSlashUri ? this.getSourceText(oneSlashUri) : null);
       if (text) {
-        const gHooks = getWorkspaceGlobals();
         const parser =
           globalLanguageRegistry.getPluginById("modelica")?.parser ??
-          gHooks.modelicaParser ??
-          gHooks.parser ??
-          gHooks.sharedContext?.parsers?.get?.(".mo");
+          this.parserService?.getParser?.("modelica") ??
+          null;
         if (parser) {
           try {
             const parsedTree = parser.parse(text) as CstTreeContainer | null;
@@ -969,7 +679,7 @@ export class WorkspaceManager {
             if (parsedTree) {
               this.documentManager?.documentTrees?.set(entry.resourceId, {
                 text,
-                tree: parsedTree as unknown as CstTreeLike,
+                tree: parsedTree as CstTreeLike,
                 classCache: new Map(),
               });
             }
@@ -977,7 +687,7 @@ export class WorkspaceManager {
             console.warn("[LSP:workspace-manager] CST fallback parse failed:", err);
           }
         } else {
-          const sc = gHooks.sharedContext ?? this.documentManager?.sharedContext;
+          const sc = this.documentManager?.sharedContext;
           if (sc && typeof sc.parse === "function") {
             try {
               const ext = entry.resourceId?.endsWith(".sysml") ? ".sysml" : ".mo";
@@ -1053,925 +763,23 @@ export class WorkspaceManager {
     className?: string,
     options?: { iconOnly?: boolean | undefined },
   ): WorkspaceClassInstance | null {
-    // 1. Check documentInstances first for rich AST models
-    const docInsts = this.documentInstances.get(uri);
-    if (docInsts && docInsts.length > 0) {
-      const richInsts = docInsts.filter(
-        (ci: WorkspaceClassInstance) =>
-          (options?.iconOnly || !ci._iconOnly) &&
-          (typeof ci.annotation === "function" || (Array.isArray(ci.components) && ci.components.length > 0)),
-      );
-      if (richInsts.length > 0) {
-        if (className) {
-          const found = richInsts.find(
-            (ci: WorkspaceClassInstance) =>
-              ci.name === className || ci.compositeName === className || ci.compositeName?.endsWith(`.${className}`),
-          );
-          if (found) return found;
-        } else {
-          return richInsts[richInsts.length - 1] ?? null;
-        }
-      }
-    }
-
-    const annotationCache = new Map<number, Map<string, unknown>>();
-    const adapterByEntryId = new Map<number, WorkspaceClassInstance>();
-
-    const getSourceText = (resourceId: string): string | null => this.getSourceText(resourceId);
-
-    const resolveEvaluatorClass = (resourceId?: string): AnnotationEvaluatorConstructor | undefined => {
-      const gHooks = getWorkspaceGlobals();
-      let evaluatorClass: AnnotationEvaluatorConstructor | undefined =
-        gHooks.AnnotationEvaluator ??
-        (AnnotationEvaluator as unknown as AnnotationEvaluatorConstructor) ??
-        (resourceId
-          ? (globalLanguageRegistry.getPluginForUri(resourceId)?.annotationEvaluator as
-              AnnotationEvaluatorConstructor | undefined)
-          : undefined);
-      if (!evaluatorClass && nodeRequire) {
-        try {
-          const mod = nodeRequire("@modelscript/modelica/diagram") as
-            { AnnotationEvaluator?: AnnotationEvaluatorConstructor } | undefined;
-          evaluatorClass = mod?.AnnotationEvaluator;
-        } catch {
-          // ignore
-        }
-      }
-      return evaluatorClass;
-    };
-
-    const createPredefinedPackageInstance = (name = "Package"): WorkspaceClassInstance => ({
-      id: -1,
-      name,
-      kind: "Package",
-      components: [],
-      extendsClassInstances: [],
-      connectEquations: [],
-      annotation: (annName: string) => {
-        if (annName === "Icon") {
-          return {
-            "@type": "Icon",
-            coordinateSystem: {
-              "@type": "coordinateSystem",
-              preserveAspectRatio: false,
-              extent: [
-                [-100, -100],
-                [100, 100],
-              ],
-            },
-            graphics: [
-              {
-                "@type": "Rectangle",
-                lineColor: [200, 200, 200],
-                fillColor: [248, 248, 248],
-                fillPattern: "HorizontalCylinder",
-                extent: [
-                  [-100, -100],
-                  [100, 100],
-                ],
-                radius: 25,
-              },
-              {
-                "@type": "Rectangle",
-                lineColor: [128, 128, 128],
-                extent: [
-                  [-100, -100],
-                  [100, 100],
-                ],
-                radius: 25,
-              },
-            ],
-          };
-        }
-        return null;
+    return resolveModelicaClassInstanceWithHost(
+      {
+        documentInstances: this.documentInstances,
+        unifiedWorkspace: this.unifiedWorkspace,
+        documentManager: this.documentManager,
+        globalModelicaQueryEngine: this.globalModelicaQueryEngine,
+        globalSysML2QueryEngine: this.globalSysML2QueryEngine,
+        nodeRequire,
+        getSourceText: (resourceId) => this.getSourceText(resourceId),
+        getCstNodeForSymbol: (entry) => this.getCstNodeForSymbol(entry),
+        resolveModelicaClassInstance: (targetUri, targetClass, targetOptions) =>
+          this.resolveModelicaClassInstance(targetUri, targetClass, targetOptions),
       },
-    });
-
-    interface AdapterDb {
-      childrenOf?: (id: number) => SymbolEntry[];
-      symbol?: (id: number) => SymbolEntry | null | undefined;
-      query?: (name: string, id: number) => unknown;
-      cstNode?: (id: number) => unknown;
-    }
-
-    type SymbolWithOptionalCst = SymbolEntry & { cstNode?: DescendantCstNode | null | undefined };
-
-    const buildAdapter = (
-      entry: SymbolWithOptionalCst,
-      db: AdapterDb,
-      compositeName: string,
-    ): WorkspaceClassInstance => {
-      if (entry?.id != null && adapterByEntryId.has(entry.id)) {
-        return adapterByEntryId.get(entry.id)!;
-      }
-      const children: SymbolWithOptionalCst[] = db.childrenOf ? (db.childrenOf(entry.id) ?? []) : [];
-      const components: WorkspaceComponentInstance[] = [];
-      const extendsClassInstances: WorkspaceExtendsInstance[] = [];
-      const connectEquations: WorkspaceConnectEquation[] = [];
-
-      let classInstance!: WorkspaceClassInstance;
-
-      for (const child of children) {
-        if (child.kind === "Component" || child.kind === "Variable") {
-          let componentClassInstance: WorkspaceClassInstance | null | undefined = undefined;
-          let childCst: unknown = undefined;
-          const getChildCst = (): unknown => {
-            if (childCst === undefined) {
-              childCst = (db.cstNode ? db.cstNode(child.id) : null) ?? this.getCstNodeForSymbol(child) ?? null;
-            }
-            return childCst;
-          };
-          const getComponentClassInstance = (): WorkspaceClassInstance | null => {
-            if (componentClassInstance !== undefined) {
-              return componentClassInstance;
-            }
-            if (options?.iconOnly) {
-              componentClassInstance = null;
-              return null;
-            }
-            const childMeta = child.metadata as Record<string, unknown> | undefined;
-            const metaTypeSpec: string | null =
-              typeof childMeta?.["typeSpecifier"] === "string" ? childMeta["typeSpecifier"] : null;
-            let typeSpec: string | null = null;
-            if (db.query) {
-              try {
-                const queried = db.query("typeSpecifier", child.id);
-                typeSpec = typeof queried === "string" ? queried : null;
-              } catch {
-                // Salsa typeSpecifier query unavailable; fall back to symbol metadata and CST below.
-              }
-            }
-            if (!typeSpec) {
-              typeSpec = metaTypeSpec;
-            }
-            if (
-              typeSpec === "Real" ||
-              typeSpec === "Integer" ||
-              typeSpec === "Boolean" ||
-              typeSpec === "String" ||
-              typeSpec === "StateSelect" ||
-              typeSpec === "ExternalObject" ||
-              typeSpec === "Clock" ||
-              (typeSpec &&
-                (typeSpec.startsWith("SI.") ||
-                  typeSpec.startsWith("Modelica.SIunits.") ||
-                  typeSpec.startsWith("Modelica.Units.")))
-            ) {
-              componentClassInstance = null;
-              return null;
-            }
-            const childClassId = db.query ? (db.query("classInstance", child.id) as number | null | undefined) : null;
-            const childClassEntry = typeof childClassId === "number" && db.symbol ? db.symbol(childClassId) : null;
-            componentClassInstance = childClassEntry
-              ? buildAdapter(childClassEntry, db, typeSpec || childClassEntry.name)
-              : null;
-            if (!componentClassInstance) {
-              if (!typeSpec) {
-                let p = (child.cstNode || getChildCst()) as DescendantCstNode | null | undefined;
-                while (p) {
-                  if (p.type === "component_clause" || p.type === "ComponentClause") {
-                    const ts = p.children?.find(
-                      (c: DescendantCstNode) => c.type === "type_specifier" || c.type === "TypeSpecifier",
-                    );
-                    if (ts) {
-                      typeSpec = ts.text?.trim() ?? null;
-                      break;
-                    }
-                  }
-                  p = p.parent;
-                }
-              }
-              if (!typeSpec && entry.resourceId) {
-                try {
-                  const cachedTree = this.documentManager?.documentTrees?.get(entry.resourceId);
-                  const root = cachedTree?.tree?.rootNode as DescendantCstNode | undefined;
-                  if (root && child.startOffset != null && child.endOffset != null) {
-                    const findInCst = (n: DescendantCstNode | null | undefined): string | null => {
-                      if (!n) return null;
-                      if (
-                        (n.type === "component_clause" || n.type === "ComponentClause") &&
-                        typeof n.startIndex === "number" &&
-                        typeof n.endIndex === "number" &&
-                        n.startIndex <= child.startOffset &&
-                        n.endIndex >= child.endOffset
-                      ) {
-                        const ts = (n.children || []).find(
-                          (c: DescendantCstNode) => c.type === "type_specifier" || c.type === "TypeSpecifier",
-                        );
-                        if (ts?.text) return ts.text.trim();
-                      }
-                      for (const ch of n.children || []) {
-                        const res = findInCst(ch);
-                        if (res) return res;
-                      }
-                      return null;
-                    };
-                    typeSpec = findInCst(root) ?? null;
-                  }
-                  if (!typeSpec) {
-                    const text = getSourceText(entry.resourceId);
-                    const sOff = child.startOffset;
-                    const eOff = child.endOffset;
-                    if (text && sOff != null && eOff != null) {
-                      const lineStart = text.lastIndexOf("\n", sOff);
-                      const declLine = text.substring(lineStart === -1 ? 0 : lineStart + 1, eOff);
-                      const parsedType = extractModelicaTypeFromDeclLine(declLine);
-                      if (parsedType) {
-                        typeSpec = parsedType;
-                      }
-                    }
-                  }
-                } catch {
-                  // Best-effort CST and source-line type specifier recovery failed; leave typeSpec unresolved.
-                }
-              }
-              if (
-                typeSpec &&
-                typeSpec !== "Real" &&
-                typeSpec !== "Integer" &&
-                typeSpec !== "Boolean" &&
-                typeSpec !== "String" &&
-                !typeSpec.startsWith("SI.") &&
-                !typeSpec.startsWith("Modelica.SIunits.") &&
-                !typeSpec.startsWith("Modelica.Units.")
-              ) {
-                componentClassInstance = this.resolveModelicaClassInstance(entry.resourceId ?? uri, typeSpec, options);
-              }
-            }
-            return componentClassInstance ?? null;
-          };
-          const compAnnCache = new Map<string, unknown>();
-          const childMeta = child.metadata as Record<string, unknown> | undefined;
-          const compObj: WorkspaceComponentInstance = {
-            name: child.name,
-            annotations: [],
-            declaration: child,
-            defaultValue: childMeta?.["defaultValue"],
-            unit: childMeta?.["unit"],
-            description: (typeof childMeta?.["description"] === "string" ? childMeta["description"] : null) ?? null,
-            get classInstance() {
-              return getComponentClassInstance();
-            },
-            set classInstance(v: WorkspaceClassInstance | null | undefined) {
-              componentClassInstance = v;
-            },
-            get cstNode() {
-              return getChildCst();
-            },
-            get abstractSyntaxNode() {
-              return getChildCst();
-            },
-            annotation: (annName: string): unknown => {
-              if (compAnnCache.has(annName)) {
-                return compAnnCache.get(annName);
-              }
-              try {
-                if ((annName === "Placement" || annName === "placement") && db.query && child.id != null) {
-                  try {
-                    const salsaPlacement = db.query("componentPlacement", child.id);
-                    if (salsaPlacement != null) {
-                      compAnnCache.set(annName, salsaPlacement);
-                      return salsaPlacement;
-                    }
-                  } catch {
-                    // Salsa placement query unavailable; fall back to metadata and evaluator below.
-                  }
-                }
-                if (
-                  (annName === "Placement" || annName === "placement") &&
-                  childMeta?.["placementAnnotation"] != null
-                ) {
-                  const metaPlacement = childMeta["placementAnnotation"];
-                  compAnnCache.set(annName, metaPlacement);
-                  return metaPlacement;
-                }
-                const evaluatorClass = resolveEvaluatorClass();
-                const cst = getChildCst();
-                if (cst && evaluatorClass) {
-                  const evaluator = new evaluatorClass(classInstance);
-                  const res = evaluator.evaluate(cst, annName);
-                  compAnnCache.set(annName, res);
-                  return res;
-                }
-              } catch {
-                // Annotation evaluation failed; cache null so component renders without optional annotation.
-              }
-              compAnnCache.set(annName, null);
-              return null;
-            },
-          };
-          components.push(compObj);
-        } else if (child.kind === "Extends" && child.name) {
-          if (child.name !== entry.name && child.name !== compositeName) {
-            const entryResId = entry.resourceId ?? uri;
-            let baseInstance = this.resolveModelicaClassInstance(entryResId, child.name, options);
-            if (!baseInstance && entry.parentId != null) {
-              // Try resolving relative to parent scopes (e.g. child.name is "Icons.Package" in "Modelica.Electrical")
-              let currParent = db.symbol ? db.symbol(entry.parentId) : null;
-              while (currParent && !baseInstance) {
-                const qualifiedParentName = currParent.name ? `${currParent.name}.${child.name}` : child.name;
-                baseInstance = this.resolveModelicaClassInstance(entryResId, qualifiedParentName, options);
-                currParent = currParent.parentId != null && db.symbol ? db.symbol(currParent.parentId) : null;
-              }
-            }
-            if (!baseInstance) {
-              // Try resolving relative to package hierarchy from compositeName or resourceId
-              const scopeParts = (compositeName ? compositeName.split(".") : []).slice(0, -1);
-              if (scopeParts.length === 0 && entry.resourceId) {
-                try {
-                  const text = getSourceText(entry.resourceId);
-                  if (text) {
-                    const withinPkg = extractWithinPackageName(text.slice(0, 1000));
-                    if (withinPkg) {
-                      scopeParts.push(...withinPkg.split("."));
-                    }
-                  }
-                } catch {
-                  // Source text unavailable for within-clause scan; fall back to path segments below.
-                }
-              }
-              if (scopeParts.length === 0 && entry.resourceId) {
-                const clean = entry.resourceId.replace(/^[a-z]+:\/*(?:lib\/)?/, "").replace(/\/[^/]+$/, "");
-                const segments = clean.split("/").filter(Boolean);
-                const mIdx = segments.findIndex((s: string) => s === "Modelica" || s.startsWith("Modelica"));
-                if (mIdx !== -1) {
-                  scopeParts.push(...segments.slice(mIdx));
-                  if (scopeParts[0]?.startsWith("Modelica")) scopeParts[0] = "Modelica";
-                } else {
-                  scopeParts.push(...segments);
-                }
-              }
-              while (scopeParts.length > 0 && !baseInstance) {
-                const qualifiedParentName = `${scopeParts.join(".")}.${child.name}`;
-                baseInstance = this.resolveModelicaClassInstance(entryResId, qualifiedParentName, options);
-                scopeParts.pop();
-              }
-            }
-            if (
-              !baseInstance &&
-              (child.name === "Modelica.Icons.Package" ||
-                child.name === "Icons.Package" ||
-                child.name.endsWith(".Icons.Package") ||
-                child.name.endsWith(".Package") ||
-                child.name === "Package")
-            ) {
-              baseInstance = createPredefinedPackageInstance(child.name.split(".").pop() || "Package");
-            }
-            if (baseInstance) {
-              let effectiveBaseInstance: WorkspaceClassInstance = baseInstance;
-              if (db.query && child.id != null) {
-                try {
-                  const extMods = db.query("extendsModificationParsed", child.id) as
-                    | {
-                        args?: Array<{
-                          name?: string;
-                          isRedeclaration?: boolean;
-                          redeclaredKind?: string;
-                          redeclaredTypeSpecifier?: string;
-                        }>;
-                      }
-                    | null
-                    | undefined;
-                  const redeclares = new Map<string, string>();
-                  for (const arg of extMods?.args ?? []) {
-                    if (
-                      arg?.isRedeclaration &&
-                      arg.name &&
-                      arg.redeclaredTypeSpecifier &&
-                      arg.redeclaredKind !== "class"
-                    ) {
-                      redeclares.set(arg.name, arg.redeclaredTypeSpecifier);
-                    }
-                  }
-                  if (redeclares.size > 0) {
-                    const wrapRedeclared = (
-                      inst: WorkspaceClassInstance,
-                      visited = new Set<object>(),
-                    ): WorkspaceClassInstance => {
-                      if (!inst || typeof inst !== "object" || visited.has(inst)) return inst;
-                      visited.add(inst);
-                      const wrappedComponents = (inst.components ?? []).map((comp: WorkspaceComponentInstance) => {
-                        const overrideType = comp?.name ? redeclares.get(comp.name) : undefined;
-                        if (!overrideType) return comp;
-                        let resolvedOverride: WorkspaceClassInstance | null | undefined = undefined;
-                        const resolveOverrideInstance = () =>
-                          this.resolveModelicaClassInstance(entryResId, overrideType, options);
-                        return {
-                          ...comp,
-                          typeSpecifier: overrideType,
-                          get classInstance() {
-                            if (resolvedOverride === undefined) {
-                              resolvedOverride = resolveOverrideInstance();
-                            }
-                            return resolvedOverride;
-                          },
-                          annotation: (annName: string) =>
-                            typeof comp.annotation === "function" ? comp.annotation(annName) : null,
-                        };
-                      });
-                      const wrappedExtends = (inst.extendsClassInstances ?? []).map(
-                        (ext: WorkspaceExtendsInstance) => ({
-                          ...ext,
-                          classInstance: ext?.classInstance
-                            ? wrapRedeclared(ext.classInstance, visited)
-                            : ext?.classInstance,
-                        }),
-                      );
-                      return {
-                        ...inst,
-                        components: wrappedComponents,
-                        extendsClassInstances: wrappedExtends,
-                        annotation: (annName: string, compCtx?: AnnotationEvalContext | string) =>
-                          typeof inst.annotation === "function" ? inst.annotation(annName, compCtx) : null,
-                      };
-                    };
-                    effectiveBaseInstance = wrapRedeclared(baseInstance);
-                  }
-                } catch {
-                  // Redeclaration wrapping failed; keep baseInstance unmodified.
-                }
-              }
-              extendsClassInstances.push({ name: child.name, classInstance: effectiveBaseInstance });
-            }
-          }
-        } else if (
-          child.kind === "ConnectEquation" ||
-          child.ruleName === "ConnectEquation" ||
-          child.ruleName === "connect_equation"
-        ) {
-          const childMeta = child.metadata as Record<string, unknown> | undefined;
-          let lhsStr = (typeof childMeta?.["lhs"] === "string" ? childMeta["lhs"] : undefined) ?? child.name ?? "";
-          let rhsStr = (typeof childMeta?.["rhs"] === "string" ? childMeta["rhs"] : undefined) ?? "";
-          const connCst = ((db.cstNode ? db.cstNode(child.id) : null) ??
-            this.getCstNodeForSymbol(child)) as DescendantCstNode | null;
-          if ((!lhsStr || !rhsStr) && connCst) {
-            try {
-              // 1. CST-native resolution of connect equation endpoints
-              const compRefs: DescendantCstNode[] = [];
-              const collectCompRefs = (node: DescendantCstNode | null | undefined) => {
-                if (!node) return;
-                if (node.type === "component_reference" || node.type === "ComponentReference") {
-                  compRefs.push(node);
-                  return;
-                }
-                for (const c of node.children || []) {
-                  collectCompRefs(c);
-                }
-              };
-              collectCompRefs(connCst);
-              if (compRefs.length >= 2) {
-                lhsStr = compRefs[0]?.text?.trim() ?? lhsStr;
-                rhsStr = compRefs[1]?.text?.trim() ?? rhsStr;
-              } else if (connCst.lhs && connCst.rhs) {
-                lhsStr = (typeof connCst.lhs === "string" ? connCst.lhs : connCst.lhs.text)?.trim() ?? lhsStr;
-                rhsStr = (typeof connCst.rhs === "string" ? connCst.rhs : connCst.rhs.text)?.trim() ?? rhsStr;
-              }
-            } catch {
-              // CST endpoint traversal failed; fall back to text-based connect(...) extraction below.
-            }
-
-            // 2. Degraded text-based fallback only if CST lacked endpoints
-            if (!lhsStr || !rhsStr) {
-              try {
-                const cstText = connCst.text ?? "";
-                const cIdx = cstText.indexOf("connect");
-                const openIdx = cIdx !== -1 ? skipWs(cstText, cIdx + 7) : -1;
-                if (cIdx !== -1 && cstText[openIdx] === "(") {
-                  const start = openIdx + 1;
-                  const closeIdx = cstText.lastIndexOf(")");
-                  if (closeIdx > start) {
-                    const inner = cstText.slice(start, closeIdx);
-                    const commaIdx = inner.indexOf(",");
-                    if (commaIdx !== -1) {
-                      lhsStr = inner.slice(0, commaIdx).trim();
-                      rhsStr = inner.slice(commaIdx + 1).trim();
-                    }
-                  }
-                }
-              } catch {
-                // ignore
-              }
-            }
-          }
-          if (lhsStr && rhsStr) {
-            const targetEquationNode =
-              connCst?.parent && (connCst.parent.type === "some_equation" || connCst.parent.type === "SomeEquation")
-                ? connCst.parent
-                : connCst;
-            const connAnnCache = new Map<string, unknown>();
-            connectEquations.push({
-              lhs: lhsStr,
-              rhs: rhsStr,
-              componentReference1: {
-                parts: lhsStr.split(".").map((id: string) => ({ identifier: { text: id } })),
-              },
-              componentReference2: {
-                parts: rhsStr.split(".").map((id: string) => ({ identifier: { text: id } })),
-              },
-              cstNode: targetEquationNode,
-              ast: targetEquationNode,
-              annotation: (annName: string): unknown => {
-                if (connAnnCache.has(annName)) {
-                  return connAnnCache.get(annName);
-                }
-                try {
-                  const evaluatorClass = resolveEvaluatorClass();
-                  if (targetEquationNode && evaluatorClass) {
-                    const evaluator = new evaluatorClass(classInstance);
-                    const res = evaluator.evaluate(targetEquationNode, annName);
-                    connAnnCache.set(annName, res);
-                    return res;
-                  }
-                } catch {
-                  // Connect annotation evaluation failed; cache null so edge renders with default routing.
-                }
-                connAnnCache.set(annName, null);
-                return null;
-              },
-            });
-          }
-        }
-      }
-
-      const classCstNode = (db.cstNode ? db.cstNode(entry.id) : null) ?? this.getCstNodeForSymbol(entry);
-      const entryMeta = entry.metadata as Record<string, unknown> | undefined;
-      const resolvedClassKind =
-        typeof entryMeta?.["classKind"] === "string"
-          ? entryMeta["classKind"]
-          : typeof entryMeta?.["classPrefixes"] === "string"
-            ? entryMeta["classPrefixes"]
-            : "class";
-      const resolvedDescription = typeof entryMeta?.["description"] === "string" ? entryMeta["description"] : null;
-
-      classInstance = {
-        id: entry.id,
-        db,
-        entry,
-        cstNode: classCstNode,
-        abstractSyntaxNode: classCstNode,
-        name: entry.name ?? "",
-        kind: entry.kind ?? "Class",
-        classKind: resolvedClassKind,
-        compositeName,
-        description: resolvedDescription,
-        isClassInstance: true,
-        _iconOnly: Boolean(options?.iconOnly),
-        components,
-        connectEquations,
-        extendsClassInstances,
-        resolveName: (parts: string[] | string): WorkspaceComponentInstance | null => {
-          const partsArray = Array.isArray(parts) ? parts : typeof parts === "string" ? parts.split(".") : [];
-          if (partsArray.length === 0) return null;
-          const target = partsArray[0];
-          const found = components.find((c) => c.name === target);
-          if (found) return found;
-          for (const ext of extendsClassInstances) {
-            const extFound = ext.classInstance?.resolveName?.(partsArray);
-            if (extFound) return extFound;
-          }
-          return null;
-        },
-        annotation: (() => {
-          const ctxAnnCache = new WeakMap<object, Map<string, unknown>>();
-          return (name: string, rawCtx?: AnnotationEvalContext | string): unknown => {
-            const _ctx: AnnotationEvalContext | undefined =
-              typeof rawCtx === "object" && rawCtx !== null ? rawCtx : undefined;
-            if (!annotationCache.has(entry.id)) {
-              annotationCache.set(entry.id, new Map());
-            }
-            const classAnnCache = annotationCache.get(entry.id)!;
-
-            const hasCtxInstance = Boolean(
-              _ctx && (_ctx.classInstance !== undefined || _ctx.declaration || _ctx.modification || _ctx.cstNode),
-            );
-            let ctxMap: Map<string, unknown> | undefined;
-            if (hasCtxInstance && _ctx) {
-              ctxMap = ctxAnnCache.get(_ctx);
-              if (ctxMap && ctxMap.has(name)) {
-                return ctxMap.get(name);
-              }
-            }
-
-            const cacheKey = `${name}${_ctx?.ownOnly ? ":own" : ""}`;
-            if (!hasCtxInstance && classAnnCache.has(cacheKey)) {
-              return classAnnCache.get(cacheKey);
-            }
-
-            const setCache = (val: unknown): unknown => {
-              if (hasCtxInstance && _ctx) {
-                if (!ctxMap) {
-                  ctxMap = new Map();
-                  ctxAnnCache.set(_ctx, ctxMap);
-                }
-                ctxMap.set(name, val);
-              } else {
-                classAnnCache.set(cacheKey, val);
-              }
-              return val;
-            };
-
-            const cstNode: unknown =
-              classCstNode ?? (db.cstNode ? db.cstNode(entry.id) : null) ?? this.getCstNodeForSymbol(entry);
-
-            try {
-              if ((name === "Icon" || name === "Diagram") && (!hasCtxInstance || !cstNode) && db.query) {
-                try {
-                  const qName = name === "Icon" ? "classIconGraphics" : "classDiagramGraphics";
-                  const salsaLayer = db.query(qName, entry.id);
-                  if (salsaLayer) {
-                    return setCache(salsaLayer);
-                  }
-                } catch {
-                  // fall through to metadata / evaluator
-                }
-              }
-
-              if (!cstNode && entryMeta) {
-                if (name === "Icon" && entryMeta["iconAnnotation"] != null) {
-                  return setCache(entryMeta["iconAnnotation"]);
-                }
-                if (name === "Diagram" && entryMeta["diagramAnnotation"] != null) {
-                  return setCache(entryMeta["diagramAnnotation"]);
-                }
-                if (name === "defaultComponentName" && entryMeta["defaultComponentName"] != null) {
-                  return setCache(entryMeta["defaultComponentName"]);
-                }
-              }
-
-              if (cstNode) {
-                const evaluatorClass = resolveEvaluatorClass(entry.resourceId || "");
-                if (evaluatorClass) {
-                  const evalScope = hasCtxInstance ? { componentInstance: _ctx, classInstance } : classInstance;
-                  const evaluator = new evaluatorClass(evalScope);
-                  const evaluated = evaluator.evaluate(cstNode, name);
-                  if (evaluated) {
-                    return setCache(evaluated);
-                  }
-                }
-              }
-
-              // Fall back to inherited annotations from extends clauses unless caller requested own annotations only
-              if (!_ctx?.ownOnly) {
-                for (const ext of extendsClassInstances) {
-                  const inherited = ext.classInstance?.annotation?.(name, _ctx);
-                  if (inherited) {
-                    return setCache(inherited);
-                  }
-                }
-              }
-
-              return setCache(null);
-            } catch {
-              return setCache(null);
-            }
-          };
-        })(),
-      };
-
-      for (const comp of components) {
-        comp.parent = classInstance;
-      }
-
-      if (entry?.id != null) {
-        adapterByEntryId.set(entry.id, classInstance);
-      }
-
-      return classInstance;
-    };
-
-    const isClassLike = (e: SymbolEntry | null | undefined): boolean =>
-      e != null &&
-      (e.kind === "Class" ||
-        e.kind === "Def" ||
-        e.kind === "Package" ||
-        e.kind === "Model" ||
-        e.kind === "Block" ||
-        e.kind === "Connector" ||
-        e.kind === "Record" ||
-        e.kind === "Function" ||
-        e.kind === "Type" ||
-        e.kind === "Part");
-
-    if (className) {
-      const uwIndexed = this.unifiedWorkspace as unknown as
-        | {
-            ensureFQNIndexed?: (fqn: string) => void;
-            ensureChildrenIndexed?: (fqn: string) => void;
-            getQueryEngine?: (lang: string) => QueryEngine | null | undefined;
-          }
-        | undefined;
-      if (className.includes("Icons")) {
-        uwIndexed?.ensureFQNIndexed?.("Modelica.Icons");
-        uwIndexed?.ensureFQNIndexed?.("Icons");
-        uwIndexed?.ensureChildrenIndexed?.("Modelica");
-      }
-      if (typeof uwIndexed?.ensureFQNIndexed === "function") {
-        uwIndexed.ensureFQNIndexed(className);
-      }
-      if (typeof uwIndexed?.ensureChildrenIndexed === "function") {
-        uwIndexed.ensureChildrenIndexed(className);
-      }
-
-      const idx = this.unifiedWorkspace.getIndex();
-      const rawSymbolIds = idx.byName.get(className) || [];
-      // Prefer actual Class/Def symbols over Extends or Import references
-      let symbolIds = rawSymbolIds.filter((id: number) => {
-        const e = idx.symbols.get(id);
-        return isClassLike(e);
-      });
-
-      // Try multi-part resolution for fully qualified names ("A.B.C")
-      if (symbolIds.length === 0 && className.includes(".")) {
-        const parts = className.split(".");
-
-        // 1. Try resolving starting from longest matched prefix in byName (e.g. "Modelica.Icons" -> "Package")
-        for (let prefixLen = parts.length - 1; prefixLen >= 1 && symbolIds.length === 0; prefixLen--) {
-          const prefix = parts.slice(0, prefixLen).join(".");
-          let currentIds = (idx.byName.get(prefix) || []).filter((id: number) => {
-            const e = idx.symbols.get(id);
-            return isClassLike(e);
-          });
-          if (currentIds.length === 0) continue;
-
-          for (let i = prefixLen; i < parts.length && currentIds.length > 0; i++) {
-            const part = parts[i];
-            const nextIds: number[] = [];
-            for (const parentId of currentIds) {
-              const children = idx.childrenOf.get(parentId);
-              if (children) {
-                for (const childId of children) {
-                  const childEntry = idx.symbols.get(childId);
-                  if (childEntry && childEntry.name === part && isClassLike(childEntry)) {
-                    nextIds.push(childId);
-                  }
-                }
-              }
-            }
-            currentIds = nextIds;
-          }
-          if (currentIds.length > 0) {
-            symbolIds = currentIds;
-            break;
-          }
-        }
-
-        // 2. Fall back to part-by-part traversal from each segment
-        if (symbolIds.length === 0) {
-          for (let startIdx = 0; startIdx < parts.length && symbolIds.length === 0; startIdx++) {
-            let currentIds = (idx.byName.get(parts[startIdx]!) || []).filter((id: number) => {
-              const e = idx.symbols.get(id);
-              return isClassLike(e);
-            });
-            if (currentIds.length === 0) continue;
-            for (let i = startIdx + 1; i < parts.length && currentIds.length > 0; i++) {
-              const part = parts[i];
-              const nextIds: number[] = [];
-              for (const parentId of currentIds) {
-                const children = idx.childrenOf.get(parentId);
-                if (children) {
-                  for (const childId of children) {
-                    const childEntry = idx.symbols.get(childId);
-                    if (childEntry && childEntry.name === part && isClassLike(childEntry)) {
-                      nextIds.push(childId);
-                    }
-                  }
-                }
-              }
-              currentIds = nextIds;
-            }
-            if (currentIds.length > 0) {
-              symbolIds = currentIds;
-              break;
-            }
-          }
-        }
-      }
-
-      // If still not found, try matching by composite name
-      if (symbolIds.length === 0) {
-        let bestMatchLen = 0;
-        let bestMatchId: number | null = null;
-        for (const [id, e] of idx.symbols) {
-          if (isClassLike(e) && e.name === className.split(".").pop()) {
-            const fqn = getCompositeName(e, idx);
-            if (fqn === className) {
-              bestMatchId = id;
-              bestMatchLen = fqn.length;
-              break;
-            } else if (fqn.endsWith(`.${className}`) || className.endsWith(`.${fqn}`)) {
-              if (fqn.length > bestMatchLen) {
-                bestMatchLen = fqn.length;
-                bestMatchId = id;
-              }
-            }
-          }
-        }
-        if (bestMatchId != null) {
-          symbolIds = [bestMatchId];
-        }
-      }
-
-      const fallbackDb: AdapterDb = {
-        childrenOf: (id: number) => {
-          const childIds = idx.childrenOf.get(id) || [];
-          return childIds.map((cid: number) => idx.symbols.get(cid)).filter((e): e is SymbolEntry => Boolean(e));
-        },
-        symbol: (id: number) => idx.symbols.get(id) || null,
-        query: (_name: string, _id: number) => null,
-        cstNode: (id: number) => this.getCstNodeForSymbol(idx.symbols.get(id)),
-      };
-
-      const targetId = symbolIds[0];
-      if (targetId == null) return null;
-      const entry = idx.symbols.get(targetId);
-      if (entry && entry.resourceId) {
-        let engine =
-          entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")
-            ? (this.globalSysML2QueryEngine ?? uwIndexed?.getQueryEngine?.("sysml2"))
-            : (this.globalModelicaQueryEngine ?? uwIndexed?.getQueryEngine?.("modelica"));
-        if (!engine) {
-          engine = this.globalModelicaQueryEngine ?? uwIndexed?.getQueryEngine?.("modelica");
-        }
-        const db: AdapterDb = {
-          childrenOf: (id: number) => {
-            const res = engine ? engine.toQueryDB().childrenOf(id) : [];
-            if (res && res.length > 0) return res;
-            return fallbackDb.childrenOf!(id);
-          },
-          symbol: (id: number) => (engine ? engine.toQueryDB().symbol(id) : null) ?? fallbackDb.symbol!(id),
-          query: (name: string, id: number) => (engine ? engine.toQueryDB().query?.(name, id) : null),
-          cstNode: (id: number) => (engine ? engine.toQueryDB().cstNode?.(id) : null) ?? fallbackDb.cstNode!(id),
-        };
-        const inst = buildAdapter(entry, db, className);
-        if (inst && entry.resourceId) {
-          const existing: WorkspaceClassInstance[] = this.documentInstances.get(entry.resourceId) ?? [];
-          const existingIdx = existing.findIndex((x: WorkspaceClassInstance) => x.id === inst.id);
-          if (existingIdx >= 0) {
-            if (!inst._iconOnly || existing[existingIdx]?._iconOnly) {
-              existing[existingIdx] = inst;
-            }
-          } else {
-            existing.push(inst);
-          }
-          this.documentInstances.set(entry.resourceId, existing);
-        }
-        return inst;
-      }
-      return null;
-    }
-
-    const idx = this.unifiedWorkspace.getIndex();
-    const fallbackDb: AdapterDb = {
-      childrenOf: (id: number) => {
-        const childIds = idx.childrenOf.get(id) || [];
-        return childIds.map((cid: number) => idx.symbols.get(cid)).filter((e): e is SymbolEntry => Boolean(e));
-      },
-      symbol: (id: number) => idx.symbols.get(id) || null,
-      query: (_name: string, _id: number) => null,
-      cstNode: (id: number) => this.getCstNodeForSymbol(idx.symbols.get(id)),
-    };
-
-    const normUri = (u: string) => u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
-    const targetNorm = normUri(uri);
-    for (const entry of idx.symbols.values()) {
-      if (
-        (entry.resourceId === uri || (entry.resourceId && normUri(entry.resourceId) === targetNorm)) &&
-        isClassLike(entry) &&
-        entry.parentId === null
-      ) {
-        let engine =
-          entry.resourceId.endsWith(".sysml") || entry.resourceId.endsWith(".sysml2")
-            ? this.globalSysML2QueryEngine
-            : this.globalModelicaQueryEngine;
-        if (!engine) engine = this.globalModelicaQueryEngine;
-        const db: AdapterDb = {
-          childrenOf: (id: number) => {
-            const res = engine ? engine.toQueryDB().childrenOf(id) : [];
-            if (res && res.length > 0) return res;
-            return fallbackDb.childrenOf!(id);
-          },
-          symbol: (id: number) => (engine ? engine.toQueryDB().symbol(id) : null) ?? fallbackDb.symbol!(id),
-          query: (name: string, id: number) => (engine ? engine.toQueryDB().query?.(name, id) : null),
-          cstNode: (id: number) => (engine ? engine.toQueryDB().cstNode?.(id) : null) ?? fallbackDb.cstNode!(id),
-        };
-        const inst = buildAdapter(entry, db, entry.name ?? "");
-        if (inst) {
-          const existing: WorkspaceClassInstance[] = this.documentInstances.get(uri) ?? [];
-          const existingIdx = existing.findIndex((x: WorkspaceClassInstance) => x.id === inst.id);
-          if (existingIdx >= 0) {
-            if (!inst._iconOnly || existing[existingIdx]?._iconOnly) {
-              existing[existingIdx] = inst;
-            }
-          } else {
-            existing.push(inst);
-          }
-          this.documentInstances.set(uri, existing);
-        }
-        return inst;
-      }
-    }
-
-    return null;
+      uri,
+      className,
+      options,
+    );
   }
 
   /**
@@ -1979,186 +787,7 @@ export class WorkspaceManager {
    * used by `DigitalThreadHypergraph`, preserving distinct slots across cross-language pairs.
    */
   public mapLanguageToThreadDomain(langId: string): ThreadDomain {
-    const norm = langId.toLowerCase();
-    const mapped = DOMAIN_NAME_TO_INDEX[norm];
-    if (mapped !== undefined) return mapped;
-    switch (norm) {
-      case "psse":
-      case "raw":
-      case "dyr":
-        return ThreadDomain.FMU;
-      case "pscad":
-      case "pscx":
-      case "pslx":
-        return ThreadDomain.Software;
-      case "easy5":
-      case "rocets":
-        return ThreadDomain.Surrogate;
-      case "spice":
-        return ThreadDomain.Telemetry;
-      case "ssp":
-      case "ssv":
-        return ThreadDomain.BOM;
-      default:
-        return ThreadDomain.Software;
-    }
-  }
-
-  private normalizeAutoThreadUri(uri: string | undefined): string {
-    return (uri ?? "").replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///").toLowerCase();
-  }
-
-  private retractSlotCoordinatorLiterals(slot: number): void {
-    const prevLits = this.autoCoordinatorLiteralsBySlot.get(slot);
-    if (prevLits && typeof this.coordinator?.retractLiteral === "function") {
-      for (const litId of prevLits) {
-        try {
-          this.coordinator.retractLiteral(litId);
-        } catch {
-          // Ignore already-retracted literals
-        }
-      }
-    }
-    this.autoCoordinatorLiteralsBySlot.delete(slot);
-  }
-
-  private retractAutoThreadStateForUri(uri: string): void {
-    const normTarget = this.normalizeAutoThreadUri(uri);
-    const prevSlots = this.autoSlotsByUri.get(normTarget);
-    if (prevSlots) {
-      for (const slot of prevSlots) {
-        this.retractSlotCoordinatorLiterals(slot);
-      }
-      this.autoSlotsByUri.delete(normTarget);
-    }
-
-    const prevKeys = this.autoThreadKeysByUri.get(normTarget);
-    if (prevKeys) {
-      for (const { slot, metaKey } of prevKeys) {
-        this.retractSlotCoordinatorLiterals(slot);
-        if (typeof this.hypergraph?.clearTheoryConflict === "function") {
-          this.hypergraph.clearTheoryConflict(slot);
-        }
-        const existing = this.threadMetadataMap.get(metaKey);
-        if (existing?.autoDiscovered && this.normalizeAutoThreadUri(existing.uri) === normTarget) {
-          this.threadMetadataMap.delete(metaKey);
-        }
-      }
-      this.autoThreadKeysByUri.delete(normTarget);
-    }
-  }
-
-  private getDocTextForUri(uri: string | undefined): string {
-    if (!uri) return "";
-    const dm = this.documentManager;
-    if (dm?.documents) {
-      const doc = dm.documents.get(uri) ?? dm.documents.get(uri.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///"));
-      if (doc && typeof doc.getText === "function") return doc.getText();
-    }
-    const treeEntry = dm?.documentTrees?.get(uri);
-    if (treeEntry?.text) return treeEntry.text;
-    const uDoc = this.unifiedWorkspace?.getDocument?.(uri);
-    return uDoc?.text ?? "";
-  }
-
-  private extractNumericScalarProperties(
-    index: SymbolIndex,
-    entry: SymbolEntry,
-    fallbackText?: string,
-  ): Record<string, number> {
-    const props: Record<string, number> = {};
-    const docText = fallbackText || this.getDocTextForUri(entry.resourceId);
-
-    const recordNumeric = (name: string | undefined, val: unknown): void => {
-      if (!name) return;
-      if (typeof val === "number" && Number.isFinite(val)) {
-        props[name] = val;
-      } else if (typeof val === "string") {
-        const parsed = Number(val.trim());
-        if (val.trim() !== "" && Number.isFinite(parsed)) {
-          props[name] = parsed;
-        }
-      }
-    };
-
-    const extractFromSymbol = (sym: SymbolEntry): void => {
-      const meta = (sym.metadata ?? {}) as Record<string, unknown>;
-      if (meta["namedParams"] && typeof meta["namedParams"] === "object") {
-        for (const [k, v] of Object.entries(meta["namedParams"])) {
-          recordNumeric(k, v);
-        }
-      }
-      for (const key of ["value", "defaultValue", "bindingValue", "literalValue"]) {
-        if (meta[key] !== undefined) {
-          recordNumeric(sym.name, meta[key]);
-          break;
-        }
-      }
-      if (props[sym.name] === undefined && sym.endOffset > sym.startOffset) {
-        const symUri = sym.resourceId ?? entry.resourceId;
-        const rootCst = symUri ? this.documentManager?.documentTrees?.get(symUri)?.tree?.rootNode : undefined;
-        if (rootCst && typeof rootCst.descendantForIndex === "function") {
-          const declNode = rootCst.descendantForIndex(sym.startOffset, Math.max(sym.startOffset, sym.endOffset - 1));
-          if (declNode) {
-            type CstLeafNode = {
-              childCount?: number;
-              children?: CstLeafNode[];
-              child?: (i: number) => CstLeafNode | null;
-              text?: string;
-            };
-            const leaves: CstLeafNode[] = [];
-            const collect = (n: CstLeafNode) => {
-              const cnt = typeof n.childCount === "number" ? n.childCount : (n.children?.length ?? 0);
-              if (cnt === 0) {
-                leaves.push(n);
-              } else {
-                for (let i = 0; i < cnt; i++) {
-                  const ch = typeof n.child === "function" ? n.child(i) : n.children?.[i];
-                  if (ch) collect(ch);
-                }
-              }
-            };
-            collect(declNode);
-            let seenOp = false;
-            let sign = 1;
-            for (const leaf of leaves) {
-              const txt = String(leaf.text ?? "").trim();
-              if (!seenOp) {
-                if (txt === "=" || txt === ":=" || txt === "::=") seenOp = true;
-                continue;
-              }
-              if (txt === "-") {
-                sign = -sign;
-                continue;
-              }
-              if (txt === "+") continue;
-              const num = Number(txt);
-              if (txt !== "" && Number.isFinite(num)) {
-                recordNumeric(sym.name, sign * num);
-              }
-              break;
-            }
-          }
-        }
-        if (props[sym.name] === undefined && docText) {
-          const slice = docText.slice(Math.max(0, sym.startOffset), Math.min(docText.length, sym.endOffset + 40));
-          const span = findAssignedNumberInLine(slice, { allowSign: true, allowExponent: true });
-          if (span?.text) {
-            recordNumeric(sym.name, span.text);
-          }
-        }
-      }
-    };
-
-    extractFromSymbol(entry);
-    const childIds: number[] = index.childrenOf?.get(entry.id) ?? [];
-    for (const cid of childIds) {
-      const child = index.symbols?.get(cid);
-      if (child && isMemberLikeSymbol(child)) {
-        extractFromSymbol(child);
-      }
-    }
-    return props;
+    return mapLanguageToThreadDomain(langId);
   }
 
   /**
@@ -2172,466 +801,6 @@ export class WorkspaceManager {
     langId: string,
     tree?: { rootNode?: SyntaxNode | null | undefined } | null,
   ): number[] {
-    if (!this.unifiedWorkspace || typeof this.unifiedWorkspace.getIndex !== "function" || !text) {
-      return [];
-    }
-    const uIdx = this.unifiedWorkspace.getIndex();
-    if (!uIdx || !uIdx.symbols) return [];
-
-    const normLang = langId.toLowerCase();
-    // Large AP242 STEP B-Rep files (>256 KB) never declare @twin/Import/implements source links;
-    // scanning them on every keystroke or peer validation stalls the LSP worker.
-    if (normLang === "step" && text.length > 262_144) {
-      this.retractAutoThreadStateForUri(uri);
-      return [];
-    }
-    const normUri = (u: string) => u.replace(/^([a-z0-9+-]+):\/{0,3}/i, "$1:///").toLowerCase();
-    const targetNormUri = normUri(uri);
-
-    this.retractAutoThreadStateForUri(uri);
-
-    const docsToScan: Array<{
-      docUri: string;
-      docText: string;
-      docLang: string;
-      docTree: { rootNode?: SyntaxNode | null | undefined } | null | undefined;
-    }> = [{ docUri: uri, docText: text, docLang: normLang, docTree: tree }];
-    if (this.documentManager?.documents) {
-      for (const otherDoc of this.documentManager.documents.all()) {
-        if (normUri(otherDoc.uri) === targetNormUri) continue;
-        const otherLang =
-          globalLanguageRegistry.getPluginForUri(otherDoc.uri)?.id?.toLowerCase() ??
-          otherDoc.languageId?.toLowerCase() ??
-          "";
-        if (!otherLang) continue;
-        const otherText = otherDoc.getText();
-        if (otherLang === "step" && otherText.length > 262_144) continue;
-        const cachedTree = this.documentManager.documentTrees.get(otherDoc.uri)?.tree;
-        docsToScan.push({
-          docUri: otherDoc.uri,
-          docText: otherText,
-          docLang: otherLang,
-          docTree: cachedTree,
-        });
-      }
-    }
-
-    const discoveredLinks: ReturnType<typeof extractCrossLanguageLinks> = [];
-    for (const item of docsToScan) {
-      try {
-        const found = extractCrossLanguageLinks({
-          uri: item.docUri,
-          language: item.docLang,
-          index: uIdx,
-          text: item.docText,
-          tree: item.docTree,
-        });
-        for (const link of found) {
-          if (!link.targetEntry) continue;
-          const srcNorm = normUri(link.sourceUri);
-          const tgtNorm = link.targetEntry.resourceId ? normUri(link.targetEntry.resourceId) : "";
-          if (srcNorm === targetNormUri || tgtNorm === targetNormUri) {
-            discoveredLinks.push(link);
-          }
-        }
-      } catch {
-        // Ignore link extraction failures on malformed/partial buffers
-      }
-    }
-
-    const computeLineCol = (srcText: string, offset: number): { line: number; column: number } => {
-      const safe = Math.max(0, Math.min(offset, srcText.length));
-      const before = srcText.slice(0, safe);
-      const nl = before.lastIndexOf("\n");
-      let line = 1;
-      for (let i = 0; i < safe; i++) {
-        if (srcText.charCodeAt(i) === 10) line++;
-      }
-      return { line, column: nl === -1 ? safe + 1 : safe - nl };
-    };
-
-    const touchedSlots = new Set<number>();
-    const retractedSlotsThisPass = new Set<number>();
-    const ownedMetaKeys: Array<{ slot: number; metaKey: string }> = [];
-    const slotVarNames = new Map<number, string[]>();
-
-    const retractSlotOnce = (slot: number): void => {
-      if (!retractedSlotsThisPass.has(slot)) {
-        this.retractSlotCoordinatorLiterals(slot);
-        retractedSlotsThisPass.add(slot);
-      }
-    };
-
-    const assertSlotLiteral = (slot: number, lit: Omit<TheoryLiteral, "id"> & { id?: number | undefined }): void => {
-      if (typeof this.coordinator?.assertLiteral !== "function") return;
-      retractSlotOnce(slot);
-      const litId = this.coordinator.assertLiteral(lit);
-      const list = this.autoCoordinatorLiteralsBySlot.get(slot) ?? [];
-      list.push(litId);
-      this.autoCoordinatorLiteralsBySlot.set(slot, list);
-    };
-
-    for (const link of discoveredLinks) {
-      const srcEntry = uIdx.symbols.get(link.sourceSymbolId);
-      const tgtEntry = link.targetEntry;
-      if (!srcEntry || !tgtEntry) continue;
-      // Ignore pure package-level wildcard imports unless target is a concrete type/model
-      if (link.relationKind === "import" && !isTypeLikeSymbol(tgtEntry)) continue;
-
-      const srcLang = link.sourceLang.toLowerCase();
-      const tgtLang = (tgtEntry.language ?? "").toLowerCase();
-      if (!tgtLang || tgtLang === srcLang) continue;
-
-      let srcDomain = this.mapLanguageToThreadDomain(srcLang);
-      let tgtDomain = this.mapLanguageToThreadDomain(tgtLang);
-      if (srcDomain === tgtDomain) {
-        tgtDomain = srcDomain === ThreadDomain.Software ? ThreadDomain.FMU : ThreadDomain.Software;
-      }
-
-      const stableSymbolPath = (entry: SymbolEntry): string => {
-        const parts: string[] = [];
-        let cur: SymbolEntry | undefined = entry;
-        const seen = new Set<number>();
-        while (cur && !seen.has(cur.id)) {
-          seen.add(cur.id);
-          if (cur.name) parts.unshift(cur.name);
-          cur = cur.parentId != null ? uIdx.symbols.get(cur.parentId) : undefined;
-        }
-        return parts.join(".") || entry.name;
-      };
-      const srcStableName = stableSymbolPath(srcEntry);
-      const tgtStableName = stableSymbolPath(tgtEntry);
-      const pairKey = [
-        `${srcLang}:${normUri(srcEntry.resourceId ?? link.sourceUri)}:${srcStableName}`,
-        `${tgtLang}:${normUri(tgtEntry.resourceId ?? "")}:${tgtStableName}`,
-      ]
-        .sort()
-        .join("|");
-      let hash = 2166136261;
-      for (let i = 0; i < pairKey.length; i++) {
-        hash ^= pairKey.charCodeAt(i);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      }
-      const threadId = 100_000 + (hash % 800_000_000);
-
-      const srcText = normUri(link.sourceUri) === targetNormUri ? text : this.getDocTextForUri(link.sourceUri);
-      const tgtText =
-        tgtEntry.resourceId && normUri(tgtEntry.resourceId) === targetNormUri
-          ? text
-          : this.getDocTextForUri(tgtEntry.resourceId);
-
-      const srcProps: Record<string, unknown> = {
-        ...this.extractNumericScalarProperties(uIdx, srcEntry, srcText),
-        ...(link.properties ?? {}),
-      };
-      const tgtProps: Record<string, unknown> = {
-        ...this.extractNumericScalarProperties(uIdx, tgtEntry, tgtText),
-      };
-
-      const tgtPos = tgtEntry.resourceId ? computeLineCol(tgtText, tgtEntry.startOffset) : { line: 1, column: 1 };
-
-      const srcDomName = DOMAIN_INDEX_TO_NAME[srcDomain] ?? "unknown";
-      const tgtDomName = DOMAIN_INDEX_TO_NAME[tgtDomain] ?? "unknown";
-      const srcMetaKey = `${srcDomName}:${srcEntry.id}`;
-      const tgtMetaKey = `${tgtDomName}:${tgtEntry.id}`;
-
-      const slot = this.bindThreadSlot(threadId, srcDomain, srcEntry.id, {
-        name: srcEntry.name,
-        uri: link.sourceUri,
-        line: link.sourceLine,
-        column: link.sourceColumn,
-        length: srcEntry.name.length,
-        domain: srcLang,
-        properties: srcProps,
-        autoDiscovered: true,
-      });
-      this.bindThreadSlot(threadId, tgtDomain, tgtEntry.id, {
-        name: tgtEntry.name,
-        uri: tgtEntry.resourceId ?? "",
-        line: tgtPos.line,
-        column: tgtPos.column,
-        length: tgtEntry.name.length,
-        domain: tgtLang,
-        properties: tgtProps,
-        autoDiscovered: true,
-      });
-
-      this.autoSlotIds.add(slot);
-      touchedSlots.add(slot);
-      retractSlotOnce(slot);
-      if (normUri(link.sourceUri) === targetNormUri) {
-        ownedMetaKeys.push({ slot, metaKey: srcMetaKey });
-      }
-      if (tgtEntry.resourceId && normUri(tgtEntry.resourceId) === targetNormUri) {
-        ownedMetaKeys.push({ slot, metaKey: tgtMetaKey });
-      }
-
-      // Assert shared numeric parameter equalities + exact intervals into SemanticTheoryCoordinator
-      const canonicalKey = (k: string) => (k === "m" ? "mass" : k);
-      for (const [kA, vA] of Object.entries(srcProps)) {
-        if (typeof vA !== "number" || !Number.isFinite(vA)) continue;
-        const canonA = canonicalKey(kA);
-        const matchB = Object.entries(tgtProps).find(([kB]) => canonicalKey(kB) === canonA);
-        if (matchB && typeof matchB[1] === "number" && Number.isFinite(matchB[1])) {
-          const vB = matchB[1];
-          const varA = `${threadId}.${srcLang}.${srcEntry.name}.${canonA}`;
-          const varB = `${threadId}.${tgtLang}.${tgtEntry.name}.${canonA}`;
-          const vars = slotVarNames.get(slot) ?? [];
-          vars.push(varA, varB, canonA, srcEntry.name, tgtEntry.name);
-          slotVarNames.set(slot, vars);
-          if (typeof this.coordinator?.assertLiteral === "function") {
-            assertSlotLiteral(slot, {
-              predicate: "interval",
-              args: [varA, vA, vA],
-              domain: "continuous_safety",
-              sourceContext: { slot, uri: link.sourceUri, name: `${srcEntry.name}.${kA}`, value: vA },
-            });
-            assertSlotLiteral(slot, {
-              predicate: "interval",
-              args: [varB, vB, vB],
-              domain: "continuous_safety",
-              sourceContext: { slot, uri: tgtEntry.resourceId, name: `${tgtEntry.name}.${matchB[0]}`, value: vB },
-            });
-            assertSlotLiteral(slot, {
-              predicate: "equal",
-              args: [varA, varB],
-              domain: "continuous_safety",
-              sourceContext: { slot, key: canonA },
-            });
-          }
-        }
-      }
-    }
-
-    // Synchronize declarative TGG correspondences (Tier 2: zero-annotation container/child/foreignKey alignment)
-    if (typeof this.unifiedWorkspace.syncTggCorrespondences === "function") {
-      const tggSummary = this.unifiedWorkspace.syncTggCorrespondences(uIdx);
-      const projTable = this.unifiedWorkspace.tggProjectionTable;
-      for (const slot of tggSummary.touchedSlots) {
-        const rec = this.hypergraph.getRecord(slot);
-        if (!rec || rec.isRemoved || !rec.domainNodes) continue;
-        const memberEntries: Array<{ domIdx: number; entry: SymbolEntry; lang: string }> = [];
-        let involvesTargetUri = false;
-        for (const [domKey, nodeId] of Object.entries(rec.domainNodes)) {
-          const domIdx = Number(domKey);
-          if (!Number.isFinite(domIdx) || typeof nodeId !== "number" || nodeId <= 0) continue;
-          const sym = uIdx.symbols.get(nodeId);
-          if (!sym) continue;
-          const symUri = sym.resourceId ?? sym.documentUri ?? "";
-          if (symUri && normUri(symUri) === targetNormUri) {
-            involvesTargetUri = true;
-          }
-          memberEntries.push({
-            domIdx,
-            entry: sym,
-            lang: (sym.language ?? DOMAIN_INDEX_TO_NAME[domIdx] ?? "").toLowerCase(),
-          });
-        }
-        if (!involvesTargetUri || memberEntries.length < 2) continue;
-
-        touchedSlots.add(slot);
-        const extractedByMember: Array<{
-          entry: SymbolEntry;
-          lang: string;
-          symUri: string;
-          props: Record<string, unknown>;
-        }> = [];
-
-        for (const m of memberEntries) {
-          const symUri = m.entry.resourceId ?? m.entry.documentUri ?? "";
-          const symText = symUri && normUri(symUri) === targetNormUri ? text : this.getDocTextForUri(symUri);
-          const symTree = symUri ? this.documentManager?.documentTrees?.get(symUri)?.tree : undefined;
-          const cstSpan = resolveCstNameSpan(m.entry, symTree);
-          const startOff = cstSpan?.startOffset ?? m.entry.startOffset;
-          const endOff = cstSpan?.endOffset ?? startOff + m.entry.name.length;
-          const pos = symUri ? computeLineCol(symText, startOff) : { line: 1, column: 1 };
-          const props = this.extractNumericScalarProperties(uIdx, m.entry, symText);
-          const domName = DOMAIN_INDEX_TO_NAME[m.domIdx] ?? "unknown";
-          const metaKey = `${domName}:${m.entry.id}`;
-          if (!this.threadMetadataMap.has(metaKey)) {
-            this.threadMetadataMap.set(metaKey, {
-              name: m.entry.name,
-              uri: symUri,
-              line: pos.line,
-              column: pos.column,
-              length: Math.max(1, endOff - startOff),
-              symbolId: m.entry.id,
-              startOffset: startOff,
-              endOffset: endOff,
-              domain: m.lang || domName,
-              properties: props,
-              autoDiscovered: true,
-            });
-            if (symUri && normUri(symUri) === targetNormUri) {
-              ownedMetaKeys.push({ slot, metaKey });
-            }
-          }
-          extractedByMember.push({ entry: m.entry, lang: m.lang, symUri, props });
-        }
-
-        // Assert shared numeric parameter equalities across TGG-aligned containers (including fieldAliases like m <-> mass)
-        const canonicalKey = (k: string) => (k === "m" ? "mass" : k);
-        const threadId = rec.threadId || slot;
-        for (let i = 0; i < extractedByMember.length; i++) {
-          const mA = extractedByMember[i]!;
-          for (let j = i + 1; j < extractedByMember.length; j++) {
-            const mB = extractedByMember[j]!;
-            for (const [kA, vA] of Object.entries(mA.props)) {
-              if (typeof vA !== "number" || !Number.isFinite(vA)) continue;
-              const matchB = Object.entries(mB.props).find(
-                ([kB]) =>
-                  canonicalKey(kA) === canonicalKey(kB) ||
-                  (mA.lang && mB.lang && projTable.areMemberNamesAligned(mA.lang, kA, mB.lang, kB)),
-              );
-              if (matchB && typeof matchB[1] === "number" && Number.isFinite(matchB[1])) {
-                const vB = matchB[1];
-                const canon = canonicalKey(kA);
-                const varA = `${threadId}.${mA.lang}.${mA.entry.name}.${canon}`;
-                const varB = `${threadId}.${mB.lang}.${mB.entry.name}.${canon}`;
-                const vars = slotVarNames.get(slot) ?? [];
-                vars.push(varA, varB, canon, mA.entry.name, mB.entry.name);
-                slotVarNames.set(slot, vars);
-                if (typeof this.coordinator?.assertLiteral === "function") {
-                  assertSlotLiteral(slot, {
-                    predicate: "interval",
-                    args: [varA, vA, vA],
-                    domain: "continuous_safety",
-                    sourceContext: { slot, uri: mA.symUri, name: `${mA.entry.name}.${kA}`, value: vA },
-                  });
-                  assertSlotLiteral(slot, {
-                    predicate: "interval",
-                    args: [varB, vB, vB],
-                    domain: "continuous_safety",
-                    sourceContext: { slot, uri: mB.symUri, name: `${mB.entry.name}.${matchB[0]}`, value: vB },
-                  });
-                  assertSlotLiteral(slot, {
-                    predicate: "equal",
-                    args: [varA, varB],
-                    domain: "continuous_safety",
-                    sourceContext: { slot, key: canon },
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // Bind formal SysML v2 requirement constraints against discovered thread variables
-    for (const item of docsToScan) {
-      if (item.docLang !== "sysml2" && item.docLang !== "sysml") continue;
-      let reqs: ReturnType<typeof parseSysmlRequirements> = [];
-      try {
-        reqs = parseSysmlRequirements(item.docText, item.docTree?.rootNode ?? null);
-      } catch {
-        reqs = [];
-      }
-      if (reqs.length === 0) continue;
-
-      for (const req of reqs) {
-        const canonAttr = req.targetAttribute === "m" ? "mass" : req.targetAttribute;
-        for (const slot of touchedSlots) {
-          const elems = this.findAlignedElementsBySlot(slot);
-          const rec = this.hypergraph.getRecord(slot);
-          const matchesSubject = (() => {
-            if (!req.subjectName) return true;
-            const subjLower = req.subjectName.toLowerCase();
-            if (
-              elems.some((el) => el.name.toLowerCase() === subjLower || el.name.toLowerCase().endsWith(`.${subjLower}`))
-            ) {
-              return true;
-            }
-            if (rec?.domainNodes) {
-              for (const nodeId of Object.values(rec.domainNodes)) {
-                let cur = uIdx.symbols.get(nodeId);
-                const seen = new Set<number>();
-                while (cur && !seen.has(cur.id)) {
-                  seen.add(cur.id);
-                  if (cur.name.toLowerCase() === subjLower) return true;
-                  cur = cur.parentId != null ? uIdx.symbols.get(cur.parentId) : undefined;
-                }
-              }
-            }
-            return false;
-          })();
-          if (!matchesSubject) continue;
-
-          for (const el of elems) {
-            const props = el.properties ?? {};
-            const matchedVal =
-              typeof props[req.targetAttribute] === "number"
-                ? props[req.targetAttribute]
-                : typeof props[canonAttr] === "number"
-                  ? props[canonAttr]
-                  : undefined;
-            if (
-              typeof matchedVal === "number" &&
-              Number.isFinite(matchedVal) &&
-              typeof this.coordinator?.assertLiteral === "function"
-            ) {
-              const reqVar = `req.${req.id}.${canonAttr}`;
-              const elVar = `${slot}.${el.domain}.${el.name}.${canonAttr}`;
-              const vars = slotVarNames.get(slot) ?? [];
-              vars.push(reqVar, elVar, req.id, el.name, req.targetAttribute);
-              slotVarNames.set(slot, vars);
-              assertSlotLiteral(slot, {
-                predicate: "bound",
-                args: [reqVar, req.operator, req.limitValue],
-                domain: "continuous_safety",
-                sourceContext: { slot, uri: item.docUri, requirementId: req.id, limitValue: req.limitValue },
-              });
-              assertSlotLiteral(slot, {
-                predicate: "interval",
-                args: [elVar, matchedVal, matchedVal],
-                domain: "continuous_safety",
-                sourceContext: { slot, uri: el.uri, name: el.name, value: matchedVal },
-              });
-              assertSlotLiteral(slot, {
-                predicate: "equal",
-                args: [reqVar, elVar],
-                domain: "continuous_safety",
-                sourceContext: { slot, requirementId: req.id },
-              });
-            }
-          }
-        }
-      }
-    }
-
-    if (touchedSlots.size > 0) {
-      this.autoSlotsByUri.set(targetNormUri, new Set(touchedSlots));
-    }
-    if (ownedMetaKeys.length > 0) {
-      this.autoThreadKeysByUri.set(targetNormUri, ownedMetaKeys);
-    }
-
-    if (touchedSlots.size > 0 && typeof this.coordinator?.checkSat === "function") {
-      try {
-        const sat = this.coordinator.checkSat();
-        for (const slot of touchedSlots) {
-          if (typeof this.hypergraph?.clearTheoryConflict === "function") {
-            this.hypergraph.clearTheoryConflict(slot);
-          }
-        }
-        if (!sat.isSat && sat.conflict) {
-          const culprits = (sat.conflict.culpritEntities ?? []).map((c) => c.toLowerCase());
-          const explanationLower = (sat.conflict.explanation ?? "").toLowerCase();
-          for (const slot of touchedSlots) {
-            const slotVars = (slotVarNames.get(slot) ?? []).map((v) => v.toLowerCase());
-            const matchesSlot =
-              culprits.some((c) => slotVars.some((sv) => sv === c || sv.includes(c) || c.includes(sv))) ||
-              slotVars.some((sv) => explanationLower.includes(sv));
-            if (matchesSlot && typeof this.hypergraph?.recordTheoryConflict === "function") {
-              this.hypergraph.recordTheoryConflict(slot, sat.conflict);
-            }
-          }
-        }
-      } catch {
-        // Non-fatal: partial theory states must not crash validation
-      }
-    }
-
-    return Array.from(touchedSlots);
+    return this.digitalThreadIndex.discoverThreadsForDocument(uri, text, langId, tree);
   }
 }

@@ -1595,7 +1595,7 @@ export declare namespace Cst {
     is(node: SyntaxNode | null | undefined): node is ComponentDeclarationNode;
     id(node: SyntaxNode | null | undefined): SyntaxNode | null;
     idList(node: SyntaxNode | null | undefined): SyntaxNode[];
-    type(node: SyntaxNode | null | undefined): SyntaxNode | null;
+    typeField(node: SyntaxNode | null | undefined): SyntaxNode | null;
     typeList(node: SyntaxNode | null | undefined): SyntaxNode[];
   };
   export const Attribute: {

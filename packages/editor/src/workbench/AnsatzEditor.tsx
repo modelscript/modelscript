@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  applyOptimisticPropertyAction,
-  DiagramActionQueue,
-  isOptimisticDiagramActionBatch,
-  SerializedDiagramEditRunner,
-  type ComponentPropertyData,
-} from "@modelscript/diagram";
-import type { DiagramData, DiagramEditAction } from "@modelscript/diagram/protocol";
+import type { ComponentPropertyData } from "@modelscript/diagram";
+import type { DiagramData } from "@modelscript/diagram/protocol";
 import { decodeDataUrl } from "@modelscript/dsl/utils";
 import { parseXmlSync } from "@modelscript/dsl/xml";
 import { detectPolyglotLanguage } from "@modelscript/lsp/utils/polyglot-detector.js";
@@ -22,15 +16,11 @@ import {
   getDefaultLanguageView,
   getLanguageExtension,
   getLanguageInfo,
-  MODELICA_ICON_SHAPE_TOOLS,
   resolveCompanionFileLanguage,
 } from "./constants";
 import type { DiagramEditorHandle } from "./Diagram";
 import { getTranslations, uiLanguages } from "./util/i18n";
 import {
-  applyDiagramEdits,
-  applyLspEdits,
-  applyLspTextEditsToString,
   didChange,
   didClose,
   didOpen,
@@ -40,29 +30,31 @@ import {
   getComponentProperties,
   getDiagramData,
   parseCode,
-  runFormalLints,
   setPreferredLspLanguageId,
   updateLspSettings,
-  type AnsatzOnDemandLintMode,
-  type AnsatzRelationalHypergraphRecord,
 } from "./util/lsp-bridge";
 import { startLsp } from "./util/lsp-worker";
 
-import {
-  getEditorLanguageUi,
-  useEditorModelingPreferences,
-  useEditorFeatureFlag as useFeatureFlag,
-  useEditorToast as useToast,
-} from "../host";
-import { useAnsatzHost } from "./AnsatzEditorHostContext";
 import {
   applyScadOperationOverrides,
   EMPTY_SCAD_FEATURE_OVERRIDES,
   type CadFeatureNode,
   type CadPartOverride,
   type ScadFeatureOverrides,
-} from "./cad-viewer";
-import { useAnsatzEngine } from "./hooks";
+} from "@modelscript/cad-viewer";
+import {
+  useEditorModelingPreferences,
+  useEditorFeatureFlag as useFeatureFlag,
+  useEditorToast as useToast,
+} from "../host";
+import { useAnsatzHost } from "./AnsatzEditorHostContext";
+import {
+  useAnsatzDiagnostics,
+  useAnsatzDiagramEdits,
+  useAnsatzEngine,
+  useAnsatzToolbarActions,
+  useAnsatzZonotopeState,
+} from "./hooks";
 import {
   AnsatzAiPanel,
   AnsatzDiagnosticsPanel,
@@ -75,25 +67,13 @@ import {
   COLLAPSED_DIAGNOSTICS_HEIGHT,
   AnsatzView as View,
   ZonotopeGeneratorRibbon,
-  type ComputeDialPreset,
   type MobileTab,
 } from "./panels";
+import type { TrainingStudioContextInfo } from "./panels/AnsatzLifecycleStudioSections";
 import { WorkspaceSymbolModal } from "./panels/WorkspaceSymbolModal";
-import ParameterSliderRibbon from "./ParameterSliderRibbon";
+import ParameterSliderRibbon, { type ParameterRibbonItem } from "./ParameterSliderRibbon";
 import { formatMonacoMarkers, type AnsatzToolHost } from "./util/ansatz-tool-bridge";
-import type { AnsatzXRayTokenHeat } from "./util/hypergraph-overlay";
-import {
-  buildGeneratorSummaries,
-  createInitialZonotopeWorkbenchState,
-  toApiHypergraphOverrides,
-  type ApiHypergraphOverride,
-  type FaultGeneratorSpec,
-  type LinearConstraintSpec,
-  type ModalityPerturbationBudgets,
-  type ZonotopeBrushMode,
-  type ZonotopePendingOverride,
-  type ZonotopeWorkbenchState,
-} from "./util/zonotope-workbench-state";
+import type { ApiHypergraphOverride, LinearConstraintSpec } from "./util/zonotope-workbench-state";
 
 const CodeEditor = React.lazy(() => import("./Code"));
 
@@ -109,13 +89,14 @@ export interface AnsatzEditorProps {
   isSplit?: boolean | undefined;
   splitOrientation?: "columns" | "rows" | undefined;
   canSplit?: boolean | undefined;
-  onViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => void) | undefined;
+  onViewChange?:
+    ((view: "diagram" | "simulation" | "3d" | "inspector" | "studio" | "code" | "split") => void) | undefined;
   onToggleSplit?: (() => void) | undefined;
   isVrMode?: boolean | undefined;
   onVrModeChange?: ((enabled: boolean) => void) | undefined;
   /** Optional explicit color mode overriding EditorHostContext fallback so navbar, sidebar, 3D viewport, and Monaco stay 100% theme-synced. */
   colorMode?: "dark" | "light" | undefined;
-  initialVisualizerSubview?: "diagram" | "simulation" | "3d" | "inspector" | undefined;
+  initialVisualizerSubview?: "diagram" | "simulation" | "3d" | "inspector" | "studio" | undefined;
   initialSimulationVariables?: string[] | undefined;
   initialStartTime?: number | undefined;
   initialStopTime?: number | undefined;
@@ -149,7 +130,8 @@ export interface AnsatzEditorProps {
   onDialectChange?: ((dialect: string) => void) | undefined;
   onAnchorClick?: ((anchor: { elementId: string; kind: "component" }) => void) | undefined;
   onSimulationStatus?: ((status: string, data?: unknown) => void) | undefined;
-  onActiveViewChange?: ((view: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split") => void) | undefined;
+  onActiveViewChange?:
+    ((view: "diagram" | "simulation" | "3d" | "inspector" | "studio" | "code" | "split") => void) | undefined;
   onParametersChange?: ((params: Record<string, number>) => void) | undefined;
   onSave?: ((code: string) => void) | undefined;
   projectFiles?: Record<string, string> | undefined;
@@ -167,6 +149,11 @@ export interface AnsatzEditorProps {
   /** Optional sync group identifier to synchronize 3D CAD OrbitControls cameras across side-by-side AnsatzEditor panes. */
   cameraSyncGroup?: string | undefined;
   defaultShowHypergraphOverlay?: boolean | undefined;
+  showHypergraphOverlay?: boolean | undefined;
+  onShowHypergraphOverlayChange?: ((show: boolean) => void) | undefined;
+  isAiOpen?: boolean | undefined;
+  onAiOpenChange?: ((open: boolean) => void) | undefined;
+  trainingStudioContext?: TrainingStudioContextInfo | undefined;
   onZonotopeOverridesChange?:
     ((overrides: ApiHypergraphOverride[], constraints: LinearConstraintSpec[]) => void) | undefined;
 }
@@ -286,33 +273,51 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
       return;
     }
 
+    // Wait until the LSP worker is initialized before syncing companion files, and stagger
+    // initial companion didOpen notifications so the active file gets priority for WASM parser
+    // loading, validation, and diagram rendering.
+    if (!isLspReady) {
+      return;
+    }
+
     const inferLang = (fileName: string): string => resolveCompanionFileLanguage(fileName, dialect);
+    const isInitialCompanionSync = synced.size === 0;
 
-    for (const [fileName, text] of Object.entries(files)) {
-      if (fileName === props.activeFileName || fileName.toLowerCase().endsWith(".layout")) {
-        synced.delete(fileName);
-        continue;
+    const syncCompanions = () => {
+      for (const [fileName, text] of Object.entries(files)) {
+        if (fileName === props.activeFileName || fileName.toLowerCase().endsWith(".layout")) {
+          synced.delete(fileName);
+          continue;
+        }
+        const cleanName = fileName.replace(/^\/+/, "");
+        const uri = `${embedRootPrefix}/${cleanName}`;
+        const prev = synced.get(fileName);
+        if (!prev || prev.uri !== uri) {
+          if (prev) didClose(prev.uri);
+          void didOpen(uri, text, inferLang(fileName));
+          synced.set(fileName, { uri, text });
+        } else if (prev.text !== text) {
+          void didChange(uri, text);
+          synced.set(fileName, { uri, text });
+        }
       }
-      const cleanName = fileName.replace(/^\/+/, "");
-      const uri = `${embedRootPrefix}/${cleanName}`;
-      const prev = synced.get(fileName);
-      if (!prev || prev.uri !== uri) {
-        if (prev) didClose(prev.uri);
-        void didOpen(uri, text, inferLang(fileName));
-        synced.set(fileName, { uri, text });
-      } else if (prev.text !== text) {
-        void didChange(uri, text);
-        synced.set(fileName, { uri, text });
+
+      for (const [fileName, entry] of synced.entries()) {
+        if (!(fileName in files) && fileName !== props.activeFileName) {
+          didClose(entry.uri);
+          synced.delete(fileName);
+        }
       }
+    };
+
+    if (!isInitialCompanionSync) {
+      syncCompanions();
+      return;
     }
 
-    for (const [fileName, entry] of synced.entries()) {
-      if (!(fileName in files) && fileName !== props.activeFileName) {
-        didClose(entry.uri);
-        synced.delete(fileName);
-      }
-    }
-  }, [props.projectFiles, props.activeFileName, embedRootPrefix, dialect]);
+    const timer = setTimeout(syncCompanions, 400);
+    return () => clearTimeout(timer);
+  }, [props.projectFiles, props.activeFileName, embedRootPrefix, dialect, isLspReady]);
 
   useEffect(() => {
     return () => {
@@ -341,10 +346,32 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
   const [isFlattenDialogOpen, setFlattenDialogOpen] = useState(false);
   const [flattenedCode, setFlattenedCode] = useState("");
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
-  const [isAiOpen, setIsAiOpen] = useState(false);
+  const [internalAiOpen, setInternalAiOpen] = useState(false);
+  const isAiOpen = props.isAiOpen ?? internalAiOpen;
+  const setIsAiOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const resolved = typeof next === "function" ? next(isAiOpen) : next;
+      if (props.isAiOpen === undefined) {
+        setInternalAiOpen(resolved);
+      }
+      props.onAiOpenChange?.(resolved);
+    },
+    [isAiOpen, props.isAiOpen, props.onAiOpenChange],
+  );
   const [aiInitialPrompt, setAiInitialPrompt] = useState<string | undefined>(undefined);
-  const [showHypergraphOverlay, setShowHypergraphOverlay] = useState<boolean>(() =>
-    Boolean(props.defaultShowHypergraphOverlay),
+  const [internalShowHypergraphOverlay, setInternalShowHypergraphOverlay] = useState<boolean>(() =>
+    Boolean(props.showHypergraphOverlay ?? props.defaultShowHypergraphOverlay),
+  );
+  const showHypergraphOverlay = props.showHypergraphOverlay ?? internalShowHypergraphOverlay;
+  const setShowHypergraphOverlay = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const resolved = typeof next === "function" ? next(showHypergraphOverlay) : next;
+      if (props.showHypergraphOverlay === undefined) {
+        setInternalShowHypergraphOverlay(resolved);
+      }
+      props.onShowHypergraphOverlayChange?.(resolved);
+    },
+    [showHypergraphOverlay, props.showHypergraphOverlay, props.onShowHypergraphOverlayChange],
   );
   const prevDefaultShowHypergraphOverlayRef = useRef<boolean>(Boolean(props.defaultShowHypergraphOverlay));
   useEffect(() => {
@@ -353,157 +380,45 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
       setShowHypergraphOverlay(true);
     }
     prevDefaultShowHypergraphOverlayRef.current = nextDefault;
-  }, [props.defaultShowHypergraphOverlay]);
-  const [computeDial, setComputeDial] = useState<ComputeDialPreset>("auto-escalate");
-  const [xrayTokenHeat, setXRayTokenHeat] = useState<AnsatzXRayTokenHeat[] | null>(null);
-  const [zonotopeState, setZonotopeState] = useState<ZonotopeWorkbenchState>(() =>
-    createInitialZonotopeWorkbenchState(),
-  );
-  const [hypergraphRecord, setHypergraphRecord] = useState<AnsatzRelationalHypergraphRecord | null>(null);
-  const [worstCaseXiByGroupId, setWorstCaseXiByGroupId] = useState<Record<number, number>>({});
-  const [zonotopeViolatingSymbols, setZonotopeViolatingSymbols] = useState<string[]>([]);
-  const [isStudioActive, setIsStudioActive] = useState(false);
-  const [zonotopeRibbonCollapsed, setZonotopeRibbonCollapsed] = useState(false);
-
-  const handleChangeXi = useCallback((groupId: number, xi: number) => {
-    setZonotopeState((prev) => ({
-      ...prev,
-      xiByGroupId: { ...prev.xiByGroupId, [groupId]: xi },
-    }));
-  }, []);
-
-  const handleChangeStressScale = useCallback((scale: number) => {
-    setZonotopeState((prev) => ({ ...prev, stressScale: scale }));
-  }, []);
-
-  const handleSelectZonotopeGroup = useCallback((groupId: number | null) => {
-    setZonotopeState((prev) => ({ ...prev, activeGroupId: groupId }));
-  }, []);
-
-  const handleChangeZonotopeBrush = useCallback((brush: ZonotopeBrushMode) => {
-    setZonotopeState((prev) => ({ ...prev, activeBrush: brush }));
-    if (brush !== "select") {
-      setShowHypergraphOverlay(true);
-    }
-  }, []);
-
-  const handleToggleScramblePreview = useCallback(() => {
-    setZonotopeState((prev) => ({ ...prev, scramblePreview: !prev.scramblePreview }));
-  }, []);
-
-  const handleResetNominal = useCallback(() => {
-    setZonotopeState((prev) => ({ ...prev, xiByGroupId: {}, stressScale: 1.0 }));
-  }, []);
-
-  const handleSnapWorstCase = useCallback(() => {
-    setZonotopeState((prev) => {
-      if (Object.keys(worstCaseXiByGroupId).length > 0) {
-        return {
-          ...prev,
-          xiByGroupId: { ...worstCaseXiByGroupId },
-          stressScale: Math.max(1.0, prev.stressScale),
-        };
-      }
-      const summaries = buildGeneratorSummaries(hypergraphRecord);
-      const nextXi: Record<number, number> = {};
-      for (let i = 0; i < summaries.length; i++) {
-        const summary = summaries[i]!;
-        nextXi[summary.groupId] = i % 2 === 0 ? 1 : -1;
-      }
-      return {
-        ...prev,
-        xiByGroupId: nextXi,
-        stressScale: Math.max(1.0, prev.stressScale),
-      };
-    });
-  }, [worstCaseXiByGroupId, hypergraphRecord]);
-
-  const handleAddZonotopeConstraint = useCallback((constraint: LinearConstraintSpec) => {
-    setZonotopeState((prev) => {
-      const exists = prev.constraints.some((c) => c.id === constraint.id);
-      const nextConstraints = exists
-        ? prev.constraints.map((c) => (c.id === constraint.id ? constraint : c))
-        : [...prev.constraints, constraint];
-      return { ...prev, constraints: nextConstraints };
-    });
-  }, []);
-
-  const handleRemoveZonotopeConstraint = useCallback((constraintId: string) => {
-    setZonotopeState((prev) => ({
-      ...prev,
-      constraints: prev.constraints.filter((c) => c.id !== constraintId),
-    }));
-  }, []);
-
-  const handleAddZonotopeOverride = useCallback((override: ZonotopePendingOverride) => {
-    setZonotopeState((prev) => {
-      const filtered = prev.pendingOverrides.filter((existing) => {
-        if (existing.id === override.id) return false;
-        if (
-          existing.modality === override.modality &&
-          override.tokenIndex !== undefined &&
-          existing.tokenIndex === override.tokenIndex
-        ) {
-          return false;
-        }
-        if (
-          existing.modality === override.modality &&
-          override.tokenIndex === undefined &&
-          existing.tokenIndex === undefined &&
-          override.symbolName &&
-          existing.symbolName === override.symbolName
-        ) {
-          return false;
-        }
-        return true;
-      });
-      return { ...prev, pendingOverrides: [...filtered, override] };
-    });
-  }, []);
-
-  const handleToggleFaultGenerator = useCallback((spec: FaultGeneratorSpec) => {
-    setZonotopeState((prev) => {
-      const exists = prev.faultGenerators.some((fg) => fg.id === spec.id);
-      const nextFaults = exists
-        ? prev.faultGenerators.map((fg) => (fg.id === spec.id ? spec : fg))
-        : [...prev.faultGenerators, spec];
-      return { ...prev, faultGenerators: nextFaults };
-    });
-  }, []);
-
-  const handleUpdateZonotopeBudgets = useCallback((patch: Partial<ModalityPerturbationBudgets>) => {
-    setZonotopeState((prev) => ({
-      ...prev,
-      budgets: { ...prev.budgets, ...patch },
-    }));
-  }, []);
-
-  const handleChangeCadToleranceFraction = useCallback(
-    (nextFraction: number) => {
-      handleUpdateZonotopeBudgets({ cadToleranceFraction: nextFraction });
-    },
-    [handleUpdateZonotopeBudgets],
-  );
-
-  const handleClearPendingOverrides = useCallback(() => {
-    setZonotopeState((prev) => ({ ...prev, pendingOverrides: [] }));
-  }, []);
-
-  const onZonotopeOverridesChangeRef = useRef(props.onZonotopeOverridesChange);
-  onZonotopeOverridesChangeRef.current = props.onZonotopeOverridesChange;
-  const hasMountedZonotopeOverridesRef = useRef(false);
-  useEffect(() => {
-    if (!hasMountedZonotopeOverridesRef.current) {
-      hasMountedZonotopeOverridesRef.current = true;
-      if (zonotopeState.pendingOverrides.length === 0 && zonotopeState.constraints.length === 0) {
-        return;
-      }
-    }
-    onZonotopeOverridesChangeRef.current?.(
-      toApiHypergraphOverrides(zonotopeState.pendingOverrides),
-      zonotopeState.constraints,
-    );
-  }, [zonotopeState.pendingOverrides, zonotopeState.constraints]);
+  }, [props.defaultShowHypergraphOverlay, setShowHypergraphOverlay]);
+  const {
+    computeDial,
+    setComputeDial,
+    xrayTokenHeat,
+    setXRayTokenHeat,
+    zonotopeState,
+    setZonotopeState,
+    hypergraphRecord,
+    setHypergraphRecord,
+    worstCaseXiByGroupId,
+    setWorstCaseXiByGroupId,
+    zonotopeViolatingSymbols,
+    setZonotopeViolatingSymbols,
+    isStudioActive,
+    setIsStudioActive,
+    requestedInspectorSubtab,
+    setRequestedInspectorSubtab,
+    zonotopeRibbonCollapsed,
+    setZonotopeRibbonCollapsed,
+    handleChangeXi,
+    handleChangeStressScale,
+    handleSelectZonotopeGroup,
+    handleChangeZonotopeBrush,
+    handleToggleScramblePreview,
+    handleResetNominal,
+    handleSnapWorstCase,
+    handleAddZonotopeConstraint,
+    handleRemoveZonotopeConstraint,
+    handleAddZonotopeOverride,
+    handleToggleFaultGenerator,
+    handleUpdateZonotopeBudgets,
+    handleChangeCadToleranceFraction,
+    handleClearPendingOverrides,
+  } = useAnsatzZonotopeState({
+    initialStudioActive: props.initialView === "studio" || props.initialVisualizerSubview === "studio",
+    setShowHypergraphOverlay,
+    onZonotopeOverridesChange: props.onZonotopeOverridesChange,
+  });
   const hasAnsatzAi = useFeatureFlag("ansatz_ai");
   const codeEditorRef = useRef<CodeEditorHandle>(null);
   const [decodedContent] = decodeDataUrl(props.dataUrl ?? null);
@@ -524,7 +439,8 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     props.initialView === "plot-only" ||
     props.initialView === "plot" ||
     props.initialView === "simulation" ||
-    props.initialView === "inspector";
+    props.initialView === "inspector" ||
+    props.initialView === "studio";
 
   const isSplitInit =
     props.isSplit !== undefined
@@ -541,15 +457,17 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
       ? "3d"
       : props.initialView === "plot-only" || props.initialView === "plot" || props.initialView === "simulation"
         ? "simulation"
-        : props.initialView === "inspector"
-          ? "inspector"
-          : props.initialView === "diagram-only" || props.initialView === "diagram"
-            ? "diagram"
-            : defaultLangView.view);
+        : props.initialView === "studio"
+          ? "studio"
+          : props.initialView === "inspector"
+            ? "inspector"
+            : props.initialView === "diagram-only" || props.initialView === "diagram"
+              ? "diagram"
+              : defaultLangView.view);
 
   const initialIsCad = resolvedInitialSubview === "3d";
   const initialIsPlot = resolvedInitialSubview === "simulation";
-  const initialIsInspector = resolvedInitialSubview === "inspector";
+  const initialIsInspector = resolvedInitialSubview === "inspector" || resolvedInitialSubview === "studio";
   const initialViewMode =
     props.initialView === "code-only" ||
     props.initialView === "code" ||
@@ -585,6 +503,10 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     initialIsCad ? "cad" : initialIsPlot ? "results" : initialViewMode === View.CODE ? "code" : "diagram",
   );
   const [lastLoadedContent, setLastLoadedContent] = useState<string>(baseContent);
+  const editorRef = useRef(editor);
+  const lastLoadedContentRef = useRef(lastLoadedContent);
+  editorRef.current = editor;
+  lastLoadedContentRef.current = lastLoadedContent;
   const lastSyncedCodeRef = useRef<string | null>(null);
   const loadingClassRef = useRef<string | null>(null);
   const [isDirtyDialogOpen, setDirtyDialogOpen] = useState(false);
@@ -623,188 +545,29 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
   const DEFAULT_SPLIT_RATIO = 0.62;
   const [splitRatio, setSplitRatio] = useState(DEFAULT_SPLIT_RATIO);
   const [contextVersion, setContextVersion] = useState(0);
-  const [editorDiagnostics, setEditorDiagnostics] = useState<editor.IMarkerData[]>([]);
-  const [diagnosticsByUri, setDiagnosticsByUri] = useState<Map<string, editor.IMarkerData[]>>(() => new Map());
-  const [onDemandMarkersByUri, setOnDemandMarkersByUri] = useState<Map<string, editor.IMarkerData[]>>(() => new Map());
-  const [isRunningOnDemandLints, setIsRunningOnDemandLints] = useState(false);
-  const [isDiagnosticsExpanded, setIsDiagnosticsExpanded] = useState(false);
-  const [diagnosticsPanelHeight, setDiagnosticsPanelHeight] = useState(160);
-  const userToggledDiagnosticsRef = useRef(false);
-
-  const handleDiagnosticsChange = useCallback((markers: editor.IMarkerData[], uri?: string) => {
-    const targetUri = uri || documentUriRef.current;
-    const markersEqual = (a: editor.IMarkerData[], b: editor.IMarkerData[]) =>
-      a.length === b.length &&
-      a.every(
-        (m, i) =>
-          m.message === b[i]!.message &&
-          m.severity === b[i]!.severity &&
-          m.startLineNumber === b[i]!.startLineNumber &&
-          m.startColumn === b[i]!.startColumn &&
-          m.code === b[i]!.code,
-      );
-
-    setDiagnosticsByUri((prev) => {
-      const existing = prev.get(targetUri);
-      if (existing ? markersEqual(existing, markers) : markers.length === 0) {
-        return prev;
-      }
-      const next = new Map(prev);
-      if (markers.length === 0) {
-        next.delete(targetUri);
-      } else {
-        next.set(targetUri, markers);
-      }
-      return next;
-    });
-    if (!uri || uri === documentUriRef.current) {
-      setEditorDiagnostics((prev) => (markersEqual(prev, markers) ? prev : markers));
-    }
-    if (!userToggledDiagnosticsRef.current && markers.length > 0) {
-      setIsDiagnosticsExpanded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    setEditorDiagnostics(diagnosticsByUri.get(documentUri) ?? []);
-  }, [documentUri, diagnosticsByUri]);
-
-  const activeOnDemandMarkers = useMemo(
-    () => onDemandMarkersByUri.get(documentUri) ?? [],
-    [documentUri, onDemandMarkersByUri],
-  );
-
-  const mergedEditorDiagnostics = useMemo(() => {
-    if (activeOnDemandMarkers.length === 0) return editorDiagnostics;
-    const seen = new Set<string>();
-    const out: editor.IMarkerData[] = [];
-    for (const m of editorDiagnostics) {
-      const codeVal = typeof m.code === "object" && m.code !== null ? m.code.value : (m.code ?? "");
-      seen.add(`${m.startLineNumber}:${m.startColumn}:${codeVal}:${m.message}`);
-      out.push(m);
-    }
-    for (const m of activeOnDemandMarkers) {
-      const codeVal = typeof m.code === "object" && m.code !== null ? m.code.value : (m.code ?? "");
-      const key = `${m.startLineNumber}:${m.startColumn}:${codeVal}:${m.message}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        out.push(m);
-      }
-    }
-    return out;
-  }, [editorDiagnostics, activeOnDemandMarkers]);
-
-  const handleClearOnDemandLints = useCallback(() => {
-    const targetUri = documentUriRef.current;
-    setOnDemandMarkersByUri((prev) => {
-      if (!prev.has(targetUri)) return prev;
-      const next = new Map(prev);
-      next.delete(targetUri);
-      return next;
-    });
-  }, []);
-
-  const handleRunOnDemandLints = useCallback(
-    async (mode: AnsatzOnDemandLintMode = "all") => {
-      const targetUri = documentUriRef.current;
-      const currentCode = editor?.getValue() ?? content;
-      setIsRunningOnDemandLints(true);
-      try {
-        await didOpen(targetUri, currentCode, dialect);
-        const res = await runFormalLints(targetUri, {
-          includeFormal: mode === "all" || mode === "formal",
-          includeCompilerLints: mode === "all" || mode === "compiler",
-        });
-        if (!res.ok) {
-          toast.error(res.error || "On-demand verification failed.");
-          return;
-        }
-        const converted: editor.IMarkerData[] = (res.diagnostics ?? []).map((d) => ({
-          startLineNumber: (d.range?.start?.line ?? 0) + 1,
-          startColumn: (d.range?.start?.character ?? 0) + 1,
-          endLineNumber: (d.range?.end?.line ?? 0) + 1,
-          endColumn: Math.max((d.range?.end?.character ?? 0) + 1, (d.range?.start?.character ?? 0) + 2),
-          severity: d.severity === 1 ? 8 : d.severity === 2 ? 4 : 2,
-          message: d.message,
-          ...(d.code !== undefined ? { code: String(d.code) } : {}),
-          source: d.source ?? "modelscript-formal",
-        }));
-        setOnDemandMarkersByUri((prev) => {
-          const next = new Map(prev);
-          if (converted.length === 0) {
-            next.delete(targetUri);
-          } else {
-            next.set(targetUri, converted);
-          }
-          return next;
-        });
-        const modeLabel =
-          mode === "formal"
-            ? "Formal verification"
-            : mode === "compiler"
-              ? "WASM compiler lints"
-              : "Formal & compiler verification";
-        if (converted.length === 0) {
-          toast.success(`${modeLabel} passed with no diagnostics.`);
-        } else {
-          setIsDiagnosticsExpanded(true);
-          toast.warning(
-            `${modeLabel} found ${converted.length} diagnostic(s) (${res.formalCount ?? 0} formal, ${res.compilerCount ?? 0} compiler).`,
-          );
-        }
-      } catch (err) {
-        toast.error(`Failed to run on-demand verification: ${err instanceof Error ? err.message : String(err)}`);
-      } finally {
-        setIsRunningOnDemandLints(false);
-      }
-    },
-    [editor, content, dialect, toast],
-  );
-
-  const projectDiagnostics = useMemo(() => {
-    if (!props.projectFiles) return undefined;
-    const result: Array<{ fileName: string; uri: string; markers: editor.IMarkerData[] }> = [];
-    for (const fileName of Object.keys(props.projectFiles)) {
-      const cleanName = fileName.replace(/^\/+/, "");
-      const uri = `${embedRootPrefix}/${cleanName}`;
-      const baseMarkers = diagnosticsByUri.get(uri) ?? [];
-      const extraMarkers = onDemandMarkersByUri.get(uri) ?? [];
-      const markers = extraMarkers.length > 0 ? [...baseMarkers, ...extraMarkers] : baseMarkers;
-      if (markers && markers.length > 0) {
-        result.push({ fileName, uri, markers });
-      }
-    }
-    return result;
-  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri, onDemandMarkersByUri]);
-
-  const fileDiagnosticCounts = useMemo(() => {
-    if (!props.projectFiles) return undefined;
-    const counts: Record<string, { errors: number; warnings: number }> = {};
-    for (const fileName of Object.keys(props.projectFiles)) {
-      const cleanName = fileName.replace(/^\/+/, "");
-      const uri = `${embedRootPrefix}/${cleanName}`;
-      const baseMarkers = diagnosticsByUri.get(uri) ?? [];
-      const extraMarkers = onDemandMarkersByUri.get(uri) ?? [];
-      const markers = extraMarkers.length > 0 ? [...baseMarkers, ...extraMarkers] : baseMarkers;
-      if (markers && markers.length > 0) {
-        let errors = 0;
-        let warnings = 0;
-        for (const m of markers) {
-          if (m.severity >= 8) errors++;
-          else if (m.severity >= 4) warnings++;
-        }
-        if (errors > 0 || warnings > 0) {
-          counts[fileName] = { errors, warnings };
-        }
-      }
-    }
-    return counts;
-  }, [props.projectFiles, embedRootPrefix, diagnosticsByUri, onDemandMarkersByUri]);
-
-  const handleToggleDiagnostics = useCallback(() => {
-    userToggledDiagnosticsRef.current = true;
-    setIsDiagnosticsExpanded((prev) => !prev);
-  }, []);
+  const {
+    isRunningOnDemandLints,
+    isDiagnosticsExpanded,
+    diagnosticsPanelHeight,
+    setDiagnosticsPanelHeight,
+    handleDiagnosticsChange,
+    activeOnDemandMarkers,
+    mergedEditorDiagnostics,
+    handleClearOnDemandLints,
+    handleRunOnDemandLints,
+    projectDiagnostics,
+    fileDiagnosticCounts,
+    handleToggleDiagnostics,
+  } = useAnsatzDiagnostics({
+    documentUri,
+    documentUriRef,
+    editor,
+    content,
+    dialect,
+    projectFiles: props.projectFiles,
+    embedRootPrefix,
+    toast,
+  });
 
   useEffect(() => {
     const handleToggle = () => {
@@ -851,21 +614,38 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
         setShowCadView(false);
         setShowResultsView(true);
         setShowAnalysisView(false);
+      } else if (targetView === "studio") {
+        setView(activeSplit ? splitMode : View.DIAGRAM);
+        setShowCadView(false);
+        setShowResultsView(false);
+        setShowAnalysisView(true);
+        setRequestedInspectorSubtab("studio");
       } else if (targetView === "inspector") {
         setView(activeSplit ? splitMode : View.DIAGRAM);
         setShowCadView(false);
         setShowResultsView(false);
         setShowAnalysisView(true);
+        setRequestedInspectorSubtab("domain");
       } else if (targetView === "split" || targetView === "split-columns") {
         setView(targetView === "split" ? splitMode : View.SPLIT_COLUMNS);
         setShowCadView(props.initialVisualizerSubview === "3d");
         setShowResultsView(props.initialVisualizerSubview === "simulation");
-        setShowAnalysisView(props.initialVisualizerSubview === "inspector");
+        setShowAnalysisView(
+          props.initialVisualizerSubview === "inspector" || props.initialVisualizerSubview === "studio",
+        );
+        if (props.initialVisualizerSubview === "studio") {
+          setRequestedInspectorSubtab("studio");
+        }
       } else if (targetView === "split-rows") {
         setView(View.SPLIT_ROWS);
         setShowCadView(props.initialVisualizerSubview === "3d");
         setShowResultsView(props.initialVisualizerSubview === "simulation");
-        setShowAnalysisView(props.initialVisualizerSubview === "inspector");
+        setShowAnalysisView(
+          props.initialVisualizerSubview === "inspector" || props.initialVisualizerSubview === "studio",
+        );
+        if (props.initialVisualizerSubview === "studio") {
+          setRequestedInspectorSubtab("studio");
+        }
       }
     },
     [props.isSplit, props.splitOrientation, props.initialVisualizerSubview, windowWidth, windowHeight],
@@ -875,7 +655,15 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     if (!props.initialView && props.isSplit === undefined && props.splitOrientation === undefined) return;
     const effectiveView =
       props.initialView ||
-      (showCadView ? "3d" : showResultsView ? "simulation" : showAnalysisView ? "inspector" : "diagram");
+      (showCadView
+        ? "3d"
+        : showResultsView
+          ? "simulation"
+          : showAnalysisView
+            ? isStudioActive
+              ? "studio"
+              : "inspector"
+            : "diagram");
     applyViewMode(effectiveView, props.isSplit);
   }, [props.initialView, props.isSplit, props.splitOrientation, applyViewMode]);
 
@@ -1157,7 +945,7 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
 
   useEffect(() => {
     if (simulationStatus && props.onSimulationStatus) {
-      props.onSimulationStatus(simulationStatus, localSimulationData);
+      props.onSimulationStatus(simulationStatus.status, localSimulationData);
     }
   }, [simulationStatus, localSimulationData, props.onSimulationStatus]);
 
@@ -1170,7 +958,7 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
   }, [props.simulationResetKey]);
 
   useEffect(() => {
-    props.onParametersChange?.(parameterOverrides);
+    props.onParametersChange?.(Object.fromEntries(parameterOverrides));
   }, [parameterOverrides, props.onParametersChange]);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const isDraggingSplit = useRef(false);
@@ -1195,137 +983,28 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([]);
   const translations = useMemo(() => getTranslations(language), [language]);
 
-  const diagramActionQueueRef = useRef<DiagramActionQueue<DiagramEditAction> | null>(null);
-  const diagramEditRunnerRef = useRef<SerializedDiagramEditRunner>(new SerializedDiagramEditRunner());
-  const selectedTreeClassNameRef = useRef<string | null>(selectedTreeClassName);
-  selectedTreeClassNameRef.current = selectedTreeClassName;
-  const onCodeChangeRef = useRef(props.onCodeChange);
-  onCodeChangeRef.current = props.onCodeChange;
-
-  const flushDiagramActionBatch = useCallback(
-    (actions: DiagramEditAction[]) => {
-      if (actions.length === 0) return;
-      diagramEditRunnerRef.current.enqueue(
-        async (seq) => {
-          // Flush any pending/debounced live Monaco edits before computing LSP diagram TextEdits
-          if (editorRef.current) {
-            const liveCode = editorRef.current.getValue();
-            if (liveCode !== lastLoadedContentRef.current) {
-              setLastLoadedContent(liveCode);
-              if (codeEditorRef.current) {
-                await codeEditorRef.current.sync();
-              } else {
-                await didChange(documentUriRef.current, liveCode);
-              }
-            }
-          }
-          const response = await applyDiagramEdits(
-            documentUriRef.current,
-            actions,
-            seq,
-            selectedTreeClassNameRef.current ?? undefined,
-          );
-          if (response?.sidecarContent !== undefined) {
-            if (response.sidecarContent !== sidecarContentRef.current) {
-              const stack = sidecarHistoryRef.current;
-              stack.undo.push({
-                prev: sidecarContentRef.current,
-                next: response.sidecarContent,
-                hadTextEdit: Boolean(response?.edits && response.edits.length > 0),
-              });
-              if (stack.undo.length > 100) stack.undo.shift();
-              stack.redo.length = 0;
-              persistSidecarToProjectFiles(response.sidecarContent);
-            }
-            setSidecarContent(response.sidecarContent);
-          }
-          if (response && response.edits && response.edits.length > 0) {
-            isSpatialEditPending.current = true;
-            lastDiagramEditTimeRef.current = Date.now();
-            if (editorRef.current) {
-              applyLspEdits(editorRef.current, response.edits, actions[0]!.type);
-              const updatedCode = editorRef.current.getValue();
-              setLastLoadedContent(updatedCode);
-              if (codeEditorRef.current) {
-                await codeEditorRef.current.sync();
-              } else {
-                await didChange(documentUriRef.current, updatedCode);
-              }
-              onCodeChangeRef.current?.(updatedCode);
-            } else {
-              const baseText = lastLoadedContentRef.current || content;
-              const updatedCode = applyLspTextEditsToString(baseText, response.edits);
-              setLastLoadedContent(updatedCode);
-              await didChange(documentUriRef.current, updatedCode);
-              onCodeChangeRef.current?.(updatedCode);
-            }
-            if (response.renderHint === "none") {
-              setIsDiagramLoading(false);
-            } else {
-              setContextVersion((v) => v + 1);
-            }
-          } else if (response?.sidecarContent !== undefined) {
-            setIsDiagramLoading(false);
-            setContextVersion((v) => v + 1);
-          } else {
-            setIsDiagramLoading(false);
-          }
-        },
-        (err) => {
-          console.error("Failed to apply diagram edit batch:", err);
-          setIsDiagramLoading(false);
-        },
-      );
-    },
-    [content],
-  );
-
-  const flushDiagramActionBatchRef = useRef(flushDiagramActionBatch);
-  flushDiagramActionBatchRef.current = flushDiagramActionBatch;
-
-  useEffect(() => {
-    const queue = new DiagramActionQueue<DiagramEditAction>({
-      spatialDelayMs: 8,
-      structuralDelayMs: 0,
-      onFlush: (actions) => flushDiagramActionBatchRef.current(actions),
-    });
-    diagramActionQueueRef.current = queue;
-    return () => {
-      queue.dispose();
-      diagramActionQueueRef.current = null;
-    };
-  }, []);
-
-  const enqueueDiagramAction = useCallback((rawAction: DiagramEditAction | Record<string, unknown>) => {
-    const action = rawAction as DiagramEditAction;
-    // Optimistically update selectedComponentProperties so Property Panel stays in sync immediately
-    if (
-      action.type === "updateParameter" ||
-      action.type === "updateProperty" ||
-      action.type === "updateName" ||
-      action.type === "updateDescription"
-    ) {
-      setSelectedComponentProperties((prev) => applyOptimisticPropertyAction(prev, action));
-      if (action.type === "updateParameter" || action.type === "updateProperty") {
-        const paramKey = action.type === "updateParameter" ? action.parameter : action.key;
-        const paramVal = String(action.value ?? "");
-        const oldVal = (action as { oldValue?: string }).oldValue ?? "";
-        diagramEditorRef.current?.updateParameterText?.(action.name, paramKey, oldVal, paramVal);
-      }
-    }
-
-    const isOptimisticOnly =
-      isOptimisticDiagramActionBatch([action]) || action.type === "updateName" || action.type === "updateDescription";
-    if (!isOptimisticOnly && !diagramDataRef.current) {
-      setIsDiagramLoading(true);
-    }
-
-    if (diagramActionQueueRef.current) {
-      diagramActionQueueRef.current.enqueue(action);
-    } else {
-      flushDiagramActionBatchRef.current([action]);
-    }
-  }, []);
+  const { enqueueDiagramAction, onResetSpatialCooldown, onDiagramUndo, onDiagramRedo } = useAnsatzDiagramEdits({
+    content,
+    dialect,
+    selectedTreeClassName,
+    documentUriRef,
+    editorRef,
+    codeEditorRef,
+    diagramEditorRef,
+    diagramDataRef,
+    lastLoadedContentRef,
+    isSpatialEditPending,
+    lastDiagramEditTimeRef,
+    sidecarContentRef,
+    sidecarHistoryRef,
+    persistSidecarToProjectFiles,
+    setSidecarContent,
+    setLastLoadedContent,
+    setIsDiagramLoading,
+    setContextVersion,
+    setSelectedComponentProperties,
+    onCodeChange: props.onCodeChange,
+  });
 
   const handleRevealLine = useCallback((line: number, identifier?: string) => {
     const ed = editorRef.current;
@@ -1892,6 +1571,15 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
         case "view:inspector":
           applyViewMode("inspector");
           break;
+        case "view:studio":
+          applyViewMode("studio");
+          break;
+        case "toggle:ai":
+          setIsAiOpen((v) => !v);
+          break;
+        case "toggle:zonotope":
+          setShowHypergraphOverlay((v) => !v);
+          break;
         case "view:code":
           applyViewMode("code");
           break;
@@ -1939,12 +1627,14 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     }
   }, [isNarrow, mobileTab, props.embed, props.initialView]);
 
-  const currentActiveView: "diagram" | "simulation" | "3d" | "inspector" | "code" | "split" = showResultsView
+  const currentActiveView: "diagram" | "simulation" | "3d" | "inspector" | "studio" | "code" | "split" = showResultsView
     ? "simulation"
     : showCadView
       ? "3d"
       : showAnalysisView
-        ? "inspector"
+        ? isStudioActive
+          ? "studio"
+          : "inspector"
         : view === View.CODE
           ? "code"
           : isSplit(view)
@@ -1972,6 +1662,7 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
       }, 100);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [view, treeVisible, loadingProgress]);
 
   const handleSelectDialect = useCallback(
@@ -2173,7 +1864,15 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
 
     try {
       const { getClassSource } = await import("./util/lsp-bridge");
-      const { content: fetchedContent, uri: sourceUri, error } = await getClassSource(className);
+      const {
+        content: fetchedContent,
+        uri: sourceUri,
+        error,
+      } = (await getClassSource(className)) as {
+        content: string | null;
+        uri?: string | undefined;
+        error?: string | undefined;
+      };
       if (fetchedContent) {
         const lowerUri = (sourceUri || "").toLowerCase();
         const targetDialect =
@@ -2233,11 +1932,7 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     }
   };
 
-  const editorRef = useRef(editor);
-  const lastLoadedContentRef = useRef(lastLoadedContent);
   const loadClassRef = useRef(loadClass);
-  editorRef.current = editor;
-  lastLoadedContentRef.current = lastLoadedContent;
   loadClassRef.current = loadClass;
 
   const handleLoadStarterExample = useCallback(
@@ -2395,6 +2090,9 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     if (isTargetSwitch) {
       setDiagramData(null);
       setIsDiagramLoading(true);
+      setSelectedComponent(null);
+      setSelectedComponentProperties(null);
+      setIsPropertiesLoading(false);
     } else if (!diagramDataRef.current || diagramDataRef.current.isLoading) {
       setIsDiagramLoading(true);
     }
@@ -2457,184 +2155,28 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
     }
   }, [toast]);
 
-  useEffect(() => {
-    const handleToolbarAction = (ev: Event) => {
-      const detail = (
-        ev as CustomEvent<
-          | {
-              button?: {
-                id: string;
-                label: string;
-                command?: string;
-                actionId?: string;
-              };
-              languageId?: string;
-              view?: string;
-            }
-          | undefined
-        >
-      ).detail;
-      const btn = detail?.button;
-      if (!btn) return;
-
-      switch (btn.command) {
-        case "ansatz:autoLayout":
-          void handleAutoLayout();
-          return;
-        case "ansatz:flatten":
-          void handleFlatten();
-          return;
-        case "ansatz:runLints":
-          void handleRunOnDemandLints("all");
-          return;
-        case "ansatz:runFormalLints":
-          void handleRunOnDemandLints("formal");
-          return;
-        case "ansatz:runCompilerLints":
-          void handleRunOnDemandLints("compiler");
-          return;
-        case "ansatz:simulate":
-          void handleSimulate();
-          return;
-        case "ansatz:deleteIconPrimitive": {
-          const match = /^__icon_gfx_(\d+)$/.exec(selectedComponent ?? "");
-          if (!match) {
-            toast.info("Select an icon shape first");
-            return;
-          }
-          const idx = Number(match[1]);
-          handleSelectComponent(null);
-          enqueueDiagramAction({ type: "deleteIconPrimitive", index: idx });
-          return;
-        }
-        default:
-          if (btn.command?.startsWith("ansatz:addIconPrimitive:")) {
-            const shapeId = btn.command.slice("ansatz:addIconPrimitive:".length);
-            const tool = MODELICA_ICON_SHAPE_TOOLS.find((t) => t.id === shapeId);
-            if (tool) {
-              enqueueDiagramAction({
-                type: "addIconPrimitive",
-                primitive: tool.primitive,
-              });
-            }
-            return;
-          }
-          if (btn.command?.startsWith("ansatz:reorderIconPrimitive:")) {
-            const dir = btn.command.slice("ansatz:reorderIconPrimitive:".length);
-            const match = /^__icon_gfx_(\d+)$/.exec(selectedComponent ?? "");
-            if (!match) {
-              toast.info("Select an icon shape first");
-              return;
-            }
-            const fromIndex = Number(match[1]);
-            const toIndex = dir === "forward" ? fromIndex + 1 : Math.max(0, fromIndex - 1);
-            if (toIndex !== fromIndex) {
-              enqueueDiagramAction({ type: "reorderIconPrimitive", fromIndex, toIndex });
-            }
-            return;
-          }
-          if (btn.command?.startsWith("ansatz:insertStencil:")) {
-            const stencilLabel = btn.command.slice("ansatz:insertStencil:".length);
-            const langId = detail?.languageId || dialect || "modelica";
-            const stencils = getEditorLanguageUi().stencils[langId] ?? [];
-            const match = stencils.find((s) => s.label === stencilLabel);
-            if (match?.snippet) {
-              handleInsertStencilSnippet(match.snippet, match.className);
-            }
-            return;
-          }
-          break;
-      }
-
-      if (btn.actionId === "flatten") {
-        void handleFlatten();
-        return;
-      }
-      if (btn.actionId && btn.actionId.startsWith("simulate")) {
-        void handleSimulate();
-        return;
-      }
-      if (btn.actionId) {
-        const langId = detail?.languageId || dialect || "modelica";
-        const actionId = btn.actionId;
-        const label = btn.label || actionId;
-        void (async () => {
-          try {
-            toast.info(`Running ${label}…`);
-            const { executeLspAction } = await import("./util/lsp-bridge");
-            const documentText = editorRef.current?.getValue() ?? lastLoadedContent;
-            const res = await executeLspAction(actionId, langId, documentUri, { documentText });
-            window.dispatchEvent(
-              new CustomEvent("ansatz:toolbar-action-result", {
-                detail: { button: btn, languageId: langId, actionId, result: res },
-              }),
-            );
-            if (res && typeof res === "object" && "error" in res && res.error) {
-              toast.error(`${label} failed: ${String(res.error)}`);
-              return;
-            }
-            if (
-              langId === "owl2" &&
-              (actionId === "validate_consistency" || actionId === "explain_inferences" || actionId === "query_sparql")
-            ) {
-              setShowResultsView(false);
-              setShowCadView(false);
-              setShowAnalysisView(true);
-              if (view === "code") setView("split");
-              const rec = res && typeof res === "object" ? (res as Record<string, unknown>) : null;
-              const summary =
-                typeof rec?.["formattedSummary"] === "string" ? rec["formattedSummary"] : `${label} completed`;
-              if (rec?.["consistent"] === false) {
-                toast.error(summary);
-              } else if (Array.isArray(rec?.["unsatisfiableClasses"]) && rec["unsatisfiableClasses"].length > 0) {
-                toast.warning(summary);
-              } else {
-                toast.success(summary);
-              }
-              return;
-            }
-            const outputText =
-              typeof res === "string"
-                ? res
-                : res && typeof res === "object"
-                  ? typeof (res as Record<string, unknown>).text === "string"
-                    ? ((res as Record<string, unknown>).text as string)
-                    : typeof (res as Record<string, unknown>).report === "string"
-                      ? ((res as Record<string, unknown>).report as string)
-                      : typeof (res as Record<string, unknown>).output === "string"
-                        ? ((res as Record<string, unknown>).output as string)
-                        : JSON.stringify(res, null, 2)
-                  : "";
-            if (outputText) {
-              setFlattenedCode(outputText);
-              setFlattenDialogOpen(true);
-              toast.success(`${label} completed`);
-            } else {
-              toast.success(`${label} completed`);
-            }
-          } catch (err) {
-            console.error(`[Ansatz] Action '${actionId}' failed:`, err);
-            toast.error(`${label} failed: ${err instanceof Error ? err.message : String(err)}`);
-          }
-        })();
-      }
-    };
-
-    window.addEventListener("ansatz:toolbar-action", handleToolbarAction);
-    return () => window.removeEventListener("ansatz:toolbar-action", handleToolbarAction);
-  }, [
+  useAnsatzToolbarActions({
     dialect,
     documentUri,
+    view,
+    setView,
+    setShowResultsView,
+    setShowCadView,
+    setShowAnalysisView,
+    setFlattenedCode,
+    setFlattenDialogOpen,
+    editorRef,
+    lastLoadedContent,
+    selectedComponent,
     enqueueDiagramAction,
     handleAutoLayout,
+    handleFlatten,
     handleInsertStencilSnippet,
     handleRunOnDemandLints,
     handleSelectComponent,
     handleSimulate,
-    lastLoadedContent,
-    selectedComponent,
     toast,
-  ]);
+  });
 
   const handleNewModel = useCallback(
     (e?: React.MouseEvent) => {
@@ -3104,32 +2646,9 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                 setIsDiagramLoading={setIsDiagramLoading}
                 handleSelectComponent={handleSelectComponent}
                 enqueueDiagramAction={enqueueDiagramAction}
-                onResetSpatialCooldown={() => {
-                  lastDiagramEditTimeRef.current = 0;
-                  isSpatialEditPending.current = false;
-                }}
-                onDiagramUndo={() => {
-                  lastDiagramEditTimeRef.current = 0;
-                  isSpatialEditPending.current = false;
-                  const entry = sidecarHistoryRef.current.undo.pop();
-                  if (!entry) return true;
-                  sidecarHistoryRef.current.redo.push(entry);
-                  setSidecarContent(entry.prev);
-                  persistSidecarToProjectFiles(entry.prev);
-                  setContextVersion((v) => v + 1);
-                  return entry.hadTextEdit;
-                }}
-                onDiagramRedo={() => {
-                  lastDiagramEditTimeRef.current = 0;
-                  isSpatialEditPending.current = false;
-                  const entry = sidecarHistoryRef.current.redo.pop();
-                  if (!entry) return true;
-                  sidecarHistoryRef.current.undo.push(entry);
-                  setSidecarContent(entry.next);
-                  persistSidecarToProjectFiles(entry.next);
-                  setContextVersion((v) => v + 1);
-                  return entry.hadTextEdit;
-                }}
+                onResetSpatialCooldown={onResetSpatialCooldown}
+                onDiagramUndo={onDiagramUndo}
+                onDiagramRedo={onDiagramRedo}
                 editor={editor}
                 editorRef={editorRef}
                 isSpatialEditPending={isSpatialEditPending}
@@ -3212,6 +2731,8 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                 onClearPendingOverrides={handleClearPendingOverrides}
                 onWorstCaseXiChange={setWorstCaseXiByGroupId}
                 onStudioActiveChange={setIsStudioActive}
+                requestedInspectorSubtab={requestedInspectorSubtab}
+                trainingStudioContext={props.trainingStudioContext}
                 zonotopeViolatingComponents={zonotopeViolatingSymbols}
                 onChangeCadToleranceFraction={handleChangeCadToleranceFraction}
                 cameraSyncGroup={props.cameraSyncGroup}
@@ -3670,7 +3191,30 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
                         : `Simulation status: ${simulationStatus?.status ?? "completed"}`,
                     };
                   },
-                  switchView: (nextView) => setView(nextView as View),
+                  switchView: (nextView) => {
+                    if (nextView === "code") {
+                      setView(View.CODE);
+                    } else if (nextView === "diagram") {
+                      setShowResultsView(false);
+                      setShowCadView(false);
+                      setShowAnalysisView(false);
+                      setView(View.DIAGRAM);
+                    } else if (nextView === "split") {
+                      setView(View.SPLIT_COLUMNS);
+                    } else if (nextView === "simulation") {
+                      setShowResultsView(true);
+                      setShowCadView(false);
+                      setShowAnalysisView(false);
+                    } else if (nextView === "3d") {
+                      setShowCadView(true);
+                      setShowResultsView(false);
+                      setShowAnalysisView(false);
+                    } else if (nextView === "inspector") {
+                      setShowAnalysisView(true);
+                      setShowResultsView(false);
+                      setShowCadView(false);
+                    }
+                  },
                   getDiagramSummary: async () => {
                     const diagram = await getDiagramData(documentUri, selectedTreeClassName || undefined);
                     return JSON.stringify(diagram ?? {});
@@ -3760,8 +3304,9 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
           onCloudResultLoaded={(data) => {
             if (Array.isArray(data?.t) && Array.isArray(data?.y)) {
               const states: string[] = Array.isArray(data.states) ? data.states : [];
+              const yMatrix = data.y as number[][];
               const rowMajorY = data.t.map((_: number, tIdx: number) =>
-                data.y.map((col: number[]) => col?.[tIdx] ?? 0),
+                yMatrix.map((col: number[]) => col?.[tIdx] ?? 0),
               );
               const chartRows: Record<string, number | string>[] = data.t.map((tVal: number, tIdx: number) => {
                 const row: Record<string, number | string> = { time: tVal };
@@ -3795,7 +3340,7 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
           view !== View.CODE &&
           !showAnalysisView && (
             <ParameterSliderRibbon
-              parameters={ribbonParams}
+              parameters={ribbonParams as ParameterRibbonItem[]}
               overrides={parameterOverrides}
               onChange={handleRibbonParamChange}
               onReset={handleRibbonParamReset}

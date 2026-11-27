@@ -12,7 +12,17 @@ import {
   XIcon,
 } from "@primer/octicons-react";
 import React, { useState } from "react";
-import styled from "styled-components";
+import {
+  ActionBtn,
+  ActionButtons,
+  CardContainer,
+  type ComplianceTone,
+  ExpandableHeader,
+  ExpandableRow,
+  HeaderRow,
+  StatusPill,
+  TitleGroup,
+} from "./ComplianceCardPrimitives";
 
 export interface AwiaCheckItem {
   section: string;
@@ -42,202 +52,80 @@ export interface AwiaRiskResilienceCardProps {
   colorMode?: "light" | "dark" | undefined;
 }
 
-const CardContainer = styled.div<{ $isDark: boolean }>`
-  border: 1px solid var(--color-border-default, ${(p) => (p.$isDark ? "#30363d" : "#d0d7de")});
-  border-radius: 10px;
-  background: var(--bgColor-inset, ${(p) => (p.$isDark ? "#121214" : "#f6f8fa")});
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-  font-family: inherit;
-  margin-top: 8px;
-`;
+const statusToTone = (status: "PASS" | "FAIL" | "WARN"): ComplianceTone =>
+  status === "PASS" ? "success" : status === "FAIL" ? "danger" : "warning";
 
-const HeaderRow = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-`;
+const ScoreBadge: React.FC<{ score: number; children: React.ReactNode }> = ({ score, children }) => (
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      padding: "3px 8px",
+      borderRadius: 6,
+      fontSize: 12,
+      fontWeight: 700,
+      background:
+        score >= 80 ? "rgba(35, 134, 54, 0.2)" : score >= 60 ? "rgba(154, 103, 0, 0.2)" : "rgba(218, 54, 51, 0.2)",
+      color: score >= 80 ? "#3fb950" : score >= 60 ? "#d29922" : "#f85149",
+      border: `1px solid ${
+        score >= 80 ? "rgba(35, 134, 54, 0.4)" : score >= 60 ? "rgba(154, 103, 0, 0.4)" : "rgba(218, 54, 51, 0.4)"
+      }`,
+    }}
+  >
+    {children}
+  </span>
+);
 
-const TitleGroup = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-`;
+const MetaItem: React.FC<{ label: string; value: React.ReactNode; monospace?: boolean }> = ({
+  label,
+  value,
+  monospace = false,
+}) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <span
+      style={{
+        fontSize: 10,
+        fontWeight: 600,
+        textTransform: "uppercase",
+        color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
+      }}
+    >
+      {label}
+    </span>
+    <span
+      style={{
+        fontWeight: 600,
+        color: "var(--ms-text, var(--color-fg-default, #c9d1d9))",
+        fontFamily: monospace ? "var(--ms-font-mono, monospace)" : undefined,
+      }}
+    >
+      {value}
+    </span>
+  </div>
+);
 
-const Badge = styled.span<{ $status: "PASS" | "FAIL" | "WARN" }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  color: #ffffff;
-  background: ${(p) =>
-    p.$status === "PASS"
-      ? "var(--color-success-emphasis, #238636)"
-      : p.$status === "FAIL"
-        ? "var(--color-danger-emphasis, #da3633)"
-        : "var(--color-attention-emphasis, #9a6700)"};
-`;
-
-const ScoreBadge = styled.span<{ $score: number }>`
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  background: ${(p) =>
-    p.$score >= 80 ? "rgba(35, 134, 54, 0.2)" : p.$score >= 60 ? "rgba(154, 103, 0, 0.2)" : "rgba(218, 54, 51, 0.2)"};
-  color: ${(p) => (p.$score >= 80 ? "#3fb950" : p.$score >= 60 ? "#d29922" : "#f85149")};
-  border: 1px solid
-    ${(p) =>
-      p.$score >= 80 ? "rgba(35, 134, 54, 0.4)" : p.$score >= 60 ? "rgba(154, 103, 0, 0.4)" : "rgba(218, 54, 51, 0.4)"};
-`;
-
-const ActionButtons = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const ActionBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  border: 1px solid var(--color-border-default, #30363d);
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  color: var(--color-fg-default, #c9d1d9);
-  cursor: pointer;
-  transition: background 0.15s ease;
-
-  &:hover {
-    background: var(--color-canvas-subtle, #21262d);
-  }
-`;
-
-const MetaGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px;
-  padding: 10px 14px;
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  border: 1px solid var(--color-border-subtle, #21262d);
-  border-radius: 6px;
-  font-size: 12px;
-`;
-
-const MetaItem = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-
-  & > span:first-child {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--color-fg-muted, #8b949e);
-  }
-
-  & > span:last-child {
-    font-weight: 600;
-    color: var(--color-fg-default, #c9d1d9);
-  }
-`;
-
-const CheckGrid = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-`;
-
-const CheckRow = styled.div<{ $status: "PASS" | "FAIL" | "WARN"; $expanded: boolean }>`
-  display: flex;
-  flex-direction: column;
-  border: 1px solid
-    ${(p) =>
-      p.$status === "FAIL" ? "rgba(218, 54, 51, 0.4)" : "var(--color-border-subtle, rgba(255, 255, 255, 0.08))"};
-  border-radius: 6px;
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  overflow: hidden;
-  transition: border-color 0.15s ease;
-`;
-
-const CheckHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  cursor: pointer;
-  user-select: none;
-
-  &:hover {
-    background: var(--color-canvas-subtle, rgba(255, 255, 255, 0.02));
-  }
-`;
-
-const CheckTitleCol = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-`;
-
-const SectionPill = styled.span`
-  font-family: monospace;
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: var(--color-canvas-subtle, #21262d);
-  color: var(--fgColor-accent, var(--ms-brand));
-  font-weight: 600;
-`;
-
-const CheckStatusBadge = styled.span<{ $status: "PASS" | "FAIL" | "WARN" }>`
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 700;
-  color: ${(p) =>
-    p.$status === "PASS"
-      ? "var(--color-success-fg, #3fb950)"
-      : p.$status === "FAIL"
-        ? "var(--color-danger-fg, #f85149)"
-        : "var(--color-attention-fg, #d29922)"};
-`;
-
-const CheckDetails = styled.div`
-  padding: 10px 14px 14px 14px;
-  border-top: 1px solid var(--color-border-subtle, rgba(255, 255, 255, 0.08));
-  background: var(--color-canvas-subtle, rgba(0, 0, 0, 0.15));
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-`;
-
-const MetricComparison = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background: var(--bgColor-muted, var(--ms-bg-elv));
-  border: 1px solid var(--color-border-subtle, #30363d);
-`;
+const CheckStatusBadge: React.FC<{ status: "PASS" | "FAIL" | "WARN"; children: React.ReactNode }> = ({
+  status,
+  children,
+}) => (
+  <span
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4,
+      fontSize: 11,
+      fontWeight: 700,
+      color:
+        status === "PASS"
+          ? "var(--ms-success-fg, var(--color-success-fg, #3fb950))"
+          : status === "FAIL"
+            ? "var(--ms-danger-fg, var(--color-danger-fg, #f85149))"
+            : "var(--ms-warning-fg, var(--color-attention-fg, #d29922))",
+    }}
+  >
+    {children}
+  </span>
+);
 
 const DEFAULT_AWIA_REPORT: AwiaComplianceReport = {
   utilityName: "Metropolitan Water District",
@@ -323,21 +211,21 @@ export const AwiaRiskResilienceCard: React.FC<AwiaRiskResilienceCardProps> = ({
   };
 
   return (
-    <CardContainer $isDark={isDark} data-testid="awia-risk-resilience-card">
+    <CardContainer isDark={isDark} data-testid="awia-risk-resilience-card">
       <HeaderRow>
         <TitleGroup>
           <ShieldCheckIcon size={20} fill={activeReport.overallStatus === "PASS" ? "#3fb950" : "#f85149"} />
           <div>
             <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700 }}>AWIA § 2013 Risk & Resilience Assessment</h3>
-            <span style={{ fontSize: "11px", color: "var(--color-fg-muted, #8b949e)" }}>
+            <span style={{ fontSize: "11px", color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))" }}>
               America&apos;s Water Infrastructure Act Statutory Audit
             </span>
           </div>
         </TitleGroup>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <ScoreBadge $score={activeReport.resilienceScore}>Score: {activeReport.resilienceScore}/100</ScoreBadge>
-          <Badge $status={activeReport.overallStatus}>
+          <ScoreBadge score={activeReport.resilienceScore}>Score: {activeReport.resilienceScore}/100</ScoreBadge>
+          <StatusPill tone={statusToTone(activeReport.overallStatus)}>
             {activeReport.overallStatus === "PASS" ? (
               <CheckCircleFillIcon size={12} />
             ) : activeReport.overallStatus === "FAIL" ? (
@@ -346,14 +234,14 @@ export const AwiaRiskResilienceCard: React.FC<AwiaRiskResilienceCardProps> = ({
               <AlertIcon size={12} />
             )}
             {activeReport.overallStatus}
-          </Badge>
+          </StatusPill>
           <ActionButtons>
-            <ActionBtn type="button" onClick={handleExport} title="Export JSON Report">
+            <ActionBtn isDark={isDark} onClick={handleExport} title="Export JSON Report">
               <DownloadIcon size={14} />
               JSON
             </ActionBtn>
             {onClose && (
-              <ActionBtn type="button" onClick={onClose} title="Dismiss">
+              <ActionBtn isDark={isDark} onClick={onClose} title="Dismiss">
                 <XIcon size={14} />
               </ActionBtn>
             )}
@@ -361,42 +249,55 @@ export const AwiaRiskResilienceCard: React.FC<AwiaRiskResilienceCardProps> = ({
         </div>
       </HeaderRow>
 
-      <MetaGrid>
-        <MetaItem>
-          <span>Utility Name</span>
-          <span>{activeReport.utilityName}</span>
-        </MetaItem>
-        {activeReport.pwsid && (
-          <MetaItem>
-            <span>PWSID</span>
-            <span style={{ fontFamily: "monospace" }}>{activeReport.pwsid}</span>
-          </MetaItem>
-        )}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 8,
+          padding: "10px 14px",
+          background: "var(--ms-bg-elv, var(--bgColor-muted, #1e1e22))",
+          border: "1px solid var(--ms-border-subtle, var(--color-border-subtle, #21262d))",
+          borderRadius: 6,
+          fontSize: 12,
+        }}
+      >
+        <MetaItem label="Utility Name" value={activeReport.utilityName} />
+        {activeReport.pwsid && <MetaItem label="PWSID" value={activeReport.pwsid} monospace />}
         {activeReport.populationServed && (
-          <MetaItem>
-            <span>Pop. Served</span>
-            <span>{activeReport.populationServed.toLocaleString()}</span>
-          </MetaItem>
+          <MetaItem label="Pop. Served" value={activeReport.populationServed.toLocaleString()} />
         )}
-        <MetaItem>
-          <span>Audit Date</span>
-          <span>{new Date(activeReport.evaluatedAt).toLocaleDateString()}</span>
-        </MetaItem>
-      </MetaGrid>
+        <MetaItem label="Audit Date" value={new Date(activeReport.evaluatedAt).toLocaleDateString()} />
+      </div>
 
-      <CheckGrid>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {activeReport.checks.map((check) => {
           const isExpanded = !!expandedSections[check.section];
           return (
-            <CheckRow key={check.section} $status={check.status} $expanded={isExpanded}>
-              <CheckHeader onClick={() => toggleSection(check.section)}>
-                <CheckTitleCol>
-                  <SectionPill>§ {check.section}</SectionPill>
+            <ExpandableRow key={check.section} status={check.status}>
+              <ExpandableHeader
+                onClick={() => toggleSection(check.section)}
+                style={{ padding: "10px 14px" }}
+                hoverBackground="var(--ms-bg-hover, var(--color-canvas-subtle, rgba(255, 255, 255, 0.02)))"
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1 }}>
+                  <span
+                    style={{
+                      fontFamily: "var(--ms-font-mono, monospace)",
+                      fontSize: 11,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: "var(--ms-bg-subtle, var(--color-canvas-subtle, #21262d))",
+                      color: "var(--ms-brand, var(--fgColor-accent, #58a6ff))",
+                      fontWeight: 600,
+                    }}
+                  >
+                    § {check.section}
+                  </span>
                   <span style={{ fontWeight: 600, fontSize: "13px" }}>{check.category}</span>
-                </CheckTitleCol>
+                </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <CheckStatusBadge $status={check.status}>
+                  <CheckStatusBadge status={check.status}>
                     {check.status === "PASS" ? (
                       <CheckIcon size={12} />
                     ) : check.status === "FAIL" ? (
@@ -408,16 +309,37 @@ export const AwiaRiskResilienceCard: React.FC<AwiaRiskResilienceCardProps> = ({
                   </CheckStatusBadge>
                   {isExpanded ? <ChevronUpIcon size={14} /> : <ChevronDownIcon size={14} />}
                 </div>
-              </CheckHeader>
+              </ExpandableHeader>
 
               {isExpanded && (
-                <CheckDetails>
-                  <MetricComparison>
+                <div
+                  style={{
+                    padding: "10px 14px 14px 14px",
+                    borderTop:
+                      "1px solid var(--ms-border-subtle, var(--color-border-subtle, rgba(255, 255, 255, 0.08)))",
+                    background: "var(--ms-bg-subtle, var(--color-canvas-subtle, rgba(0, 0, 0, 0.15)))",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    fontSize: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 12,
+                      padding: "8px 12px",
+                      borderRadius: 4,
+                      background: "var(--ms-bg-elv, var(--bgColor-muted, #1e1e22))",
+                      border: "1px solid var(--ms-border-subtle, var(--color-border-subtle, #30363d))",
+                    }}
+                  >
                     <div>
                       <span
                         style={{
                           fontSize: "10px",
-                          color: "var(--color-fg-muted, #8b949e)",
+                          color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
                           textTransform: "uppercase",
                         }}
                       >
@@ -429,7 +351,7 @@ export const AwiaRiskResilienceCard: React.FC<AwiaRiskResilienceCardProps> = ({
                       <span
                         style={{
                           fontSize: "10px",
-                          color: "var(--color-fg-muted, #8b949e)",
+                          color: "var(--ms-text-2, var(--color-fg-muted, #8b949e))",
                           textTransform: "uppercase",
                         }}
                       >
@@ -445,19 +367,24 @@ export const AwiaRiskResilienceCard: React.FC<AwiaRiskResilienceCardProps> = ({
                         {check.measuredMetric}
                       </div>
                     </div>
-                  </MetricComparison>
+                  </div>
                   <div>{check.details}</div>
                   {check.recommendation && (
-                    <div style={{ color: "var(--color-attention-fg, #d29922)", fontStyle: "italic" }}>
+                    <div
+                      style={{
+                        color: "var(--ms-warning-fg, var(--color-attention-fg, #d29922))",
+                        fontStyle: "italic",
+                      }}
+                    >
                       Recommendation: {check.recommendation}
                     </div>
                   )}
-                </CheckDetails>
+                </div>
               )}
-            </CheckRow>
+            </ExpandableRow>
           );
         })}
-      </CheckGrid>
+      </div>
     </CardContainer>
   );
 };

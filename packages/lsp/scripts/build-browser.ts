@@ -12,38 +12,62 @@ const pkgDir = path.resolve(__dirname, "..");
 const ignorePlugin = createNodeBuiltinsIgnorePlugin();
 
 async function run() {
-  console.log("Bundling browserServerMain.ts and indexer.worker.ts with esbuild...");
-  await esbuild.build({
-    entryPoints: [
-      path.resolve(pkgDir, "src/browserServerMain.ts"),
-      path.resolve(pkgDir, "src/workers/indexer.worker.ts"),
-    ],
-    outdir: path.join(pkgDir, "dist"),
+  const fs = await import("fs");
+  const commonOptions: esbuild.BuildOptions = {
     bundle: true,
-    format: "iife",
     platform: "browser",
     target: "es2022",
     minify: true,
     keepNames: true,
     sourcemap: "linked",
     banner: {
-      js: `${BROWSER_PROCESS_BANNER}\nvar process = globalThis.process;\n`,
+      js: `${BROWSER_PROCESS_BANNER}\n`,
     },
     define: {
       "process.env": "{}",
       "process.browser": "true",
-      "import.meta.url": "self.location.href",
     },
     inject: [path.join(__dirname, "process-polyfill.js")],
     logOverride: {
-      "duplicate-object-key": "silent",
       "empty-import-meta": "silent",
     },
     plugins: [ignorePlugin],
+  };
+
+  const browserOutDir = path.join(pkgDir, "dist", "browser");
+  if (fs.existsSync(browserOutDir)) {
+    fs.rmSync(browserOutDir, { recursive: true, force: true });
+  }
+  console.log("Bundling classic IIFE browserServerMain.ts and simWorker.ts with esbuild...");
+  await esbuild.build({
+    ...commonOptions,
+    entryPoints: [path.resolve(pkgDir, "src/browserServerMain.ts"), path.resolve(pkgDir, "src/simWorker.ts")],
+    outdir: browserOutDir,
+    format: "iife",
+    banner: {
+      js: `${BROWSER_PROCESS_BANNER}\nvar process = globalThis.process;\n`,
+    },
+    define: {
+      ...commonOptions.define,
+      "import.meta.url": "self.location.href",
+    },
+  });
+
+  const esmOutDir = path.join(pkgDir, "dist", "esm");
+  if (fs.existsSync(esmOutDir)) {
+    fs.rmSync(esmOutDir, { recursive: true, force: true });
+  }
+  console.log("Bundling code-split ESM browserServerMain.ts with esbuild...");
+  await esbuild.build({
+    ...commonOptions,
+    entryPoints: [path.resolve(pkgDir, "src/browserServerMain.ts")],
+    outdir: esmOutDir,
+    format: "esm",
+    splitting: true,
+    chunkNames: "chunks/[name]-[hash]",
   });
   console.log("Bundle completed successfully!");
 
-  const fs = await import("fs");
   const assetGz = path.resolve(pkgDir, "assets/msl-icons.json.gz");
   const distGz = path.resolve(pkgDir, "dist/msl-icons.json.gz");
   if (fs.existsSync(assetGz)) {

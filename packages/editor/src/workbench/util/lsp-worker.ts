@@ -8,16 +8,51 @@
  */
 
 import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
+import type { EditorLspTransport } from "../../transport.js";
 import { getCustomLspTransport } from "./lsp-transport";
+
+export interface LspConnectionLike {
+  sendRequest<R = unknown>(method: string, params?: unknown): Promise<R>;
+  sendNotification(method: string, params?: unknown): void;
+  onNotification<P = unknown>(method: string, handler: (params: P) => void): { dispose(): void };
+  onRequest?<P = unknown, R = unknown>(method: string, handler: (params: P) => R): { dispose(): void };
+  dispose?(): void;
+}
+
+function adaptTransportToConnection(transport: EditorLspTransport): LspConnectionLike {
+  return {
+    sendRequest: <R = unknown>(method: string, params?: unknown) => transport.sendRequest<R>(method, params),
+    sendNotification: (method: string, params?: unknown) => transport.sendNotification(method, params),
+    onNotification: <P = unknown>(method: string, handler: (params: P) => void) => {
+      const sub = transport.onNotification?.(method, (params: unknown) => handler(params as P));
+      if (typeof sub === "function") return { dispose: sub };
+      return sub ?? { dispose: () => {} };
+    },
+    dispose: () => transport.dispose?.(),
+  };
+}
 
 let connection: ProtocolConnection | null = null;
 let worker: Worker | null = null;
 let initPromise: Promise<ProtocolConnection> | null = null;
+let hasEverConnected = false;
+const reconnectListeners = new Set<(conn: ProtocolConnection) => void>();
+
+/**
+ * Subscribe to LSP worker reconnections after a crash or connection drop so callers
+ * (such as `lsp-bridge.ts`) can replay open documents into the freshly spawned worker.
+ */
+export function onLspReconnect(listener: (conn: ProtocolConnection) => void): () => void {
+  reconnectListeners.add(listener);
+  return () => {
+    reconnectListeners.delete(listener);
+  };
+}
 
 function isDebugLsp(): boolean {
   return (
     typeof window !== "undefined" &&
-    (Boolean((window as unknown as { __DEBUG_LSP__?: boolean }).__DEBUG_LSP__) ||
+    (("__DEBUG_LSP__" in window && Boolean(window.__DEBUG_LSP__)) ||
       window.localStorage?.getItem("DEBUG_LSP") === "true")
   );
 }
@@ -29,9 +64,9 @@ function isDebugLsp(): boolean {
  * If the worker is already running (or a custom `AnsatzLspTransport` is active),
  * the existing connection is returned.
  */
-export async function startLsp(initialLanguageId?: string): Promise<ProtocolConnection> {
+export async function startLsp(initialLanguageId?: string): Promise<LspConnectionLike> {
   const custom = getCustomLspTransport();
-  if (custom) return custom as unknown as ProtocolConnection;
+  if (custom) return adaptTransportToConnection(custom);
   if (connection) return connection;
   if (initPromise) return initPromise;
 
@@ -47,13 +82,14 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
       (typeof globalThis.location !== "undefined" && globalThis.location.href) ||
       "http://localhost";
 
-    const trySpawn = async (basePath: string): Promise<ProtocolConnection> => {
-      const candidateWorker = new Worker(
-        new URL(`${basePath}/server/dist/browserServerMain.js?v=${Date.now()}`, origin),
-        {
-          name: "modelscript-lsp",
-        },
-      );
+    const trySpawn = async (basePath: string, useEsm = true): Promise<ProtocolConnection> => {
+      const workerPath = useEsm
+        ? `${basePath}/server/dist/esm/browserServerMain.js`
+        : `${basePath}/server/dist/browserServerMain.js`;
+      const candidateWorker = new Worker(new URL(workerPath, origin), {
+        name: "modelscript-lsp",
+        ...(useEsm ? { type: "module" as const } : {}),
+      });
       worker = candidateWorker;
 
       let rejectStartup: ((reason: Error) => void) | null = null;
@@ -126,6 +162,12 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
       }
 
       try {
+        let initTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+        const initTimeoutPromise = new Promise<never>((_resolve, reject) => {
+          initTimeoutHandle = setTimeout(() => {
+            reject(new Error(`LSP worker initialize timed out after 25s (${workerPath})`));
+          }, 25_000);
+        });
         const initResponse = await Promise.race([
           conn.sendRequest("initialize", {
             processId: null,
@@ -196,7 +238,10 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
             },
           }),
           startupErrorPromise,
-        ]);
+          initTimeoutPromise,
+        ]).finally(() => {
+          if (initTimeoutHandle !== null) clearTimeout(initTimeoutHandle);
+        });
         rejectStartup = null;
         if (isDebugLsp()) {
           console.debug("[lsp-worker] Initialize response received:", initResponse);
@@ -204,6 +249,16 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
 
         conn.sendNotification("initialized", {});
         connection = conn;
+        if (hasEverConnected) {
+          for (const listener of reconnectListeners) {
+            try {
+              listener(conn);
+            } catch {
+              // Ignore listener errors during reconnect replay
+            }
+          }
+        }
+        hasEverConnected = true;
         return conn;
       } catch (err) {
         rejectStartup = null;
@@ -225,9 +280,13 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
     };
 
     try {
-      return await trySpawn("/lsp");
+      return await trySpawn("/lsp", true);
     } catch {
-      return await trySpawn("/static/devextensions");
+      try {
+        return await trySpawn("/lsp", false);
+      } catch {
+        return await trySpawn("/static/devextensions", false);
+      }
     }
   })();
 
@@ -240,9 +299,9 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
 }
 
 /** Returns the active connection, or null if not started. */
-export function getLsp(): ProtocolConnection | null {
+export function getLsp(): LspConnectionLike | null {
   const custom = getCustomLspTransport();
-  if (custom) return custom as unknown as ProtocolConnection;
+  if (custom) return adaptTransportToConnection(custom);
   return connection;
 }
 
@@ -285,7 +344,7 @@ if (typeof window !== "undefined") {
   window.addEventListener("START_ZERO_COPY_LSP", (e: Event) => {
     const detail = (e as CustomEvent<{ canvas?: OffscreenCanvas; uri?: string; className?: string }>).detail;
     if (detail && detail.canvas) {
-      passCanvasToLsp(detail.canvas, detail.uri, detail.className);
+      passCanvasToLsp(detail.canvas, detail.uri ?? "", detail.className ?? "");
     }
   });
 }

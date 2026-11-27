@@ -5,6 +5,7 @@ import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
 import type { Tree } from "../utils/cst-facade.js";
+import { formatWasmCstDocument } from "./cst-formatter.js";
 
 export { formatModelicaTree, restructureModelicaTree, type ModelicaFormatOptions } from "@modelscript/modelica";
 export { formatStepDocument } from "@modelscript/step";
@@ -64,6 +65,32 @@ export function registerFormattingProvider(
       } catch {
         // Ignore WASM formatting fallback errors
       }
+    }
+    try {
+      const cached = getDocumentTree(params.textDocument.uri);
+      const tree = (cached && "tree" in cached ? cached.tree : cached) as Tree | null | undefined;
+      if (tree?.rootNode) {
+        const sourceText = document.getText();
+        const formatted = formatWasmCstDocument(tree, sourceText, {
+          tabSize: params.options?.tabSize,
+          insertSpaces: params.options?.insertSpaces,
+          languageId: plugin?.id ?? document.languageId,
+          uri: params.textDocument.uri,
+        });
+        if (formatted !== sourceText) {
+          return [
+            {
+              range: {
+                start: { line: 0, character: 0 },
+                end: document.positionAt(sourceText.length),
+              },
+              newText: formatted,
+            },
+          ];
+        }
+      }
+    } catch {
+      // Ignore generic CST formatting fallback errors
     }
     return [];
   });

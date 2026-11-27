@@ -109,24 +109,56 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
   return symbols;
 }
 
+function getLineTokenRange(text: string, zeroBasedLine: number): LspRange {
+  const len = text.length;
+  let currentLine = 0;
+  let lineStart = 0;
+  let i = 0;
+
+  while (i < len && currentLine < zeroBasedLine) {
+    if (text.charCodeAt(i) === 10) {
+      currentLine++;
+      lineStart = i + 1;
+    }
+    i++;
+  }
+
+  let lineEnd = lineStart;
+  while (lineEnd < len && text.charCodeAt(lineEnd) !== 10 && text.charCodeAt(lineEnd) !== 13) {
+    lineEnd++;
+  }
+
+  const clampedLine = Math.max(0, currentLine);
+  let sChar = 0;
+  const lineLen = lineEnd - lineStart;
+  while (sChar < lineLen) {
+    const ch = text.charCodeAt(lineStart + sChar);
+    if (ch !== 32 && ch !== 9) break;
+    sChar++;
+  }
+
+  let eChar = sChar;
+  while (eChar < lineLen) {
+    const ch = text.charCodeAt(lineStart + eChar);
+    if (ch <= 32 || ch === 61 || ch === 44 || ch === 59) break;
+    eChar++;
+  }
+  if (eChar === sChar && sChar < lineLen) eChar = sChar + 1;
+
+  return {
+    start: { line: clampedLine, character: sChar },
+    end: { line: clampedLine, character: eChar },
+  };
+}
+
 export function getDiagnostics(text: string): LspDiagnostic[] {
-  const lines = text.split(/\r?\n/);
   const net = parseOcpp(text);
   const raw = lintOcpp(net);
 
   return raw.map((d) => {
-    const l = Math.min(Math.max(0, d.line - 1), Math.max(0, lines.length - 1));
-    const lt = lines[l] ?? "";
-    let sChar = 0;
-    while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
-    const tok = lt.slice(sChar).match(/^[^\s=,;]+/);
-    const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
     const sev = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
     return {
-      range: {
-        start: { line: l, character: sChar },
-        end: { line: l, character: eChar },
-      },
+      range: getLineTokenRange(text, Math.max(0, d.line - 1)),
       severity: sev,
       code: d.code,
       source: "ocpp",

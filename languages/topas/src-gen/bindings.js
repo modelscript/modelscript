@@ -6980,7 +6980,7 @@ export function collectWasmSyntaxErrors(rootNode, maxErrors = 25) {
   return out;
 }
 
-export const semanticLegend = { tokenTypes: ["keyword"], tokenModifiers: [] };
+export const semanticLegend = { tokenTypes: ["keyword","type","class","variable","parameter","function","string","number","operator","comment","namespace","enumMember"], tokenModifiers: ["declaration","readonly"] };
 
 export const SyntaxKind = {
   ERROR: 0,
@@ -7145,12 +7145,6 @@ export const Cst = {
     },
     itemList(node) {
       return node ? node.childrenForFieldId(6) : [];
-    },
-    unit(node) {
-      return node ? node.childForFieldId(4) : null;
-    },
-    unitList(node) {
-      return node ? node.childrenForFieldId(4) : [];
     },
   },
   IncludeDirective: {

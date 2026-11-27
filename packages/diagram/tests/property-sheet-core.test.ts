@@ -242,6 +242,11 @@ describe("Property Inspector Core Engine", () => {
       assert.strictEqual(flushed.length, 1);
       assert.deepStrictEqual(flushed[0], [{ type: "move", items: [{ name: "r1", x: 25, y: 35 }] }]);
 
+      // Structural actions with structuralDelayMs === 0 flush synchronously without setTimeout delay
+      queue.enqueue({ type: "addComponent", className: "master:resistor", x: 100, y: 100 });
+      assert.strictEqual(flushed.length, 2);
+      assert.deepStrictEqual(flushed[1], [{ type: "addComponent", className: "master:resistor", x: 100, y: 100 }]);
+
       const runner = new SerializedDiagramEditRunner();
       const order: number[] = [];
       await Promise.all([

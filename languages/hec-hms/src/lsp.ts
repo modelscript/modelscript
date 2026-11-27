@@ -4,6 +4,9 @@
  * Language Server Protocol (LSP) services for USACE HEC-HMS.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintHmsBasin } from "./lints/index.js";
 import { parseHmsBasin } from "./parser/hms-parser.js";
 
@@ -63,37 +66,140 @@ export interface LspDiagnosticItem {
   source: string;
 }
 
+interface HmsCstBlockLoc {
+  range: LspRange;
+  selectionRange: LspRange;
+}
+
+interface HmsCstIndex {
+  rootRange: LspRange;
+  firstToken: LspRange;
+  elements: Map<string, HmsCstBlockLoc>;
+}
+
+function buildHmsCstIndex(text: string, cstTree?: { rootNode?: unknown } | null): HmsCstIndex {
+  const elements = new Map<string, HmsCstBlockLoc>();
+  let lineEntries: Array<{ row: number; text: string; startCol: number; endCol: number; firstTokEnd: number }> = [];
+
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("hec-hms", import.meta.url, createWasmParserSync).parse(text)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+
+  if (rootNode) {
+    const grouped = groupAllCstTokensByLine(rootNode as CstNodeLike);
+    lineEntries = grouped.map(({ row, tokens }) => {
+      const lineText = cstLineText(text, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const firstTokEnd = first?.endPosition?.column ?? startCol + Math.max(1, first?.text?.length ?? 1);
+      return { row, text: lineText, startCol, endCol, firstTokEnd };
+    });
+  } else {
+    const rawLines = text.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = raw.search(/\S/);
+      const firstTok = trimmed.match(/^[^\s;:,]+/)?.[0] ?? "";
+      lineEntries.push({
+        row: i,
+        text: trimmed,
+        startCol: Math.max(0, startCol),
+        endCol: Math.max(0, startCol) + trimmed.length,
+        firstTokEnd: Math.max(0, startCol) + Math.max(1, firstTok.length),
+      });
+    }
+  }
+
+  const firstEntry = lineEntries[0];
+  const lastEntry = lineEntries[lineEntries.length - 1];
+  const firstToken: LspRange = firstEntry
+    ? {
+        start: { line: firstEntry.row, character: firstEntry.startCol },
+        end: { line: firstEntry.row, character: Math.max(firstEntry.startCol + 1, firstEntry.firstTokEnd) },
+      }
+    : { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } };
+  const rootRange: LspRange = {
+    start: { line: 0, character: 0 },
+    end: { line: Math.max(1, (lastEntry?.row ?? 0) + 1), character: 0 },
+  };
+
+  let activeBlock: { name: string; startRow: number; startCol: number; selRange: LspRange } | null = null;
+  for (const entry of lineEntries) {
+    const trimmed = entry.text.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
+
+    if (trimmed === "End:" || trimmed === "End") {
+      if (activeBlock) {
+        const blockRange: LspRange = {
+          start: { line: activeBlock.startRow, character: activeBlock.startCol },
+          end: { line: entry.row, character: entry.endCol },
+        };
+        if (!elements.has(activeBlock.name)) {
+          elements.set(activeBlock.name, { range: blockRange, selectionRange: activeBlock.selRange });
+        }
+        activeBlock = null;
+      }
+      continue;
+    }
+
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx > 0 && !activeBlock) {
+      const blockType = trimmed.slice(0, colonIdx).trim();
+      const blockName = trimmed.slice(colonIdx + 1).trim();
+      if (
+        blockName &&
+        (blockType === "Basin" ||
+          blockType === "Subbasin" ||
+          blockType === "Reach" ||
+          blockType === "Junction" ||
+          blockType === "Reservoir" ||
+          blockType === "Sink")
+      ) {
+        const selRange: LspRange = {
+          start: { line: entry.row, character: entry.startCol },
+          end: { line: entry.row, character: entry.endCol },
+        };
+        activeBlock = { name: blockName, startRow: entry.row, startCol: entry.startCol, selRange };
+      }
+    }
+  }
+
+  if (activeBlock && !elements.has(activeBlock.name)) {
+    elements.set(activeBlock.name, { range: activeBlock.selRange, selectionRange: activeBlock.selRange });
+  }
+
+  return { rootRange, firstToken, elements };
+}
+
 /**
  * Generates document outline symbols for HEC-HMS models.
  */
-export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
+export function getDocumentSymbols(text: string, cstTree?: { rootNode?: unknown } | null): LspDocumentSymbol[] {
   const basin = parseHmsBasin(text);
+  const cstIndex = buildHmsCstIndex(text, cstTree);
   const symbols: LspDocumentSymbol[] = [];
 
-  const rootRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: Math.max(1, text.split("\n").length), character: 0 },
-  };
-
-  const lines = text.split(/\r?\n/);
-  const makeLineRange = (idx: number, labelLen: number): LspRange => {
-    const line = Math.min(idx, Math.max(0, lines.length - 1));
-    const endChar = Math.max(1, (lines[line] ?? "").trimEnd().length || labelLen);
-    return { start: { line, character: 0 }, end: { line, character: endChar } };
-  };
-
   // Subbasins
-  const subbasinChildren: LspDocumentSymbol[] = Array.from(basin.subbasins.values()).map((sb, idx) => {
-    const r = makeLineRange(idx + 5, sb.name.length);
+  const subbasinChildren: LspDocumentSymbol[] = Array.from(basin.subbasins.values()).map((sb) => {
+    const loc = cstIndex.elements.get(sb.name);
+    const range = loc?.range ?? cstIndex.firstToken;
+    const selectionRange = loc?.selectionRange ?? range;
     return {
       name: sb.name,
       detail: `Area: ${sb.area} ${basin.unitSystem === "Metric" ? "km²" : "mi²"}, CN=${sb.curveNumber ?? 75}`,
       kind: LspSymbolKind.Struct,
-      range: r,
-      selectionRange: {
-        start: r.start,
-        end: { line: r.start.line, character: Math.min(r.end.character, sb.name.length) },
-      },
+      range,
+      selectionRange,
     };
   });
 
@@ -101,23 +207,22 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
     name: "Subbasins",
     detail: `${basin.subbasins.size} subbasins`,
     kind: LspSymbolKind.Namespace,
-    range: rootRange,
-    selectionRange: rootRange,
+    range: cstIndex.rootRange,
+    selectionRange: cstIndex.rootRange,
     children: subbasinChildren,
   });
 
   // Reaches
-  const reachChildren: LspDocumentSymbol[] = Array.from(basin.reaches.values()).map((rc, idx) => {
-    const r = makeLineRange(idx + 15, rc.name.length);
+  const reachChildren: LspDocumentSymbol[] = Array.from(basin.reaches.values()).map((rc) => {
+    const loc = cstIndex.elements.get(rc.name);
+    const range = loc?.range ?? cstIndex.firstToken;
+    const selectionRange = loc?.selectionRange ?? range;
     return {
       name: rc.name,
       detail: `To: ${rc.downstream}, Muskingum K=${rc.muskingumK ?? 1} hr`,
       kind: LspSymbolKind.Property,
-      range: r,
-      selectionRange: {
-        start: r.start,
-        end: { line: r.start.line, character: Math.min(r.end.character, rc.name.length) },
-      },
+      range,
+      selectionRange,
     };
   });
 
@@ -125,8 +230,8 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
     name: "Reaches",
     detail: `${basin.reaches.size} reaches`,
     kind: LspSymbolKind.Namespace,
-    range: rootRange,
-    selectionRange: rootRange,
+    range: cstIndex.rootRange,
+    selectionRange: cstIndex.rootRange,
     children: reachChildren,
   });
 
@@ -136,24 +241,19 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
 /**
  * Computes linter diagnostics formatted for LSP.
  */
-export function getDiagnostics(text: string): LspDiagnosticItem[] {
+export function getDiagnostics(text: string, cstTree?: { rootNode?: unknown } | null): LspDiagnosticItem[] {
   const basin = parseHmsBasin(text);
-  const lines = text.split(/\r?\n/);
-  const lt = lines[0] ?? "";
-  let sChar = 0;
-  while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
-  const tok = lt.slice(sChar).match(/^[^\s;:,]+/);
-  const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
+  const cstIndex = buildHmsCstIndex(text, cstTree);
   const diags = lintHmsBasin(basin);
 
-  return diags.map((d) => ({
-    range: {
-      start: { line: 0, character: sChar },
-      end: { line: 0, character: eChar },
-    },
-    severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
-    code: d.code,
-    message: d.message,
-    source: "hec-hms-linter",
-  }));
+  return diags.map((d) => {
+    const loc = d.elementName ? cstIndex.elements.get(d.elementName) : undefined;
+    return {
+      range: loc?.selectionRange ?? cstIndex.firstToken,
+      severity: d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3,
+      code: d.code,
+      message: d.message,
+      source: "hec-hms-linter",
+    };
+  });
 }

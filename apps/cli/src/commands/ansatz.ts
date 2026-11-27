@@ -341,7 +341,7 @@ end ChuaCircuit;`;
         req.on("end", async () => {
           try {
             const payload = JSON.parse(body);
-            const { bundleExtension } = await import("@modelscript/dsl");
+            const { bundleExtension } = await import("@modelscript/ide-packager");
             const langInput = payload.languages || payload.language || { name: payload.name || "dsl", rules: {} };
             const files = bundleExtension(langInput, payload.options);
             res.writeHead(200, { "Content-Type": "application/json" });

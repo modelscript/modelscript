@@ -1,0 +1,81 @@
+{
+  "name": "@modelscript/cad-viewer",
+  "version": "0.1.0",
+  "description": "3D CAD, CAE, FEA/CFD, WebXR, and Zonotope viewport components for ModelScript",
+  "keywords": [
+    "modelscript",
+    "cad",
+    "cae",
+    "three",
+    "webgl",
+    "webxr",
+    "fea",
+    "cfd"
+  ],
+  "homepage": "https://modelscript.org",
+  "bugs": {
+    "url": "https://github.com/modelscript/modelscript/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/modelscript/modelscript.git",
+    "directory": "packages/cad-viewer"
+  },
+  "license": "AGPL-3.0-or-later",
+  "author": "ModelScript Contributors",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*.js": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "src/**",
+    "dist/**"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "lint": "eslint src --no-warn-ignored",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelscript/cad": "workspace:*",
+    "@modelscript/diagram": "workspace:*",
+    "@modelscript/modelica": "workspace:*",
+    "@modelscript/simulate": "workspace:*",
+    "@primer/octicons-react": "^19.23.1",
+    "@primer/react": "^38.14.0",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@react-three/xr": "^6.6.29",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/three": "^0.184.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "rimraf": "^6.1.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "modelscript": {
+    "tier": "beta",
+    "category": "core"
+  }
+}

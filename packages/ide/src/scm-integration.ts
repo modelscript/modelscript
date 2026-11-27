@@ -18,6 +18,12 @@ export interface GitExtensionExports {
   getAPI(version: number): { repositories: GitRepository[] } | undefined;
 }
 
+export function wrapVisualDiffHtml(bodyHtml: string): string {
+  const nonce = getNonce();
+  const sanitizedBody = bodyHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<script\b[^>]*>/gi, "");
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"></head><body>${sanitizedBody}</body></html>`;
+}
+
 export function registerScmIntegration(context: vscode.ExtensionContext, client: LanguageClient | undefined) {
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.scm.generateCommitMessage", async () => {
@@ -148,11 +154,7 @@ export function registerScmIntegration(context: vscode.ExtensionContext, client:
           },
         );
 
-        const wrapCsp = (bodyHtml: string) => {
-          const nonce = getNonce();
-          const withNoncedScripts = bodyHtml.replace(/<script(?=[>\s])/gi, `<script nonce="${nonce}"`);
-          return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';"></head><body>${withNoncedScripts}</body></html>`;
-        };
+        const wrapCsp = wrapVisualDiffHtml;
 
         if (!client) {
           panel.webview.html = wrapCsp("<h3>Language client not running.</h3>");

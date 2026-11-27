@@ -12,8 +12,8 @@ import {
   type SurfacePresentationMode,
   type TileLodTier,
 } from "@modelscript/canvas";
-import { EngineeringRotunda } from "@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js";
-import type { RotundaEnvironmentId } from "@modelscript/editor/workbench/vr-rotunda/types.js";
+import { EngineeringRotunda } from "@modelscript/rotunda/EngineeringRotunda.js";
+import type { RotundaEnvironmentId } from "@modelscript/rotunda/types.js";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { renderLiveWebTileContent } from "../canvas/LivePolyglotTileRenderer";
 import { SharedScissor3DHost } from "../canvas/SharedScissor3DHost";

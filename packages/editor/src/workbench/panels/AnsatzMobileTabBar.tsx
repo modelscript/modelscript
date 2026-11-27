@@ -33,7 +33,7 @@ export interface AnsatzMobileTabBarProps {
   simulationStatus: { status?: string } | null | undefined;
   dialect?: string | undefined;
   onSelectDialect?: ((dialect: string) => void) | undefined;
-  onNewModel?: ((e: React.MouseEvent) => void) | undefined;
+  onNewModel?: ((e?: React.MouseEvent) => void) | undefined;
   onOpenFile?: (() => void) | undefined;
   onSaveModel?: (() => void) | undefined;
   onAutoLayout?: (() => void) | undefined;
@@ -241,7 +241,7 @@ export const AnsatzMobileTabBar: React.FC<AnsatzMobileTabBarProps> = ({
             <ActionMenu.Overlay width="medium" align="end">
               <ActionList>
                 {onNewModel && (
-                  <ActionList.Item onSelect={(e) => onNewModel(e as unknown as React.MouseEvent)}>
+                  <ActionList.Item onSelect={() => onNewModel()}>
                     <ActionList.LeadingVisual>
                       <FileIcon />
                     </ActionList.LeadingVisual>
@@ -277,7 +277,7 @@ export const AnsatzMobileTabBar: React.FC<AnsatzMobileTabBarProps> = ({
                     Auto-Layout Diagram
                   </ActionList.Item>
                 )}
-                {activeLangInfo.supportsFlattening && onFlatten && (
+                {activeLangInfo.supportsSimulation && onFlatten && (
                   <ActionList.Item onSelect={onFlatten}>
                     <ActionList.LeadingVisual>
                       <UnwrapIcon />

@@ -6,6 +6,9 @@
  * Provides diagnostics, document symbols, hover documentation, and completions.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getDynamoSchemasFromLibraries, lookupDynamoFunctionSchema } from "./catalog/library-package-adapter.js";
 import { lintDynamo } from "./lints/index.js";
 import { parseDynamo } from "./parser/index.js";
@@ -93,19 +96,81 @@ const KIND_LABELS: Record<DynamoEquationKind, string> = {
   S: "Supplementary",
 };
 
+interface DynamoCstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface DynamoCstLineIndex {
+  byRow: Map<number, DynamoCstLineEntry>;
+  lastRow: number;
+  lastCol: number;
+}
+
+function buildDynamoCstLineIndex(content: string): DynamoCstLineIndex {
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("dynamo", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  const byRow = new Map<number, DynamoCstLineEntry>();
+  if (rootNode) {
+    let maxRow = 0;
+    let maxCol = 0;
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const text = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + text.length;
+      byRow.set(row, { row, text, startCol, endCol });
+      if (row >= maxRow) {
+        maxRow = row;
+        maxCol = endCol;
+      }
+    }
+    const rootEnd = (rootNode as { endPosition?: { row?: number; column?: number } }).endPosition;
+    const lastRow = Math.max(maxRow, rootEnd?.row ?? 0);
+    const lastCol = lastRow === maxRow ? maxCol : (rootEnd?.column ?? 0);
+    return { byRow, lastRow, lastCol };
+  }
+
+  const rawLines = content.split(/\r?\n/);
+  for (let i = 0; i < rawLines.length; i++) {
+    const raw = rawLines[i] ?? "";
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const startCol = Math.max(0, raw.search(/\S/));
+    byRow.set(i, { row: i, text: trimmed, startCol, endCol: startCol + trimmed.length });
+  }
+  const lastRow = Math.max(0, rawLines.length - 1);
+  return { byRow, lastRow, lastCol: (rawLines[lastRow] ?? "").length };
+}
+
+function cstLineAt(index: DynamoCstLineIndex, row: number): string {
+  const entry = index.byRow.get(row);
+  return entry ? " ".repeat(entry.startCol) + entry.text : "";
+}
+
 /**
  * Validates a DYNAMO document and returns LSP diagnostics.
  */
 export function validateDynamo(content: string, _uri = "model.dyn"): LspDiagnostic[] {
   const model = parseDynamo(content);
   const diags = lintDynamo(model);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildDynamoCstLineIndex(content);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
+    const lineText = cstLineAt(cstIndex, lineIdx);
+    const entry = cstIndex.byRow.get(lineIdx);
     let startChar = Math.max(0, d.column - 1);
-    let endChar = lineText.length;
+    let endChar = entry?.endCol ?? lineText.length;
 
     if (d.symbol) {
       const symIdx = lineText.toUpperCase().indexOf(d.symbol.toUpperCase());
@@ -133,18 +198,19 @@ export function validateDynamo(content: string, _uri = "model.dyn"): LspDiagnost
  */
 export function getDynamoDocumentSymbols(content: string, _uri = "model.dyn"): LspDocumentSymbol[] {
   const model = parseDynamo(content);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildDynamoCstLineIndex(content);
   const fullRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: Math.max(0, lines.length - 1), character: (lines[lines.length - 1] ?? "").length },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastCol },
   };
 
   const children: LspDocumentSymbol[] = model.equations.map((eq) => {
     const lineIdx = Math.max(0, eq.span.line - 1);
-    const lineText = lines[lineIdx] ?? "";
+    const entry = cstIndex.byRow.get(lineIdx);
+    const lineText = cstLineAt(cstIndex, lineIdx);
     const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: lineText.length },
+      start: { line: lineIdx, character: entry?.startCol ?? 0 },
+      end: { line: lineIdx, character: entry?.endCol ?? lineText.length },
     };
     const namePos = lineText.toUpperCase().indexOf(eq.name.toUpperCase());
     const selectionRange: LspRange =
@@ -206,9 +272,10 @@ function wordAtPosition(lineText: string, character: number): { word: string; st
  * Provides contextual hover documentation for DYNAMO symbols, keywords, and standard library functions.
  */
 export function getDynamoHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const lineText = lines[position.line];
-  if (lineText === undefined) return null;
+  const cstIndex = buildDynamoCstLineIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const lineText = " ".repeat(entry.startCol) + entry.text;
 
   const token = wordAtPosition(lineText, position.character);
   if (!token) return null;

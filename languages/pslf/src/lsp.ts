@@ -7,6 +7,9 @@
  * contextual hover tooltips, and intelligent completions for GE PSLF (.epc and .dyd) models.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintPslfDyd, lintPslfEpc, type PslfDiagnostic } from "./lints/index.js";
 import { parsePslfDyd } from "./parser/dyd-parser.js";
 import { parsePslfEpc } from "./parser/epc-parser.js";
@@ -84,12 +87,109 @@ export interface LspCompletionItem {
   insertText?: string | undefined;
 }
 
+interface PslfCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+  firstToken: string;
+  firstTokenEnd: number;
+}
+
+interface PslfCstIndex {
+  byRow: Map<number, PslfCstLine>;
+  entries: PslfCstLine[];
+  rootRange: LspRange;
+}
+
+function buildPslfCstIndex(content: string): PslfCstIndex {
+  const byRow = new Map<number, PslfCstLine>();
+  const entries: PslfCstLine[] = [];
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("pslf", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      const firstToken = (first?.text ?? lineText.split(/[\s,]+/)[0] ?? "").trim();
+      const firstTokenEnd = first?.endPosition?.column ?? startCol + Math.max(1, firstToken.length);
+      const entry: PslfCstLine = { row, text: lineText, colLine, startCol, endCol, firstToken, firstTokenEnd };
+      byRow.set(row, entry);
+      entries.push(entry);
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      const firstToken = trimmed.split(/[\s,]+/)[0] ?? "";
+      const entry: PslfCstLine = {
+        row: i,
+        text: trimmed,
+        colLine: raw,
+        startCol,
+        endCol,
+        firstToken,
+        firstTokenEnd: startCol + Math.max(1, firstToken.length),
+      };
+      byRow.set(i, entry);
+      entries.push(entry);
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  const rootRange: LspRange = {
+    start: { line: 0, character: 0 },
+    end: { line: lastRow, character: Math.max(1, lastEndCol) },
+  };
+  return { byRow, entries, rootRange };
+}
+
+function findPslfNeedleRange(cstIndex: PslfCstIndex, needle: string | number): LspRange {
+  const s = String(needle);
+  const found = cstIndex.entries.find((e) => e.text.includes(s));
+  if (!found) {
+    const first = cstIndex.entries[0];
+    return {
+      start: { line: first?.row ?? 0, character: first?.startCol ?? 0 },
+      end: { line: first?.row ?? 0, character: Math.max(1, first?.endCol ?? 1) },
+    };
+  }
+  return {
+    start: { line: found.row, character: found.startCol },
+    end: { line: found.row, character: Math.max(found.startCol + 1, found.endCol) },
+  };
+}
+
 /**
  * Validates a PSLF EPC (and optional companion DYD) model, producing LSP diagnostics.
  */
 export function validatePslf(epcSource: string, dydSource?: string): LspDiagnostic[] {
   const diags: LspDiagnostic[] = [];
-  const lines = epcSource.split(/\r?\n/);
+  const cstIndex = buildPslfCstIndex(epcSource);
 
   let epcCase: PslfEpcCase;
   try {
@@ -123,21 +223,19 @@ export function validatePslf(epcSource: string, dydSource?: string): LspDiagnost
     rawLints.push(...lintPslfDyd(dydCase, epcCase));
   }
   for (const lint of rawLints) {
-    let lineIdx = 0;
-    if (lint.element) {
-      const matchIdx = lines.findIndex((l) => l.includes(lint.element!));
-      if (matchIdx >= 0) lineIdx = matchIdx;
-    }
+    const range = lint.element
+      ? findPslfNeedleRange(cstIndex, lint.element)
+      : {
+          start: { line: 0, character: cstIndex.entries[0]?.startCol ?? 0 },
+          end: { line: 0, character: Math.max(1, cstIndex.entries[0]?.endCol ?? 1) },
+        };
 
     let sev: 1 | 2 | 3 | 4 = 1;
     if (lint.severity === "warning") sev = 2;
     else if (lint.severity === "info") sev = 3;
 
     diags.push({
-      range: {
-        start: { line: lineIdx, character: 0 },
-        end: { line: lineIdx, character: 30 },
-      },
+      range,
       severity: sev,
       code: lint.code,
       source: "pslf-linter",
@@ -153,7 +251,7 @@ export function validatePslf(epcSource: string, dydSource?: string): LspDiagnost
  */
 export function getPslfDocumentSymbols(epcSource: string): LspDocumentSymbol[] {
   const symbols: LspDocumentSymbol[] = [];
-  const lines = epcSource.split(/\r?\n/);
+  const cstIndex = buildPslfCstIndex(epcSource);
 
   let epcCase: PslfEpcCase;
   try {
@@ -162,23 +260,17 @@ export function getPslfDocumentSymbols(epcSource: string): LspDocumentSymbol[] {
     return symbols;
   }
 
-  const findLine = (needle: string | number): number => {
-    const s = String(needle);
-    const idx = lines.findIndex((l) => l.includes(s));
-    return idx >= 0 ? idx : 0;
-  };
-
   // 1. Buses
   if (epcCase.buses.size > 0) {
     const busSymbols: LspDocumentSymbol[] = [];
     for (const b of epcCase.buses.values()) {
-      const lineIdx = findLine(b.busNumber);
+      const range = findPslfNeedleRange(cstIndex, b.busNumber);
       busSymbols.push({
         name: `Bus ${b.busNumber}: ${b.name.trim()}`,
         detail: `${b.baseKv} kV (Type ${b.busType})`,
         kind: LspSymbolKind.Field,
-        range: { start: { line: lineIdx, character: 0 }, end: { line: lineIdx, character: 20 } },
-        selectionRange: { start: { line: lineIdx, character: 0 }, end: { line: lineIdx, character: 20 } },
+        range,
+        selectionRange: range,
       });
     }
 
@@ -186,8 +278,8 @@ export function getPslfDocumentSymbols(epcSource: string): LspDocumentSymbol[] {
       name: "Buses",
       detail: `${epcCase.buses.size} buses`,
       kind: LspSymbolKind.Package,
-      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
+      range: cstIndex.rootRange,
+      selectionRange: cstIndex.rootRange,
       children: busSymbols,
     });
   }
@@ -196,13 +288,13 @@ export function getPslfDocumentSymbols(epcSource: string): LspDocumentSymbol[] {
   if (epcCase.generators.length > 0) {
     const genSymbols: LspDocumentSymbol[] = [];
     for (const g of epcCase.generators) {
-      const lineIdx = findLine(g.busNumber);
+      const range = findPslfNeedleRange(cstIndex, g.busNumber);
       genSymbols.push({
         name: `Gen @ Bus ${g.busNumber} [${g.genId.trim()}]`,
         detail: `P=${g.pgMw} MW, Q=${g.qgMvar} Mvar`,
         kind: LspSymbolKind.Method,
-        range: { start: { line: lineIdx, character: 0 }, end: { line: lineIdx, character: 20 } },
-        selectionRange: { start: { line: lineIdx, character: 0 }, end: { line: lineIdx, character: 20 } },
+        range,
+        selectionRange: range,
       });
     }
 
@@ -210,8 +302,8 @@ export function getPslfDocumentSymbols(epcSource: string): LspDocumentSymbol[] {
       name: "Generators",
       detail: `${epcCase.generators.length} machines`,
       kind: LspSymbolKind.Module,
-      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
+      range: cstIndex.rootRange,
+      selectionRange: cstIndex.rootRange,
       children: genSymbols,
     });
   }
@@ -220,13 +312,13 @@ export function getPslfDocumentSymbols(epcSource: string): LspDocumentSymbol[] {
   if (epcCase.branches.length > 0) {
     const branchSymbols: LspDocumentSymbol[] = [];
     for (const br of epcCase.branches) {
-      const lineIdx = findLine(br.fromBus);
+      const range = findPslfNeedleRange(cstIndex, br.fromBus);
       branchSymbols.push({
         name: `Line ${br.fromBus} -> ${br.toBus}`,
         detail: `R=${br.rPu} pu, X=${br.xPu} pu`,
         kind: LspSymbolKind.Class,
-        range: { start: { line: lineIdx, character: 0 }, end: { line: lineIdx, character: 20 } },
-        selectionRange: { start: { line: lineIdx, character: 0 }, end: { line: lineIdx, character: 20 } },
+        range,
+        selectionRange: range,
       });
     }
 
@@ -234,8 +326,8 @@ export function getPslfDocumentSymbols(epcSource: string): LspDocumentSymbol[] {
       name: "Transmission Branches",
       detail: `${epcCase.branches.length} branches`,
       kind: LspSymbolKind.Module,
-      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 20 } },
+      range: cstIndex.rootRange,
+      selectionRange: cstIndex.rootRange,
       children: branchSymbols,
     });
   }
@@ -256,17 +348,20 @@ const PSLF_RECORD_DOCS: Record<string, string> = {
  * Returns contextual hover information for PSLF EPC record types.
  */
 export function getPslfHover(epcSource: string, pos: LspPosition): LspHover | undefined {
-  const lines = epcSource.split(/\r?\n/);
-  if (pos.line >= lines.length) return undefined;
-  const line = lines[pos.line] ?? "";
+  const cstIndex = buildPslfCstIndex(epcSource);
+  const entry = cstIndex.byRow.get(pos.line);
+  if (!entry) return undefined;
 
-  const trimmed = line.trim();
-  const firstToken = trimmed.split(/[\s,]+/)[0]?.toUpperCase();
+  const firstToken = entry.firstToken.toUpperCase();
   if (firstToken && PSLF_RECORD_DOCS[firstToken]) {
     return {
       contents: {
         kind: "markdown",
         value: PSLF_RECORD_DOCS[firstToken]!,
+      },
+      range: {
+        start: { line: pos.line, character: entry.startCol },
+        end: { line: pos.line, character: entry.firstTokenEnd },
       },
     };
   }

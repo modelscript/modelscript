@@ -63,10 +63,15 @@ export {
 } from "./drop-placeholder.js";
 export {
   evaluateModelScriptPortCompatibility,
+  evaluateStructuralPortSignatureCompatibility,
   inferCanonicalPortDomain,
   normalizeConnectorTypeFamily,
   type CanonicalPortDomain,
   type CanonicalPortPolarity,
+  type DiagramPortDirection,
+  type DiagramPortFlowKind,
+  type DiagramPortSignature,
+  type DiagramPortVariable,
   type ModelScriptPortCompatibilityOptions,
   type ModelScriptPortCompatibilityResult,
   type ModelScriptPortDescriptor,

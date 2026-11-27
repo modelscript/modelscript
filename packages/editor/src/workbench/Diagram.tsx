@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  Scissor3DViewport,
+  SharedScissor3DHost,
+  type Embedded3DPortalKind,
+} from "@modelscript/cad-viewer/SharedScissor3DHost";
+import {
   autoLayoutDiagramAsync,
   disposeDiagram,
   dropComponentGhost,
@@ -22,7 +27,6 @@ import {
 import type { DiagramData } from "@modelscript/diagram/protocol";
 import type { Theme } from "@monaco-editor/react";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Scissor3DViewport, SharedScissor3DHost, type Embedded3DPortalKind } from "./cad-viewer/SharedScissor3DHost";
 import { DiagramZonotopeOverlay } from "./panels/DiagramZonotopeOverlay";
 import { clearPlacement, movePlacementGhost } from "./placement";
 import type { AnsatzRelationalHypergraphRecord } from "./util/lsp-bridge";
@@ -173,8 +177,9 @@ interface DiagramEditorProps {
   onAutoLayout?: (() => void) | undefined;
   selectedName?: string | null | undefined;
   theme: Theme;
+  language?: string | undefined;
   isLoading?: boolean | undefined;
-  onRenderComplete?: ((diagramData: DiagramData) => void) | undefined;
+  onRenderComplete?: ((diagramData: DiagramData | null) => void) | undefined;
   onInteractiveWrite?: ((variableName: string, value: unknown, nodeId: string) => void) | undefined;
   onAction?: ((action: Record<string, unknown>) => void) | undefined;
   onMessage?: ((msg: unknown) => void) | undefined;
@@ -193,6 +198,7 @@ interface DiagramEditorProps {
 }
 
 type DiagramGraphInstance = {
+  isDisposed?: () => boolean;
   cleanSelection?: () => void;
   select?: (cell: unknown) => void;
   centerCell?: (cell: unknown, opts?: { animation?: { duration?: number } }) => void;
@@ -231,6 +237,7 @@ type DiagramGraphInstance = {
   animationEngine?: { bindVariableIndices?: (m: Map<string, number>) => void } | undefined;
   timelineStore?:
     | {
+        getVarIndexMap?: () => Map<string, number>;
         loadTrajectories?: (time: Float64Array, signals: Record<string, Float64Array>) => void;
         seek?: (time: number) => { currentTime: number };
         setPlaying?: (playing: boolean) => void;
@@ -370,6 +377,7 @@ const PIN_PLOT_PALETTE = ["#38bdf8", "#34d399", "#f59e0b", "#f472b6"] as const;
 const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const isInternalSelectionRef = useRef<string | null>(null);
+  const isSyncingExternalSelectionRef = useRef<boolean>(false);
   const widgetCounterRef = useRef(0);
   const scrubHistoryRef = useRef<Array<{ time: number; values: Record<string, number> }>>([]);
   const mountedRef = useRef(true);
@@ -559,48 +567,66 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     setDiagramOptions({
       container: containerRef.current,
       isDark: props.theme === "vs-dark",
+      ...(props.language ? { language: props.language } : {}),
       onAction: (action) => {
         const p = propsRef.current;
-        const actionRec = action as unknown as Record<string, unknown>;
+        const actionRec: Record<string, unknown> = { ...action };
         switch (action.type) {
-          case "move":
-            if (p.onMove) p.onMove(action.items);
+          case "move": {
+            const items = actionRec.items as Parameters<NonNullable<DiagramEditorProps["onMove"]>>[0];
+            if (p.onMove) p.onMove(items);
             else p.onAction?.(actionRec);
             break;
-          case "resize":
-            if (p.onResize)
-              p.onResize(
-                action.item.name,
-                action.item.x,
-                action.item.y,
-                action.item.width,
-                action.item.height,
-                action.item.rotation,
-                action.item.edges,
-              );
+          }
+          case "resize": {
+            const item = actionRec.item as {
+              name: string;
+              x: number;
+              y: number;
+              width: number;
+              height: number;
+              rotation: number;
+              edges?: { source: string; target: string; points: { x: number; y: number }[] }[];
+            };
+            if (p.onResize) p.onResize(item.name, item.x, item.y, item.width, item.height, item.rotation, item.edges);
             else p.onAction?.(actionRec);
             break;
-          case "connect":
-            if (p.onConnect) p.onConnect(action.source, action.target, action.points);
+          }
+          case "connect": {
+            const source = actionRec.source as string;
+            const target = actionRec.target as string;
+            const points = actionRec.points as { x: number; y: number }[] | undefined;
+            if (p.onConnect) p.onConnect(source, target, points);
             else p.onAction?.(actionRec);
             break;
-          case "disconnect":
-            if (p.onEdgeDelete) p.onEdgeDelete(action.source, action.target);
+          }
+          case "disconnect": {
+            const source = actionRec.source as string;
+            const target = actionRec.target as string;
+            if (p.onEdgeDelete) p.onEdgeDelete(source, target);
             else p.onAction?.(actionRec);
             break;
-          case "moveEdge":
-            if (p.onEdgeMove) p.onEdgeMove(action.edges);
+          }
+          case "moveEdge": {
+            const edges = actionRec.edges as { source: string; target: string; points: { x: number; y: number }[] }[];
+            if (p.onEdgeMove) p.onEdgeMove(edges);
             else p.onAction?.(actionRec);
             break;
-          case "deleteComponents":
-            if (p.onComponentsDelete) p.onComponentsDelete(action.names);
-            else if (p.onComponentDelete && action.names.length > 0) p.onComponentDelete(action.names[0]!);
+          }
+          case "deleteComponents": {
+            const names = actionRec.names as string[];
+            if (p.onComponentsDelete) p.onComponentsDelete(names);
+            else if (p.onComponentDelete && names.length > 0) p.onComponentDelete(names[0]!);
             else p.onAction?.(actionRec);
             break;
-          case "interactiveWrite":
-            if (p.onInteractiveWrite) p.onInteractiveWrite(action.variableName, action.value, action.nodeId);
+          }
+          case "interactiveWrite": {
+            const variableName = String(actionRec.variableName ?? "");
+            const nodeId = String(actionRec.nodeId ?? "");
+            if (p.onInteractiveWrite) p.onInteractiveWrite(variableName, actionRec.value, nodeId);
             else p.onAction?.(actionRec);
             break;
+          }
           default:
             // Forward addComponent, reconnect, updateName, updateProperty, rotate, etc.
             p.onAction?.(actionRec);
@@ -608,10 +634,12 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }
       },
       onSelect: (id) => {
+        if (isSyncingExternalSelectionRef.current) return;
         isInternalSelectionRef.current = id;
         if (propsRef.current.onSelect) propsRef.current.onSelect(id);
       },
       onShowProperties: (id, cachedProps, isLoading) => {
+        if (isSyncingExternalSelectionRef.current) return;
         isInternalSelectionRef.current = id;
         if (propsRef.current.onShowProperties) {
           propsRef.current.onShowProperties(id, cachedProps, isLoading);
@@ -993,7 +1021,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (g) {
         return autoLayoutDiagramAsync(g);
       } else if (typeof window !== "undefined") {
-        window.postMessage({ type: "autoLayout" }, "*");
+        const targetOrigin = window.location.origin && window.location.origin !== "null" ? window.location.origin : "*";
+        window.postMessage({ type: "autoLayout" }, targetOrigin);
         return true;
       }
       return false;
@@ -1296,11 +1325,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const configuredWasmUrl =
-      (typeof window !== "undefined" &&
-        ((window as unknown as { __MODELSCRIPT_WASM_URL__?: string }).__MODELSCRIPT_WASM_URL__ ||
-          container.dataset?.["wasmUrl"])) ||
-      "/lsp/server/dist/release.wasm";
+    const windowWasmUrl =
+      typeof window !== "undefined" &&
+      "__MODELSCRIPT_WASM_URL__" in window &&
+      typeof window.__MODELSCRIPT_WASM_URL__ === "string"
+        ? window.__MODELSCRIPT_WASM_URL__
+        : undefined;
+    const configuredWasmUrl = windowWasmUrl || container.dataset?.["wasmUrl"] || "/lsp/server/dist/release.wasm";
     void hydrateDiagramWasm(configuredWasmUrl);
 
     const target = container.parentElement ?? container;
@@ -1317,13 +1348,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
             if (resizeTimer) clearTimeout(resizeTimer);
             resizeTimer = setTimeout(() => {
               const g = getGraphFor(container);
-              const zoomable = g as unknown as {
-                isDisposed?: () => boolean;
-                zoomToRect?: (rect: unknown, options?: unknown) => void;
-                zoomToFit?: (options?: unknown) => void;
-                centerContent?: () => void;
-              };
-              if (g && (typeof zoomable.isDisposed === "function" ? !zoomable.isDisposed() : true)) {
+              const gInst = g as DiagramGraphInstance | null;
+              if (g && (typeof gInst?.isDisposed === "function" ? !gInst.isDisposed() : true)) {
                 g.resize(Math.round(width), Math.round(height));
                 // Only fit/center automatically if the canvas had not yet been fitted in a visible viewport
                 // (e.g., transitioning from a 0x0 hidden tab). Subsequent resizes such as opening/closing the
@@ -1331,13 +1357,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 if (
                   !hasFittedViewportRef.current &&
                   propsRef.current.diagramData &&
-                  !propsRef.current.diagramData.isLoading
+                  !propsRef.current.diagramData.isLoading &&
+                  gInst
                 ) {
                   hasFittedViewportRef.current = true;
-                  applyDiagramViewportFit(g, width, height, 24);
+                  applyDiagramViewportFit(gInst, width, height, 24);
                 }
-                const gInst = g as DiagramGraphInstance;
-                if (typeof gInst.zoom === "function") {
+                if (typeof gInst?.zoom === "function") {
                   propsRef.current.onZoomChange?.(Math.round(gInst.zoom() * 100) / 100);
                 }
                 syncEmbeddedPortals();
@@ -1421,7 +1447,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     } else if (!props.diagramData && containerRef.current) {
       try {
         syncDiagramOptions();
-        renderDiagram({ nodes: [], edges: [] } as unknown as DiagramData, props.theme === "vs-dark");
+        renderDiagram(
+          { nodes: [], edges: [], coordinateSystem: null, diagramBackground: null },
+          props.theme === "vs-dark",
+        );
         attachGraphListeners();
         syncEmbeddedPortals();
       } catch {
@@ -1461,7 +1490,12 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (!g) return;
       if (!props.selectedName || isEphemeralDiagramNode(props.selectedName)) {
         isInternalSelectionRef.current = null;
-        g.cleanSelection?.();
+        isSyncingExternalSelectionRef.current = true;
+        try {
+          g.cleanSelection?.();
+        } finally {
+          isSyncingExternalSelectionRef.current = false;
+        }
       } else {
         const isInternal = isInternalSelectionRef.current === props.selectedName;
         isInternalSelectionRef.current = null;
@@ -1469,8 +1503,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         const cell = g.getCellById?.(props.selectedName);
         if (cell) {
           if (!isInternal) {
-            g.cleanSelection?.();
-            g.select?.(cell);
+            isSyncingExternalSelectionRef.current = true;
+            try {
+              g.cleanSelection?.();
+              g.select?.(cell);
+            } finally {
+              isSyncingExternalSelectionRef.current = false;
+            }
           }
         }
       }
@@ -1716,10 +1755,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         }
         g?.syncPlotCrosshair?.(scrubTime);
         if (detail.values && g?.tickAnimations) {
-          const existingMap =
-            (
-              g as unknown as { timelineStore?: { getVarIndexMap?: () => Map<string, number> } }
-            ).timelineStore?.getVarIndexMap?.() ?? simDataRef.current?.varIndexMap;
+          const existingMap = g.timelineStore?.getVarIndexMap?.() ?? simDataRef.current?.varIndexMap;
           if (existingMap && existingMap.size > 0) {
             const frame = new Float64Array(existingMap.size);
             frame.fill(Number.NaN);

@@ -8,6 +8,9 @@
  * for Wavefront OBJ (`.obj`) and MTL (`.mtl`) files.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { getObjSchemasFromLibraries, lookupObjSchema } from "./catalog/library-package-adapter.js";
 import { lintMtl, lintObj } from "./lints/index.js";
 import { parseMtl } from "./parser/mtl-parser.js";
@@ -187,18 +190,77 @@ function isMtlContent(content: string, uri?: string): boolean {
   return /^\s*newmtl\s+/m.test(content) && !/^\s*v\s+/m.test(content);
 }
 
+interface ObjCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface ObjCstIndex {
+  byRow: Map<number, ObjCstLine>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildObjCstIndex(content: string): ObjCstIndex {
+  const byRow = new Map<number, ObjCstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("obj", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validate a Wavefront OBJ or MTL file and return LSP diagnostics.
  */
 export function validateObj(content: string, uri = "model.obj", companionMtl?: MtlDocument): LspDiagnostic[] {
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildObjCstIndex(content);
   const diags = isMtlContent(content, uri) ? lintMtl(parseMtl(content)) : lintObj(parseObj(content), companionMtl);
 
   return diags.map((d) => {
     const lineIdx = Math.max(0, d.line - 1);
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
     return {
       range: {
         start: { line: lineIdx, character: startChar },
@@ -216,15 +278,21 @@ export function validateObj(content: string, uri = "model.obj", companionMtl?: M
  * Return hierarchical LSP document symbols for a Wavefront OBJ or MTL file.
  */
 export function getObjDocumentSymbols(content: string, uri = "model.obj"): LspDocumentSymbol[] {
+  const cstIndex = buildObjCstIndex(content);
+  const mkLineRange = (lineIdx: number, fallbackLen = 1): LspRange => {
+    const entry = cstIndex.byRow.get(lineIdx);
+    return {
+      start: { line: lineIdx, character: entry?.startCol ?? 0 },
+      end: { line: lineIdx, character: Math.max(1, entry?.endCol ?? fallbackLen) },
+    };
+  };
+
   if (isMtlContent(content, uri)) {
     const mtl = parseMtl(content);
     const out: LspDocumentSymbol[] = [];
     for (const mat of mtl.materials.values()) {
       const lineIdx = Math.max(0, mat.line - 1);
-      const range: LspRange = {
-        start: { line: lineIdx, character: 0 },
-        end: { line: lineIdx, character: Math.max(1, (mtl.rawLines[lineIdx] ?? "").length) },
-      };
+      const range = mkLineRange(lineIdx, (mtl.rawLines[lineIdx] ?? "").length);
       out.push({
         name: mat.name,
         detail: mat.illum !== undefined ? `illum ${mat.illum}` : "MTL Material",
@@ -242,10 +310,7 @@ export function getObjDocumentSymbols(content: string, uri = "model.obj"): LspDo
 
   for (const obj of doc.objects) {
     const lineIdx = Math.max(0, obj.line - 1);
-    const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: Math.max(1, (doc.rawLines[lineIdx] ?? "").length) },
-    };
+    const range = mkLineRange(lineIdx, (doc.rawLines[lineIdx] ?? "").length);
     children.push({
       name: obj.name,
       detail: `Object (${obj.faceIndices.length} faces)`,
@@ -257,10 +322,7 @@ export function getObjDocumentSymbols(content: string, uri = "model.obj"): LspDo
 
   for (const grp of doc.groups) {
     const lineIdx = Math.max(0, grp.line - 1);
-    const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: Math.max(1, (doc.rawLines[lineIdx] ?? "").length) },
-    };
+    const range = mkLineRange(lineIdx, (doc.rawLines[lineIdx] ?? "").length);
     children.push({
       name: grp.name,
       detail: `Group (${grp.faceIndices.length} faces)`,
@@ -272,10 +334,7 @@ export function getObjDocumentSymbols(content: string, uri = "model.obj"): LspDo
 
   for (const mat of doc.usedMaterials) {
     const lineIdx = Math.max(0, mat.line - 1);
-    const range: LspRange = {
-      start: { line: lineIdx, character: 0 },
-      end: { line: lineIdx, character: Math.max(1, (doc.rawLines[lineIdx] ?? "").length) },
-    };
+    const range = mkLineRange(lineIdx, (doc.rawLines[lineIdx] ?? "").length);
     children.push({
       name: mat.name,
       detail: "usemtl",
@@ -285,10 +344,9 @@ export function getObjDocumentSymbols(content: string, uri = "model.obj"): LspDo
     });
   }
 
-  const lastLine = Math.max(0, doc.rawLines.length - 1);
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: lastLine, character: (doc.rawLines[lastLine] ?? "").length },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   return [
@@ -307,9 +365,10 @@ export function getObjDocumentSymbols(content: string, uri = "model.obj"): LspDo
  * Provide markdown hover documentation for Wavefront OBJ/MTL directives and standard materials.
  */
 export function getObjHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildObjCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = entry.colLine;
 
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith("#")) return null;
@@ -357,8 +416,8 @@ export function getObjHover(content: string, position: LspPosition): LspHover | 
  * Provide keyword and standard engineering material completions for Wavefront OBJ/MTL files.
  */
 export function getObjCompletions(content: string, position: LspPosition, uri = "model.obj"): LspCompletionItem[] {
-  const lines = content.split(/\r?\n/);
-  const linePrefix = (lines[position.line] ?? "").slice(0, position.character).trim();
+  const cstIndex = buildObjCstIndex(content);
+  const linePrefix = (cstIndex.byRow.get(position.line)?.colLine ?? "").slice(0, position.character).trim();
 
   // If completing after `usemtl`, suggest standard engineering materials
   if (/^usemtl\b/i.test(linePrefix)) {

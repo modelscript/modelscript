@@ -4,11 +4,18 @@ import { CompletionItem, CompletionItemKind, Connection, TextDocuments } from "v
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import type { CstTreeLike } from "../utils/ast-utils.js";
+import type { Tree } from "../utils/cst-facade.js";
+import { getWasmCstCompletions } from "./wasm-cst-intelligence.js";
+
+export type CompletionTreeEntryLike =
+  { tree?: Tree | CstTreeLike | null | undefined } | Tree | CstTreeLike | null | undefined;
 
 export function registerCompletionProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
   documentLSPBridges: Map<string, LSPBridge>,
+  documentTrees?: ReadonlyMap<string, CompletionTreeEntryLike>,
 ) {
   connection.onCompletion((params): CompletionItem[] => {
     // NOTE: We intentionally do NOT call flushValidation() here.
@@ -29,6 +36,13 @@ export function registerCompletionProvider(
       }
     }
 
+    const resolveDocTree = (): Tree | null => {
+      const entry = documentTrees?.get(params.textDocument.uri);
+      if (!entry) return null;
+      const tree = "tree" in entry ? entry.tree : entry;
+      return tree && "rootNode" in tree && tree.rootNode ? (tree as Tree) : null;
+    };
+
     const bridge = documentLSPBridges.get(params.textDocument.uri);
 
     if (!bridge) {
@@ -38,15 +52,25 @@ export function registerCompletionProvider(
             const comps = plugin.facade.getCompletions(offset, text);
             if (comps && comps.length > 0) return comps;
           } catch {
-            // Facade completion failed; fall back to Monarch keyword completions below.
+            // Facade completion failed; fall back to CST / Monarch keyword completions below.
           }
         }
+        const cstItems = getWasmCstCompletions(resolveDocTree(), plugin.facade?.syntaxNames);
         if (plugin.monarch?.keywords) {
-          return plugin.monarch.keywords.map((kw: string) => ({
-            label: kw,
-            kind: CompletionItemKind.Keyword,
-          }));
+          const seen = new Set(cstItems.map((i) => i.label));
+          const merged = [...cstItems];
+          for (const kw of plugin.monarch.keywords) {
+            if (!seen.has(kw)) {
+              seen.add(kw);
+              merged.push({ label: kw, kind: CompletionItemKind.Keyword });
+            }
+          }
+          if (merged.length > 0) return merged;
         }
+        if (cstItems.length > 0) return cstItems;
+      } else {
+        const cstItems = getWasmCstCompletions(resolveDocTree());
+        if (cstItems.length > 0) return cstItems;
       }
       return [];
     }
@@ -74,6 +98,11 @@ export function registerCompletionProvider(
             }
           : {}),
       }));
+    }
+
+    const cstItems = getWasmCstCompletions(resolveDocTree(), plugin?.facade?.syntaxNames);
+    if (cstItems.length > 0) {
+      return cstItems;
     }
 
     return [];

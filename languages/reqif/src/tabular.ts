@@ -34,6 +34,8 @@ import {
   type TabularValidationResult,
   type WritebackEdit,
 } from "@modelscript/dsl";
+import { CstDocumentSession, CstTransaction, CstXmlAdapter } from "@modelscript/dsl/unparser";
+import { getXmlWasmParser } from "@modelscript/dsl/xml";
 import { extractAsilLevel, extractFormalContract, parseReqIf, serializeReqIf } from "./parser/reqif-parser.js";
 import {
   checkContractEntailment,
@@ -716,6 +718,128 @@ function buildSerializedMutationResult(
 }
 
 /**
+ * Attempts a surgical CST-backed XML writeback for a single ReqIF requirement cell update,
+ * preserving all untouched XML, comments, header metadata, and formatting.
+ * Returns `null` when a brand-new attribute element must be synthesized via full serialization.
+ */
+function trySurgicalReqIfCellUpdate(
+  xmlContent: string,
+  rowId: string,
+  columnId: string,
+  newValue: unknown,
+  so: ReqIfSpecObject,
+): TabularMutationResult | null {
+  let xmlParser: unknown = null;
+  try {
+    xmlParser = getXmlWasmParser();
+  } catch {
+    xmlParser = null;
+  }
+  const session = new CstDocumentSession({
+    uri: "file:///requirements.reqif",
+    text: xmlContent,
+    parser: xmlParser as never,
+    xmlFallback: true,
+  });
+  try {
+    const root = session.rootNode;
+    if (!root) return null;
+    const specObjEl = CstXmlAdapter.findElementByAttr(root, xmlContent, "IDENTIFIER", rowId, "SPEC-OBJECT");
+    if (!specObjEl) return null;
+
+    const tx = new CstTransaction(session);
+    const strVal = newValue === null || newValue === undefined ? "" : String(newValue);
+
+    const updateAttributeValueByDefRef = (defPredicate: (defRef: string) => boolean, valueStr: string): boolean => {
+      const attrValEls = CstXmlAdapter.findElements(specObjEl, xmlContent, (_n, tag) =>
+        tag.toUpperCase().startsWith("ATTRIBUTE-VALUE-"),
+      );
+      let updated = false;
+      for (const avEl of attrValEls) {
+        const defRefEl = CstXmlAdapter.findElements(
+          avEl,
+          xmlContent,
+          (_n, tag) => tag.toUpperCase().endsWith("-REF") && tag.toUpperCase().includes("ATTRIBUTE-DEFINITION"),
+        )[0];
+        const defRef = defRefEl ? CstXmlAdapter.getElementText(defRefEl, xmlContent) : "";
+        if (!defPredicate(defRef)) continue;
+
+        const tagUpper = (CstXmlAdapter.getTagName(avEl, xmlContent) ?? "").toUpperCase();
+        if (tagUpper === "ATTRIBUTE-VALUE-ENUMERATION") {
+          const enumRefEl = CstXmlAdapter.findElements(
+            avEl,
+            xmlContent,
+            (_n, tag) => tag.toUpperCase() === "ENUM-VALUE-REF",
+          )[0];
+          if (enumRefEl && !CstXmlAdapter.isSelfClosing(enumRefEl, xmlContent)) {
+            CstXmlAdapter.setElementText(tx, enumRefEl, valueStr);
+            updated = true;
+            continue;
+          }
+        }
+        const theValueEl = CstXmlAdapter.findElements(
+          avEl,
+          xmlContent,
+          (_n, tag) => tag.toUpperCase() === "THE-VALUE",
+        )[0];
+        if (theValueEl && !CstXmlAdapter.isSelfClosing(theValueEl, xmlContent)) {
+          CstXmlAdapter.setElementText(tx, theValueEl, valueStr);
+          updated = true;
+        } else if (CstXmlAdapter.getAttribute(avEl, "THE-VALUE", xmlContent)) {
+          CstXmlAdapter.setAttribute(tx, avEl, "THE-VALUE", valueStr);
+          updated = true;
+        }
+      }
+      return updated;
+    };
+
+    if (columnId === "longName") {
+      if (!CstXmlAdapter.setAttribute(tx, specObjEl, "LONG-NAME", strVal.trim())) return null;
+    } else if (columnId === "text" || columnId === "contract") {
+      const nextText = columnId === "contract" ? applyContractToRequirementText(so.text, strVal) : strVal;
+      const didUpdate = updateAttributeValueByDefRef((defRef) => {
+        const attr = so.attributes.get(defRef);
+        return (
+          defRef.toLowerCase().includes("text") ||
+          (attr?.name ?? "").toLowerCase().includes("text") ||
+          attr?.kind === "STRING" ||
+          attr?.kind === "XHTML"
+        );
+      }, nextText);
+      if (!didUpdate) return null;
+    } else if (columnId === "asilLevel" || columnId === "status") {
+      const needle = columnId === "asilLevel" ? "asil" : "status";
+      const didUpdate = updateAttributeValueByDefRef((defRef) => {
+        const attr = so.attributes.get(defRef);
+        return `${defRef} ${attr?.name ?? ""}`.toLowerCase().includes(needle);
+      }, strVal);
+      if (!didUpdate) return null;
+    } else if (columnId.startsWith("attr:")) {
+      const attrId = columnId.slice("attr:".length);
+      if (!updateAttributeValueByDefRef((defRef) => defRef === attrId, strVal)) return null;
+    } else {
+      return null;
+    }
+
+    const res = tx.commit();
+    if (res.byteEdits.length === 0) return null;
+    const edits: WritebackEdit[] = res.byteEdits.map((b) => ({
+      startOffset: b.start,
+      endOffset: b.end,
+      newText: b.text,
+    }));
+    return {
+      success: true,
+      edits,
+      newText: res.applyToString(xmlContent),
+      affectedRowId: rowId,
+    };
+  } finally {
+    session.dispose();
+  }
+}
+
+/**
  * Updates a cell on a `SPEC-OBJECT` row in Sheet 1 (`requirements`) and writes back to ReqIF XML.
  */
 export function updateReqIfRequirementCell(
@@ -733,6 +857,12 @@ export function updateReqIfRequirementCell(
       newText: xmlContent,
       error: `SPEC-OBJECT '${rowId}' not found in ReqIF document.`,
     };
+  }
+
+  // Surgical CST writeback fast path (preserves untouched XML, comments, and formatting)
+  const surgical = trySurgicalReqIfCellUpdate(xmlContent, rowId, columnId, newValue, so);
+  if (surgical) {
+    return surgical;
   }
 
   const strVal = newValue === null || newValue === undefined ? "" : String(newValue);

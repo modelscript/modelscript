@@ -18,12 +18,12 @@ import {
   type SurfacePresentationMode,
   type TileLodTier,
 } from "@modelscript/canvas";
-import type { EngineeringRotundaProps, RotundaEnvironmentId } from "@modelscript/editor/workbench/vr-rotunda/types.js";
+import type { EngineeringRotundaProps, RotundaEnvironmentId } from "@modelscript/rotunda/types.js";
 import React, { Component, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const LazyEngineeringRotunda = React.lazy(async () => {
-  const mod = (await import("@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js")) as {
+  const mod = (await import("@modelscript/rotunda/EngineeringRotunda.js")) as {
     default?: React.ComponentType<EngineeringRotundaProps>;
     EngineeringRotunda?: React.ComponentType<EngineeringRotundaProps>;
   };

@@ -161,6 +161,12 @@
   /* Extended --ms-* surface and accent aliases */
   --ms-surface-1: var(--ms-bg-elv);
   --ms-surface-2: var(--ms-bg-soft);
+  --ms-bg-canvas: var(--ms-bg);
+  --ms-bg-surface: var(--ms-bg-alt);
+  --ms-bg-elevated: var(--ms-bg-elv);
+  --ms-surface-panel: var(--color-bg-card);
+  --ms-border-default: var(--ms-border);
+  --ms-border-subtle: var(--ms-divider);
   --ms-accent: var(--ms-brand);
   --ms-accent-subtle: var(--ms-brand-soft);
 }

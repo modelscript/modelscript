@@ -222,13 +222,17 @@ export default defineConfig([
       "apps/api/src/**/*.{ts,tsx}",
       "apps/desktop/src/**/*.{ts,tsx}",
       "packages/cad/src/**/*.{ts,tsx}",
+      "packages/cad-viewer/src/**/*.{ts,tsx}",
       "packages/canvas/src/**/*.{ts,tsx}",
       "packages/dsl/src/**/*.{ts,tsx}",
+      "packages/editor/src/**/*.{ts,tsx}",
       "packages/embed/src/**/*.{ts,tsx}",
       "packages/exchange/src/**/*.{ts,tsx}",
       "packages/ide/src/**/*.{ts,tsx}",
+      "packages/ide-packager/src/**/*.{ts,tsx}",
       "packages/lsp/src/**/*.{ts,tsx}",
       "packages/react/src/**/*.{ts,tsx}",
+      "packages/rotunda/src/**/*.{ts,tsx}",
       "packages/runtime/src/**/*.{ts,tsx}",
       "packages/simulate/src/**/*.{ts,tsx}",
     ],
@@ -321,11 +325,33 @@ export default defineConfig([
     },
   },
   {
-    files: ["packages/editor/src/workbench/**/*.{ts,tsx}", "packages/editor/src/internal/**/*.{ts,tsx}"],
+    files: ["packages/editor/src/**/*.{ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.browser,
+    },
     rules: {
+      ...reactHooks.configs.flat.recommended.rules,
+      "react-hooks/set-state-in-effect": "off",
       "react-hooks/refs": "off",
       "react-hooks/exhaustive-deps": "off",
       "react-hooks/immutability": "off",
+    },
+  },
+  {
+    files: ["packages/cad-viewer/src/**/*.{ts,tsx}", "packages/rotunda/src/**/*.{ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.browser,
+    },
+    rules: {
+      ...reactHooks.configs.flat.recommended.rules,
+      "react-hooks/set-state-in-effect": "off",
+      // Three.js / React Three Fiber requires imperative mutations of GPU/WebGL
+      // objects returned by useThree() and useMemo() (scene, gl, camera, textures,
+      // geometries, planes) inside useEffect and useFrame.
+      "react-hooks/immutability": "off",
+      "react-hooks/exhaustive-deps": "error",
     },
   },
   {
@@ -344,8 +370,6 @@ export default defineConfig([
       "packages/**/tests/**/*.{ts,tsx,js,cjs,mjs}",
       "languages/**/tests/**/*.{ts,tsx,js,cjs,mjs}",
       "packages/examples/**/*.{ts,js,cjs,mjs}",
-      "packages/editor/src/workbench/**/*.{ts,tsx}",
-      "packages/editor/src/internal/**/*.{ts,tsx}",
     ],
     languageOptions: {
       parserOptions: {

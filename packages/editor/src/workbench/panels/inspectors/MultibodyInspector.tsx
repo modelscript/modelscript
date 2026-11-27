@@ -78,31 +78,33 @@ export function analyzeMultibodyKinematics(code: string, lines: string[]): Multi
   if (code.includes("<robot") || code.includes("<link") || code.includes("<joint")) {
     try {
       const urdf = parseUrdf(code);
-      for (const link of urdf.links) {
+      const urdfJoints = Array.from(urdf.joints.values());
+      for (const link of urdf.links.values()) {
         const ln = findLine(lines, `name="${link.name}"`);
+        const xyz = link.inertial?.origin?.xyz;
         bodies.push({
           name: link.name,
           mass: link.inertial?.mass ?? 0,
-          com: link.inertial?.originXyz ?? [0, 0, 0],
-          ixx: link.inertial?.inertia?.ixx ?? 0,
-          iyy: link.inertial?.inertia?.iyy ?? 0,
-          izz: link.inertial?.inertia?.izz ?? 0,
-          isGround: !urdf.joints.some((j) => j.child === link.name),
+          com: xyz ? [xyz.x, xyz.y, xyz.z] : [0, 0, 0],
+          ixx: link.inertial?.ixx ?? 0,
+          iyy: link.inertial?.iyy ?? 0,
+          izz: link.inertial?.izz ?? 0,
+          isGround: !urdfJoints.some((j) => j.childLink === link.name),
           line: ln,
         });
       }
-      for (const j of urdf.joints) {
+      for (const j of urdfJoints) {
         const typeLower = j.type.toLowerCase();
         const ln = findLine(lines, `name="${j.name}"`);
         joints.push({
           name: j.name,
           type: typeLower,
-          parent: j.parent,
-          child: j.child,
+          parent: j.parentLink,
+          child: j.childLink,
           dof: JOINT_DOF[typeLower] ?? 1,
-          lower: j.limit?.lower,
-          upper: j.limit?.upper,
-          effort: j.limit?.effort,
+          lower: j.limits?.lower,
+          upper: j.limits?.upper,
+          effort: j.limits?.effort,
           line: ln,
         });
       }

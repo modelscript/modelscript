@@ -327,10 +327,88 @@ export function syncAlignmentGuidesDom(guidesG: SVGGElement | null, guides: Alig
   }
 }
 
+function setPortIncompatibleTooltip(el: Element, reason: string | null): void {
+  if (reason) {
+    el.setAttribute?.("data-incompatible-reason", reason);
+    const existing = el.querySelector?.("title.ms-incompat-title") as SVGTitleElement | null | undefined;
+    if (existing) {
+      existing.textContent = reason;
+    } else if (el.ownerDocument?.createElementNS && typeof el.appendChild === "function") {
+      const titleEl = el.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "title");
+      titleEl.setAttribute("class", "ms-incompat-title");
+      titleEl.textContent = reason;
+      el.appendChild(titleEl);
+    }
+  } else {
+    el.removeAttribute?.("data-incompatible-reason");
+    const existing = el.querySelector?.("title.ms-incompat-title");
+    existing?.remove?.();
+  }
+}
+
+function syncIncompatiblePillDom(
+  overlayG: SVGGElement | null | undefined,
+  target: { x: number; y: number } | null | undefined,
+  reason: string | null | undefined,
+): void {
+  if (!overlayG) return;
+  const existing = overlayG.querySelector?.(".ms-incompat-pill");
+  if (!target || !reason) {
+    existing?.remove?.();
+    return;
+  }
+  const doc = overlayG.ownerDocument;
+  if (!doc?.createElementNS) return;
+  existing?.remove?.();
+
+  const pillG = doc.createElementNS(SVG_NS, "g");
+  pillG.setAttribute("class", "ms-incompat-pill");
+  pillG.setAttribute("pointer-events", "none");
+  pillG.setAttribute("data-incompatible-reason", reason);
+
+  const label = reason.length > 56 ? `${reason.slice(0, 53)}…` : reason;
+  const charWidth = 6.2;
+  const padX = 8;
+  const pillW = Math.max(84, Math.round(label.length * charWidth + padX * 2));
+  const pillH = 22;
+  const rx = target.x - pillW / 2;
+  const ry = target.y - pillH - 12;
+
+  const rect = doc.createElementNS(SVG_NS, "rect");
+  rect.setAttribute("x", String(rx));
+  rect.setAttribute("y", String(ry));
+  rect.setAttribute("width", String(pillW));
+  rect.setAttribute("height", String(pillH));
+  rect.setAttribute("rx", "5");
+  rect.setAttribute("fill", "rgba(15, 23, 42, 0.94)");
+  rect.setAttribute("stroke", "#ef4444");
+  rect.setAttribute("stroke-width", "1");
+
+  const text = doc.createElementNS(SVG_NS, "text");
+  text.setAttribute("x", String(target.x));
+  text.setAttribute("y", String(ry + 14.5));
+  text.setAttribute("text-anchor", "middle");
+  text.setAttribute("fill", "#fecaca");
+  text.setAttribute("font-size", "11");
+  text.setAttribute("font-family", "system-ui, -apple-system, sans-serif");
+  text.textContent = label;
+
+  pillG.appendChild(rect);
+  pillG.appendChild(text);
+  overlayG.appendChild(pillG);
+}
+
 export function syncMagnetHighlightsDom(
   nodesG: SVGGElement | null,
   preview: WiringPreview | null,
   canConnect?: (sourceNodeId: string, sourcePortId: string, targetNodeId: string, targetPortId: string) => boolean,
+  getRejectionReason?: (
+    sourceNodeId: string,
+    sourcePortId: string,
+    targetNodeId: string,
+    targetPortId: string,
+  ) => string | null | undefined,
+  overlayG?: SVGGElement | null,
 ): void {
   if (!nodesG) return;
   nodesG.classList?.toggle("ms-wiring-active", Boolean(preview));
@@ -340,6 +418,7 @@ export function syncMagnetHighlightsDom(
     el.classList.remove("ms-magnet-available");
     el.classList.remove("ms-magnet-adsorbed");
     el.classList.remove("ms-magnet-incompatible");
+    setPortIncompatibleTooltip(el, null);
     if (!preview) return;
     const cellId = el.closest?.("[data-cell-id]")?.getAttribute("data-cell-id");
     const portId = el.getAttribute("port") ?? el.getAttribute("port-id");
@@ -355,8 +434,24 @@ export function syncMagnetHighlightsDom(
     } else {
       const ok = canConnect ? canConnect(preview.sourceNodeId, preview.sourcePortId, cellId, portId) : true;
       el.classList.add(ok ? "ms-magnet-available" : "ms-magnet-incompatible");
+      if (!ok && getRejectionReason) {
+        const reason = getRejectionReason(preview.sourceNodeId, preview.sourcePortId, cellId, portId);
+        if (reason) setPortIncompatibleTooltip(el, reason);
+      }
     }
   });
+
+  if (preview?.incompatibleTarget && getRejectionReason) {
+    const reason = getRejectionReason(
+      preview.sourceNodeId,
+      preview.sourcePortId,
+      preview.incompatibleTarget.nodeId,
+      preview.incompatibleTarget.portId,
+    );
+    syncIncompatiblePillDom(overlayG, preview.incompatibleTarget, reason);
+  } else {
+    syncIncompatiblePillDom(overlayG, null, null);
+  }
 }
 
 export function syncHoveredPortDom(

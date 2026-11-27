@@ -6,6 +6,9 @@
  * Provides diagnostics, document symbols, and hover documentation for IBM MPS decks.
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintMps } from "./lints/index.js";
 import { parseMps } from "./parser/mps-parser.js";
 
@@ -75,19 +78,78 @@ const MPS_SECTION_DOCS: Record<string, string> = {
   ENDATA: "**ENDATA** — Terminates the MPS problem deck.",
 };
 
+interface MpsCstLine {
+  row: number;
+  text: string;
+  colLine: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface MpsCstIndex {
+  byRow: Map<number, MpsCstLine>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildMpsCstIndex(content: string): MpsCstIndex {
+  const byRow = new Map<number, MpsCstLine>();
+  let lastRow = 0;
+  let lastEndCol = 0;
+
+  let rootNode: CstNodeLike | null = null;
+  try {
+    rootNode =
+      (getOrLoadLanguageWasmParser("mps", import.meta.url, createWasmParserSync).parse(content)?.rootNode as
+        CstNodeLike | undefined) ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      const colLine = startCol > 0 ? " ".repeat(startCol) + lineText : lineText;
+      byRow.set(row, { row, text: lineText, colLine, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, colLine: raw, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates an MPS document and returns LSP diagnostics.
  */
 export function validateMps(content: string, _uri: string = "problem.mps"): LspDiagnostic[] {
   const model = parseMps(content);
   const diags = lintMps(model);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildMpsCstIndex(content);
 
   return diags.map((d) => {
     const lineNum = d.line ? Math.max(0, d.line - 1) : 0;
-    const lineText = lines[lineNum] ?? "";
-    const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const entry = cstIndex.byRow.get(lineNum);
+    const startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
 
     return {
       range: {
@@ -107,16 +169,20 @@ export function validateMps(content: string, _uri: string = "problem.mps"): LspD
  */
 export function getMpsDocumentSymbols(content: string, _uri: string = "problem.mps"): LspDocumentSymbol[] {
   const model = parseMps(content);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
+  const cstIndex = buildMpsCstIndex(content);
+
+  const mkLineRange = (ln: number): LspRange => {
+    const entry = cstIndex.byRow.get(ln);
+    return {
+      start: { line: ln, character: entry?.startCol ?? 0 },
+      end: { line: ln, character: entry?.endCol ?? 0 },
+    };
+  };
 
   const rowSymbols: LspDocumentSymbol[] = [];
   for (const row of model.rows.values()) {
     const ln = row.span ? Math.max(0, row.span.line - 1) : 0;
-    const range: LspRange = {
-      start: { line: ln, character: 0 },
-      end: { line: ln, character: (lines[ln] ?? "").length },
-    };
+    const range = mkLineRange(ln);
     const senseLabel = row.type === "N" ? "Objective" : row.type === "L" ? "<=" : row.type === "G" ? ">=" : "=";
     rowSymbols.push({
       name: row.name,
@@ -130,10 +196,7 @@ export function getMpsDocumentSymbols(content: string, _uri: string = "problem.m
   const colSymbols: LspDocumentSymbol[] = [];
   for (const col of model.columns.values()) {
     const ln = col.span ? Math.max(0, col.span.line - 1) : 0;
-    const range: LspRange = {
-      start: { line: ln, character: 0 },
-      end: { line: ln, character: (lines[ln] ?? "").length },
-    };
+    const range = mkLineRange(ln);
     const lbStr = Number.isFinite(col.lb) ? String(col.lb) : "-inf";
     const ubStr = Number.isFinite(col.ub) ? String(col.ub) : "+inf";
     colSymbols.push({
@@ -147,8 +210,9 @@ export function getMpsDocumentSymbols(content: string, _uri: string = "problem.m
 
   const rootRange: LspRange = {
     start: { line: 0, character: 0 },
-    end: { line: lastLine, character: (lines[lastLine] ?? "").length },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
+  const firstEntry = cstIndex.byRow.get(0);
 
   return [
     {
@@ -156,7 +220,10 @@ export function getMpsDocumentSymbols(content: string, _uri: string = "problem.m
       detail: `${model.problemClass} (${model.sense}) — ${model.rows.size} rows, ${model.columns.size} cols`,
       kind: LspSymbolKind.Package,
       range: rootRange,
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: (lines[0] ?? "").length } },
+      selectionRange: {
+        start: { line: 0, character: firstEntry?.startCol ?? 0 },
+        end: { line: 0, character: firstEntry?.endCol ?? 0 },
+      },
       children: [...rowSymbols, ...colSymbols],
     },
   ];
@@ -166,9 +233,10 @@ export function getMpsDocumentSymbols(content: string, _uri: string = "problem.m
  * Provides hover information for MPS section headers, row names, and column variables.
  */
 export function getMpsHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildMpsCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+  const line = entry.colLine;
 
   // Extract token under cursor
   let start = position.character;

@@ -8,6 +8,9 @@
  * - Completions (GDSII record keywords & cleanroom CMOS stdlib presets)
  */
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { cstLineText, groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { DEFAULT_CMOS_LAYER_STACK, lowerGdsiiToGeometry } from "./cad/index.js";
 import { getGdsiiSchemasFromLibraries, lookupGdsiiSchema } from "./catalog/library-package-adapter.js";
 import { lintGdsii, type GdsiiLintOptions } from "./lints/index.js";
@@ -99,19 +102,73 @@ const GDSII_KEYWORD_DOCS: Record<string, string> = {
   ENDLIB: "**ENDLIB** — Terminates the GDSII library stream.",
 };
 
+interface CstLineEntry {
+  row: number;
+  text: string;
+  startCol: number;
+  endCol: number;
+}
+
+interface GdsiiCstIndex {
+  byRow: Map<number, CstLineEntry>;
+  lastRow: number;
+  lastEndCol: number;
+}
+
+function buildGdsiiCstIndex(content: string): GdsiiCstIndex {
+  const byRow = new Map<number, CstLineEntry>();
+  let rootNode: unknown = null;
+  try {
+    rootNode =
+      getOrLoadLanguageWasmParser("gdsii", import.meta.url, createWasmParserSync).parse(content)?.rootNode ?? null;
+  } catch {
+    rootNode = null;
+  }
+
+  let lastRow = 0;
+  let lastEndCol = 0;
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const lineText = cstLineText(content, tokens);
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startCol = first?.startPosition?.column ?? 0;
+      const endCol = last?.endPosition?.column ?? startCol + lineText.length;
+      byRow.set(row, { row, text: lineText, startCol, endCol });
+      if (row >= lastRow) {
+        lastRow = row;
+        lastEndCol = endCol;
+      }
+    }
+  } else {
+    const rawLines = content.split(/\r?\n/);
+    for (let i = 0; i < rawLines.length; i++) {
+      const raw = rawLines[i] ?? "";
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const startCol = Math.max(0, raw.search(/\S/));
+      const endCol = startCol + trimmed.length;
+      byRow.set(i, { row: i, text: trimmed, startCol, endCol });
+      lastRow = i;
+      lastEndCol = endCol;
+    }
+  }
+  return { byRow, lastRow, lastEndCol };
+}
+
 /**
  * Validates a GDSII GDT/ASCII layout document and returns LSP diagnostics.
  */
 export function validateGdsii(content: string, options?: GdsiiLintOptions): LspDiagnostic[] {
   const library = parseGdsiiAscii(content);
   const diags = lintGdsii(library, options);
-  const lines = content.split(/\r?\n/);
+  const cstIndex = buildGdsiiCstIndex(content);
 
   return diags.map((d) => {
     const lineIdx = d.line ? Math.max(0, d.line - 1) : 0;
-    const lineText = lines[lineIdx] ?? "";
-    const startChar = d.column ? Math.max(0, d.column - 1) : 0;
-    const endChar = Math.max(startChar + 1, lineText.length);
+    const entry = cstIndex.byRow.get(lineIdx);
+    const startChar = d.column ? Math.max(0, d.column - 1) : (entry?.startCol ?? 0);
+    const endChar = Math.max(startChar + 1, entry?.endCol ?? startChar + 1);
     const severity: 1 | 2 | 3 = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
 
     return {
@@ -132,25 +189,26 @@ export function validateGdsii(content: string, options?: GdsiiLintOptions): LspD
  */
 export function getGdsiiDocumentSymbols(content: string): LspDocumentSymbol[] {
   const library = parseGdsiiAscii(content);
-  const lines = content.split(/\r?\n/);
-  const lastLine = Math.max(0, lines.length - 1);
+  const cstIndex = buildGdsiiCstIndex(content);
   const fullRange: LspRange = {
-    start: { line: 0, character: 0 },
-    end: { line: lastLine, character: (lines[lastLine] ?? "").length },
+    start: { line: 0, character: cstIndex.byRow.get(0)?.startCol ?? 0 },
+    end: { line: cstIndex.lastRow, character: cstIndex.lastEndCol },
   };
 
   const structSymbols: LspDocumentSymbol[] = library.structures.map((struct) => {
     const startLine = Math.max(0, (struct.line ?? 1) - 1);
+    const sEntry = cstIndex.byRow.get(startLine);
     const range: LspRange = {
-      start: { line: startLine, character: 0 },
-      end: { line: startLine, character: (lines[startLine] ?? "").length },
+      start: { line: startLine, character: sEntry?.startCol ?? 0 },
+      end: { line: startLine, character: sEntry?.endCol ?? 0 },
     };
 
     const children: LspDocumentSymbol[] = struct.elements.map((el, idx) => {
       const elLine = Math.max(0, (el.line ?? struct.line ?? 1) - 1);
+      const eEntry = cstIndex.byRow.get(elLine);
       const elRange: LspRange = {
-        start: { line: elLine, character: 0 },
-        end: { line: elLine, character: (lines[elLine] ?? "").length },
+        start: { line: elLine, character: eEntry?.startCol ?? 0 },
+        end: { line: elLine, character: eEntry?.endCol ?? 0 },
       };
       let name = `${el.kind.toUpperCase()} #${idx + 1}`;
       let detail: string | undefined;
@@ -185,13 +243,17 @@ export function getGdsiiDocumentSymbols(content: string): LspDocumentSymbol[] {
     };
   });
 
+  const firstEntry = cstIndex.byRow.get(0);
   return [
     {
       name: library.name,
       detail: `GDSII v${library.version} (${library.structures.length} structures)`,
       kind: LspSymbolKind.Package,
       range: fullRange,
-      selectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: (lines[0] ?? "").length } },
+      selectionRange: {
+        start: { line: 0, character: firstEntry?.startCol ?? 0 },
+        end: { line: 0, character: firstEntry?.endCol ?? 0 },
+      },
       children: structSymbols,
     },
   ];
@@ -201,9 +263,13 @@ export function getGdsiiDocumentSymbols(content: string): LspDocumentSymbol[] {
  * Provides Markdown hover documentation for keywords, layer numbers, structures, or stdlib schemas.
  */
 export function getGdsiiHover(content: string, position: LspPosition): LspHover | null {
-  const lines = content.split(/\r?\n/);
-  const line = lines[position.line];
-  if (!line) return null;
+  const cstIndex = buildGdsiiCstIndex(content);
+  const entry = cstIndex.byRow.get(position.line);
+  if (!entry) return null;
+
+  const line = entry.text;
+  const relChar = position.character - entry.startCol;
+  if (relChar < 0 || relChar > line.length) return null;
 
   // Find token under cursor
   const tokenRegex = /[A-Za-z0-9_]+/g;
@@ -211,12 +277,12 @@ export function getGdsiiHover(content: string, position: LspPosition): LspHover 
   while ((match = tokenRegex.exec(line)) !== null) {
     const start = match.index;
     const end = start + match[0].length;
-    if (position.character >= start && position.character <= end) {
+    if (relChar >= start && relChar <= end) {
       const token = match[0];
       const upper = token.toUpperCase();
       const range: LspRange = {
-        start: { line: position.line, character: start },
-        end: { line: position.line, character: end },
+        start: { line: position.line, character: entry.startCol + start },
+        end: { line: position.line, character: entry.startCol + end },
       };
 
       // 1. Keyword documentation

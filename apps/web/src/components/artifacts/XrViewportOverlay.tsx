@@ -6,7 +6,7 @@ import {
   playRotundaCue,
   useXrCapabilities,
   type XrCapabilities,
-} from "@modelscript/editor/workbench/vr-rotunda/xr-session.js";
+} from "@modelscript/rotunda/xr-session.js";
 import { XR } from "@react-three/xr";
 import React, { Suspense, useCallback, useMemo, useState } from "react";
 

@@ -215,6 +215,10 @@ export class DiagramActionQueue<T extends DiagramActionLike = DiagramActionLike>
     }
 
     const delay = isSpatialDiagramAction(action) ? this.spatialDelayMs : this.structuralDelayMs;
+    if (delay <= 0) {
+      this.flush();
+      return;
+    }
     this.timer = setTimeout(() => {
       this.flush();
     }, delay);

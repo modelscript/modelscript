@@ -1214,6 +1214,11 @@ export function lsp_semanticTokens_full(astRoot: u32): u32 {
         let tokenTypeId = load<i32>(type_semantic_data + ((semOffset + 1 + i * 3 + 1) << 2));
         let bitmask = load<i32>(type_semantic_data + ((semOffset + 1 + i * 3 + 2) << 2));
 
+        if (childIdx == -1) {
+          emitSemanticTokensForNode(node, nodeStart, tokenTypeId, bitmask, inputLength);
+          continue;
+        }
+
         let child = getNodeFirstChild(node);
         let childCount = 0;
         let targetChild: u32 = 0;

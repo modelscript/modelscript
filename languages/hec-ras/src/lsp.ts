@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { getOrLoadLanguageWasmParser } from "@modelscript/dsl";
+import { groupAllCstTokensByLine, type CstNodeLike } from "@modelscript/runtime";
+import { createWasmParserSync } from "../src-gen/bindings.js";
 import { lintHecRas } from "./lints/rules.js";
 import { parseHecRas } from "./parser/hec-ras-parser.js";
 
@@ -59,8 +62,69 @@ export interface LspDiagnostic {
   message: string;
 }
 
-export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
+interface HecRasCstLineSpan {
+  startChar: number;
+  endChar: number;
+  firstTokenEnd: number;
+}
+
+function buildHecRasCstLineMap(
+  text: string,
+  cstTree?: { rootNode?: unknown } | null,
+): { spans: Map<number, HecRasCstLineSpan>; maxRow: number } {
+  const spans = new Map<number, HecRasCstLineSpan>();
+  let maxRow = 0;
+
+  let rootNode: unknown = cstTree?.rootNode ?? null;
+  if (!rootNode) {
+    try {
+      rootNode =
+        getOrLoadLanguageWasmParser("hec-ras", import.meta.url, createWasmParserSync).parse(text)?.rootNode ?? null;
+    } catch {
+      rootNode = null;
+    }
+  }
+
+  if (rootNode) {
+    for (const { row, tokens } of groupAllCstTokensByLine(rootNode as CstNodeLike)) {
+      const first = tokens[0] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const last = tokens[tokens.length - 1] as (CstNodeLike & { endPosition?: { column: number } }) | undefined;
+      const startChar = first?.startPosition?.column ?? 0;
+      const lastEnd =
+        last?.endPosition?.column ?? (last?.startPosition?.column ?? startChar) + Math.max(1, last?.text?.length ?? 1);
+      const firstEnd = first?.endPosition?.column ?? startChar + Math.max(1, first?.text?.length ?? 1);
+      const endChar = Math.max(startChar + 1, lastEnd);
+      const firstTokenEnd = Math.max(startChar + 1, firstEnd);
+      spans.set(row, { startChar, endChar, firstTokenEnd });
+      if (row > maxRow) maxRow = row;
+    }
+    return { spans, maxRow };
+  }
+
+  const lines = text.split(/\r?\n/);
+  maxRow = Math.max(0, lines.length - 1);
+  for (let i = 0; i < lines.length; i++) {
+    const lt = lines[i] ?? "";
+    let sChar = 0;
+    while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
+    const tok = lt.slice(sChar).match(/^[^\s=,;]+/);
+    const firstTokenEnd = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
+    spans.set(i, {
+      startChar: sChar,
+      endChar: Math.max(1, lt.trimEnd().length),
+      firstTokenEnd: Math.max(sChar + 1, firstTokenEnd),
+    });
+  }
+  return { spans, maxRow };
+}
+
+export function getDocumentSymbols(text: string, cstTree?: { rootNode?: unknown } | null): LspDocumentSymbol[] {
   const { geometry, flow } = parseHecRas(text);
+  const { spans, maxRow } = buildHecRasCstLineMap(text, cstTree);
+  const clampedEnd = (lineIdx: number, fallback: number): number => {
+    const clamped = Math.min(Math.max(0, lineIdx), maxRow);
+    return spans.get(clamped)?.endChar ?? fallback;
+  };
   const symbols: LspDocumentSymbol[] = [];
 
   if (geometry) {
@@ -68,16 +132,10 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
       const reachKey = `${r.river},${r.reach}`;
       const csChildren: LspDocumentSymbol[] = [];
 
-      const lines = text.split(/\r?\n/);
-      const clampedEnd = (lineIdx: number, fallback: number): number => {
-        const lt = lines[Math.min(Math.max(0, lineIdx), Math.max(0, lines.length - 1))] ?? "";
-        return lt.length > 0 ? Math.max(1, lt.trimEnd().length) : fallback;
-      };
-
       for (const cs of geometry.crossSections) {
         if (cs.river === r.river && cs.reach === r.reach) {
           const l = Math.max(0, cs.line - 1);
-          const endLine = Math.min(l + 5, Math.max(l, lines.length - 1));
+          const endLine = Math.min(l + 5, Math.max(l, maxRow));
           csChildren.push({
             name: `CS ${cs.station}`,
             detail: cs.description ?? `${cs.stationElevations.length} points, n=${cs.manning.channel}`,
@@ -91,7 +149,7 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
       for (const st of geometry.inlineStructures) {
         if (st.river === r.river && st.reach === r.reach) {
           const l = Math.max(0, st.line - 1);
-          const endLine = Math.min(l + 3, Math.max(l, lines.length - 1));
+          const endLine = Math.min(l + 3, Math.max(l, maxRow));
           csChildren.push({
             name: `Weir ${st.station}`,
             detail: `Crest: ${st.weirCrestElevation} m, L: ${st.weirLength} m`,
@@ -103,7 +161,7 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
       }
 
       const l = Math.max(0, r.line - 1);
-      const reachEndLine = Math.min(l + csChildren.length * 5, Math.max(l, lines.length - 1));
+      const reachEndLine = Math.min(l + csChildren.length * 5, Math.max(l, maxRow));
       symbols.push({
         name: `Reach ${reachKey}`,
         detail: `${r.coords.length} centerline coordinates`,
@@ -119,18 +177,15 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
   }
 
   if (flow) {
-    const lines = text.split(/\r?\n/);
     for (const bc of flow.boundaryConditions) {
       const l = Math.max(0, bc.line - 1);
-      const endLine = Math.min(l + 2, Math.max(l, lines.length - 1));
-      const endLineChar = Math.max(1, (lines[endLine] ?? "").trimEnd().length);
-      const selChar = Math.max(1, (lines[l] ?? "").trimEnd().length);
+      const endLine = Math.min(l + 2, Math.max(l, maxRow));
       symbols.push({
         name: `BC: ${bc.river} ${bc.reach} Sta ${bc.station}`,
         detail: `${bc.type}${bc.frictionSlope ? ` (S=${bc.frictionSlope})` : ""}`,
         kind: LspSymbolKind.Event,
-        range: { start: { line: l, character: 0 }, end: { line: endLine, character: endLineChar } },
-        selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: selChar } },
+        range: { start: { line: l, character: 0 }, end: { line: endLine, character: clampedEnd(endLine, 20) } },
+        selectionRange: { start: { line: l, character: 0 }, end: { line: l, character: clampedEnd(l, 20) } },
       });
     }
   }
@@ -138,19 +193,17 @@ export function getDocumentSymbols(text: string): LspDocumentSymbol[] {
   return symbols;
 }
 
-export function getDiagnostics(text: string): LspDiagnostic[] {
+export function getDiagnostics(text: string, cstTree?: { rootNode?: unknown } | null): LspDiagnostic[] {
   const { geometry, flow } = parseHecRas(text);
   if (!geometry) return [];
 
-  const lines = text.split(/\r?\n/);
+  const { spans, maxRow } = buildHecRasCstLineMap(text, cstTree);
   const rawDiags = lintHecRas(geometry, flow);
   return rawDiags.map((d) => {
-    const l = Math.min(Math.max(0, d.line - 1), Math.max(0, lines.length - 1));
-    const lt = lines[l] ?? "";
-    let sChar = 0;
-    while (sChar < lt.length && (lt[sChar] === " " || lt[sChar] === "\t")) sChar++;
-    const tok = lt.slice(sChar).match(/^[^\s=,;]+/);
-    const eChar = Math.min(lt.length, sChar + (tok ? tok[0].length : 1));
+    const l = Math.min(Math.max(0, d.line - 1), maxRow);
+    const span = spans.get(l);
+    const sChar = span?.startChar ?? 0;
+    const eChar = span?.firstTokenEnd ?? Math.max(1, sChar + 1);
     const sev = d.severity === "error" ? 1 : d.severity === "warning" ? 2 : 3;
     return {
       range: {
@@ -173,9 +226,26 @@ export interface LspHover {
   range?: LspRange | undefined;
 }
 
-export function getHecRasHover(text: string, pos: LspPosition): LspHover | null {
-  const symbols = getDocumentSymbols(text);
+export function getHecRasHover(
+  text: string,
+  pos: LspPosition,
+  cstTree?: { rootNode?: unknown } | null,
+): LspHover | null {
+  const symbols = getDocumentSymbols(text, cstTree);
   for (const s of symbols) {
+    if (s.children) {
+      for (const child of s.children) {
+        if (pos.line >= child.range.start.line && pos.line <= child.range.end.line) {
+          return {
+            contents: {
+              kind: "markdown",
+              value: `**HEC-RAS ${child.name}**\n\n${child.detail ?? ""}`,
+            },
+            range: child.range,
+          };
+        }
+      }
+    }
     if (pos.line >= s.range.start.line && pos.line <= s.range.end.line) {
       return {
         contents: {

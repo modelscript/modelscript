@@ -19,6 +19,7 @@ import {
 } from "@modelscript/diagram/segy-trace";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -147,11 +148,14 @@ export class SeismicViewerPanel extends BaseWebviewPanel {
     const dtMs = survey.binaryHeader.sampleIntervalUs / 1000;
     const nSamples = survey.binaryHeader.samplesPerTrace;
     const totalDurationMs = nSamples * dtMs;
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SEG-Y Seismic Reflection Viewer</title>
   <style>
@@ -290,26 +294,26 @@ export class SeismicViewerPanel extends BaseWebviewPanel {
       <div style="display: flex; flex-direction: column;">
         <label for="gainSlider">Wiggle Display Gain</label>
         <div class="slider-row">
-          <input type="range" id="gainSlider" min="0.5" max="4.0" step="0.1" value="${this._gain.toFixed(1)}" oninput="onGainSlide(this.value)" onchange="onGainCommit(this.value)">
+          <input type="range" id="gainSlider" min="0.5" max="4.0" step="0.1" value="${this._gain.toFixed(1)}">
           <span class="val-badge" id="gainBadge">${this._gain.toFixed(1)}x</span>
         </div>
       </div>
 
       <div style="display: flex; flex-direction: column;">
         <label for="polaritySelect">Seismic Polarity</label>
-        <select id="polaritySelect" onchange="onPolarityChange(this.value)">
+        <select id="polaritySelect">
           <option value="normal" ${this._polarity === "normal" ? "selected" : ""}>Normal (SEG Standard)</option>
           <option value="reverse" ${this._polarity === "reverse" ? "selected" : ""}>Reverse (European Standard)</option>
         </select>
       </div>
 
       <div class="checkbox-row">
-        <input type="checkbox" id="wvaCheck" ${this._showWva ? "checked" : ""} onchange="onWvaToggle(this.checked)">
+        <input type="checkbox" id="wvaCheck" ${this._showWva ? "checked" : ""}>
         <label for="wvaCheck" style="margin: 0; cursor: pointer;">Variable-Area (WVA) Positive Shading</label>
       </div>
 
       <div class="checkbox-row">
-        <input type="checkbox" id="agcCheck" ${this._applyAgc ? "checked" : ""} onchange="onAgcToggle(this.checked)">
+        <input type="checkbox" id="agcCheck" ${this._applyAgc ? "checked" : ""}>
         <label for="agcCheck" style="margin: 0; cursor: pointer;">Automatic Gain Control (Moving AGC)</label>
       </div>
 
@@ -348,7 +352,7 @@ export class SeismicViewerPanel extends BaseWebviewPanel {
                 .map(
                   (d) => `
                 <div class="diag-item diag-info">
-                  <strong>[${d.code}]</strong> ${escapeXml(d.message)}
+                  <strong>[${escapeXml(d.code)}]</strong> ${escapeXml(d.message)}
                 </div>`,
                 )
                 .join("")}
@@ -360,28 +364,28 @@ export class SeismicViewerPanel extends BaseWebviewPanel {
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    function onGainSlide(val) {
-      document.getElementById('gainBadge').innerText = parseFloat(val).toFixed(1) + 'x';
-    }
+    const gainSlider = document.getElementById('gainSlider');
+    gainSlider.addEventListener('input', (e) => {
+      document.getElementById('gainBadge').innerText = parseFloat(e.target.value).toFixed(1) + 'x';
+    });
+    gainSlider.addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'setGain', gain: parseFloat(e.target.value) });
+    });
 
-    function onGainCommit(val) {
-      vscode.postMessage({ command: 'setGain', gain: parseFloat(val) });
-    }
+    document.getElementById('polaritySelect').addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'setPolarity', polarity: e.target.value });
+    });
 
-    function onPolarityChange(val) {
-      vscode.postMessage({ command: 'setPolarity', polarity: val });
-    }
+    document.getElementById('wvaCheck').addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'toggleWva', showWva: e.target.checked });
+    });
 
-    function onWvaToggle(val) {
-      vscode.postMessage({ command: 'toggleWva', showWva: val });
-    }
-
-    function onAgcToggle(val) {
-      vscode.postMessage({ command: 'toggleAgc', applyAgc: val });
-    }
+    document.getElementById('agcCheck').addEventListener('change', (e) => {
+      vscode.postMessage({ command: 'toggleAgc', applyAgc: e.target.checked });
+    });
   </script>
 </body>
 </html>`;

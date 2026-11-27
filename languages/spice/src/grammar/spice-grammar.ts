@@ -13,7 +13,7 @@ export const spiceNetlistGrammar = language({
   name: "SpiceNetlist",
   word: ($) => $.Identifier,
   lsp: {
-    folding: ["SubcktDef"],
+    folding: ["SubcktDef", { rule: "CommentLine", kind: "comment", defaultCollapsed: true }],
     outline: ["SubcktDef", "Component", "Directive"],
   },
   rules: {
@@ -35,7 +35,7 @@ export const spiceNetlistGrammar = language({
         field("name", $.SourceId),
         field("positiveNode", $.Node),
         field("negativeNode", $.Node),
-        optional(field("type", choice("DC", "AC", "PULSE", "SINE"))),
+        optional(field("type", semanticToken("function", choice("DC", "AC", "PULSE", "SINE")))),
         optional(field("value", $.Value)),
       ),
 
@@ -45,7 +45,7 @@ export const spiceNetlistGrammar = language({
         field("collectorNode", $.Node),
         field("baseNode", $.Node),
         field("emitterNode", $.Node),
-        field("model", $.Identifier),
+        semanticToken("type", field("model", $.Identifier)),
       ),
 
     MosfetComponent: ($) =>
@@ -55,11 +55,15 @@ export const spiceNetlistGrammar = language({
         field("gateNode", $.Node),
         field("sourceNode", $.Node),
         field("substrateNode", $.Node),
-        field("model", $.Identifier),
+        semanticToken("type", field("model", $.Identifier)),
       ),
 
     SubcircuitCall: ($) =>
-      seq(field("name", $.SubcktCallId), repeat(field("node", $.Node)), field("subcircuitName", $.Identifier)),
+      seq(
+        field("name", $.SubcktCallId),
+        repeat(field("node", $.Node)),
+        semanticToken("class", field("subcircuitName", $.Identifier)),
+      ),
 
     Directive: ($) =>
       choice(
@@ -72,12 +76,12 @@ export const spiceNetlistGrammar = language({
         $.SubcktDef,
       ),
 
-    TranDirective: ($) => seq(semanticToken("keyword", ".TRAN"), field("step", $.Value), field("stop", $.Value)),
+    TranDirective: ($) => seq(semanticToken("function", ".TRAN"), field("step", $.Value), field("stop", $.Value)),
 
     AcDirective: ($) =>
       seq(
-        semanticToken("keyword", ".AC"),
-        field("sweepType", choice("DEC", "OCT", "LIN")),
+        semanticToken("function", ".AC"),
+        field("sweepType", semanticToken("keyword", choice("DEC", "OCT", "LIN"))),
         field("points", $.Number),
         field("startFreq", $.Value),
         field("stopFreq", $.Value),
@@ -85,29 +89,29 @@ export const spiceNetlistGrammar = language({
 
     DcDirective: ($) =>
       seq(
-        semanticToken("keyword", ".DC"),
+        semanticToken("function", ".DC"),
         field("source", $.Identifier),
         field("start", $.Value),
         field("stop", $.Value),
         field("step", $.Value),
       ),
 
-    OpDirective: () => semanticToken("keyword", ".OP"),
+    OpDirective: () => semanticToken("function", ".OP"),
 
     ModelDirective: ($) =>
       seq(
         semanticToken("keyword", ".MODEL"),
-        field("name", $.Identifier),
-        field("kind", $.Identifier),
+        semanticToken("class", field("name", $.Identifier), ["declaration"]),
+        semanticToken("type", field("kind", $.Identifier)),
         optional(seq("(", repeat($.ParamAssignment), ")")),
       ),
 
-    ParamAssignment: ($) => seq(field("param", $.Identifier), "=", field("val", $.Value)),
+    ParamAssignment: ($) => seq(semanticToken("parameter", field("param", $.Identifier)), "=", field("val", $.Value)),
 
     ParamDirective: ($) =>
       seq(
         semanticToken("keyword", ".PARAM"),
-        field("param", $.Identifier),
+        semanticToken("parameter", field("param", $.Identifier), ["declaration"]),
         "=",
         field("expr", choice($.Value, $.BraceExpr)),
       ),
@@ -115,11 +119,11 @@ export const spiceNetlistGrammar = language({
     SubcktDef: ($) =>
       seq(
         semanticToken("keyword", ".SUBCKT"),
-        field("name", $.Identifier),
-        repeat(field("port", $.Node)),
+        semanticToken("class", field("name", $.Identifier), ["declaration"]),
+        repeat(semanticToken("parameter", field("port", $.Node), ["declaration"])),
         repeat(choice($.Component, $.Directive, $.CommentLine)),
         semanticToken("keyword", ".ENDS"),
-        optional(field("endName", $.Identifier)),
+        optional(semanticToken("class", field("endName", $.Identifier))),
       ),
 
     BraceExpr: ($) => seq("{", field("inner", $.Identifier), "}"),

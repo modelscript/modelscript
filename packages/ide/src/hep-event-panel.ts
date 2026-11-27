@@ -23,6 +23,7 @@ import {
 } from "@modelscript/diagram/hep-event";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -235,15 +236,19 @@ export class HepEventViewerPanel extends BaseWebviewPanel {
           <td>(${p.px.toFixed(3)}, ${p.py.toFixed(3)}, ${p.pz.toFixed(3)})</td>
           <td>${p.energy.toFixed(4)}</td>
           <td>${p.mass.toFixed(4)}</td>
-          <td><span class="status-badge ${p.status}">${p.status}</span></td>
+          <td><span class="status-badge ${escapeXml(p.status)}">${escapeXml(p.status)}</span></td>
         </tr>`,
       )
       .join("");
+
+    const nonce = getNonce();
+    const cspSource = this._panel.webview.cspSource;
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' ${cspSource}; script-src 'nonce-${nonce}'; img-src ${cspSource} data: blob:;">
   <style>
     body {
       margin: 0;
@@ -428,7 +433,7 @@ export class HepEventViewerPanel extends BaseWebviewPanel {
     ${diagsHtml}
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
     ['checkResonances', 'checkBoundary', 'checkHistogram'].forEach(id => {

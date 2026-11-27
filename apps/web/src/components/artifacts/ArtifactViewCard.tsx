@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import {
-  extractModelsFromCanvasDocument,
-  type RotundaModelEntry,
-} from "@modelscript/editor/workbench/vr-rotunda/types.js";
+import { extractModelsFromCanvasDocument, type RotundaModelEntry } from "@modelscript/rotunda/types.js";
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
@@ -38,9 +35,7 @@ import { buildLiveArtifactRotundaRenderer, useArtifactRotundaGeometry } from "./
 
 const ArtifactDiffModal = React.lazy(() => import("./ArtifactDiffModal"));
 const CloudSimulationModal = React.lazy(() => import("../cloud-sim/CloudSimulationModal"));
-const EngineeringRotundaLazy = React.lazy(
-  () => import("@modelscript/editor/workbench/vr-rotunda/EngineeringRotunda.js"),
-);
+const EngineeringRotundaLazy = React.lazy(() => import("@modelscript/rotunda/EngineeringRotunda.js"));
 
 const FullScreenBackdrop = styled.div`
   position: fixed;

@@ -207,7 +207,7 @@ export function syncVersions(options?: { checkOnly?: boolean; explicitVersion?: 
       replace: (ver) => `const SERVER_VERSION = "${ver}"`,
     },
     {
-      relPath: "packages/dsl/src/codegen/ide/extension-generator.ts",
+      relPath: "packages/ide-packager/src/extension-bundler.ts",
       pattern: /let workspaceVersion\s*=\s*"([^"]+)"/,
       replace: (ver) => `let workspaceVersion = "${ver}"`,
     },

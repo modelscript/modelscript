@@ -14,6 +14,7 @@
 import { parsePdb, solveProteinBiophysics, type PdbDocument, type ProteinBiophysicsResult } from "@modelscript/pdb";
 import * as vscode from "vscode";
 import type { LanguageClient } from "vscode-languageclient/browser.js";
+import { getNonce } from "./utils/nonce.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 import { BaseWebviewPanel } from "./webview/base-panel.js";
 
@@ -160,7 +161,12 @@ export class MolstarPanel extends BaseWebviewPanel {
       biophysics = solveProteinBiophysics(parsed);
     }
 
-    this._panel.webview.html = renderMolstarHtml(parsed, biophysics);
+    this._panel.webview.html = renderMolstarHtml(parsed, biophysics, this._panel.webview.cspSource);
+  }
+
+  public override dispose(): void {
+    MolstarPanel.currentPanel = undefined;
+    super.dispose();
   }
 }
 
@@ -181,12 +187,12 @@ export class PdbEditorProvider extends BaseCustomEditorProvider {
       try {
         const parsed = parsePdb(text);
         const biophysics = solveProteinBiophysics(parsed);
-        webviewPanel.webview.html = renderMolstarHtml(parsed, biophysics);
+        webviewPanel.webview.html = renderMolstarHtml(parsed, biophysics, webviewPanel.webview.cspSource);
       } catch {
         // Fallback gracefully
         const parsed = parsePdb(SAMPLE_PDB_PEPTIDE);
         const biophysics = solveProteinBiophysics(parsed);
-        webviewPanel.webview.html = renderMolstarHtml(parsed, biophysics);
+        webviewPanel.webview.html = renderMolstarHtml(parsed, biophysics, webviewPanel.webview.cspSource);
       }
     };
 
@@ -208,7 +214,10 @@ export class PdbEditorProvider extends BaseCustomEditorProvider {
 // HTML & WebGL / Canvas Renderer
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function renderMolstarHtml(doc: PdbDocument, biophysics: ProteinBiophysicsResult): string {
+export function renderMolstarHtml(doc: PdbDocument, biophysics: ProteinBiophysicsResult, cspSource = ""): string {
+  const nonce = getNonce();
+  const styleSrc = cspSource ? `'unsafe-inline' ${cspSource}` : `'unsafe-inline'`;
+  const imgSrc = cspSource ? `${cspSource} data: blob:` : `data: blob:`;
   const title = escapeXml(doc.title || doc.id || "Macromolecular Structure");
   const id = escapeXml(doc.id || "PDB");
 
@@ -236,8 +245,14 @@ export function renderMolstarHtml(doc: PdbDocument, biophysics: ProteinBiophysic
       isOutlier: r.isOutlier,
     }));
 
-  const jsonCaCoords = JSON.stringify(caCoords);
-  const jsonRamaPoints = JSON.stringify(ramaPoints);
+  const jsonCaCoords = JSON.stringify(caCoords)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+  const jsonRamaPoints = JSON.stringify(ramaPoints)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
 
   const favoredPct = (biophysics.ramachandranFavoredFraction * 100).toFixed(1);
   const outlierCount = biophysics.ramachandranOutlierCount;
@@ -246,6 +261,7 @@ export function renderMolstarHtml(doc: PdbDocument, biophysics: ProteinBiophysic
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${styleSrc}; script-src 'nonce-${nonce}'; img-src ${imgSrc};">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title}</title>
   <style>
@@ -561,7 +577,7 @@ export function renderMolstarHtml(doc: PdbDocument, biophysics: ProteinBiophysic
     </div>
   </div>
 
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const caAtoms = ${jsonCaCoords};
     const ramaPoints = ${jsonRamaPoints};

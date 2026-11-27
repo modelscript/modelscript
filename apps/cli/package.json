@@ -111,6 +111,7 @@
     "@modelscript/hec1": "workspace:*",
     "@modelscript/hec2": "workspace:*",
     "@modelscript/ibis": "workspace:*",
+    "@modelscript/ide-packager": "workspace:*",
     "@modelscript/ieee-cdf": "workspace:*",
     "@modelscript/iges": "workspace:*",
     "@modelscript/igtl": "workspace:*",

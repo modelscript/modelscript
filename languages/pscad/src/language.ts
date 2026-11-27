@@ -7,7 +7,7 @@
  * and polyglot cross-language projections for PSCAD v4/v5 projects.
  */
 
-import { language, xmlRules } from "@modelscript/dsl";
+import { field, language, repeat, semanticToken, seq, xmlRules } from "@modelscript/dsl";
 import type { FmiLsEmtCompanionInstance } from "@modelscript/exchange";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -605,6 +605,15 @@ export const pscadLanguage = language({
   polyglot: pscadPolyglotConfig,
   rules: {
     ...xmlRules,
+    TagHead: ($) =>
+      seq("<", semanticToken("class", field("name", $["XmlName"]!)), repeat(field("attr", $["Attribute"]!))),
+    CloseTag: ($) => seq("</", semanticToken("class", field("name", $["XmlName"]!)), ">"),
+    Attribute: ($) =>
+      seq(semanticToken("parameter", field("name", $["XmlName"]!)), "=", field("value", $["AttrValue"]!)),
+    AttrValue: () => semanticToken("string", /"[^"<]*"|'[^'<]*'/),
+    CData: () => semanticToken("string", /<!\[CDATA\[([^\]]|\][^\]]|\]\][^>])*\]\]>/),
+    COMMENT: () => semanticToken("comment", /<!--([^-]|-[^-])*-->/),
+    PROCESSING_INSTRUCTION: () => semanticToken("macro", /<\?([a-zA-Z_:][a-zA-Z0-9_.:-]*|\s)([^?]|\?[^>])*\?>/),
   },
   extras: ($) => [/[ \t\r\n]+/, $["COMMENT"]!, $["PROCESSING_INSTRUCTION"]!],
   indexing: {

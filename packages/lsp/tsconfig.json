@@ -8,6 +8,9 @@
   "exclude": ["node_modules", "dist"],
   "references": [
     {
+      "path": "../../languages/acsl"
+    },
+    {
       "path": "../../languages/adams"
     },
     {
@@ -17,7 +20,19 @@
       "path": "../../languages/antimony"
     },
     {
+      "path": "../../languages/apdl"
+    },
+    {
+      "path": "../../languages/apt"
+    },
+    {
+      "path": "../../languages/arinc429"
+    },
+    {
       "path": "../../languages/asm"
+    },
+    {
+      "path": "../../languages/asn1"
     },
     {
       "path": "../../languages/aspen"
@@ -38,6 +53,9 @@
       "path": "../../languages/bngl"
     },
     {
+      "path": "../../languages/bufr"
+    },
+    {
       "path": "../../languages/c"
     },
     {
@@ -50,7 +68,13 @@
       "path": "../../languages/cantera"
     },
     {
+      "path": "../canvas"
+    },
+    {
       "path": "../../languages/ccsds"
+    },
+    {
+      "path": "../../languages/cea"
     },
     {
       "path": "../../languages/cellml"
@@ -62,13 +86,28 @@
       "path": "../../languages/cgmes"
     },
     {
+      "path": "../../languages/chemkin"
+    },
+    {
+      "path": "../../languages/cif"
+    },
+    {
       "path": "../../languages/comtrade"
+    },
+    {
+      "path": "../../languages/cplex-lp"
+    },
+    {
+      "path": "../../languages/csmp"
     },
     {
       "path": "../../languages/csv"
     },
     {
       "path": "../../languages/cyme"
+    },
+    {
+      "path": "../../languages/datcom"
     },
     {
       "path": "../diagram"
@@ -80,7 +119,16 @@
       "path": "../../languages/dnp3"
     },
     {
+      "path": "../../languages/doe2"
+    },
+    {
       "path": "../dsl"
+    },
+    {
+      "path": "../../languages/dxf"
+    },
+    {
+      "path": "../../languages/dynamo"
     },
     {
       "path": "../../languages/easy5"
@@ -89,10 +137,22 @@
       "path": "../../languages/eclipse"
     },
     {
+      "path": "../../languages/edif"
+    },
+    {
+      "path": "../../languages/endf6"
+    },
+    {
       "path": "../../languages/energyplus"
     },
     {
       "path": "../../languages/epanet"
+    },
+    {
+      "path": "../../languages/esl"
+    },
+    {
+      "path": "../../languages/esterel"
     },
     {
       "path": "../exchange"
@@ -107,7 +167,22 @@
       "path": "../../languages/fiber"
     },
     {
+      "path": "../../languages/fits"
+    },
+    {
       "path": "../../languages/fortran"
+    },
+    {
+      "path": "../../languages/gams"
+    },
+    {
+      "path": "../../languages/gaussian"
+    },
+    {
+      "path": "../../languages/gcode"
+    },
+    {
+      "path": "../../languages/gdsii"
     },
     {
       "path": "../../languages/genbank"
@@ -116,7 +191,16 @@
       "path": "../../languages/gensys"
     },
     {
+      "path": "../../languages/gerber"
+    },
+    {
       "path": "../../languages/gproms"
+    },
+    {
+      "path": "../../languages/gpss"
+    },
+    {
+      "path": "../../languages/grib"
     },
     {
       "path": "../../languages/gridlabd"
@@ -128,10 +212,19 @@
       "path": "../../languages/gtsuite"
     },
     {
+      "path": "../../languages/hdf4"
+    },
+    {
       "path": "../../languages/hec-hms"
     },
     {
       "path": "../../languages/hec-ras"
+    },
+    {
+      "path": "../../languages/hec1"
+    },
+    {
+      "path": "../../languages/hec2"
     },
     {
       "path": "../../languages/ibis"
@@ -140,7 +233,28 @@
       "path": "../../languages/iec104"
     },
     {
+      "path": "../../languages/ieee-cdf"
+    },
+    {
+      "path": "../../languages/iges"
+    },
+    {
       "path": "../../languages/igtl"
+    },
+    {
+      "path": "../../languages/ihex"
+    },
+    {
+      "path": "../../languages/irig106"
+    },
+    {
+      "path": "../../languages/iucr-cif"
+    },
+    {
+      "path": "../../languages/jcamp-dx"
+    },
+    {
+      "path": "../../languages/jedec"
     },
     {
       "path": "../../languages/jsbsim"
@@ -158,10 +272,22 @@
       "path": "../../languages/lps"
     },
     {
+      "path": "../../languages/lsdyna"
+    },
+    {
+      "path": "../../languages/lustre"
+    },
+    {
       "path": "../../languages/magicdraw"
     },
     {
       "path": "../../languages/matpower"
+    },
+    {
+      "path": "../../languages/mcnp"
+    },
+    {
+      "path": "../../languages/melcor"
     },
     {
       "path": "../../languages/mlxtran"
@@ -176,10 +302,34 @@
       "path": "../../languages/modflow"
     },
     {
+      "path": "../../languages/molfile"
+    },
+    {
+      "path": "../../languages/mps"
+    },
+    {
+      "path": "../../languages/nasa-cdf"
+    },
+    {
+      "path": "../../languages/nec2"
+    },
+    {
+      "path": "../../languages/netcdf"
+    },
+    {
       "path": "../../languages/nifti"
     },
     {
+      "path": "../../languages/nmea0183"
+    },
+    {
+      "path": "../../languages/nmodl"
+    },
+    {
       "path": "../../languages/nmtran"
+    },
+    {
+      "path": "../../languages/obj"
     },
     {
       "path": "../../languages/ocpp"
@@ -224,6 +374,9 @@
       "path": "../../languages/plcopen"
     },
     {
+      "path": "../../languages/plot3d"
+    },
+    {
       "path": "../../languages/plscadd"
     },
     {
@@ -257,6 +410,9 @@
       "path": "../../languages/reqif"
     },
     {
+      "path": "../../languages/rinex"
+    },
+    {
       "path": "../../languages/rocets"
     },
     {
@@ -275,10 +431,19 @@
       "path": "../../languages/scad"
     },
     {
+      "path": "../../languages/scale"
+    },
+    {
       "path": "../../languages/scl"
     },
     {
+      "path": "../../languages/sdl"
+    },
+    {
       "path": "../../languages/sedml"
+    },
+    {
+      "path": "../../languages/segy"
     },
     {
       "path": "../../languages/sel"
@@ -290,22 +455,40 @@
       "path": "../../languages/simpack"
     },
     {
+      "path": "../../languages/simscript"
+    },
+    {
       "path": "../simulate"
     },
     {
       "path": "../../languages/simulink"
     },
     {
+      "path": "../../languages/sinda"
+    },
+    {
+      "path": "../../languages/slam"
+    },
+    {
       "path": "../../languages/smiles"
     },
     {
+      "path": "../../languages/sparql"
+    },
+    {
       "path": "../../languages/spice"
+    },
+    {
+      "path": "../../languages/srec"
     },
     {
       "path": "../../languages/ssp"
     },
     {
       "path": "../../languages/step"
+    },
+    {
+      "path": "../../languages/stl"
     },
     {
       "path": "../../languages/swmm"
@@ -326,13 +509,31 @@
       "path": "../../languages/tough"
     },
     {
+      "path": "../../languages/trasys"
+    },
+    {
+      "path": "../../languages/trnsys"
+    },
+    {
+      "path": "../../languages/twentysim"
+    },
+    {
       "path": "../../languages/urdf"
     },
     {
       "path": "../../languages/usd"
     },
     {
+      "path": "../../languages/usgs-dem"
+    },
+    {
+      "path": "../../languages/verilog"
+    },
+    {
       "path": "../../languages/verilog-a"
+    },
+    {
+      "path": "../../languages/vhdl"
     },
     {
       "path": "../../languages/waterml"

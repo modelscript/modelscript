@@ -227,6 +227,12 @@ export function flattenTargetClass(
 const activeCosimSessions = new Map<string, Orchestrator>();
 
 export function registerSimulationEndpoints(context: LspContext) {
+  const cosimSimulators = new Map<string, unknown>();
+  const breakpointsMap = new Map<string, { line: number; column?: number | undefined }[]>();
+  let debuggerResumeCallback: (() => void) | undefined;
+  let currentDebugEnv: Map<string, number> | undefined;
+  let stepMode = true;
+
   context.connection.onRequest(
     "modelscript/simulate",
     async (params: {
@@ -249,6 +255,7 @@ export function registerSimulationEndpoints(context: LspContext) {
       domain?: string | undefined;
       cadUri?: string | undefined;
       initialSnapshot?: string | undefined;
+      skipValidation?: boolean | undefined;
     }): Promise<{
       t: number[];
       y: number[][];
@@ -297,7 +304,7 @@ export function registerSimulationEndpoints(context: LspContext) {
       );
       const doc = context.documents.get(params.uri);
       await context.parserService.ensureLanguageParserLoaded(doc?.languageId || params.uri);
-      if (doc) {
+      if (doc && !params.skipValidation) {
         await context.validationService.flushValidation(params.uri);
         await context.validationService.validateTextDocument(doc);
         const inflight = context.state.activeValidationPromises.get(params.uri);
@@ -1588,9 +1595,7 @@ export function registerSimulationEndpoints(context: LspContext) {
     type NotebookParserLike = { parse(code: string): NotebookTreeLike | null | undefined };
     const qe = context.workspaceManager.getQueryEngine("modelica");
     const sharedContext = context.state.sharedContext ?? context.parserService.sharedContext;
-    const parser =
-      (context.parserService.getParser("modelica") as NotebookParserLike | null | undefined) ??
-      (globalThis as { modelicaParser?: NotebookParserLike }).modelicaParser;
+    const parser = context.parserService.getParser("modelica") as NotebookParserLike | null | undefined;
 
     if ((!sharedContext && !parser) || !qe) {
       return { output: "", error: "Language server not fully initialized." };
@@ -1701,11 +1706,14 @@ export function registerSimulationEndpoints(context: LspContext) {
         (doc ? context.workspaceManager.documentContexts.get(doc.uri) : undefined) ??
         context.state.sharedContext ??
         context.parserService?.sharedContext;
-      const flattenFn = (
-        globalThis as unknown as {
-          flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder | null;
-        }
-      ).flattenArenaFromInstance;
+      // Prefer injected DI hook; fall back to globalThis only for legacy unit tests (compile-wasm-endpoint.test.ts).
+      const flattenFn =
+        context.flattenArenaFromInstance ??
+        (
+          globalThis as {
+            flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder | null;
+          }
+        ).flattenArenaFromInstance;
       if (typeof flattenFn === "function") {
         try {
           arena = flattenFn(targetInstance, ctx) as DAEBuilder | null;
