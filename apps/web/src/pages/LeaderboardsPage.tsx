@@ -296,7 +296,7 @@ const RankChip = styled.span<{ $rank: number }>`
         : p.$rank === 3
           ? "rgba(217, 119, 6, 0.2)"
           : "var(--ms-bg, #0d1117)"};
-  color: ${(p) => (p.$rank === 1 ? "#facc15" : p.$rank === 2 ? "#cbd5e1" : p.$rank === 3 ? "#f59e0b" : "#8b949e")};
+  color: ${(p) => (p.$rank === 1 ? "#facc15" : p.$rank === 2 ? "#cbd5e1" : p.$rank === 3 ? "#f59e0b" : "var(--ms-text-3, #8b949e)")};
   border: 1px solid
     ${(p) =>
       p.$rank === 1

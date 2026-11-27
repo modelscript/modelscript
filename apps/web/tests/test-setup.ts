@@ -3,8 +3,13 @@
 import { register } from "node:module";
 import React from "react";
 
-// Provide React on globalThis for node:test runner environments where TSX transforms JSX to React.createElement
+// Provide React and CSS.escape on globalThis for node:test + jsdom environments
 (globalThis as any).React = React;
+if (typeof (globalThis as any).CSS === "undefined") {
+  (globalThis as any).CSS = {
+    escape: (value: string) => String(value).replace(/([^\w-])/g, "\\$1"),
+  };
+}
 
 const cssLoaderCode = `
 export async function resolve(specifier, context, nextResolve) {

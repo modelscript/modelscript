@@ -155,7 +155,28 @@ export function runTests(argv = process.argv.slice(2)) {
   // 5. Default test discovery pattern if no files specified
   if (testFiles.length === 0) {
     if (fs.existsSync(path.join(cwd, "tests"))) {
-      testFiles.push("tests/**/*.test.ts");
+      if (process.env.RUN_E2E === "true") {
+        testFiles.push("tests/**/*.test.ts");
+      } else {
+        // Discover tests excluding *.e2e.test.ts (which require Playwright/Chromium and run in e2e_smoke)
+        const walk = (dir) => {
+          const out = [];
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              if (!entry.name.startsWith("scratch")) out.push(...walk(full));
+            } else if (
+              entry.name.endsWith(".test.ts") &&
+              !entry.name.endsWith(".e2e.test.ts") &&
+              !entry.name.endsWith("-browser.test.ts")
+            ) {
+              out.push(path.relative(cwd, full).replace(/\\/g, "/"));
+            }
+          }
+          return out;
+        };
+        testFiles.push(...walk(path.join(cwd, "tests")));
+      }
     } else if (fs.existsSync(path.join(cwd, "validation"))) {
       testFiles.push("validation/**/*.test.ts");
     }

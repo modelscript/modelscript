@@ -310,7 +310,7 @@ describe("Modular API Domain Resources Client Suite", () => {
 
       mockApiCall("get", { creditBalance: 225.5, totalSpent: 50 });
       const summary = await getUserBillingSummary();
-      assert.equal(lastRequest?.url, "/billing/usage");
+      assert.equal(lastRequest?.url, "/billing/summary");
       assert.equal(summary.creditBalance, 225.5);
     });
   });

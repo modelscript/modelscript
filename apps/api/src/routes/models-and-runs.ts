@@ -1033,7 +1033,19 @@ export function modelsRouter(database: LibraryDatabase, storageDir: string): Rou
    * GET /api/v1/models
    * Lists registered models filtered by optional `kind`, `promotionStage`, `name`.
    */
-  router.get("/", optionalAuth, (req: Request, res: Response) => {
+  router.get("/", optionalAuth, (req: Request, res: Response, next) => {
+    // Allow Ansatz Registry Streaming Catalog queries (`/api/v1/models?includeSvg=1|domain=...|package=...|subpackage=...|q=...`)
+    // to fall through to `registryCatalogRouter`.
+    if (
+      req.query["includeSvg"] !== undefined ||
+      req.query["domain"] !== undefined ||
+      req.query["subpackage"] !== undefined ||
+      req.query["package"] !== undefined ||
+      req.query["q"] !== undefined
+    ) {
+      next();
+      return;
+    }
     try {
       const kind = typeof req.query["kind"] === "string" ? req.query["kind"].trim().toLowerCase() : undefined;
       const promotionStage =

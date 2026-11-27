@@ -153,7 +153,13 @@ const HudPill = styled.span<{ $tone?: "sky" | "emerald" | "amber" | "neutral" }>
           ? "rgba(56, 189, 248, 0.14)"
           : "rgba(139, 148, 158, 0.12)"};
   color: ${(p) =>
-    p.$tone === "emerald" ? "#34d399" : p.$tone === "amber" ? "#fbbf24" : p.$tone === "sky" ? "#38bdf8" : "#c9d1d9"};
+    p.$tone === "emerald"
+      ? "#34d399"
+      : p.$tone === "amber"
+        ? "#fbbf24"
+        : p.$tone === "sky"
+          ? "#38bdf8"
+          : "var(--ms-text-2, #c9d1d9)"};
 `;
 
 const TopBar = styled.header`
@@ -258,7 +264,7 @@ const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean; $dan
           ? "rgba(251, 191, 36, 0.65)"
           : p.$active || p.$primary
             ? "#38bdf8"
-            : "#30363d"};
+            : "var(--ms-border, #30363d)"};
   background: ${(p) =>
     p.$primary
       ? "linear-gradient(135deg, #0284c7, #6366f1)"
@@ -268,7 +274,7 @@ const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean; $dan
           ? "rgba(251, 191, 36, 0.18)"
           : p.$active
             ? "rgba(56, 189, 248, 0.18)"
-            : "#21262d"};
+            : "var(--ms-bg-elevated, #21262d)"};
   color: ${(p) => (p.$danger ? "#fca5a5" : p.$amber ? "#fde68a" : "#f8fafc")};
   &:disabled {
     opacity: 0.5;
@@ -277,9 +283,9 @@ const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean; $dan
 `;
 
 const SelectControl = styled.select`
-  background: #0d1117;
-  color: #e6edf3;
-  border: 1px solid #30363d;
+  background: var(--ms-bg-canvas, #0d1117);
+  color: var(--ms-text-1, #e6edf3);
+  border: 1px solid var(--ms-border, #30363d);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 11px;
@@ -302,8 +308,8 @@ const EmptyCard = styled.div`
   max-width: 520px;
   padding: 28px;
   border-radius: 12px;
-  border: 1px solid #30363d;
-  background: #161b22;
+  border: 1px solid var(--ms-border, #30363d);
+  background: var(--ms-bg-surface, #161b22);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -944,7 +950,7 @@ export const RlhfQueuePage: React.FC = () => {
       {authRequired ? (
         <EmptyCard>
           <h2 style={{ margin: 0, fontSize: 18 }}>Sign in to Annotate the Queue</h2>
-          <p style={{ margin: 0, fontSize: 13, color: "#8b949e" }}>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--ms-text-3, #8b949e)" }}>
             Continuous Zonotope-Prioritized RLHF annotation tracks per-user blind A/B randomization and domain trust
             reputation.
           </p>
@@ -952,7 +958,7 @@ export const RlhfQueuePage: React.FC = () => {
             <Link to="/login" style={{ color: "#38bdf8", fontWeight: 600 }}>
               Sign In →
             </Link>
-            <Link to="/arena" style={{ color: "#8b949e" }}>
+            <Link to="/arena" style={{ color: "var(--ms-text-3, #8b949e)" }}>
               Back to Arena Hub
             </Link>
           </div>
@@ -960,14 +966,14 @@ export const RlhfQueuePage: React.FC = () => {
       ) : loading ? (
         <EmptyCard>
           <strong style={{ fontSize: 15 }}>Fetching highest-priority zonotope challenge…</strong>
-          <span style={{ fontSize: 12, color: "#8b949e" }}>
+          <span style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>
             Ordering by priority_score DESC, Δ_t trigger DESC with deterministic blind A/B shuffling.
           </span>
         </EmptyCard>
       ) : error ? (
         <EmptyCard>
           <strong style={{ fontSize: 15, color: "#f87171" }}>Queue Error</strong>
-          <div style={{ fontSize: 13, color: "#c9d1d9" }}>{error}</div>
+          <div style={{ fontSize: 13, color: "var(--ms-text-2, #c9d1d9)" }}>{error}</div>
           <div>
             <ActionButton type="button" $primary onClick={() => void fetchNextChallenge()}>
               Retry Queue
@@ -977,7 +983,7 @@ export const RlhfQueuePage: React.FC = () => {
       ) : !challenge ? (
         <EmptyCard>
           <h2 style={{ margin: 0, fontSize: 18 }}>Queue Cleared ✓</h2>
-          <p style={{ margin: 0, fontSize: 13, color: "#8b949e" }}>
+          <p style={{ margin: 0, fontSize: 13, color: "var(--ms-text-3, #8b949e)" }}>
             No remaining open challenges match your current filters. You reviewed <strong>{reviewedCount}</strong>{" "}
             {reviewedCount === 1 ? "challenge" : "challenges"} in this session.
           </p>
@@ -1025,7 +1031,7 @@ export const RlhfQueuePage: React.FC = () => {
                 <HudPill $tone="sky">{challenge.dialect.toUpperCase()}</HudPill>
                 <HudPill $tone="neutral">{challenge.challengeType}</HudPill>
               </div>
-              <div style={{ fontSize: 12, color: "#8b949e", marginTop: 2 }}>{challenge.prompt}</div>
+              <div style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)", marginTop: 2 }}>{challenge.prompt}</div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <ActionButton
@@ -1139,7 +1145,7 @@ export const RlhfQueuePage: React.FC = () => {
                   <strong>
                     4-Column Relational Zonotope Overlay (m_init={liveHypergraph?.mInit ?? displayedGroups.length})
                   </strong>
-                  <span style={{ fontSize: 11, color: "#8b949e" }}>
+                  <span style={{ fontSize: 11, color: "var(--ms-text-3, #8b949e)" }}>
                     Click any token to label group_id &amp; sign · hover to inspect
                   </span>
                 </PaneHeader>
@@ -1214,7 +1220,7 @@ export const RlhfQueuePage: React.FC = () => {
 
               <Pane style={{ padding: 14, overflowY: "auto", gap: 10 }}>
                 <strong style={{ fontSize: 13 }}>Perturbation Generators (ε_1 … ε_m)</strong>
-                <div style={{ fontSize: 12, color: "#8b949e" }}>
+                <div style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>
                   Lock safety/syntax invariants to <code>group_id = 0</code> or invert coupled parameter signs for
                   Dynamic-m training.
                 </div>
@@ -1230,7 +1236,7 @@ export const RlhfQueuePage: React.FC = () => {
                         setActiveGroupId(clickedTokenContext ? clickedTokenContext.effectiveGroupId : null)
                       }
                       style={{
-                        border: `1px solid ${isHighlighted ? "#38bdf8" : "#30363d"}`,
+                        border: `1px solid ${isHighlighted ? "#38bdf8" : "var(--ms-border, #30363d)"}`,
                         background: isHighlighted ? "rgba(56, 189, 248, 0.08)" : "transparent",
                         borderRadius: 8,
                         padding: "8px 10px",
@@ -1244,7 +1250,9 @@ export const RlhfQueuePage: React.FC = () => {
                         <div style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace" }}>
                           ε_{g.groupId}: {g.label}
                         </div>
-                        <div style={{ fontSize: 11, color: "#8b949e" }}>{g.tokenCount} occurrences</div>
+                        <div style={{ fontSize: 11, color: "var(--ms-text-3, #8b949e)" }}>
+                          {g.tokenCount} occurrences
+                        </div>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
                         <ActionButton
@@ -1311,9 +1319,9 @@ export const RlhfQueuePage: React.FC = () => {
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Optional engineering note…"
                 style={{
-                  background: "#0d1117",
-                  color: "#e6edf3",
-                  border: "1px solid #30363d",
+                  background: "var(--ms-bg-canvas, #0d1117)",
+                  color: "var(--ms-text-1, #e6edf3)",
+                  border: "1px solid var(--ms-border, #30363d)",
                   borderRadius: 6,
                   padding: "6px 10px",
                   fontSize: 12,

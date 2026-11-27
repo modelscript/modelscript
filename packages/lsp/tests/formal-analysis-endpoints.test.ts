@@ -41,6 +41,11 @@ action def SpeedGovernor {
     connection: mockConnection,
     documents: mockDocuments,
     workspaceManager: {},
+    settings: {
+      features: {
+        demos: true,
+      },
+    },
     validationService: {
       validateTextDocument: async () => {},
     },

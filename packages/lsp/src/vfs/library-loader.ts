@@ -417,7 +417,11 @@ export interface RegistryPackageInfo {
  * Files are written to the BrowserFileSystem under /packages/{name}/
  * and registered lazily in the globalWorkspaceIndex.
  */
-export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderContext): Promise<void> {
+export async function loadRegistryPackage(
+  pkg: RegistryPackageInfo,
+  ctx: LoaderContext,
+  options?: { skipRemoteIndex?: boolean },
+): Promise<void> {
   const normName = normalizeLibraryName(pkg.name);
   const existingMeta = mountedLibraryMetadata.get(normName);
   if (existingMeta && existingMeta.version !== pkg.version) {
@@ -443,7 +447,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
 
     // Register federated endpoint for cache store using the configured registry URL
     let baseUrl = "";
-    if (ctx.registryUrl) {
+    if (!options?.skipRemoteIndex && ctx.registryUrl) {
       baseUrl = ctx.registryUrl.replace(/\/$/, "");
     }
 
@@ -1012,6 +1016,7 @@ export async function loadDependencyFromRegistry(
               modelscript: { languages: [curated.language] },
             },
             ctx,
+            { skipRemoteIndex: true },
           );
         }
         loadingLibraryState.delete(normName);
@@ -1715,6 +1720,18 @@ export async function mountCuratedFallbackPackage(
       iconCache.set(cls, svg);
     }
   }
+  const normName = normalizeLibraryName(curated.packageName);
+  // Native PSS/E standard dynamics models are already registered in UnifiedWorkspace via psseLanguage.indexing.builtins;
+  // mounting the curated .mo stub would shadow their native port and DAE-lowering metadata.
+  if (curated.language === "psse" && normName === "PSSE-Standard-Dynamics") {
+    mountedLibraryMetadata.set(normName, {
+      name: normName,
+      version: targetVer,
+      language: curated.language,
+    });
+    ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
+    return true;
+  }
   await loadRegistryPackage(
     {
       name: curated.packageName,
@@ -1723,8 +1740,9 @@ export async function mountCuratedFallbackPackage(
       modelscript: { languages: [curated.language] },
     },
     ctx,
+    { skipRemoteIndex: true },
   );
-  return mountedLibraryMetadata.has(normalizeLibraryName(curated.packageName));
+  return mountedLibraryMetadata.has(normName);
 }
 
 /**

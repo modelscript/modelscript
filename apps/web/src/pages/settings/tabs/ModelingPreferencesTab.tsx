@@ -8,6 +8,7 @@ import { DetailSubtitle, DetailTitle, FormLabel, Header, SecondaryButton } from 
 const STOP_TIME_PRESETS = [1, 5, 10, 60, 100] as const;
 export const MAX_DEFAULT_STOP_TIME = 1e9;
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseDefaultStopTimeDraft(draft: string): number | null {
   const trimmed = draft.trim();
   if (!trimmed) return null;
@@ -41,7 +42,7 @@ export const ModelingPreferencesTab: React.FC = () => {
   const bracketColorize = Boolean(modelingPrefs.bracketPairColorization);
 
   const renderBracket = (char: string, depth: 0 | 1) => {
-    const color = bracketColorize ? (depth === 0 ? "#f59e0b" : "#c084fc") : "#e6edf3";
+    const color = bracketColorize ? (depth === 0 ? "#f59e0b" : "#c084fc") : "var(--ms-text-1, #e6edf3)";
     return <span style={{ color, fontWeight: bracketColorize ? 700 : 400 }}>{char}</span>;
   };
 
@@ -88,7 +89,7 @@ export const ModelingPreferencesTab: React.FC = () => {
           {indent}
           <span style={{ color: "#60a5fa" }}>der</span>
           {renderBracket("(", 0)}x{renderBracket(")", 0)} = v;{" "}
-          <span style={{ color: "#8b949e" }}>
+          <span style={{ color: "var(--ms-text-3, #8b949e)" }}>
             // StopTime={modelingPrefs.defaultStopTime}s ({modelingPrefs.defaultSolver.toUpperCase()})
           </span>
         </>
@@ -323,8 +324,8 @@ export const ModelingPreferencesTab: React.FC = () => {
               style={{
                 border: "1px solid var(--color-border-default)",
                 borderRadius: "8px",
-                background: "#0d1117",
-                color: "#e6edf3",
+                background: "var(--ms-bg-canvas, #0d1117)",
+                color: "var(--ms-text-1, #e6edf3)",
                 overflow: "hidden",
               }}
             >
@@ -337,16 +338,22 @@ export const ModelingPreferencesTab: React.FC = () => {
                 flexWrap="wrap"
                 gap={2}
                 style={{
-                  borderBottom: "1px solid #30363d",
-                  background: "#161b22",
-                  color: "#e6edf3",
+                  borderBottom: "1px solid var(--ms-border, #30363d)",
+                  background: "var(--ms-bg-surface, #161b22)",
+                  color: "var(--ms-text-1, #e6edf3)",
                   fontSize: "12px",
                 }}
               >
-                <span style={{ fontWeight: 600, fontFamily: "var(--font-mono, monospace)", color: "#e6edf3" }}>
+                <span
+                  style={{
+                    fontWeight: 600,
+                    fontFamily: "var(--font-mono, monospace)",
+                    color: "var(--ms-text-1, #e6edf3)",
+                  }}
+                >
                   Live Monaco Preview — DampedHarmonicOscillator.mo
                 </span>
-                <span style={{ color: "#8b949e" }}>
+                <span style={{ color: "var(--ms-text-3, #8b949e)" }}>
                   {modelingPrefs.fontSize}px • Tab:{modelingPrefs.tabSize} • Lines:{activeLineNumbers} • Wrap:
                   {modelingPrefs.wordWrap}
                 </span>
@@ -360,8 +367,8 @@ export const ModelingPreferencesTab: React.FC = () => {
                   fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                   fontSize: `${modelingPrefs.fontSize}px`,
                   lineHeight: "1.55",
-                  background: "#0d1117",
-                  color: "#e6edf3",
+                  background: "var(--ms-bg-canvas, #0d1117)",
+                  color: "var(--ms-text-1, #e6edf3)",
                   overflowX: modelingPrefs.wordWrap === "on" ? "hidden" : "auto",
                 }}
               >
@@ -392,7 +399,8 @@ export const ModelingPreferencesTab: React.FC = () => {
                               width: "24px",
                               textAlign: "right",
                               userSelect: "none",
-                              color: idx === activeLineIndex ? "#e6edf3" : "#8b949e",
+                              color:
+                                idx === activeLineIndex ? "var(--ms-text-1, #e6edf3)" : "var(--ms-text-3, #8b949e)",
                               fontWeight: idx === activeLineIndex ? 700 : 400,
                               flexShrink: 0,
                             }}
@@ -410,7 +418,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                     aria-label="Minimap Preview"
                     style={{
                       width: "44px",
-                      borderLeft: "1px solid #30363d",
+                      borderLeft: "1px solid var(--ms-border, #30363d)",
                       paddingLeft: "6px",
                       display: "flex",
                       flexDirection: "column",
@@ -426,7 +434,7 @@ export const ModelingPreferencesTab: React.FC = () => {
                           height: "4px",
                           width: `${w}px`,
                           borderRadius: "2px",
-                          background: i === activeLineIndex ? "#a855f7" : "#8b949e",
+                          background: i === activeLineIndex ? "#a855f7" : "var(--ms-text-3, #8b949e)",
                         }}
                       />
                     ))}

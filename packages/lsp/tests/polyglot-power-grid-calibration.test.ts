@@ -166,7 +166,49 @@ describe("Polyglot Power Grid + COMTRADE Calibration HeroExample E2E", () => {
     );
     assert.ok(Array.isArray(pscadDiags), "lintPscadWorkspace should not throw on empty sibling model.pscx");
 
-    const psseDiags = lintPsseWorkspace(new Map([["file:///TransmissionGrid.raw", files["TransmissionGrid.raw"]!]]));
-    assert.ok(Array.isArray(psseDiags), "lintPsseWorkspace should succeed on TransmissionGrid.raw");
+    const psseDiags = lintPsseWorkspace(
+      new Map([
+        ["file:///GridRequirements.sysml", files["GridRequirements.sysml"]!],
+        ["file:///TransmissionGrid.raw", files["TransmissionGrid.raw"]!],
+        ["file:///InverterIsland.pscx", files["InverterIsland.pscx"]!],
+        ["file:///VoltVarDroop.f90", files["VoltVarDroop.f90"]!],
+        ["file:///PlantController.mo", files["PlantController.mo"]!],
+        ["file:///FaultRecord.cff", files["FaultRecord.cff"]!],
+      ]),
+      "file:///TransmissionGrid.raw",
+    );
+    assert.ok(
+      Array.isArray(psseDiags),
+      "lintPsseWorkspace should succeed on TransmissionGrid.raw with polyglot siblings",
+    );
+  });
+
+  it("evaluates polyglot digital thread without cfd:materializer warnings on PlantController.mo ODEs", async () => {
+    const files = loadPolyglotPowerGridFiles();
+    const { evaluateCfdExpression } = await import("@modelscript/cfd");
+    const { createPolyglotCoordinator } = await import("@modelscript/runtime");
+
+    const origWarn = console.warn;
+    const warnings: string[] = [];
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map((a) => String(a)).join(" "));
+    };
+    try {
+      const { evaluatePolyglotDigitalThreadFromFiles } = createPolyglotCoordinator({
+        evaluateCfdExpression,
+      } as any);
+      evaluatePolyglotDigitalThreadFromFiles(
+        Object.entries(files).map(([fileName, content]) => ({
+          uri: `file:///${fileName}`,
+          fileName,
+          content,
+        })),
+      );
+    } finally {
+      console.warn = origWarn;
+    }
+
+    const cfdWarnings = warnings.filter((w) => w.includes("[cfd:materializer]"));
+    assert.deepEqual(cfdWarnings, [], `Expected no [cfd:materializer] warnings, got: ${cfdWarnings.join("; ")}`);
   });
 });

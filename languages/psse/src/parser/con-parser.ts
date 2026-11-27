@@ -15,6 +15,7 @@ import { extractFieldsFromCstTokens, parsePsseCstDocument } from "./cst-tokens.j
  * Checks whether a document string looks like a PSS/E `.con` Contingency Data file via WASM CST.
  */
 export function isLikelyConContent(source: string): boolean {
+  if (!/\bcontingency\b/i.test(source)) return false;
   const doc = parsePsseCstDocument(source);
   for (const line of doc.lines) {
     if (line.isCommentOrBlank) continue;

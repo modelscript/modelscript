@@ -1636,9 +1636,9 @@ function SceneContents({
           onSelect={onSelect}
           animationController={animationController}
           visibility={assemblyVisibility}
-          renderSingleton={(comp) => (
+          renderSingleton={(comp, idx) => (
             <CadModel
-              key={comp.name}
+              key={`${comp.name}::${idx}`}
               component={comp}
               assetBaseUrl={assetBaseUrl}
               selected={selectedName === comp.name}

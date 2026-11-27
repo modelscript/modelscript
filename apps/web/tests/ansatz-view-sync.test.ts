@@ -112,11 +112,8 @@ describe("Ansatz View Switching Synchronization & Anti-Flicker Architecture", ()
     const ansatzPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/AnsatzEditor.tsx");
     const ansatzContent = fs.readFileSync(ansatzPath, "utf-8");
 
-    // AnsatzVisualizerPane should appear before Code Editor in the split container
-    const visualizerPos = ansatzContent.indexOf(
-      "{/* Visualizer Pane (Diagram / 3D / Simulation / Inspector on the left in split view) */}",
-    );
-    const codeEditorPos = ansatzContent.indexOf("{/* Code Editor (on the right in split view) */}");
+    const visualizerPos = ansatzContent.indexOf("<AnsatzVisualizerPane");
+    const codeEditorPos = ansatzContent.indexOf("(1 - splitRatio) * 100");
     assert.ok(
       visualizerPos !== -1 && codeEditorPos !== -1 && visualizerPos < codeEditorPos,
       "AnsatzEditor must place Visualizer Pane on the left and Code Editor on the right",

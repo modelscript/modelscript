@@ -2761,7 +2761,13 @@ export const sysml2Language = language({
         $["AnnotatingMember"]!,
       ),
 
-    EntryActionMember: ($) => seq($["_OptVisibility"]!, "entry", field("ownedRelatedElement", $["StateActionUsage"]!)),
+    EntryActionMember: ($) =>
+      seq(
+        $["_OptVisibility"]!,
+        "entry",
+        field("ownedRelatedElement", $["StateActionUsage"]!),
+        optional(seq("then", field("entryTarget", $["ConnectorEndMember"]!), ";")),
+      ),
 
     DoActionMember: ($) => seq($["_OptVisibility"]!, "do", field("ownedRelatedElement", $["StateActionUsage"]!)),
 
@@ -3118,7 +3124,7 @@ export const sysml2Language = language({
           repeat1(seq(field("operator", $["RelationalOperator"]!), field("operand", $["_Expression"]!))),
         ),
       ),
-    RelationalOperator: () => choice("<", ">", "<=", ">="),
+    RelationalOperator: () => prec(PREC.RELATIONAL, choice("<", ">", "<=", ">=")),
 
     RangeExpression: ($) =>
       prec.left(
@@ -3134,7 +3140,7 @@ export const sysml2Language = language({
           repeat1(seq(field("operator", $["AdditiveOperator"]!), field("operand", $["_Expression"]!))),
         ),
       ),
-    AdditiveOperator: () => choice("+", "-"),
+    AdditiveOperator: () => prec(PREC.ADDITIVE, choice("+", "-")),
 
     MultiplicativeExpression: ($) =>
       prec.left(
@@ -3144,7 +3150,7 @@ export const sysml2Language = language({
           repeat1(seq(field("operator", $["MultiplicativeOperator"]!), field("operand", $["_Expression"]!))),
         ),
       ),
-    MultiplicativeOperator: () => choice("*", "/", "%"),
+    MultiplicativeOperator: () => prec(PREC.MULTIPLICATIVE, choice("*", "/", "%")),
 
     ExponentiationExpression: ($) =>
       prec.right(

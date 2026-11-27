@@ -1030,7 +1030,7 @@ export interface InstancedCadAssemblyProps {
   /** Minimum instances of identical geometry to trigger instancing (default: 2) */
   minInstanceCount?: number | undefined;
   /** Custom renderer for singleton components */
-  renderSingleton: (component: CadComponent) => React.ReactNode;
+  renderSingleton: (component: CadComponent, index: number) => React.ReactNode;
   /** Optional hierarchical assembly graph for parent-before-child forward kinematics */
   assemblyGraph?: AssemblyGraph | null | undefined;
   /** Optional joint values driving `assemblyGraph` forward kinematics */
@@ -1167,7 +1167,7 @@ export function InstancedCadAssembly({
       ))}
 
       {/* Singletons */}
-      {visibleSingletonComponents.map((comp) => renderSingleton(comp))}
+      {visibleSingletonComponents.map((comp, idx) => renderSingleton(comp, idx))}
     </group>
   );
 }

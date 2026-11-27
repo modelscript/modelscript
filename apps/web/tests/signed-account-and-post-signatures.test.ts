@@ -131,7 +131,7 @@ describe("Signed Account & Post Signatures Architecture Suite", () => {
 
     it("Post.tsx parses signatures from postMeta and passes to PostSignatureModal", () => {
       assert.ok(
-        postSrc.includes("postMeta?.client_signature"),
+        postSrc.includes("postMeta?.client_signature") || postSrc.includes("postMeta.client_signature"),
         "Post.tsx must check parsed postMeta for client_signature",
       );
       assert.ok(postSrc.includes("<PostSignatureModal"), "Post.tsx must conditionally mount PostSignatureModal");

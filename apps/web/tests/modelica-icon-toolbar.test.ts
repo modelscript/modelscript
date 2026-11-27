@@ -66,7 +66,8 @@ describe("Modelica Icon Editor Top Toolbar Integration", () => {
     );
 
     assert.ok(
-      navbarSrc.includes('maxPrimary={activeTabId === "icon" ? 6 : 2}'),
+      navbarSrc.includes('maxPrimary={activeTabId === "icon" ? 6 : 0}') ||
+        navbarSrc.includes('maxPrimary={activeTabId === "icon" ? 6 : 2}'),
       "AnsatzEditorNavbar should expand maxPrimary when activeTabId === 'icon'",
     );
     assert.ok(

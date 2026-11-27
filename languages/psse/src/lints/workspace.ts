@@ -39,7 +39,19 @@ export function lintPsseWorkspace(
   const subEntries: Array<[string, string]> = [];
   const idvEntries: Array<[string, string]> = [];
 
+  const PSSE_EXTS = new Set([".raw", ".dyr", ".seq", ".con", ".mon", ".sub", ".idv", ".psse", ".txt"]);
+  const isPsseCandidateUri = (uri: string): boolean => {
+    if (uri === rootUri || entries.length === 1) return true;
+    const lower = uri.toLowerCase();
+    const lastSlash = Math.max(lower.lastIndexOf("/"), lower.lastIndexOf("\\"));
+    const base = lastSlash >= 0 ? lower.slice(lastSlash + 1) : lower;
+    const dot = base.lastIndexOf(".");
+    if (dot === -1) return true;
+    return PSSE_EXTS.has(base.slice(dot));
+  };
+
   for (const [uri, text] of entries) {
+    if (!isPsseCandidateUri(uri)) continue;
     const lower = uri.toLowerCase();
     if (lower.endsWith(".idv")) {
       idvEntries.push([uri, text]);
@@ -58,13 +70,18 @@ export function lintPsseWorkspace(
       conEntries.push([uri, text]);
     } else if (!rawCase && (uri === rootUri || lower.endsWith(".raw") || entries.length === 1)) {
       rawUri = uri;
-      rawCase = parseRaw(text);
+      try {
+        rawCase = parseRaw(text);
+      } catch {
+        // Ignore unparseable/non-RAW buffer
+      }
     }
   }
 
   if (!rawCase) {
     const firstRaw = entries.find(
       ([u]) =>
+        isPsseCandidateUri(u) &&
         !u.toLowerCase().endsWith(".dyr") &&
         !u.toLowerCase().endsWith(".seq") &&
         !u.toLowerCase().endsWith(".con") &&
@@ -74,7 +91,11 @@ export function lintPsseWorkspace(
     );
     if (firstRaw) {
       rawUri = firstRaw[0];
-      rawCase = parseRaw(firstRaw[1]);
+      try {
+        rawCase = parseRaw(firstRaw[1]);
+      } catch {
+        // Ignore unparseable/non-RAW buffer
+      }
     }
   }
 

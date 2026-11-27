@@ -232,7 +232,7 @@ describe("Training Recipe Composer Helpers & Deep-Link UX", () => {
       assert.match(md, /@modelica\/msl-memory@4\.1\.0/);
       assert.match(md, /## Help Fix Remaining Failure Cases/);
       assert.match(md, /Three-phase fault crowbar oscillation/);
-      assert.match(md, /\/rlhf-arena\/107/);
+      assert.match(md, /\/annotate\/107/);
       assert.match(md, /```bibtex[\s\S]*@misc\{grid_ieee39_qlora_recipe_1_1_0_/);
       assert.match(md, /https:\/\/ansatz\.social\/@bob\/status\/99/);
       assert.doesNotMatch(md, /## Semantic Diff/);

@@ -29,6 +29,7 @@ export interface NotificationFiltersTabProps {
  * Converts a URL-safe base64 VAPID public key string into a Uint8Array
  * suitable for `PushManager.subscribe({ applicationServerKey })`.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const trimmed = base64String.trim();
   const padding = "=".repeat((4 - (trimmed.length % 4)) % 4);

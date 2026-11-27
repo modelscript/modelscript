@@ -10,6 +10,7 @@ import { useInstanceBranding } from "../../../InstanceBrandingContext";
 import { getApiErrorMessage } from "../../../util/error";
 import { DangerButton, DetailSubtitle, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const SETTINGS_STATUS_MESSAGES: {
   readonly success: Readonly<Record<string, string>>;
   readonly error: Readonly<Record<string, string>>;
@@ -47,6 +48,7 @@ export const SETTINGS_STATUS_MESSAGES: {
 
 export const GENERIC_SETTINGS_ERROR_MESSAGE = "An error occurred while updating your settings.";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function resolveSettingsBannerMessage(
   kind: "success" | "error",
   rawValue: string | null | undefined,
@@ -66,6 +68,7 @@ export function resolveSettingsBannerMessage(
     : GENERIC_SETTINGS_ERROR_MESSAGE;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function validateOAuthRedirectUrl(redirectUrl: string, baseOrigin: string): string | null {
   try {
     const parsed = new URL(redirectUrl, baseOrigin);

@@ -111,6 +111,7 @@ export const adamsLanguage = language({
         "*",
         "/",
         "^",
+        seq(choice("END", "end"), "="),
         $["ParenExpr"]!,
         $["Identifier"]!,
         $["NumberLiteral"]!,

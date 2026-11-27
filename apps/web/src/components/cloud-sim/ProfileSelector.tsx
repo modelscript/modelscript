@@ -240,7 +240,10 @@ export const ProfileSelector: React.FC<ProfileSelectorProps> = ({
         gap={2}
       >
         <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-          <FlameIcon size={16} fill={isInsufficientBalance ? "#f85149" : "var(--color-accent-emphasis, #06b6d4)"} />
+          <FlameIcon
+            size={16}
+            fill={isInsufficientBalance ? "var(--ms-danger, #f85149)" : "var(--color-accent-emphasis, #06b6d4)"}
+          />
           {wallet ? (
             <Text fontSize="13px" color="var(--color-fg-default)">
               Wallet Credit Balance: <strong>{wallet.creditBalance.toFixed(2)} credits</strong>

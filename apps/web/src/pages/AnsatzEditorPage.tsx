@@ -1014,6 +1014,13 @@ export const AnsatzEditorPage: React.FC = () => {
       lang: ex.lang,
       code: initialCode,
       title: ex.title,
+      ...(nextFiles
+        ? {
+            files: nextFiles,
+            activeFile: nextActiveFile ?? undefined,
+            isMultiFile: Object.keys(nextFiles).length > 1,
+          }
+        : {}),
     });
     clearAnsatzEditorUrl(location.pathname);
   };

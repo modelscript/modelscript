@@ -112,7 +112,7 @@ describe("Post Artifact Viewers Control+Scroll Zoom & Feed Scroll Protection", (
     it("adopts SafeOrbitControls in MultibodyViewport3D for feed scroll protection", () => {
       const src = fs.readFileSync(path.join(artifactsDir, "MultibodyViewport3D.tsx"), "utf8");
       assert.ok(src.includes("SafeOrbitControls"), "MultibodyViewport3D must import and use SafeOrbitControls");
-      assert.ok(!src.includes("<OrbitControls"), "MultibodyViewport3D must not use raw un-shielded OrbitControls");
+      assert.ok(!/<OrbitControls[\s/>]/.test(src), "MultibodyViewport3D must not use raw un-shielded OrbitControls");
     });
 
     it("ensures SafeOrbitControls allows zoom when Ctrl or Cmd modifier is active during wheel", () => {

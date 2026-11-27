@@ -1623,16 +1623,20 @@ export function evaluateGenericDigitalThread(
     }
   }
 
-  // 5. Evaluate Modelica equations via evaluateCfdExpression
+  // 5. Evaluate static algebraic Modelica equations via evaluateCfdExpression
   const evaluatedEquations: EvaluatedEquationRecord[] = [];
   if (providers?.evaluateCfdExpression) {
     for (const art of artifacts) {
       if (art.equations.length === 0) continue;
       const resolver = (ident: string): number | undefined => art.parameters.get(ident)?.value;
       for (const eq of art.equations) {
+        // Differential or compound LHS equations (e.g. `T_avr * der(Vt) = ...`) are not constant bindings
+        if (!/^[A-Za-z_][A-Za-z0-9_.]*$/.test(eq.lhs.trim())) continue;
         try {
-          const val = providers.evaluateCfdExpression(eq.rhs, resolver);
-          if (typeof val === "number" && Number.isFinite(val)) {
+          // Pass a scratch diagnostics array so symbolic equations with state variables fail silently
+          const silentDiagnostics: Array<{ severity: string; message: string; expression?: string }> = [];
+          const val = providers.evaluateCfdExpression(eq.rhs, resolver, silentDiagnostics);
+          if (silentDiagnostics.length === 0 && typeof val === "number" && Number.isFinite(val)) {
             evaluatedEquations.push({
               paneIndex: art.index,
               fileName: art.fileName,

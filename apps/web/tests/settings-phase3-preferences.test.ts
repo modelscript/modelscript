@@ -157,10 +157,10 @@ describe("Phase 3 Workstream 2: Display & Modeling Preferences UX, Light-Mode Co
 
     it("uses a dedicated high-contrast dark editor surface (#0d1117 / #e6edf3) for Live Monaco Preview", () => {
       assert.ok(
-        src.includes('background: "#0d1117"'),
-        "Live Monaco Preview must use #0d1117 background for WCAG AA contrast in Light mode",
+        src.includes("#0d1117"),
+        "Live Monaco Preview must use #0d1117 background fallback for WCAG AA contrast",
       );
-      assert.ok(src.includes('color: "#e6edf3"'), "Live Monaco Preview must use #e6edf3 foreground text on #0d1117");
+      assert.ok(src.includes("#e6edf3"), "Live Monaco Preview must use #e6edf3 foreground text fallback on #0d1117");
       assert.ok(
         !src.includes(
           'const color = bracketColorize ? (depth === 0 ? "#f59e0b" : "#a855f7") : "var(--color-text-primary)"',
@@ -176,6 +176,7 @@ describe("Phase 3 Workstream 2: Display & Modeling Preferences UX, Light-Mode Co
       const flexShrinkMatches = src.match(/flexShrink:\s*0/g) ?? [];
       assert.ok(flexShrinkMatches.length >= switchInputs.length, "Every switch checkbox must include flexShrink: 0");
 
+      const normalizedSrc = src.replace(/\s+/g, " ");
       for (const groupLabel of [
         'role="group" aria-label="Font Size"',
         'role="group" aria-label="Tab Indentation"',
@@ -186,7 +187,7 @@ describe("Phase 3 Workstream 2: Display & Modeling Preferences UX, Light-Mode Co
         'role="group" aria-label="Relative Tolerance"',
         'role="group" aria-label="Default Output Intervals"',
       ]) {
-        assert.ok(src.includes(groupLabel), `Missing segmented control group semantics: ${groupLabel}`);
+        assert.ok(normalizedSrc.includes(groupLabel), `Missing segmented control group semantics: ${groupLabel}`);
       }
 
       for (const inputId of [

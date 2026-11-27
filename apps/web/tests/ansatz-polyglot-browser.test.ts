@@ -222,7 +222,13 @@ describe("@modelscript/web 3D CAD WebGL2 E2E (Ansatz & Ansatz)", () => {
       return;
     }
 
-    const playwright = await import("playwright");
+    let playwright: typeof import("playwright");
+    try {
+      playwright = await import("playwright");
+    } catch {
+      t.skip("Playwright not installed in this environment");
+      return;
+    }
     const { chromium } = playwright;
     if (!fs.existsSync(chromium.executablePath())) {
       t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
@@ -300,7 +306,13 @@ describe("@modelscript/web 3D CAD WebGL2 E2E (Ansatz & Ansatz)", () => {
       return;
     }
 
-    const playwright = await import("playwright");
+    let playwright: typeof import("playwright");
+    try {
+      playwright = await import("playwright");
+    } catch {
+      t.skip("Playwright not installed in this environment");
+      return;
+    }
     const { chromium } = playwright;
     if (!fs.existsSync(chromium.executablePath())) {
       t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);
@@ -412,7 +424,13 @@ describe("@modelscript/web Ansatz Digital Thread Composition & Verification E2E"
       return;
     }
 
-    const playwright = await import("playwright");
+    let playwright: typeof import("playwright");
+    try {
+      playwright = await import("playwright");
+    } catch {
+      t.skip("Playwright not installed in this environment");
+      return;
+    }
     const { chromium } = playwright;
     if (!fs.existsSync(chromium.executablePath())) {
       t.skip(`Playwright Chromium binary not installed at ${chromium.executablePath()}`);

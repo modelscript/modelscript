@@ -194,9 +194,9 @@ const TabButton = styled.button<{ $active: boolean }>`
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid ${(p) => (p.$active ? "#38bdf8" : "#30363d")};
-  background: ${(p) => (p.$active ? "rgba(56, 189, 248, 0.16)" : "#161b22")};
-  color: ${(p) => (p.$active ? "#38bdf8" : "#c9d1d9")};
+  border: 1px solid ${(p) => (p.$active ? "#38bdf8" : "var(--ms-border, #30363d)")};
+  background: ${(p) => (p.$active ? "rgba(56, 189, 248, 0.16)" : "var(--ms-bg-surface, #161b22)")};
+  color: ${(p) => (p.$active ? "#38bdf8" : "var(--ms-text-2, #c9d1d9)")};
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -273,7 +273,7 @@ const Pill = styled.span<{ $tone?: "sky" | "emerald" | "amber" | "red" | "neutra
           ? "#f87171"
           : p.$tone === "sky"
             ? "#38bdf8"
-            : "#c9d1d9"};
+            : "var(--ms-text-2, #c9d1d9)"};
 `;
 
 const ActionButton = styled.button<{ $primary?: boolean; $emerald?: boolean; $danger?: boolean; $active?: boolean }>`
@@ -290,7 +290,7 @@ const ActionButton = styled.button<{ $primary?: boolean; $emerald?: boolean; $da
           ? "rgba(52, 211, 153, 0.55)"
           : p.$primary || p.$active
             ? "#38bdf8"
-            : "#30363d"};
+            : "var(--ms-border, #30363d)"};
   background: ${(p) =>
     p.$primary
       ? "linear-gradient(135deg, #0284c7, #6366f1)"
@@ -300,7 +300,7 @@ const ActionButton = styled.button<{ $primary?: boolean; $emerald?: boolean; $da
           ? "rgba(248, 113, 113, 0.16)"
           : p.$active
             ? "rgba(56, 189, 248, 0.18)"
-            : "#21262d"};
+            : "var(--ms-bg-elevated, #21262d)"};
   color: ${(p) => (p.$emerald ? "#6ee7b7" : p.$danger ? "#fca5a5" : "#f8fafc")};
   &:disabled {
     opacity: 0.5;
@@ -317,24 +317,24 @@ const LinkButton = styled(Link)<{ $primary?: boolean }>`
   font-size: 12px;
   font-weight: 600;
   text-decoration: none;
-  border: 1px solid ${(p) => (p.$primary ? "#38bdf8" : "#30363d")};
-  background: ${(p) => (p.$primary ? "linear-gradient(135deg, #0284c7, #6366f1)" : "#21262d")};
+  border: 1px solid ${(p) => (p.$primary ? "#38bdf8" : "var(--ms-border, #30363d)")};
+  background: ${(p) => (p.$primary ? "linear-gradient(135deg, #0284c7, #6366f1)" : "var(--ms-bg-elevated, #21262d)")};
   color: #f8fafc;
 `;
 
 const InputControl = styled.input`
-  background: #0d1117;
-  color: #e6edf3;
-  border: 1px solid #30363d;
+  background: var(--ms-bg-canvas, #0d1117);
+  color: var(--ms-text-1, #e6edf3);
+  border: 1px solid var(--ms-border, #30363d);
   border-radius: 6px;
   padding: 7px 10px;
   font-size: 12px;
 `;
 
 const SelectControl = styled.select`
-  background: #0d1117;
-  color: #e6edf3;
-  border: 1px solid #30363d;
+  background: var(--ms-bg-canvas, #0d1117);
+  color: var(--ms-text-1, #e6edf3);
+  border: 1px solid var(--ms-border, #30363d);
   border-radius: 6px;
   padding: 7px 10px;
   font-size: 12px;
@@ -344,9 +344,9 @@ const CodePreview = styled.pre`
   margin: 0;
   padding: 10px;
   border-radius: 8px;
-  border: 1px solid #30363d;
-  background: #0d1117;
-  color: #e6edf3;
+  border: 1px solid var(--ms-border, #30363d);
+  background: var(--ms-bg-canvas, #0d1117);
+  color: var(--ms-text-1, #e6edf3);
   font-size: 11px;
   font-family: monospace;
   max-height: 180px;
@@ -362,13 +362,13 @@ const LeaderboardTable = styled.table`
   td {
     padding: 10px 12px;
     text-align: left;
-    border-bottom: 1px solid #21262d;
+    border-bottom: 1px solid var(--ms-bg-elevated, #21262d);
   }
   th {
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: #8b949e;
+    color: var(--ms-text-3, #8b949e);
   }
 `;
 
@@ -681,7 +681,7 @@ export const RlhfArenaHubPage: React.FC = () => {
         <HeroHeader>
           <div>
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700 }}>RLHF Arena Hub</h1>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#8b949e" }}>
+            <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--ms-text-3, #8b949e)" }}>
               Zonotope-prioritized human preference sprints, formal Set-Dominance adjudication, and signed{" "}
               <code>dataset-posttrain</code> releases.
             </p>
@@ -738,7 +738,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                   <Pill $tone="neutral">Honeypots Excluded: {releaseResult.excludedHoneypotCount}</Pill>
                 </div>
                 {releaseResult.proof && (
-                  <div style={{ color: "#c9d1d9", wordBreak: "break-all" }}>
+                  <div style={{ color: "var(--ms-text-2, #c9d1d9)", wordBreak: "break-all" }}>
                     <div>payloadSha256: {releaseResult.proof.payloadSha256 ?? "—"}</div>
                     <div>signerPubkey: {releaseResult.proof.publicKeyMultibase ?? "—"}</div>
                     {releaseResult.proof.verificationMethod && (
@@ -783,7 +783,7 @@ export const RlhfArenaHubPage: React.FC = () => {
 
           {activeTab !== "leaderboard" && (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "#8b949e" }}>Dialect:</span>
+              <span style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>Dialect:</span>
               <SelectControl
                 aria-label="Filter arena by dialect"
                 value={dialectFilter}
@@ -811,7 +811,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                 flexWrap: "wrap",
               }}
             >
-              <div style={{ fontSize: 13, color: "#8b949e" }}>
+              <div style={{ fontSize: 13, color: "var(--ms-text-3, #8b949e)" }}>
                 Structured RLHF sprints track consensus progress and feed directly into signed{" "}
                 <code>dataset-posttrain</code> snapshots.
               </div>
@@ -943,7 +943,7 @@ export const RlhfArenaHubPage: React.FC = () => {
             ) : campaigns.length === 0 ? (
               <Card>
                 <strong style={{ fontSize: 14 }}>No active campaigns yet</strong>
-                <span style={{ fontSize: 12, color: "#8b949e" }}>
+                <span style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>
                   Create a campaign sprint above or jump directly into the global continuous queue.
                 </span>
               </Card>
@@ -954,7 +954,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                       <div>
                         <div style={{ fontSize: 15, fontWeight: 700 }}>{camp.title}</div>
-                        <div style={{ fontSize: 11, color: "#8b949e", fontFamily: "monospace" }}>
+                        <div style={{ fontSize: 11, color: "var(--ms-text-3, #8b949e)", fontFamily: "monospace" }}>
                           /{camp.slug} · #{camp.id}
                         </div>
                       </div>
@@ -962,7 +962,9 @@ export const RlhfArenaHubPage: React.FC = () => {
                     </div>
 
                     {camp.description && (
-                      <p style={{ margin: 0, fontSize: 12, color: "#c9d1d9", lineHeight: 1.45 }}>{camp.description}</p>
+                      <p style={{ margin: 0, fontSize: 12, color: "var(--ms-text-2, #c9d1d9)", lineHeight: 1.45 }}>
+                        {camp.description}
+                      </p>
                     )}
 
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -981,7 +983,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                           justifyContent: "space-between",
                           fontSize: 11,
                           fontFamily: "monospace",
-                          color: "#8b949e",
+                          color: "var(--ms-text-3, #8b949e)",
                         }}
                       >
                         <span>
@@ -992,7 +994,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                       <ProgressTrack>
                         <ProgressFill $pct={camp.progressPct} />
                       </ProgressTrack>
-                      <div style={{ fontSize: 11, color: "#8b949e" }}>
+                      <div style={{ fontSize: 11, color: "var(--ms-text-3, #8b949e)" }}>
                         {camp.resolvedChallengeCount}/{camp.challengeCount} challenges resolved · min{" "}
                         {camp.consensusMinVotes} votes @ {Math.round(camp.consensusAgreementThreshold * 100)}%
                       </div>
@@ -1030,7 +1032,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                 flexWrap: "wrap",
               }}
             >
-              <span style={{ fontSize: 13, color: "#8b949e" }}>
+              <span style={{ fontSize: 13, color: "var(--ms-text-3, #8b949e)" }}>
                 Challenges flagged with split votes, ties, or Formal Set-Dominance conflicts awaiting binding reviewer
                 resolution.
               </span>
@@ -1061,7 +1063,7 @@ export const RlhfArenaHubPage: React.FC = () => {
             ) : adjudicationItems.length === 0 ? (
               <Card>
                 <strong style={{ fontSize: 14 }}>Adjudication Queue Empty ✓</strong>
-                <span style={{ fontSize: 12, color: "#8b949e" }}>
+                <span style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>
                   No split or formal-conflict challenges currently require manual adjudication.
                 </span>
               </Card>
@@ -1101,11 +1103,13 @@ export const RlhfArenaHubPage: React.FC = () => {
                           <Pill $tone="sky">{item.dialect.toUpperCase()}</Pill>
                           <Pill $tone="neutral">{item.challengeType}</Pill>
                         </div>
-                        <div style={{ fontSize: 12, color: "#8b949e", marginTop: 4 }}>{item.prompt}</div>
+                        <div style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)", marginTop: 4 }}>
+                          {item.prompt}
+                        </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                         {renderSetDominanceBadge(item.voteSummary.setDominance, item.candidates)}
-                        <div style={{ fontSize: 11, fontFamily: "monospace", color: "#8b949e" }}>
+                        <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--ms-text-3, #8b949e)" }}>
                           votes={item.voteSummary.totalAnnotations} · agreement=
                           {(item.voteSummary.agreementRatio * 100).toFixed(1)}% · tieW={item.voteSummary.tieWeight} ·
                           badW={item.voteSummary.bothBadWeight}
@@ -1130,7 +1134,11 @@ export const RlhfArenaHubPage: React.FC = () => {
                               key={cand.id}
                               style={{
                                 border: `1px solid ${
-                                  isChosenWinner ? "#38bdf8" : isFormalDom ? "rgba(52, 211, 153, 0.5)" : "#30363d"
+                                  isChosenWinner
+                                    ? "#38bdf8"
+                                    : isFormalDom
+                                      ? "rgba(52, 211, 153, 0.5)"
+                                      : "var(--ms-border, #30363d)"
                                 }`,
                                 borderRadius: 10,
                                 padding: 10,
@@ -1190,7 +1198,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                         justifyContent: "space-between",
                         gap: 10,
                         paddingTop: 8,
-                        borderTop: "1px solid #21262d",
+                        borderTop: "1px solid var(--ms-bg-elevated, #21262d)",
                       }}
                     >
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, flex: 1 }}>
@@ -1264,13 +1272,13 @@ export const RlhfArenaHubPage: React.FC = () => {
             >
               <div>
                 <strong style={{ fontSize: 15 }}>Domain Annotator Leaderboard</strong>
-                <div style={{ fontSize: 12, color: "#8b949e" }}>
+                <div style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>
                   Ranked by domain trust score, verified 4-gate Fix-It repairs, honeypot calibration accuracy, and total
                   annotations.
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, color: "#8b949e" }}>Dialect:</span>
+                <span style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>Dialect:</span>
                 <SelectControl
                   aria-label="Filter leaderboard by dialect"
                   value={leaderboardDialect}
@@ -1288,13 +1296,13 @@ export const RlhfArenaHubPage: React.FC = () => {
             </div>
 
             {leaderboardLoading ? (
-              <div style={{ fontSize: 13, color: "#8b949e", padding: 12 }}>Loading leaderboard…</div>
+              <div style={{ fontSize: 13, color: "var(--ms-text-3, #8b949e)", padding: 12 }}>Loading leaderboard…</div>
             ) : leaderboardError ? (
               <div style={{ fontSize: 13, color: "#f87171", padding: 12 }}>
                 Failed to load leaderboard: {leaderboardError}
               </div>
             ) : leaderboard.length === 0 ? (
-              <div style={{ fontSize: 13, color: "#8b949e", padding: 12 }}>
+              <div style={{ fontSize: 13, color: "var(--ms-text-3, #8b949e)", padding: 12 }}>
                 No annotator reputation records yet for this dialect. Complete tasks in the{" "}
                 <Link to="/annotate/queue" style={{ color: "#38bdf8" }}>
                   Continuous Annotation Queue
@@ -1330,7 +1338,9 @@ export const RlhfArenaHubPage: React.FC = () => {
                         </td>
                         <td>
                           <div style={{ fontWeight: 600 }}>{row.displayName}</div>
-                          <div style={{ fontSize: 11, color: "#8b949e", fontFamily: "monospace" }}>@{row.username}</div>
+                          <div style={{ fontSize: 11, color: "var(--ms-text-3, #8b949e)", fontFamily: "monospace" }}>
+                            @{row.username}
+                          </div>
                         </td>
                         <td>
                           <Pill $tone="neutral">{row.domain}</Pill>
@@ -1348,7 +1358,7 @@ export const RlhfArenaHubPage: React.FC = () => {
                               {row.honeypotHits + row.honeypotMisses})
                             </Pill>
                           ) : (
-                            <span style={{ color: "#8b949e" }}>—</span>
+                            <span style={{ color: "var(--ms-text-3, #8b949e)" }}>—</span>
                           )}
                         </td>
                         <td style={{ fontFamily: "monospace" }}>{row.totalAnnotations}</td>

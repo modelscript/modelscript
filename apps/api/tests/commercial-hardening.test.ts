@@ -386,6 +386,7 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
       data: {
         object: {
           id: csBody.sessionId,
+          payment_status: "paid",
           payment_intent: "pi_from_cs_001",
           amount_subtotal: 25000,
           amount_total: 27000,

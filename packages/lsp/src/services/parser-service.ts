@@ -1326,86 +1326,91 @@ export class ParserService {
       if (!serverDistBase) return;
       this.serverDistBase = serverDistBase;
 
-      for (const lib of polyglotLibs) {
-        const libKey = `${lib.packageName}@${lib.version}`;
-        if (this.failedStdlibKeys.has(libKey)) {
-          continue;
-        }
-        const existingPromise = this.loadingStdlibPromises.get(libKey);
-        if (existingPromise) {
-          await existingPromise;
-          continue;
-        }
+      let anyMounted = false;
+      await Promise.all(
+        polyglotLibs.map(async (lib) => {
+          const libKey = `${lib.packageName}@${lib.version}`;
+          if (this.failedStdlibKeys.has(libKey)) {
+            return;
+          }
+          const existingPromise = this.loadingStdlibPromises.get(libKey);
+          if (existingPromise) {
+            await existingPromise;
+            return;
+          }
 
-        let mountOk = false;
-        const hasBuiltInOrCurated = builtInPkgs.length > 0 || Boolean(findCuratedPackageFallback(lib.packageName));
-        const mountPromise = (async () => {
-          this.connection.sendNotification("modelscript/status", {
-            state: "loading",
-            message: `ModelScript (activating ${lib.packageName} standard library...)`,
-          });
-
-          try {
-            const ok = await mountPolyglotLibrary(this.serverDistBase, loaderCtx, {
-              packageName: lib.packageName,
-              version: lib.version,
-              filename: lib.filename,
-              language: lib.language,
-              quietIfMissing: hasBuiltInOrCurated,
+          let mountOk = false;
+          const hasBuiltInOrCurated = builtInPkgs.length > 0 || Boolean(findCuratedPackageFallback(lib.packageName));
+          const mountPromise = (async () => {
+            this.connection.sendNotification("modelscript/status", {
+              state: "loading",
+              message: `ModelScript (activating ${lib.packageName} standard library...)`,
             });
 
-            if (ok) {
-              mountOk = true;
-              this.connection.console.info(`[lsp] Successfully lazy-mounted stdlib ${libKey} for ${norm}.`);
-            }
-          } catch (mountErr) {
-            this.connection.console.warn(`[lsp] Failed to mount polyglot stdlib ${libKey}: ${mountErr}`);
-          }
-
-          if (!mountOk) {
             try {
-              const fallbackOk = await mountCuratedFallbackPackage(lib.packageName, lib.version, loaderCtx);
-              if (fallbackOk) {
+              const ok = await mountPolyglotLibrary(this.serverDistBase, loaderCtx, {
+                packageName: lib.packageName,
+                version: lib.version,
+                filename: lib.filename,
+                language: lib.language,
+                quietIfMissing: hasBuiltInOrCurated,
+              });
+
+              if (ok) {
                 mountOk = true;
-                this.connection.console.info(`[lsp] Mounted curated fallback stdlib ${libKey} for ${norm}.`);
+                this.connection.console.info(`[lsp] Successfully lazy-mounted stdlib ${libKey} for ${norm}.`);
               }
-            } catch (fallbackErr) {
-              this.connection.console.warn(`[lsp] Curated fallback failed for stdlib ${libKey}: ${fallbackErr}`);
+            } catch (mountErr) {
+              this.connection.console.warn(`[lsp] Failed to mount polyglot stdlib ${libKey}: ${mountErr}`);
             }
-          }
 
-          if (mountOk) {
-            for (const doc of this.documents.all()) {
-              const docLang = this.resolveNormalizedLanguageId(doc.languageId || doc.uri);
-              if (docLang === norm) {
-                try {
-                  await (this.validationServiceRef?.validateTextDocument?.(doc) ??
-                    globalCtx.validateTextDocument?.(doc));
-                } catch (err) {
-                  this.connection.console.warn(`[lsp] Failed to validate open doc after ${libKey} load: ${err}`);
+            if (!mountOk) {
+              try {
+                const fallbackOk = await mountCuratedFallbackPackage(lib.packageName, lib.version, loaderCtx);
+                if (fallbackOk) {
+                  mountOk = true;
+                  this.connection.console.info(`[lsp] Mounted curated fallback stdlib ${libKey} for ${norm}.`);
                 }
+              } catch (fallbackErr) {
+                this.connection.console.warn(`[lsp] Curated fallback failed for stdlib ${libKey}: ${fallbackErr}`);
               }
             }
 
-            this.sendProjectTreeChanged();
+            if (mountOk) {
+              anyMounted = true;
+            }
+          })();
+
+          this.loadingStdlibPromises.set(libKey, mountPromise);
+          try {
+            await mountPromise;
+          } finally {
+            if (!mountOk) {
+              this.failedStdlibKeys.add(libKey);
+              this.loadingStdlibPromises.delete(libKey);
+            }
           }
+        }),
+      );
 
-          this.connection.sendNotification("modelscript/status", {
-            state: "ready",
-            message: globalCtx.getReadyMessage?.() ?? "ModelScript",
-          });
-        })();
-
-        this.loadingStdlibPromises.set(libKey, mountPromise);
-        try {
-          await mountPromise;
-        } finally {
-          if (!mountOk) {
-            this.failedStdlibKeys.add(libKey);
-            this.loadingStdlibPromises.delete(libKey);
+      if (anyMounted) {
+        for (const doc of this.documents.all()) {
+          const docLang = this.resolveNormalizedLanguageId(doc.languageId || doc.uri);
+          if (docLang === norm) {
+            try {
+              await (this.validationServiceRef?.validateTextDocument?.(doc) ?? globalCtx.validateTextDocument?.(doc));
+            } catch (err) {
+              this.connection.console.warn(`[lsp] Failed to validate open doc after ${norm} stdlib load: ${err}`);
+            }
           }
         }
+        this.sendProjectTreeChanged();
       }
+
+      this.connection.sendNotification("modelscript/status", {
+        state: "ready",
+        message: globalCtx.getReadyMessage?.() ?? "ModelScript",
+      });
       return;
     }
 

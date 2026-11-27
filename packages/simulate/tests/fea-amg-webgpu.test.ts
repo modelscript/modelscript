@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -284,7 +283,7 @@ describe("WS-D: Smoothed-Aggregation AMG Preconditioner + Aerospace Materials + 
     assert.ok(FEA_DAMPED_JACOBI_WGSL.includes("params.omega * invDiag[row] * residual"));
 
     // Native FP64 CUDA/HIP kernel file
-    const cuPath = resolve(process.cwd(), "packages/native/src/kernels/fea_amg_fp64.cu");
+    const cuPath = new URL("../../native/src/kernels/fea_amg_fp64.cu", import.meta.url);
     const cuSrc = readFileSync(cuPath, "utf8");
     assert.ok(cuSrc.includes("#include <cuda_runtime.h>"));
     assert.ok(cuSrc.includes("#include <hip/hip_runtime.h>"));

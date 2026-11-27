@@ -52,10 +52,9 @@ describe("Ansatz Language Capability Tab Hiding", () => {
     assert.ok(sysmlHtml.includes(">Diagram<"), "SysML v2 should show Diagram tab");
     assert.ok(!sysmlHtml.includes(">3D<"), "SysML v2 should hide 3D tab");
 
-    // OpenSCAD supports 3D, NOT diagram or simulation
+    // OpenSCAD supports 3D (and SCAD feature tree diagram), NOT simulation results
     const scadHtml = renderMobileBar("scad");
     assert.ok(!scadHtml.includes(">Results<"), "OpenSCAD should hide Results tab");
-    assert.ok(!scadHtml.includes(">Diagram<"), "OpenSCAD should hide Diagram tab");
     assert.ok(scadHtml.includes(">3D<"), "OpenSCAD should show 3D tab");
 
     // CSV supports none of diagram, simulation, 3D

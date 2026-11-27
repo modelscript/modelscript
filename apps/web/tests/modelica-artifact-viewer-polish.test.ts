@@ -81,10 +81,10 @@ end RLC;`;
   });
 
   it("ensures Minimap HUD defaults to hidden in diagram index unless explicitly requested", () => {
-    const indexSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts"),
-      "utf8",
-    );
+    const diagramDir = path.resolve(import.meta.dirname, "../../../packages/diagram/src");
+    const indexSrc = ["index.ts", "canvas-init.ts", "minimap.ts"]
+      .map((f) => fs.readFileSync(path.join(diagramDir, f), "utf8"))
+      .join("\n");
     assert.ok(
       indexSrc.includes('container?.getAttribute("data-show-minimap") === "true"'),
       "packages/diagram must initialize Minimap HUD hidden by default to avoid canvas clutter",

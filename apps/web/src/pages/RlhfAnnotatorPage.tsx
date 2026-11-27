@@ -138,9 +138,13 @@ const ActionButton = styled.button<{ $primary?: boolean; $active?: boolean }>`
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border: 1px solid ${(p) => (p.$active || p.$primary ? "#38bdf8" : "#30363d")};
+  border: 1px solid ${(p) => (p.$active || p.$primary ? "#38bdf8" : "var(--ms-border, #30363d)")};
   background: ${(p) =>
-    p.$primary ? "linear-gradient(135deg, #0284c7, #6366f1)" : p.$active ? "rgba(56, 189, 248, 0.18)" : "#21262d"};
+    p.$primary
+      ? "linear-gradient(135deg, #0284c7, #6366f1)"
+      : p.$active
+        ? "rgba(56, 189, 248, 0.18)"
+        : "var(--ms-bg-elevated, #21262d)"};
   color: #f8fafc;
   &:disabled {
     opacity: 0.5;
@@ -423,7 +427,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
       <TopBar>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>{challenge.title}</div>
-          <div style={{ fontSize: 12, color: "#8b949e" }}>{challenge.prompt}</div>
+          <div style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>{challenge.prompt}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontFamily: "monospace" }}>
           {challenge.challengeType === "pairwise_arena" && (
@@ -507,7 +511,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
               <strong>
                 4-Column Relational Zonotope Overlay (m_init={liveHypergraph?.mInit ?? displayedGroups.length})
               </strong>
-              <span style={{ fontSize: 11, color: "#8b949e" }}>
+              <span style={{ fontSize: 11, color: "var(--ms-text-3, #8b949e)" }}>
                 Click any token to label group_id &amp; sign · hover to inspect
               </span>
             </PaneHeader>
@@ -582,7 +586,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
 
           <Pane style={{ padding: 14, overflowY: "auto", gap: 10 }}>
             <strong style={{ fontSize: 13 }}>Perturbation Generators (ε_1 … ε_m)</strong>
-            <div style={{ fontSize: 12, color: "#8b949e" }}>
+            <div style={{ fontSize: 12, color: "var(--ms-text-3, #8b949e)" }}>
               Lock safety/syntax invariants to <code>group_id = 0</code> or invert coupled parameter signs for Dynamic-m
               training.
             </div>
@@ -598,7 +602,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
                     setActiveGroupId(clickedTokenContext ? clickedTokenContext.effectiveGroupId : null)
                   }
                   style={{
-                    border: `1px solid ${isHighlighted ? "#38bdf8" : "#30363d"}`,
+                    border: `1px solid ${isHighlighted ? "#38bdf8" : "var(--ms-border, #30363d)"}`,
                     background: isHighlighted ? "rgba(56, 189, 248, 0.08)" : "transparent",
                     borderRadius: 8,
                     padding: "8px 10px",
@@ -612,7 +616,7 @@ export const RlhfAnnotatorPage: React.FC = () => {
                     <div style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace" }}>
                       ε_{g.groupId}: {g.label}
                     </div>
-                    <div style={{ fontSize: 11, color: "#8b949e" }}>{g.tokenCount} occurrences</div>
+                    <div style={{ fontSize: 11, color: "var(--ms-text-3, #8b949e)" }}>{g.tokenCount} occurrences</div>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <ActionButton
@@ -660,9 +664,9 @@ export const RlhfAnnotatorPage: React.FC = () => {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="Optional engineering note…"
             style={{
-              background: "#0d1117",
-              color: "#e6edf3",
-              border: "1px solid #30363d",
+              background: "var(--ms-bg-canvas, #0d1117)",
+              color: "var(--ms-text-1, #e6edf3)",
+              border: "1px solid var(--ms-border, #30363d)",
               borderRadius: 6,
               padding: "6px 10px",
               fontSize: 12,

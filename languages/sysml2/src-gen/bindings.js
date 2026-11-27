@@ -578,8 +578,8 @@ export class NativeRuntime {
   }
 }
 export const SYNTAX_NAMES =
-  typeof ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"from\"","\"dependency\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\":\"","\"defined\"","\"by\"","\"metadata\"","\"@\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","_OptVisibility","_OptEmptySuccession","_OptPrefixMetadataMembers","_OptUsageModifiers","_OptFrom","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","_OptShortName","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","_OptMetadataDecl","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","_OptRef","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","_OptConnectorEndName","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","_OptSuccessionDecl","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","_OptRefSubDot","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_OptActionPrefix","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","_NullCoalescingTail","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","_ImpliesTail","ImpliesExpression","OrExpressionReference","OrExpressionMember","_OrTail","OrExpression","XorExpressionReference","XorExpressionMember","_XorTail","XorExpression","_AndTail","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","_LitOrRef","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | A_27a8ae4e","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_VisibilityIndicator?","_EmptySuccessionMember?","_PrefixMetadataMember*","__usage_modifier*","__Identification?","_(_Identification? \"from\")?","_PrefixMetadataAnnotation*","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepres_0a13afbf","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" An_29799de2","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRIN_c29d9466","_(\"rep\" _Identification?)?","_(\"<\" Name \">\")?","_(\":\" | (\"defined\" \"by\"))","_(\":\" | (\"defined\" \"by\"))?","_((_Identification (\":\" | (\"defined\" \"by\"_5e5a2fb7","_((_Identification (\":\" | (\"defined\" \"by\"_0ff8d318","_(\"metadata\" | \"@\")","_(\";\" | (\"{\" (DefinitionMember | Metadata_7f7dd01b","_(DefinitionMember | MetadataBodyUsageMem_97d954d0","_(DefinitionMember | MetadataBodyUsageMem_0520c58e","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember+","_(FilterPackageMembershipImport | FilterP_7a609cbd","_(Package | LibraryPackage | Dependency |_0bf8855f","_(_NonOccurrenceUsageElement | _Occurrenc_3e4805f1","_(DefaultReferenceUsage | ReferenceUsage _2ddc0e91","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage_df5681fe","_(ActionUsage | CalculationUsage | StateU_dbc84088","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecialization_8036ba59","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)+","_(OwnedMultiplicity | (OwnedMultiplicity?_ab087de1","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\"_5c5f5bb0","_\"ordered\"?","_(_Typings | _Subsettings | _References |_3376d6eb","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(QualifiedName | OwnedFeatureChain)_1","_(QualifiedName | OwnedFeatureChain)_2","_(QualifiedName | OwnedFeatureChain)_3","_(QualifiedName | OwnedFeatureChain)_4","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceEx_26767539","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember |_d0ec56c3","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"deriv_ad4ac787","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | Enumerat_4425a5a8","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_OwnedMultiplicity?_1","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _Value_c51089d9","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allo_cab94563","_((FlowEndMember \"to\" FlowEndMember) | (__8b5d55f4","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializatio_7bdfda61","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember_93b548b3","_(\"action\" _UsageDeclaration?)?","_(IfNode | WhileLoopNode | ForLoopNode | _92d978d7","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) _14b03b06","_((OwnedReferenceSubsetting _FeatureSpeci_940e4e3b","_(\";\" | (\"{\" (_ActionBodyItem | ReturnPar_9e0b235a","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpeci_2cacb0f2","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | R_648ae186","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpeci_58611926","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpeci_c3f6ebaa","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMe_f085546f","_(_ActionBodyItem | SubjectMember | Actor_54ecea9a","_(_ActionBodyItem | SubjectMember | Actor_60f57310","_(\";\" | (\"{\" _VerificationBodyItem* Resul_d56fdc5b","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsag_d99fdf43","_((OwnedReferenceSubsetting _FeatureSpeci_2a5debe0","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember_dc0d4857","_(\";\" | (_UsageDeclaration? _ValuePart? __e06b7bd6","_((OwnedReferenceSubsetting _FeatureSpeci_a886f140","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | Eleme_72e83fa8","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingE_8bca3c8f","_\"??\"","_(\"??\" ImpliesExpressionReference)+","_\"implies\"","_(\"implies\" ImpliesExpressionReference)+","_\"|\"","_((\"|\" _Expression) | (\"or\" XorExpression_48dd5c1c","_\"or\"","_((\"|\" _Expression) | (\"or\" XorExpression_eb782a95","_\"xor\"","_(\"xor\" _Expression)+","_\"&\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_2f3f9807","_\"and\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_8d1c8d44","_(EqualityOperator _Expression)+","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferen_9d16b665","_((_Expression ((ClassificationTestOperat_4bc10124","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)+","_(\"<\" | \">\" | \"<=\" | \">=\")","_(AdditiveOperator _Expression)+","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)+","_(\"*\" | \"/\" | \"%\")","_(\"**\" | \"^\")","_(\"+\" | \"-\" | \"~\" | \"not\")","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\"_a1e4855a","_(BodyExpression | FunctionReferenceExpre_c9930080","_(_LiteralExpression | FeatureReferenceEx_26767539_1","_(UnitBinaryExpression | UnitExponentExpr_28b453a1","_(\"*\" | \"/\")","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(FeatureReferenceExpression | (\"(\" _Unit_49c7d010","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMembe_a1182a25","__postfix_operation+","_(NullExpression | _LiteralExpression | F_f15de4f3","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(QualifiedName | OwnedFeatureChain)_5","_(\".\" OwnedFeatureChaining)+","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | Litera_de1646ae","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EX_9be90db7","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (Qualifie_ddc789f7","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
-    ? ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"from\"","\"dependency\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\":\"","\"defined\"","\"by\"","\"metadata\"","\"@\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","_OptVisibility","_OptEmptySuccession","_OptPrefixMetadataMembers","_OptUsageModifiers","_OptFrom","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","_OptShortName","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","_OptMetadataDecl","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","_OptRef","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","_OptConnectorEndName","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","_OptSuccessionDecl","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","_OptRefSubDot","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_OptActionPrefix","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","_NullCoalescingTail","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","_ImpliesTail","ImpliesExpression","OrExpressionReference","OrExpressionMember","_OrTail","OrExpression","XorExpressionReference","XorExpressionMember","_XorTail","XorExpression","_AndTail","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","_LitOrRef","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | A_27a8ae4e","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_VisibilityIndicator?","_EmptySuccessionMember?","_PrefixMetadataMember*","__usage_modifier*","__Identification?","_(_Identification? \"from\")?","_PrefixMetadataAnnotation*","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepres_0a13afbf","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" An_29799de2","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRIN_c29d9466","_(\"rep\" _Identification?)?","_(\"<\" Name \">\")?","_(\":\" | (\"defined\" \"by\"))","_(\":\" | (\"defined\" \"by\"))?","_((_Identification (\":\" | (\"defined\" \"by\"_5e5a2fb7","_((_Identification (\":\" | (\"defined\" \"by\"_0ff8d318","_(\"metadata\" | \"@\")","_(\";\" | (\"{\" (DefinitionMember | Metadata_7f7dd01b","_(DefinitionMember | MetadataBodyUsageMem_97d954d0","_(DefinitionMember | MetadataBodyUsageMem_0520c58e","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember+","_(FilterPackageMembershipImport | FilterP_7a609cbd","_(Package | LibraryPackage | Dependency |_0bf8855f","_(_NonOccurrenceUsageElement | _Occurrenc_3e4805f1","_(DefaultReferenceUsage | ReferenceUsage _2ddc0e91","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage_df5681fe","_(ActionUsage | CalculationUsage | StateU_dbc84088","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecialization_8036ba59","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)+","_(OwnedMultiplicity | (OwnedMultiplicity?_ab087de1","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\"_5c5f5bb0","_\"ordered\"?","_(_Typings | _Subsettings | _References |_3376d6eb","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(QualifiedName | OwnedFeatureChain)_1","_(QualifiedName | OwnedFeatureChain)_2","_(QualifiedName | OwnedFeatureChain)_3","_(QualifiedName | OwnedFeatureChain)_4","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceEx_26767539","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember |_d0ec56c3","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"deriv_ad4ac787","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | Enumerat_4425a5a8","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_OwnedMultiplicity?_1","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _Value_c51089d9","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allo_cab94563","_((FlowEndMember \"to\" FlowEndMember) | (__8b5d55f4","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializatio_7bdfda61","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember_93b548b3","_(\"action\" _UsageDeclaration?)?","_(IfNode | WhileLoopNode | ForLoopNode | _92d978d7","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) _14b03b06","_((OwnedReferenceSubsetting _FeatureSpeci_940e4e3b","_(\";\" | (\"{\" (_ActionBodyItem | ReturnPar_9e0b235a","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpeci_2cacb0f2","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | R_648ae186","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpeci_58611926","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpeci_c3f6ebaa","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMe_f085546f","_(_ActionBodyItem | SubjectMember | Actor_54ecea9a","_(_ActionBodyItem | SubjectMember | Actor_60f57310","_(\";\" | (\"{\" _VerificationBodyItem* Resul_d56fdc5b","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsag_d99fdf43","_((OwnedReferenceSubsetting _FeatureSpeci_2a5debe0","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember_dc0d4857","_(\";\" | (_UsageDeclaration? _ValuePart? __e06b7bd6","_((OwnedReferenceSubsetting _FeatureSpeci_a886f140","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | Eleme_72e83fa8","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingE_8bca3c8f","_\"??\"","_(\"??\" ImpliesExpressionReference)+","_\"implies\"","_(\"implies\" ImpliesExpressionReference)+","_\"|\"","_((\"|\" _Expression) | (\"or\" XorExpression_48dd5c1c","_\"or\"","_((\"|\" _Expression) | (\"or\" XorExpression_eb782a95","_\"xor\"","_(\"xor\" _Expression)+","_\"&\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_2f3f9807","_\"and\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_8d1c8d44","_(EqualityOperator _Expression)+","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferen_9d16b665","_((_Expression ((ClassificationTestOperat_4bc10124","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)+","_(\"<\" | \">\" | \"<=\" | \">=\")","_(AdditiveOperator _Expression)+","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)+","_(\"*\" | \"/\" | \"%\")","_(\"**\" | \"^\")","_(\"+\" | \"-\" | \"~\" | \"not\")","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\"_a1e4855a","_(BodyExpression | FunctionReferenceExpre_c9930080","_(_LiteralExpression | FeatureReferenceEx_26767539_1","_(UnitBinaryExpression | UnitExponentExpr_28b453a1","_(\"*\" | \"/\")","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(FeatureReferenceExpression | (\"(\" _Unit_49c7d010","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMembe_a1182a25","__postfix_operation+","_(NullExpression | _LiteralExpression | F_f15de4f3","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(QualifiedName | OwnedFeatureChain)_5","_(\".\" OwnedFeatureChaining)+","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | Litera_de1646ae","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EX_9be90db7","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (Qualifie_ddc789f7","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
+  typeof ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"from\"","\"dependency\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\":\"","\"defined\"","\"by\"","\"metadata\"","\"@\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","_OptVisibility","_OptEmptySuccession","_OptPrefixMetadataMembers","_OptUsageModifiers","_OptFrom","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","_OptShortName","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","_OptMetadataDecl","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","_OptRef","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","_OptConnectorEndName","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","_OptSuccessionDecl","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","_OptRefSubDot","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_OptActionPrefix","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","_NullCoalescingTail","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","_ImpliesTail","ImpliesExpression","OrExpressionReference","OrExpressionMember","_OrTail","OrExpression","XorExpressionReference","XorExpressionMember","_XorTail","XorExpression","_AndTail","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","_LitOrRef","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | A_27a8ae4e","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_VisibilityIndicator?","_EmptySuccessionMember?","_PrefixMetadataMember*","__usage_modifier*","__Identification?","_(_Identification? \"from\")?","_PrefixMetadataAnnotation*","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepres_0a13afbf","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" An_29799de2","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRIN_c29d9466","_(\"rep\" _Identification?)?","_(\"<\" Name \">\")?","_(\":\" | (\"defined\" \"by\"))","_(\":\" | (\"defined\" \"by\"))?","_((_Identification (\":\" | (\"defined\" \"by\"_5e5a2fb7","_((_Identification (\":\" | (\"defined\" \"by\"_0ff8d318","_(\"metadata\" | \"@\")","_(\";\" | (\"{\" (DefinitionMember | Metadata_7f7dd01b","_(DefinitionMember | MetadataBodyUsageMem_97d954d0","_(DefinitionMember | MetadataBodyUsageMem_0520c58e","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember+","_(FilterPackageMembershipImport | FilterP_7a609cbd","_(Package | LibraryPackage | Dependency |_0bf8855f","_(_NonOccurrenceUsageElement | _Occurrenc_3e4805f1","_(DefaultReferenceUsage | ReferenceUsage _2ddc0e91","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage_df5681fe","_(ActionUsage | CalculationUsage | StateU_dbc84088","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecialization_8036ba59","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)+","_(OwnedMultiplicity | (OwnedMultiplicity?_ab087de1","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\"_5c5f5bb0","_\"ordered\"?","_(_Typings | _Subsettings | _References |_3376d6eb","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(QualifiedName | OwnedFeatureChain)_1","_(QualifiedName | OwnedFeatureChain)_2","_(QualifiedName | OwnedFeatureChain)_3","_(QualifiedName | OwnedFeatureChain)_4","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceEx_26767539","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember |_d0ec56c3","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"deriv_ad4ac787","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | Enumerat_4425a5a8","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_OwnedMultiplicity?_1","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _Value_c51089d9","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allo_cab94563","_((FlowEndMember \"to\" FlowEndMember) | (__8b5d55f4","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializatio_7bdfda61","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember_93b548b3","_(\"action\" _UsageDeclaration?)?","_(IfNode | WhileLoopNode | ForLoopNode | _92d978d7","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) _14b03b06","_((OwnedReferenceSubsetting _FeatureSpeci_940e4e3b","_(\";\" | (\"{\" (_ActionBodyItem | ReturnPar_9e0b235a","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpeci_2cacb0f2","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | R_648ae186","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpeci_58611926","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpeci_c3f6ebaa","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMe_f085546f","_(_ActionBodyItem | SubjectMember | Actor_54ecea9a","_(_ActionBodyItem | SubjectMember | Actor_60f57310","_(\";\" | (\"{\" _VerificationBodyItem* Resul_d56fdc5b","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsag_d99fdf43","_((OwnedReferenceSubsetting _FeatureSpeci_2a5debe0","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember_dc0d4857","_(\"then\" ConnectorEndMember \";\")?","_(\";\" | (_UsageDeclaration? _ValuePart? __e06b7bd6","_((OwnedReferenceSubsetting _FeatureSpeci_a886f140","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | Eleme_72e83fa8","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingE_8bca3c8f","_\"??\"","_(\"??\" ImpliesExpressionReference)+","_\"implies\"","_(\"implies\" ImpliesExpressionReference)+","_\"|\"","_((\"|\" _Expression) | (\"or\" XorExpression_48dd5c1c","_\"or\"","_((\"|\" _Expression) | (\"or\" XorExpression_eb782a95","_\"xor\"","_(\"xor\" _Expression)+","_\"&\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_2f3f9807","_\"and\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_8d1c8d44","_(EqualityOperator _Expression)+","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferen_9d16b665","_((_Expression ((ClassificationTestOperat_4bc10124","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)+","_(\"<\" | \">\" | \"<=\" | \">=\")","_(AdditiveOperator _Expression)+","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)+","_(\"*\" | \"/\" | \"%\")","_(\"**\" | \"^\")","_(\"+\" | \"-\" | \"~\" | \"not\")","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\"_a1e4855a","_(BodyExpression | FunctionReferenceExpre_c9930080","_(_LiteralExpression | FeatureReferenceEx_26767539_1","_(UnitBinaryExpression | UnitExponentExpr_28b453a1","_(\"*\" | \"/\")","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(FeatureReferenceExpression | (\"(\" _Unit_49c7d010","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMembe_a1182a25","__postfix_operation+","_(NullExpression | _LiteralExpression | F_f15de4f3","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(QualifiedName | OwnedFeatureChain)_5","_(\".\" OwnedFeatureChaining)+","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | Litera_de1646ae","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EX_9be90db7","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (Qualifie_ddc789f7","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"] !== "undefined"
+    ? ["ERROR","/\\s/","\"<\"","\">\"","\";\"","\"{\"","\"}\"","\"public\"","\"private\"","\"protected\"","\"from\"","\"dependency\"","\",\"","\"to\"","\"comment\"","\"about\"","\"locale\"","\"doc\"","\"rep\"","\"language\"","\"#\"","\":\"","\"defined\"","\"by\"","\"metadata\"","\"@\"","\"ref\"","\":>>\"","\"redefines\"","\"def\"","\"package\"","\"standard\"","\"library\"","\"filter\"","\"alias\"","\"for\"","\"import\"","\"all\"","\"::\"","\"**\"","\"*\"","\"[\"","\"]\"","\":>\"","\"specializes\"","\"ordered\"","\"nonunique\"","\"subsets\"","\"subset\"","\"::>\"","\"references\"","\"reference\"","\"=>\"","\"crosses\"","\"redefine\"","\"..\"","\"variant\"","\"end\"","\"in\"","\"out\"","\"inout\"","\"derived\"","\"abstract\"","\"variation\"","\"constant\"","\"individual\"","\"snapshot\"","\"timeslice\"","\"=\"","\":=\"","\"default\"","\"attribute\"","\"enum\"","\"occurrence\"","\"item\"","\"part\"","\"port\"","\"~\"","\"connection\"","\"connect\"","\"(\"","\")\"","\"binding\"","\"bind\"","\"succession\"","\"first\"","\"then\"","\"if\"","\"interface\"","\"allocation\"","\"allocate\"","\"flow\"","\"of\"","\".\"","\"action\"","\"else\"","\"while\"","\"loop\"","\"until\"","\"merge\"","\"decide\"","\"join\"","\"fork\"","\"accept\"","\"via\"","\"send\"","\"assign\"","\"=:\"","\"perform\"","\"calc\"","\"return\"","\"constraint\"","\"assert\"","\"not\"","\"requirement\"","\"subject\"","\"assume\"","\"require\"","\"actor\"","\"stakeholder\"","\"satisfy\"","\"concern\"","\"case\"","\"analysis\"","\"verification\"","\"verify\"","\"objective\"","\"use\"","\"include\"","\"state\"","\"parallel\"","\"entry\"","\"do\"","\"exit\"","\"exhibit\"","\"transition\"","\"view\"","\"viewpoint\"","\"rendering\"","\"?\"","\"??\"","\"implies\"","\"|\"","\"or\"","\"xor\"","\"&\"","\"and\"","\"==\"","\"!=\"","\"===\"","\"!==\"","\"hastype\"","\"istype\"","\"@@\"","\"as\"","\"meta\"","\"<=\"","\">=\"","\"+\"","\"-\"","\"/\"","\"%\"","\"^\"","\"->\"","\".?\"","\"new\"","\"null\"","\"true\"","\"false\"","\"$\"","/[0-9]+/","/[0-9]+[eE][+-]?[0-9]+/","/[a-zA-Z_][a-zA-Z_0-9\\u00B2\\u00B3\\u00B9\\u2070-\\u2079]*/","/'(?:[^'\\\\]|\\\\.)*'/","/\"(?:[^\"\\\\]|\\\\.)*\"/","/\\/\\*[^*]*\\*+([^/*][^*]*\\*+)*\\//","/\\/\\/[^\\r\\n]*/","RootNamespace","_PackageBodyElement","_Identification","_RelationshipBody","VisibilityIndicator","_OptVisibility","_OptEmptySuccession","_OptPrefixMetadataMembers","_OptUsageModifiers","_OptFrom","Dependency","Annotation","OwnedAnnotation","AnnotatingMember","_AnnotatingElement","Comment","Documentation","TextualRepresentation","_OptShortName","PrefixMetadataAnnotation","PrefixMetadataMember","PrefixMetadataUsage","_OptMetadataDecl","MetadataUsage","MetadataTyping","_MetadataBody","MetadataBodyUsageMember","_OptRef","MetadataBodyUsage","MetadataDefinition","Package","LibraryPackage","_PackageBody","PackageMember","ElementFilterMember","AliasMember","_ImportPrefix","Import","MembershipImport","_ImportedMembership","NamespaceImport","_ImportedNamespace","FilterPackage","FilterPackageImport","FilterPackageMembershipImport","FilterPackageNamespaceImport","FilterPackageMember","_DefinitionElement","_UsageElement","_NonOccurrenceUsageElement","_OccurrenceUsageElement","_StructureUsageElement","_BehaviorUsageElement","_SubclassificationPart","OwnedSubclassification","_FeatureDeclaration","_FeatureSpecializationPart","_MultiplicityPart","_FeatureSpecialization","_Typings","_Subsettings","_References","_Crosses","_Redefinitions","FeatureTyping","OwnedFeatureTyping","OwnedSubsetting","OwnedReferenceSubsetting","OwnedCrossSubsetting","OwnedRedefinition","OwnedMultiplicity","MultiplicityRange","MultiplicityExpressionMember","_Definition","_DefinitionBody","_DefinitionBodyItem","DefinitionMember","VariantUsageMember","NonOccurrenceUsageMember","OccurrenceUsageMember","_usage_modifier","_UsageDeclaration","_UsageCompletion","_Usage","_ValuePart","FeatureValue","DefaultReferenceUsage","ReferenceUsage","AttributeDefinition","AttributeUsage","EnumerationDefinition","_EnumerationBody","EnumerationUsageMember","EnumeratedValue","EnumerationUsage","OccurrenceDefinition","OccurrenceUsage","ItemDefinition","ItemUsage","PartDefinition","PartUsage","PortDefinition","PortUsage","ConjugatedPortTyping","ConnectorEndMember","_OptConnectorEndName","ConnectorEnd","ConnectionDefinition","ConnectionUsage","_ConnectorPart","_BinaryConnectorPart","_NaryConnectorPart","BindingConnectorAsUsage","_OptSuccessionDecl","SuccessionAsUsage","InterfaceDefinition","InterfaceUsage","AllocationDefinition","AllocationUsage","FlowDefinition","FlowUsage","SuccessionFlowUsage","PayloadFeatureMember","PayloadFeature","FlowEndMember","_OptRefSubDot","FlowEnd","FlowFeatureMember","FlowFeature","ActionDefinition","_ActionBody","_ActionBodyItem","EmptySuccessionMember","MultiplicitySourceEnd","ActionNodeMember","_OptActionPrefix","_ActionNode","IfNode","ActionBodyParameter","WhileLoopNode","ForLoopNode","ForVariableDeclaration","ControlNode","MergeNode","DecisionNode","JoinNode","ForkNode","ActionUsage","AcceptActionNode","SendActionNode","AssignActionNode","PerformActionUsage","CalculationDefinition","_CalculationBody","_ParameterList","ParameterMember","ReturnParameterMember","ResultExpressionMember","CalculationUsage","ConstraintDefinition","ConstraintUsage","AssertConstraintUsage","RequirementDefinition","_RequirementBody","_RequirementBodyItem","SubjectMember","SubjectUsage","RequirementConstraintMember","RequirementConstraintUsage","ActorMember","ActorUsage","StakeholderMember","StakeholderUsage","RequirementUsage","SatisfyRequirementUsage","ConcernDefinition","ConcernUsage","CaseDefinition","_CaseBody","CaseUsage","AnalysisCaseDefinition","AnalysisCaseUsage","VerificationCaseDefinition","VerificationCaseUsage","_VerificationBody","_VerificationBodyItem","VerifyRequirementUsageMember","VerifyRequirementUsage","ObjectiveMember","ObjectiveRequirementUsage","UseCaseDefinition","UseCaseUsage","IncludeUseCaseUsage","StateDefinition","_StateBodyItem","EntryActionMember","DoActionMember","ExitActionMember","StateActionUsage","StateUsage","ExhibitStateUsage","TransitionUsageMember","TransitionUsage","ViewDefinition","ViewUsage","ViewpointDefinition","ViewpointUsage","RenderingDefinition","RenderingUsage","OwnedExpressionMember","OwnedExpression","_Expression","OwnedExpressionReference","ConditionalExpression","_NullCoalescingTail","NullCoalescingExpression","ImpliesExpressionReference","ImpliesExpressionMember","_ImpliesTail","ImpliesExpression","OrExpressionReference","OrExpressionMember","_OrTail","OrExpression","XorExpressionReference","XorExpressionMember","_XorTail","XorExpression","_AndTail","AndExpression","EqualityExpressionReference","EqualityExpressionMember","EqualityExpression","EqualityOperator","ClassificationExpression","ClassificationTestOperator","MetadataReference","TypeReferenceMember","TypeResultMember","TypeReference","ReferenceTyping","RelationalExpression","RelationalOperator","RangeExpression","AdditiveExpression","AdditiveOperator","MultiplicativeExpression","MultiplicativeOperator","ExponentiationExpression","ExponentiationOperator","UnaryExpression","UnaryOperator","ExtentExpression","_postfix_operation","_LitOrRef","MeasurementExpression","_UnitExpression","UnitBinaryExpression","UnitExponentExpression","_UnitPrimaryExpression","PrimaryExpression","FunctionReferenceExpression","FunctionReferenceMember","FunctionReference","FeatureChainMember","OwnedFeatureChain","_BaseExpression","BodyExpression","ExpressionBodyMember","ExpressionBody","SequenceExpression","FeatureReferenceExpression","FeatureReferenceMember","ElementReferenceMember","InvocationExpression","ConstructorExpression","ConstructorResultMember","ConstructorResult","InstantiatedTypeMember","_FeatureChain","OwnedFeatureChaining","_ArgumentList","_PositionalArgumentList","ArgumentMember","Argument","_NamedArgumentList","NamedArgumentMember","NamedArgument","ParameterRedefinition","ArgumentValue","NullExpression","_LiteralExpression","LiteralBoolean","BooleanValue","LiteralString","LiteralInteger","LiteralReal","RealValue","Name","GlobalQualification","Qualification","QualifiedName","_START","__PackageBodyElement*","_(PackageMember | ElementFilterMember | A_27a8ae4e","_Name?","_((\"<\" Name \">\" Name?) | Name)","_(\";\" | (\"{\" OwnedAnnotation* \"}\"))","_OwnedAnnotation*","_(\"public\" | \"private\" | \"protected\")","_VisibilityIndicator?","_EmptySuccessionMember?","_PrefixMetadataMember*","__usage_modifier*","__Identification?","_(_Identification? \"from\")?","_PrefixMetadataAnnotation*","_(\",\" QualifiedName)*","_(\",\" QualifiedName)*_1","_(Comment | Documentation | TextualRepres_0a13afbf","_(\",\" Annotation)*","_(\"about\" Annotation (\",\" Annotation)*)?","_(\"locale\" STRING_VALUE)?","_(REGULAR_COMMENT | STRING_VALUE)","_(REGULAR_COMMENT | STRING_VALUE)?","_((\"comment\" _Identification? (\"about\" An_29799de2","_\";\"?","_((\"doc\" _Identification? (\"locale\" STRIN_c29d9466","_(\"rep\" _Identification?)?","_(\"<\" Name \">\")?","_(\":\" | (\"defined\" \"by\"))","_(\":\" | (\"defined\" \"by\"))?","_((_Identification (\":\" | (\"defined\" \"by\"_5e5a2fb7","_((_Identification (\":\" | (\"defined\" \"by\"_0ff8d318","_(\"metadata\" | \"@\")","_(\";\" | (\"{\" (DefinitionMember | Metadata_7f7dd01b","_(DefinitionMember | MetadataBodyUsageMem_97d954d0","_(DefinitionMember | MetadataBodyUsageMem_0520c58e","_\"ref\"?","_(\":>>\" | \"redefines\")","_(\":>>\" | \"redefines\")?","__FeatureSpecializationPart?","__ValuePart?","_\"standard\"?","_(\";\" | (\"{\" _PackageBodyElement* \"}\"))","_(_DefinitionElement | _UsageElement)","_(\"<\" Name \">\")?_1","_Name?_1","_\"all\"?","_(MembershipImport | NamespaceImport)","_(\"::\" \"**\")?","_(_ImportedNamespace | FilterPackage)","_FilterPackageMember+","_(FilterPackageMembershipImport | FilterP_7a609cbd","_(Package | LibraryPackage | Dependency |_0bf8855f","_(_NonOccurrenceUsageElement | _Occurrenc_3e4805f1","_(DefaultReferenceUsage | ReferenceUsage _2ddc0e91","_(_StructureUsageElement | _BehaviorUsageElement)","_(OccurrenceUsage | ItemUsage | PartUsage_df5681fe","_(ActionUsage | CalculationUsage | StateU_dbc84088","_(\":>\" | \"specializes\")","_(\",\" OwnedSubclassification)*","_((_Identification _FeatureSpecialization_8036ba59","_(_FeatureSpecialization | _MultiplicityPart)","_(_FeatureSpecialization | _MultiplicityPart)+","_(OwnedMultiplicity | (OwnedMultiplicity?_ab087de1","_OwnedMultiplicity?","_\"nonunique\"?","_((\"ordered\" \"nonunique\"?) | (\"nonunique\"_5c5f5bb0","_\"ordered\"?","_(_Typings | _Subsettings | _References |_3376d6eb","_(\",\" FeatureTyping)*","_(\":>\" | \"subsets\" | \"subset\")","_(\",\" OwnedSubsetting)*","_(\"::>\" | \"references\" | \"reference\")","_(\"=>\" | \"crosses\")","_(\":>>\" | \"redefines\" | \"redefine\")","_(\",\" OwnedRedefinition)*","_(OwnedFeatureTyping | ConjugatedPortTyping)","_(QualifiedName | OwnedFeatureChain)","_(QualifiedName | OwnedFeatureChain)_1","_(QualifiedName | OwnedFeatureChain)_2","_(QualifiedName | OwnedFeatureChain)_3","_(QualifiedName | OwnedFeatureChain)_4","_(\"..\" MultiplicityExpressionMember)?","_(_LiteralExpression | FeatureReferenceEx_26767539","__SubclassificationPart?","_(\";\" | (\"{\" _DefinitionBodyItem* \"}\"))","__DefinitionBodyItem*","_(DefinitionMember | VariantUsageMember |_d0ec56c3","_(\"end\" | \"in\" | \"out\" | \"inout\" | \"deriv_ad4ac787","__UsageDeclaration?","_(\"=\" | \":=\" | (\"default\" (\"=\" | \":=\")?))","_(\"=\" | \":=\")","_(\"=\" | \":=\")?","_(\";\" | (\"{\" (AnnotatingMember | Enumerat_4425a5a8","_(AnnotatingMember | EnumerationUsageMember)","_(AnnotatingMember | EnumerationUsageMember)*","_\"enum\"?","_(\"::>\" | \"references\")","_(Name (\"::>\" | \"references\"))?","_OwnedMultiplicity?_1","_(\"connect\" _ConnectorPart)?","_((\"connection\" _UsageDeclaration? _Value_c51089d9","_(_BinaryConnectorPart | _NaryConnectorPart)","_(\",\" ConnectorEndMember)*","_(\"binding\" _UsageDeclaration?)?","_(\"succession\" _UsageDeclaration?)?","_\"first\"?","_(\"if\" OwnedExpression)?","_(\"allocate\" _ConnectorPart)?","_((\"allocation\" _UsageDeclaration? (\"allo_cab94563","_((FlowEndMember \"to\" FlowEndMember) | (__8b5d55f4","_(\"of\" PayloadFeatureMember)?","_(\"from\" FlowEndMember \"to\" FlowEndMember)?","_((_Identification? _FeatureSpecializatio_7bdfda61","_(OwnedReferenceSubsetting \".\")?","__ParameterList?","_(\";\" | (\"{\" _ActionBodyItem* \"}\"))","__ActionBodyItem*","_(Import | AliasMember | DefinitionMember_93b548b3","_(\"action\" _UsageDeclaration?)?","_(IfNode | WhileLoopNode | ForLoopNode | _92d978d7","_(ActionBodyParameter | IfNode)","_(\"else\" (ActionBodyParameter | IfNode))?","_((\"while\" OwnedExpression) | \"loop\")","_(\"until\" OwnedExpression \";\")?","_(MergeNode | DecisionNode | JoinNode | ForkNode)","_(\"via\" OwnedReferenceSubsetting)?","_(\"to\" OwnedExpression)?","_((OwnedExpression \":=\" OwnedExpression) _14b03b06","_((OwnedReferenceSubsetting _FeatureSpeci_940e4e3b","_(\";\" | (\"{\" (_ActionBodyItem | ReturnPar_9e0b235a","_(_ActionBodyItem | ReturnParameterMember)","_(_ActionBodyItem | ReturnParameterMember)*","_ResultExpressionMember?","_(\",\" ParameterMember)*","_(ParameterMember (\",\" ParameterMember)*)?","_\"not\"?","_((OwnedReferenceSubsetting _FeatureSpeci_2cacb0f2","_(\";\" | (\"{\" _RequirementBodyItem* \"}\"))","__RequirementBodyItem*","_(_DefinitionBodyItem | SubjectMember | R_648ae186","_(\"assume\" | \"require\")","__FeatureSpecialization*","_((OwnedReferenceSubsetting _FeatureSpeci_58611926","_\"constraint\"?","_\"assert\"?","_((OwnedReferenceSubsetting _FeatureSpeci_c3f6ebaa","_(\"by\" OwnedReferenceSubsetting)?","_(\";\" | (\"{\" (_ActionBodyItem | SubjectMe_f085546f","_(_ActionBodyItem | SubjectMember | Actor_54ecea9a","_(_ActionBodyItem | SubjectMember | Actor_60f57310","_(\";\" | (\"{\" _VerificationBodyItem* Resul_d56fdc5b","__VerificationBodyItem*","_(_ActionBodyItem | VerifyRequirementUsag_d99fdf43","_((OwnedReferenceSubsetting _FeatureSpeci_2a5debe0","_(\";\" | (\"parallel\"? \"{\" _StateBodyItem* \"}\"))","_\"parallel\"?","__StateBodyItem*","_(Import | AliasMember | DefinitionMember_dc0d4857","_(\"then\" ConnectorEndMember \";\")?","_(\";\" | (_UsageDeclaration? _ValuePart? __e06b7bd6","_((OwnedReferenceSubsetting _FeatureSpeci_a886f140","_(_UsageDeclaration? \"first\")?","_(\"accept\" PayloadFeatureMember)?","_(\"do\" StateActionUsage)?","_(\";\" | (\"{\" (_DefinitionBodyItem | Eleme_72e83fa8","_(_DefinitionBodyItem | ElementFilterMember)","_(_DefinitionBodyItem | ElementFilterMember)*","_(ConditionalExpression | NullCoalescingE_8bca3c8f","_\"??\"","_(\"??\" ImpliesExpressionReference)+","_\"implies\"","_(\"implies\" ImpliesExpressionReference)+","_\"|\"","_((\"|\" _Expression) | (\"or\" XorExpression_48dd5c1c","_\"or\"","_((\"|\" _Expression) | (\"or\" XorExpression_eb782a95","_\"xor\"","_(\"xor\" _Expression)+","_\"&\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_2f3f9807","_\"and\"","_((\"&\" _Expression) | (\"and\" EqualityExpr_8d1c8d44","_(EqualityOperator _Expression)+","_(\"==\" | \"!=\" | \"===\" | \"!==\")","_((ClassificationTestOperator TypeReferen_9d16b665","_((_Expression ((ClassificationTestOperat_4bc10124","_(\"hastype\" | \"istype\" | \"@\")","MetaClassificationTestOperator","CastOperator","MetaCastOperator","_(RelationalOperator _Expression)+","_(\"<\" | \">\" | \"<=\" | \">=\")","_(AdditiveOperator _Expression)+","_(\"+\" | \"-\")","_(MultiplicativeOperator _Expression)+","_(\"*\" | \"/\" | \"%\")","_(\"**\" | \"^\")","_(\"+\" | \"-\" | \"~\" | \"not\")","_((\"#\" \"(\" SequenceExpression \")\") | (\"[\"_a1e4855a","_(BodyExpression | FunctionReferenceExpre_c9930080","_(_LiteralExpression | FeatureReferenceEx_26767539_1","_(UnitBinaryExpression | UnitExponentExpr_28b453a1","_(\"*\" | \"/\")","_(\"^\" | \"**\")","_(LiteralInteger | (\"-\" LiteralInteger))","_(FeatureReferenceExpression | (\"(\" _Unit_49c7d010","__postfix_operation*","_((_BaseExpression (\".\" FeatureChainMembe_a1182a25","__postfix_operation+","_(NullExpression | _LiteralExpression | F_f15de4f3","_(\",\" | (\",\" SequenceExpression))","_(\",\" | (\",\" SequenceExpression))?","_(QualifiedName | OwnedFeatureChain)_5","_(\".\" OwnedFeatureChaining)+","_(_PositionalArgumentList | _NamedArgumentList)","_(_PositionalArgumentList | _NamedArgumentList)?","_(\",\" ArgumentMember)*","_(\",\" NamedArgumentMember)*","_(\"null\" | (\"(\" \")\"))","_(LiteralBoolean | LiteralString | Litera_de1646ae","_(\"true\" | \"false\")","_DECIMAL_VALUE?","_(DECIMAL_VALUE | EXP_VALUE)","_((DECIMAL_VALUE? \".\" (DECIMAL_VALUE | EX_9be90db7","LiteralInfinity","_(ID | UNRESTRICTED_NAME)","_GlobalQualification?","_((GlobalQualification? Name) | (Qualifie_ddc789f7","DECIMAL_VALUE","EXP_VALUE","ID","UNRESTRICTED_NAME","STRING_VALUE","REGULAR_COMMENT","ML_NOTE","SL_NOTE","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","UNKNOWN","EOF"]
     : [];
 export const LINT_MESSAGES =
   typeof {"1003": target=>`Definition '${target.text}' should start with an uppercase letter (PascalCase).`,"1004": target=>`Usage '${target.text}' should start with a lowercase letter (camelCase).`,"1005": target=>`Package '${target.text}' should start with an uppercase letter (PascalCase).`,"4014": ()=>`A 'variant' member is only permitted inside an 'enum' or a definition/usage declared as 'variation'.`,"4016": target=>{const name=target.field("declaredName");const label=name&&name.length>0?name:"parallel state";return`Parallel state '${label}' cannot directly own transitions or successions between concurrent regions.`},"4020": (_target,kindArg,ownerArg)=>{const k=kindArg?kindArg.asNumber():0;const memberKind=k===1?"entry":k===2?"do":k===3?"exit":k===4?"subject":k===5?"objective":"return";const ownerName=ownerArg?ownerArg.field("declaredName"):"";const label=ownerName&&ownerName.length>0?ownerName:"element";return`Duplicate '${memberKind}' member in '${label}': at most one '${memberKind}' member is allowed.`}} !== "undefined"
@@ -593,7 +593,7 @@ export const LINT_CODES =
   typeof {"1003": 1003,"1004": 1004,"1005": 1005,"4014": 4014,"4016": 4016,"4020": 4020} !== "undefined" ? {"1003": 1003,"1004": 1004,"1005": 1005,"4014": 4014,"4016": 4016,"4020": 4020} : {};
 export const EXTRAS_PATTERN = "\\s";
 export const FIELD_NAMES =
-  typeof {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"source":56,"trigger":57,"effect":58,"operator":59,"operand":60,"thenOperand":61,"elseOperand":62,"typeReference":63,"typeResult":64,"base":65,"exponent":66,"indexOperand":67,"filterOperand":68,"invocationType":69,"functionRef":70,"collect":71,"select":72,"value":73,"unit":74,"left":75,"right":76,"featureChain":77,"result":78,"chaining":79,"chainingFeature":80,"argument":81,"namedArgument":82,"parameterRedefinition":83,"name":84} !== "undefined" ? {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"source":56,"trigger":57,"effect":58,"operator":59,"operand":60,"thenOperand":61,"elseOperand":62,"typeReference":63,"typeResult":64,"base":65,"exponent":66,"indexOperand":67,"filterOperand":68,"invocationType":69,"functionRef":70,"collect":71,"select":72,"value":73,"unit":74,"left":75,"right":76,"featureChain":77,"result":78,"chaining":79,"chainingFeature":80,"argument":81,"namedArgument":82,"parameterRedefinition":83,"name":84} : {};
+  typeof {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"entryTarget":56,"source":57,"trigger":58,"effect":59,"operator":60,"operand":61,"thenOperand":62,"elseOperand":63,"typeReference":64,"typeResult":65,"base":66,"exponent":67,"indexOperand":68,"filterOperand":69,"invocationType":70,"functionRef":71,"collect":72,"select":73,"value":74,"unit":75,"left":76,"right":77,"featureChain":78,"result":79,"chaining":80,"chainingFeature":81,"argument":82,"namedArgument":83,"parameterRedefinition":84,"name":85} !== "undefined" ? {"declaredShortName":1,"declaredName":2,"client":3,"supplier":4,"annotatedElement":5,"ownedRelatedElement":6,"locale":7,"body":8,"language":9,"ownedRelationship":10,"type":11,"isStandard":12,"memberShortName":13,"memberName":14,"memberElement":15,"isImportAll":16,"importedMembership":17,"isRecursive":18,"importedNamespace":19,"superclassifier":20,"isOrdered":21,"isNonunique":22,"subsettedFeature":23,"referencedFeature":24,"crossedFeature":25,"redefinedFeature":26,"lowerBound":27,"upperBound":28,"isEnd":29,"direction":30,"isDerived":31,"isAbstract":32,"isVariation":33,"isConstant":34,"isRef":35,"isRedefine":36,"isSubsetting":37,"isInitial":38,"isDefault":39,"conjugatedPortDefinition":40,"guard":41,"condition":42,"thenBody":43,"elseBody":44,"untilCondition":45,"variable":46,"range":47,"sentItem":48,"receiver":49,"targetFeature":50,"assignedValue":51,"isNegated":52,"constraintKind":53,"satisfyingFeature":54,"isParallel":55,"entryTarget":56,"source":57,"trigger":58,"effect":59,"operator":60,"operand":61,"thenOperand":62,"elseOperand":63,"typeReference":64,"typeResult":65,"base":66,"exponent":67,"indexOperand":68,"filterOperand":69,"invocationType":70,"functionRef":71,"collect":72,"select":73,"value":74,"unit":75,"left":76,"right":77,"featureChain":78,"result":79,"chaining":80,"chainingFeature":81,"argument":82,"namedArgument":83,"parameterRedefinition":84,"name":85} : {};
 let ID_TO_FIELD_NAME = null;
 export function getFieldNameById(id) {
   if (ID_TO_FIELD_NAME === null) {
@@ -7364,25 +7364,25 @@ export const SyntaxKind = {
   QualifiedName: 478,
   START: 479,
   _START: 479,
-  MetaClassificationTestOperator: 666,
-  CastOperator: 667,
-  MetaCastOperator: 668,
-  LiteralInfinity: 703,
-  DECIMALVALUE: 707,
-  DECIMAL_VALUE: 707,
-  EXPVALUE: 708,
-  EXP_VALUE: 708,
-  ID: 709,
-  UNRESTRICTEDNAME: 710,
-  UNRESTRICTED_NAME: 710,
-  STRINGVALUE: 711,
-  STRING_VALUE: 711,
-  REGULARCOMMENT: 712,
-  REGULAR_COMMENT: 712,
-  MLNOTE: 713,
-  ML_NOTE: 713,
-  SLNOTE: 714,
-  SL_NOTE: 714,
+  MetaClassificationTestOperator: 667,
+  CastOperator: 668,
+  MetaCastOperator: 669,
+  LiteralInfinity: 704,
+  DECIMALVALUE: 708,
+  DECIMAL_VALUE: 708,
+  EXPVALUE: 709,
+  EXP_VALUE: 709,
+  ID: 710,
+  UNRESTRICTEDNAME: 711,
+  UNRESTRICTED_NAME: 711,
+  STRINGVALUE: 712,
+  STRING_VALUE: 712,
+  REGULARCOMMENT: 713,
+  REGULAR_COMMENT: 713,
+  MLNOTE: 714,
+  ML_NOTE: 714,
+  SLNOTE: 715,
+  SL_NOTE: 715,
   EOF: 1023,
 };
 
@@ -7497,64 +7497,66 @@ export const FieldId = {
   satisfyingFeature: 54,
   IsParallel: 55,
   isParallel: 55,
-  Source: 56,
-  source: 56,
-  Trigger: 57,
-  trigger: 57,
-  Effect: 58,
-  effect: 58,
-  Operator: 59,
-  operator: 59,
-  Operand: 60,
-  operand: 60,
-  ThenOperand: 61,
-  thenOperand: 61,
-  ElseOperand: 62,
-  elseOperand: 62,
-  TypeReference: 63,
-  typeReference: 63,
-  TypeResult: 64,
-  typeResult: 64,
-  Base: 65,
-  base: 65,
-  Exponent: 66,
-  exponent: 66,
-  IndexOperand: 67,
-  indexOperand: 67,
-  FilterOperand: 68,
-  filterOperand: 68,
-  InvocationType: 69,
-  invocationType: 69,
-  FunctionRef: 70,
-  functionRef: 70,
-  Collect: 71,
-  collect: 71,
-  Select: 72,
-  select: 72,
-  Value: 73,
-  value: 73,
-  Unit: 74,
-  unit: 74,
-  Left: 75,
-  left: 75,
-  Right: 76,
-  right: 76,
-  FeatureChain: 77,
-  featureChain: 77,
-  Result: 78,
-  result: 78,
-  Chaining: 79,
-  chaining: 79,
-  ChainingFeature: 80,
-  chainingFeature: 80,
-  Argument: 81,
-  argument: 81,
-  NamedArgument: 82,
-  namedArgument: 82,
-  ParameterRedefinition: 83,
-  parameterRedefinition: 83,
-  Name: 84,
-  name: 84,
+  EntryTarget: 56,
+  entryTarget: 56,
+  Source: 57,
+  source: 57,
+  Trigger: 58,
+  trigger: 58,
+  Effect: 59,
+  effect: 59,
+  Operator: 60,
+  operator: 60,
+  Operand: 61,
+  operand: 61,
+  ThenOperand: 62,
+  thenOperand: 62,
+  ElseOperand: 63,
+  elseOperand: 63,
+  TypeReference: 64,
+  typeReference: 64,
+  TypeResult: 65,
+  typeResult: 65,
+  Base: 66,
+  base: 66,
+  Exponent: 67,
+  exponent: 67,
+  IndexOperand: 68,
+  indexOperand: 68,
+  FilterOperand: 69,
+  filterOperand: 69,
+  InvocationType: 70,
+  invocationType: 70,
+  FunctionRef: 71,
+  functionRef: 71,
+  Collect: 72,
+  collect: 72,
+  Select: 73,
+  select: 73,
+  Value: 74,
+  value: 74,
+  Unit: 75,
+  unit: 75,
+  Left: 76,
+  left: 76,
+  Right: 77,
+  right: 77,
+  FeatureChain: 78,
+  featureChain: 78,
+  Result: 79,
+  result: 79,
+  Chaining: 80,
+  chaining: 80,
+  ChainingFeature: 81,
+  chainingFeature: 81,
+  Argument: 82,
+  argument: 82,
+  NamedArgument: 83,
+  namedArgument: 83,
+  ParameterRedefinition: 84,
+  parameterRedefinition: 84,
+  Name: 85,
+  name: 85,
 };
 
 /** Strips quotes from parser token strings (e.g. '"der"' -> 'der', '":' -> ':') */
@@ -8248,40 +8250,40 @@ export function isQualifiedName(node) {
   return node != null && node.typeId === 478;
 }
 export function isMetaClassificationTestOperator(node) {
-  return node != null && node.typeId === 666;
-}
-export function isCastOperator(node) {
   return node != null && node.typeId === 667;
 }
-export function isMetaCastOperator(node) {
+export function isCastOperator(node) {
   return node != null && node.typeId === 668;
 }
+export function isMetaCastOperator(node) {
+  return node != null && node.typeId === 669;
+}
 export function isLiteralInfinity(node) {
-  return node != null && node.typeId === 703;
+  return node != null && node.typeId === 704;
 }
 export function isDECIMALVALUE(node) {
-  return node != null && node.typeId === 707;
-}
-export function isEXPVALUE(node) {
   return node != null && node.typeId === 708;
 }
-export function isID(node) {
+export function isEXPVALUE(node) {
   return node != null && node.typeId === 709;
 }
-export function isUNRESTRICTEDNAME(node) {
+export function isID(node) {
   return node != null && node.typeId === 710;
 }
-export function isSTRINGVALUE(node) {
+export function isUNRESTRICTEDNAME(node) {
   return node != null && node.typeId === 711;
 }
-export function isREGULARCOMMENT(node) {
+export function isSTRINGVALUE(node) {
   return node != null && node.typeId === 712;
 }
-export function isMLNOTE(node) {
+export function isREGULARCOMMENT(node) {
   return node != null && node.typeId === 713;
 }
-export function isSLNOTE(node) {
+export function isMLNOTE(node) {
   return node != null && node.typeId === 714;
+}
+export function isSLNOTE(node) {
+  return node != null && node.typeId === 715;
 }
 export const Cst = {
   kind: cstKind,
@@ -14743,6 +14745,12 @@ export const Cst = {
     ownedRelatedElementList(node) {
       return node ? node.childrenForFieldId(6) : [];
     },
+    entryTarget(node) {
+      return node ? node.childForFieldId(56) : null;
+    },
+    entryTargetList(node) {
+      return node ? node.childrenForFieldId(56) : [];
+    },
   },
   DoActionMember: {
     typeId: 373,
@@ -14989,10 +14997,10 @@ export const Cst = {
     type: "TransitionUsage",
     is(node) { return node != null && node.typeId === 379; },
     source(node) {
-      return node ? node.childForFieldId(56) : null;
+      return node ? node.childForFieldId(57) : null;
     },
     sourceList(node) {
-      return node ? node.childrenForFieldId(56) : [];
+      return node ? node.childrenForFieldId(57) : [];
     },
     declaredShortName(node) {
       return node ? node.childForFieldId(1) : null;
@@ -15007,10 +15015,10 @@ export const Cst = {
       return node ? node.childrenForFieldId(2) : [];
     },
     trigger(node) {
-      return node ? node.childForFieldId(57) : null;
+      return node ? node.childForFieldId(58) : null;
     },
     triggerList(node) {
-      return node ? node.childrenForFieldId(57) : [];
+      return node ? node.childrenForFieldId(58) : [];
     },
     guard(node) {
       return node ? node.childForFieldId(41) : null;
@@ -15019,10 +15027,10 @@ export const Cst = {
       return node ? node.childrenForFieldId(41) : [];
     },
     effect(node) {
-      return node ? node.childForFieldId(58) : null;
+      return node ? node.childForFieldId(59) : null;
     },
     effectList(node) {
-      return node ? node.childrenForFieldId(58) : [];
+      return node ? node.childrenForFieldId(59) : [];
     },
     isOrdered(node) {
       return node ? node.childForFieldId(21) : null;
@@ -15531,28 +15539,28 @@ export const Cst = {
     type: "ConditionalExpression",
     is(node) { return node != null && node.typeId === 390; },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
-    },
-    operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
-    },
-    operand(node) {
       return node ? node.childForFieldId(60) : null;
     },
-    operandList(node) {
+    operatorList(node) {
       return node ? node.childrenForFieldId(60) : [];
     },
-    thenOperand(node) {
+    operand(node) {
       return node ? node.childForFieldId(61) : null;
     },
-    thenOperandList(node) {
+    operandList(node) {
       return node ? node.childrenForFieldId(61) : [];
     },
-    elseOperand(node) {
+    thenOperand(node) {
       return node ? node.childForFieldId(62) : null;
     },
-    elseOperandList(node) {
+    thenOperandList(node) {
       return node ? node.childrenForFieldId(62) : [];
+    },
+    elseOperand(node) {
+      return node ? node.childForFieldId(63) : null;
+    },
+    elseOperandList(node) {
+      return node ? node.childrenForFieldId(63) : [];
     },
   },
   NullCoalescingExpression: {
@@ -15560,16 +15568,16 @@ export const Cst = {
     type: "NullCoalescingExpression",
     is(node) { return node != null && node.typeId === 392; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   ImpliesExpressionReference: {
@@ -15599,16 +15607,16 @@ export const Cst = {
     type: "ImpliesExpression",
     is(node) { return node != null && node.typeId === 396; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   OrExpressionReference: {
@@ -15638,16 +15646,16 @@ export const Cst = {
     type: "OrExpression",
     is(node) { return node != null && node.typeId === 400; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   XorExpressionReference: {
@@ -15677,16 +15685,16 @@ export const Cst = {
     type: "XorExpression",
     is(node) { return node != null && node.typeId === 404; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   AndExpression: {
@@ -15694,16 +15702,16 @@ export const Cst = {
     type: "AndExpression",
     is(node) { return node != null && node.typeId === 406; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   EqualityExpressionReference: {
@@ -15733,16 +15741,16 @@ export const Cst = {
     type: "EqualityExpression",
     is(node) { return node != null && node.typeId === 409; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   EqualityOperator: {
@@ -15755,28 +15763,28 @@ export const Cst = {
     type: "ClassificationExpression",
     is(node) { return node != null && node.typeId === 411; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     typeReference(node) {
-      return node ? node.childForFieldId(63) : null;
-    },
-    typeReferenceList(node) {
-      return node ? node.childrenForFieldId(63) : [];
-    },
-    typeResult(node) {
       return node ? node.childForFieldId(64) : null;
     },
-    typeResultList(node) {
+    typeReferenceList(node) {
       return node ? node.childrenForFieldId(64) : [];
+    },
+    typeResult(node) {
+      return node ? node.childForFieldId(65) : null;
+    },
+    typeResultList(node) {
+      return node ? node.childrenForFieldId(65) : [];
     },
   },
   ClassificationTestOperator: {
@@ -15844,16 +15852,16 @@ export const Cst = {
     type: "RelationalExpression",
     is(node) { return node != null && node.typeId === 418; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   RelationalOperator: {
@@ -15866,16 +15874,16 @@ export const Cst = {
     type: "RangeExpression",
     is(node) { return node != null && node.typeId === 420; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   AdditiveExpression: {
@@ -15883,16 +15891,16 @@ export const Cst = {
     type: "AdditiveExpression",
     is(node) { return node != null && node.typeId === 421; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   AdditiveOperator: {
@@ -15905,16 +15913,16 @@ export const Cst = {
     type: "MultiplicativeExpression",
     is(node) { return node != null && node.typeId === 423; },
     operand(node) {
-      return node ? node.childForFieldId(60) : null;
+      return node ? node.childForFieldId(61) : null;
     },
     operandList(node) {
-      return node ? node.childrenForFieldId(60) : [];
+      return node ? node.childrenForFieldId(61) : [];
     },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
   },
   MultiplicativeOperator: {
@@ -15927,22 +15935,22 @@ export const Cst = {
     type: "ExponentiationExpression",
     is(node) { return node != null && node.typeId === 425; },
     base(node) {
-      return node ? node.childForFieldId(65) : null;
-    },
-    baseList(node) {
-      return node ? node.childrenForFieldId(65) : [];
-    },
-    operator(node) {
-      return node ? node.childForFieldId(59) : null;
-    },
-    operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
-    },
-    exponent(node) {
       return node ? node.childForFieldId(66) : null;
     },
-    exponentList(node) {
+    baseList(node) {
       return node ? node.childrenForFieldId(66) : [];
+    },
+    operator(node) {
+      return node ? node.childForFieldId(60) : null;
+    },
+    operatorList(node) {
+      return node ? node.childrenForFieldId(60) : [];
+    },
+    exponent(node) {
+      return node ? node.childForFieldId(67) : null;
+    },
+    exponentList(node) {
+      return node ? node.childrenForFieldId(67) : [];
     },
   },
   ExponentiationOperator: {
@@ -15955,16 +15963,16 @@ export const Cst = {
     type: "UnaryExpression",
     is(node) { return node != null && node.typeId === 427; },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
-    },
-    operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
-    },
-    operand(node) {
       return node ? node.childForFieldId(60) : null;
     },
-    operandList(node) {
+    operatorList(node) {
       return node ? node.childrenForFieldId(60) : [];
+    },
+    operand(node) {
+      return node ? node.childForFieldId(61) : null;
+    },
+    operandList(node) {
+      return node ? node.childrenForFieldId(61) : [];
     },
   },
   UnaryOperator: {
@@ -15977,16 +15985,16 @@ export const Cst = {
     type: "ExtentExpression",
     is(node) { return node != null && node.typeId === 429; },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
+      return node ? node.childForFieldId(60) : null;
     },
     operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
+      return node ? node.childrenForFieldId(60) : [];
     },
     typeResult(node) {
-      return node ? node.childForFieldId(64) : null;
+      return node ? node.childForFieldId(65) : null;
     },
     typeResultList(node) {
-      return node ? node.childrenForFieldId(64) : [];
+      return node ? node.childrenForFieldId(65) : [];
     },
   },
   MeasurementExpression: {
@@ -15994,16 +16002,16 @@ export const Cst = {
     type: "MeasurementExpression",
     is(node) { return node != null && node.typeId === 432; },
     value(node) {
-      return node ? node.childForFieldId(73) : null;
-    },
-    valueList(node) {
-      return node ? node.childrenForFieldId(73) : [];
-    },
-    unit(node) {
       return node ? node.childForFieldId(74) : null;
     },
-    unitList(node) {
+    valueList(node) {
       return node ? node.childrenForFieldId(74) : [];
+    },
+    unit(node) {
+      return node ? node.childForFieldId(75) : null;
+    },
+    unitList(node) {
+      return node ? node.childrenForFieldId(75) : [];
     },
   },
   UnitBinaryExpression: {
@@ -16011,22 +16019,22 @@ export const Cst = {
     type: "UnitBinaryExpression",
     is(node) { return node != null && node.typeId === 434; },
     left(node) {
-      return node ? node.childForFieldId(75) : null;
-    },
-    leftList(node) {
-      return node ? node.childrenForFieldId(75) : [];
-    },
-    operator(node) {
-      return node ? node.childForFieldId(59) : null;
-    },
-    operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
-    },
-    right(node) {
       return node ? node.childForFieldId(76) : null;
     },
-    rightList(node) {
+    leftList(node) {
       return node ? node.childrenForFieldId(76) : [];
+    },
+    operator(node) {
+      return node ? node.childForFieldId(60) : null;
+    },
+    operatorList(node) {
+      return node ? node.childrenForFieldId(60) : [];
+    },
+    right(node) {
+      return node ? node.childForFieldId(77) : null;
+    },
+    rightList(node) {
+      return node ? node.childrenForFieldId(77) : [];
     },
   },
   UnitExponentExpression: {
@@ -16034,22 +16042,22 @@ export const Cst = {
     type: "UnitExponentExpression",
     is(node) { return node != null && node.typeId === 435; },
     base(node) {
-      return node ? node.childForFieldId(65) : null;
-    },
-    baseList(node) {
-      return node ? node.childrenForFieldId(65) : [];
-    },
-    operator(node) {
-      return node ? node.childForFieldId(59) : null;
-    },
-    operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
-    },
-    exponent(node) {
       return node ? node.childForFieldId(66) : null;
     },
-    exponentList(node) {
+    baseList(node) {
       return node ? node.childrenForFieldId(66) : [];
+    },
+    operator(node) {
+      return node ? node.childForFieldId(60) : null;
+    },
+    operatorList(node) {
+      return node ? node.childrenForFieldId(60) : [];
+    },
+    exponent(node) {
+      return node ? node.childForFieldId(67) : null;
+    },
+    exponentList(node) {
+      return node ? node.childrenForFieldId(67) : [];
     },
   },
   PrimaryExpression: {
@@ -16057,52 +16065,52 @@ export const Cst = {
     type: "PrimaryExpression",
     is(node) { return node != null && node.typeId === 437; },
     base(node) {
-      return node ? node.childForFieldId(65) : null;
+      return node ? node.childForFieldId(66) : null;
     },
     baseList(node) {
-      return node ? node.childrenForFieldId(65) : [];
+      return node ? node.childrenForFieldId(66) : [];
     },
     featureChain(node) {
-      return node ? node.childForFieldId(77) : null;
+      return node ? node.childForFieldId(78) : null;
     },
     featureChainList(node) {
-      return node ? node.childrenForFieldId(77) : [];
+      return node ? node.childrenForFieldId(78) : [];
     },
     indexOperand(node) {
-      return node ? node.childForFieldId(67) : null;
-    },
-    indexOperandList(node) {
-      return node ? node.childrenForFieldId(67) : [];
-    },
-    operator(node) {
-      return node ? node.childForFieldId(59) : null;
-    },
-    operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
-    },
-    filterOperand(node) {
       return node ? node.childForFieldId(68) : null;
     },
-    filterOperandList(node) {
+    indexOperandList(node) {
       return node ? node.childrenForFieldId(68) : [];
     },
-    invocationType(node) {
+    operator(node) {
+      return node ? node.childForFieldId(60) : null;
+    },
+    operatorList(node) {
+      return node ? node.childrenForFieldId(60) : [];
+    },
+    filterOperand(node) {
       return node ? node.childForFieldId(69) : null;
     },
-    invocationTypeList(node) {
+    filterOperandList(node) {
       return node ? node.childrenForFieldId(69) : [];
     },
+    invocationType(node) {
+      return node ? node.childForFieldId(70) : null;
+    },
+    invocationTypeList(node) {
+      return node ? node.childrenForFieldId(70) : [];
+    },
     collect(node) {
-      return node ? node.childForFieldId(71) : null;
-    },
-    collectList(node) {
-      return node ? node.childrenForFieldId(71) : [];
-    },
-    select(node) {
       return node ? node.childForFieldId(72) : null;
     },
-    selectList(node) {
+    collectList(node) {
       return node ? node.childrenForFieldId(72) : [];
+    },
+    select(node) {
+      return node ? node.childForFieldId(73) : null;
+    },
+    selectList(node) {
+      return node ? node.childrenForFieldId(73) : [];
     },
     body(node) {
       return node ? node.childForFieldId(8) : null;
@@ -16111,22 +16119,22 @@ export const Cst = {
       return node ? node.childrenForFieldId(8) : [];
     },
     functionRef(node) {
-      return node ? node.childForFieldId(70) : null;
+      return node ? node.childForFieldId(71) : null;
     },
     functionRefList(node) {
-      return node ? node.childrenForFieldId(70) : [];
+      return node ? node.childrenForFieldId(71) : [];
     },
     argument(node) {
-      return node ? node.childForFieldId(81) : null;
-    },
-    argumentList(node) {
-      return node ? node.childrenForFieldId(81) : [];
-    },
-    namedArgument(node) {
       return node ? node.childForFieldId(82) : null;
     },
-    namedArgumentList(node) {
+    argumentList(node) {
       return node ? node.childrenForFieldId(82) : [];
+    },
+    namedArgument(node) {
+      return node ? node.childForFieldId(83) : null;
+    },
+    namedArgumentList(node) {
+      return node ? node.childrenForFieldId(83) : [];
     },
   },
   FunctionReferenceExpression: {
@@ -16178,10 +16186,10 @@ export const Cst = {
     type: "OwnedFeatureChain",
     is(node) { return node != null && node.typeId === 442; },
     chaining(node) {
-      return node ? node.childForFieldId(79) : null;
+      return node ? node.childForFieldId(80) : null;
     },
     chainingList(node) {
-      return node ? node.childrenForFieldId(79) : [];
+      return node ? node.childrenForFieldId(80) : [];
     },
   },
   BodyExpression: {
@@ -16216,16 +16224,16 @@ export const Cst = {
     type: "SequenceExpression",
     is(node) { return node != null && node.typeId === 447; },
     operator(node) {
-      return node ? node.childForFieldId(59) : null;
-    },
-    operatorList(node) {
-      return node ? node.childrenForFieldId(59) : [];
-    },
-    operand(node) {
       return node ? node.childForFieldId(60) : null;
     },
-    operandList(node) {
+    operatorList(node) {
       return node ? node.childrenForFieldId(60) : [];
+    },
+    operand(node) {
+      return node ? node.childForFieldId(61) : null;
+    },
+    operandList(node) {
+      return node ? node.childrenForFieldId(61) : [];
     },
   },
   FeatureReferenceExpression: {
@@ -16272,16 +16280,16 @@ export const Cst = {
       return node ? node.childrenForFieldId(11) : [];
     },
     argument(node) {
-      return node ? node.childForFieldId(81) : null;
-    },
-    argumentList(node) {
-      return node ? node.childrenForFieldId(81) : [];
-    },
-    namedArgument(node) {
       return node ? node.childForFieldId(82) : null;
     },
-    namedArgumentList(node) {
+    argumentList(node) {
       return node ? node.childrenForFieldId(82) : [];
+    },
+    namedArgument(node) {
+      return node ? node.childForFieldId(83) : null;
+    },
+    namedArgumentList(node) {
+      return node ? node.childrenForFieldId(83) : [];
     },
   },
   ConstructorExpression: {
@@ -16295,10 +16303,10 @@ export const Cst = {
       return node ? node.childrenForFieldId(11) : [];
     },
     result(node) {
-      return node ? node.childForFieldId(78) : null;
+      return node ? node.childForFieldId(79) : null;
     },
     resultList(node) {
-      return node ? node.childrenForFieldId(78) : [];
+      return node ? node.childrenForFieldId(79) : [];
     },
   },
   ConstructorResultMember: {
@@ -16317,16 +16325,16 @@ export const Cst = {
     type: "ConstructorResult",
     is(node) { return node != null && node.typeId === 454; },
     argument(node) {
-      return node ? node.childForFieldId(81) : null;
-    },
-    argumentList(node) {
-      return node ? node.childrenForFieldId(81) : [];
-    },
-    namedArgument(node) {
       return node ? node.childForFieldId(82) : null;
     },
-    namedArgumentList(node) {
+    argumentList(node) {
       return node ? node.childrenForFieldId(82) : [];
+    },
+    namedArgument(node) {
+      return node ? node.childForFieldId(83) : null;
+    },
+    namedArgumentList(node) {
+      return node ? node.childrenForFieldId(83) : [];
     },
   },
   InstantiatedTypeMember: {
@@ -16351,10 +16359,10 @@ export const Cst = {
     type: "OwnedFeatureChaining",
     is(node) { return node != null && node.typeId === 457; },
     chainingFeature(node) {
-      return node ? node.childForFieldId(80) : null;
+      return node ? node.childForFieldId(81) : null;
     },
     chainingFeatureList(node) {
-      return node ? node.childrenForFieldId(80) : [];
+      return node ? node.childrenForFieldId(81) : [];
     },
   },
   ArgumentMember: {
@@ -16395,16 +16403,16 @@ export const Cst = {
     type: "NamedArgument",
     is(node) { return node != null && node.typeId === 464; },
     parameterRedefinition(node) {
-      return node ? node.childForFieldId(83) : null;
+      return node ? node.childForFieldId(84) : null;
     },
     parameterRedefinitionList(node) {
-      return node ? node.childrenForFieldId(83) : [];
+      return node ? node.childrenForFieldId(84) : [];
     },
     value(node) {
-      return node ? node.childForFieldId(73) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldId(73) : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   ParameterRedefinition: {
@@ -16439,10 +16447,10 @@ export const Cst = {
     type: "LiteralBoolean",
     is(node) { return node != null && node.typeId === 469; },
     value(node) {
-      return node ? node.childForFieldId(73) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldId(73) : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   BooleanValue: {
@@ -16455,10 +16463,10 @@ export const Cst = {
     type: "LiteralString",
     is(node) { return node != null && node.typeId === 471; },
     value(node) {
-      return node ? node.childForFieldId(73) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldId(73) : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   LiteralInteger: {
@@ -16466,10 +16474,10 @@ export const Cst = {
     type: "LiteralInteger",
     is(node) { return node != null && node.typeId === 472; },
     value(node) {
-      return node ? node.childForFieldId(73) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldId(73) : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   LiteralReal: {
@@ -16477,10 +16485,10 @@ export const Cst = {
     type: "LiteralReal",
     is(node) { return node != null && node.typeId === 473; },
     value(node) {
-      return node ? node.childForFieldId(73) : null;
+      return node ? node.childForFieldId(74) : null;
     },
     valueList(node) {
-      return node ? node.childrenForFieldId(73) : [];
+      return node ? node.childrenForFieldId(74) : [];
     },
   },
   RealValue: {
@@ -16508,70 +16516,70 @@ export const Cst = {
     type: "QualifiedName",
     is(node) { return node != null && node.typeId === 478; },
     name(node) {
-      return node ? node.childForFieldId(84) : null;
+      return node ? node.childForFieldId(85) : null;
     },
     nameList(node) {
-      return node ? node.childrenForFieldId(84) : [];
+      return node ? node.childrenForFieldId(85) : [];
     },
   },
   MetaClassificationTestOperator: {
-    typeId: 666,
-    type: "MetaClassificationTestOperator",
-    is(node) { return node != null && node.typeId === 666; },
-  },
-  CastOperator: {
     typeId: 667,
-    type: "CastOperator",
+    type: "MetaClassificationTestOperator",
     is(node) { return node != null && node.typeId === 667; },
   },
-  MetaCastOperator: {
+  CastOperator: {
     typeId: 668,
-    type: "MetaCastOperator",
+    type: "CastOperator",
     is(node) { return node != null && node.typeId === 668; },
   },
+  MetaCastOperator: {
+    typeId: 669,
+    type: "MetaCastOperator",
+    is(node) { return node != null && node.typeId === 669; },
+  },
   LiteralInfinity: {
-    typeId: 703,
+    typeId: 704,
     type: "LiteralInfinity",
-    is(node) { return node != null && node.typeId === 703; },
+    is(node) { return node != null && node.typeId === 704; },
   },
   DECIMALVALUE: {
-    typeId: 707,
-    type: "DECIMAL_VALUE",
-    is(node) { return node != null && node.typeId === 707; },
-  },
-  EXPVALUE: {
     typeId: 708,
-    type: "EXP_VALUE",
+    type: "DECIMAL_VALUE",
     is(node) { return node != null && node.typeId === 708; },
   },
-  ID: {
+  EXPVALUE: {
     typeId: 709,
-    type: "ID",
+    type: "EXP_VALUE",
     is(node) { return node != null && node.typeId === 709; },
   },
-  UNRESTRICTEDNAME: {
+  ID: {
     typeId: 710,
-    type: "UNRESTRICTED_NAME",
+    type: "ID",
     is(node) { return node != null && node.typeId === 710; },
   },
-  STRINGVALUE: {
+  UNRESTRICTEDNAME: {
     typeId: 711,
-    type: "STRING_VALUE",
+    type: "UNRESTRICTED_NAME",
     is(node) { return node != null && node.typeId === 711; },
   },
-  REGULARCOMMENT: {
+  STRINGVALUE: {
     typeId: 712,
-    type: "REGULAR_COMMENT",
+    type: "STRING_VALUE",
     is(node) { return node != null && node.typeId === 712; },
   },
-  MLNOTE: {
+  REGULARCOMMENT: {
     typeId: 713,
-    type: "ML_NOTE",
+    type: "REGULAR_COMMENT",
     is(node) { return node != null && node.typeId === 713; },
   },
-  SLNOTE: {
+  MLNOTE: {
     typeId: 714,
-    type: "SL_NOTE",
+    type: "ML_NOTE",
     is(node) { return node != null && node.typeId === 714; },
+  },
+  SLNOTE: {
+    typeId: 715,
+    type: "SL_NOTE",
+    is(node) { return node != null && node.typeId === 715; },
   },
 };

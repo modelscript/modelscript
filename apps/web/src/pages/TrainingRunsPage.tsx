@@ -582,10 +582,18 @@ const SvgTimeSeriesChart: React.FC<SvgTimeSeriesProps> = ({
     }
     if (paired.length < 2) return null;
 
-    const topPts = paired.map((p) => `${xOf(p.step).toFixed(1)},${yOf(p.hi, upper.axis ?? "left").toFixed(1)}`);
+    const calcX = (step: number): number =>
+      maxStep === minStep ? PAD_L + PLOT_W / 2 : PAD_L + ((step - minStep) / (maxStep - minStep)) * PLOT_W;
+    const calcY = (val: number, axis: "left" | "right"): number => {
+      const [lo, hi] = axis === "right" ? [rightMin, rightMax] : [leftMin, leftMax];
+      const ratio = (val - lo) / Math.max(1e-9, hi - lo);
+      return PAD_T + PLOT_H - Math.max(0, Math.min(1, ratio)) * PLOT_H;
+    };
+
+    const topPts = paired.map((p) => `${calcX(p.step).toFixed(1)},${calcY(p.hi, upper.axis ?? "left").toFixed(1)}`);
     const botPts = [...paired]
       .reverse()
-      .map((p) => `${xOf(p.step).toFixed(1)},${yOf(p.lo, lower.axis ?? "left").toFixed(1)}`);
+      .map((p) => `${calcX(p.step).toFixed(1)},${calcY(p.lo, lower.axis ?? "left").toFixed(1)}`);
     return [...topPts, ...botPts].join(" ");
   }, [shadedBand, series, minStep, maxStep, leftMin, leftMax, rightMin, rightMax]);
 
@@ -668,7 +676,14 @@ const SvgTimeSeriesChart: React.FC<SvgTimeSeriesProps> = ({
                   stroke="rgba(148, 163, 184, 0.16)"
                   strokeDasharray="3 3"
                 />
-                <text x={PAD_L - 6} y={y + 3} textAnchor="end" fontSize="10" fontFamily="monospace" fill="#8b949e">
+                <text
+                  x={PAD_L - 6}
+                  y={y + 3}
+                  textAnchor="end"
+                  fontSize="10"
+                  fontFamily="monospace"
+                  fill="var(--ms-text-3, #8b949e)"
+                >
                   {leftFormatter(leftVal)}
                 </text>
                 {hasRightAxis && (
@@ -735,7 +750,7 @@ const SvgTimeSeriesChart: React.FC<SvgTimeSeriesProps> = ({
               textAnchor={idx === 0 ? "start" : idx === xTickSteps.length - 1 ? "end" : "middle"}
               fontSize="10"
               fontFamily="monospace"
-              fill="#8b949e"
+              fill="var(--ms-text-3, #8b949e)"
             >
               step {step}
             </text>

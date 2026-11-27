@@ -221,6 +221,7 @@ export interface CoordinatorDomainProviders<
   evaluateCfdExpression(
     expr: string,
     resolver?: (ident: string) => string | number | undefined,
+    diagnostics?: Array<{ severity: string; message: string; expression?: string }>,
   ): string | number | undefined;
   InpDialect: new () => { parse(source: string): InpDocLike };
   evaluateScad(source: string): ScadEvalResultLike<TMesh>;

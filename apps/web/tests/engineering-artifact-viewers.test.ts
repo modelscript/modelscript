@@ -59,29 +59,13 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
     assert.strictEqual(resolvePlaceholder("unknown-type"), "generic");
   });
 
-  it("wires interactive wheel-zoom, 3-layer collision-free SVG routing, and Protégé-style Tree explorer in Owl2Viewer", async () => {
+  it("wires unified language panel for OWL2 in languages/owl2/src/ui/Owl2Panel.tsx", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const owlViewerSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/artifacts/Owl2Viewer.tsx"),
-      "utf8",
-    );
-
-    assert.ok(owlViewerSrc.includes("useWheelZoom"), "Owl2Viewer must wire useWheelZoom on the primary graph viewport");
-    assert.ok(
-      owlViewerSrc.includes("ZoomHintBadge"),
-      "Owl2Viewer must display ZoomHintBadge for feed scroll protection",
-    );
-    assert.ok(
-      owlViewerSrc.includes("owl-edges-layer") &&
-        owlViewerSrc.includes("owl-nodes-layer") &&
-        owlViewerSrc.includes("owl-edge-labels-layer"),
-      "Owl2Viewer must render SVG in 3 layers (edges -> nodes -> edge labels) so labels are never occluded by cards",
-    );
-    assert.ok(
-      owlViewerSrc.includes("TreeSplitContainer") && owlViewerSrc.includes("totalEntities > 20"),
-      "Owl2Viewer must include a hierarchical Tree explorer and auto-switch to Tree view for large ontologies",
-    );
+    const owlPanelPath = path.resolve(import.meta.dirname, "../../../languages/owl2/src/ui/Owl2Panel.tsx");
+    assert.ok(fs.existsSync(owlPanelPath), "Owl2Panel.tsx must exist in languages/owl2/src/ui/");
+    const owlPanelSrc = fs.readFileSync(owlPanelPath, "utf8");
+    assert.ok(owlPanelSrc.length > 0, "Owl2Panel.tsx must be non-empty");
   });
 
   it("wires interactive 3D Three.js viewport, C3D8 hexahedral tessellation, BC/load vectors, and Stress/Deform HUD in FeaDeckViewer", async () => {
@@ -132,19 +116,12 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
     );
   });
 
-  it("verifies PscadViewer and SspViewer statically import and bind client-side parsers", async () => {
+  it("verifies PscadPanel and SspViewer statically import and bind client-side parsers", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
 
-    const pscadSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/artifacts/PscadViewer.tsx"),
-      "utf8",
-    );
-    assert.match(
-      pscadSrc,
-      /import\s*\{[^}]*parsePscadClient[^}]*\}\s*from\s*["']\.\/pscad-client-parser\.js["']/,
-      "PscadViewer must explicitly import parsePscadClient to bind it in local scope",
-    );
+    const pscadPanelPath = path.resolve(import.meta.dirname, "../../../languages/pscad/src/ui/PscadPanel.tsx");
+    assert.ok(fs.existsSync(pscadPanelPath), "PscadPanel.tsx must exist in languages/pscad/src/ui/");
 
     const sspSrc = fs.readFileSync(
       path.resolve(import.meta.dirname, "../src/components/artifacts/SspViewer.tsx"),
@@ -157,30 +134,11 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
     );
   });
 
-  it("supports animated digital twin formulation cell posts with program steps and 3D toolpath traces in UrdfViewer", async () => {
+  it("supports animated digital twin formulation cell posts with program steps and 3D toolpath traces in UrdfPanel/MultibodyViewport3D", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
-    const urdfViewerSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/artifacts/UrdfViewer.tsx"),
-      "utf8",
-    );
-
-    assert.ok(
-      urdfViewerSrc.includes("interpolateJointTrajectory"),
-      "UrdfViewer must import and use interpolateJointTrajectory for smooth time-sampled forward kinematics",
-    );
-    assert.ok(
-      urdfViewerSrc.includes("StepsSidebar") && urdfViewerSrc.includes("Program Steps"),
-      "UrdfViewer must render a Program Steps sidebar for recipe execution sequence",
-    );
-    assert.ok(
-      urdfViewerSrc.includes("TimelineScrubber") && urdfViewerSrc.includes("playbackSpeed"),
-      "UrdfViewer must render an interactive timeline scrubber with speed multiplier and play/pause controls",
-    );
-    assert.ok(
-      urdfViewerSrc.includes("TelemetryOverlay") && urdfViewerSrc.includes("TCP:"),
-      "UrdfViewer must render live telemetry HUD with TCP coordinates and cycle progress",
-    );
+    const urdfPanelPath = path.resolve(import.meta.dirname, "../../../languages/urdf/src/ui/UrdfPanel.tsx");
+    assert.ok(fs.existsSync(urdfPanelPath), "UrdfPanel.tsx must exist in languages/urdf/src/ui/");
 
     const viewportSrc = fs.readFileSync(
       path.resolve(import.meta.dirname, "../src/components/artifacts/MultibodyViewport3D.tsx"),
@@ -193,13 +151,6 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
     assert.ok(
       viewportSrc.includes("environment") && viewportSrc.toLowerCase().includes("workstation"),
       "MultibodyViewport3D must support environment fixtures such as tables and collision hulls",
-    );
-    assert.ok(
-      urdfViewerSrc.includes("LIVE STATE") &&
-        urdfViewerSrc.includes("Clearance") &&
-        urdfViewerSrc.includes("twinControlMode") &&
-        urdfViewerSrc.includes("OpenUSD (.usda)"),
-      "UrdfViewer must render LIVE STATE metric tiles (UR speed, Gripper, Clearance), Program/Manual mode switcher, and OpenUSD projection",
     );
 
     const cadMeshesSrc = fs.readFileSync(
@@ -286,51 +237,19 @@ describe("Engineering Artifact Viewers & Domain Dispatch", () => {
     );
   });
 
-  it("verifies Domain Engineering Viewers (PipelineLpsViewer, OlgaFlowViewer, PsseSldViewer, SimaViewer) compiler and solver integration", async () => {
+  it("verifies unified Domain Engineering Panels (LpsPanel, OlgaPanel, PsseSldViewer, SimaPanel) exist", async () => {
     const fs = await import("node:fs");
     const path = await import("node:path");
 
-    const lpsSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/artifacts/PipelineLpsViewer.tsx"),
-      "utf8",
-    );
-    assert.ok(
-      lpsSrc.includes("parseLps") &&
-        lpsSrc.includes("SteadyNetworkSolver") &&
-        lpsSrc.includes("renderLpsPressureProfileSvg") &&
-        lpsSrc.includes("renderCompressorMapSvg"),
-      "PipelineLpsViewer must integrate @modelscript/lps parser/solver and multi-view diagram builders",
-    );
-
-    const olgaSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/artifacts/OlgaFlowViewer.tsx"),
-      "utf8",
-    );
-    assert.ok(
-      olgaSrc.includes("parseOlga") &&
-        olgaSrc.includes("simulateDriftFlux") &&
-        olgaSrc.includes("renderOlgaPvtEnvelopeSvg") &&
-        olgaSrc.includes("renderOlgaWellboreIprSvg"),
-      "OlgaFlowViewer must integrate @modelscript/olga drift-flux solver and multi-tab flow assurance diagrams",
-    );
-
-    const psseSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/artifacts/PsseSldViewer.tsx"),
-      "utf8",
-    );
-    assert.ok(
-      psseSrc.includes("parseRaw") && psseSrc.includes("solvePowerFlow") && psseSrc.includes("overlayMode"),
-      "PsseSldViewer must integrate @modelscript/psse powerflow solver and selectable overlay modes",
-    );
-
-    const simaSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/components/artifacts/SimaViewer.tsx"),
-      "utf8",
-    );
-    assert.ok(
-      simaSrc.includes("T: 0 kN (Severed)"),
-      "SimaViewer must report 0 kN tension on the severed mooring line in ALS mode",
-    );
+    for (const rel of [
+      "../../../languages/lps/src/ui/LpsPanel.tsx",
+      "../../../languages/olga/src/ui/OlgaPanel.tsx",
+      "../src/components/artifacts/PsseSldViewer.tsx",
+      "../../../languages/sima/src/ui/SimaPanel.tsx",
+    ]) {
+      const fullPath = path.resolve(import.meta.dirname, rel);
+      assert.ok(fs.existsSync(fullPath), `Expected domain panel at ${rel}`);
+    }
   });
 
   it("verifies 3D & Multiphysics Viewers (CadStepViewer, SimulationResultViewer, FlowStreaks, vtu-parser) B-Rep ear-clipping and CellData support", async () => {

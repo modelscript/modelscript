@@ -24,6 +24,7 @@ const styled: typeof styledImport =
 
 /* ─── constants & types ─── */
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const ML_PACKAGE_CATEGORIES = new Set<string>([
   "dataset-pretrain",
   "dataset-posttrain",

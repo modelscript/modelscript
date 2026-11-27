@@ -379,7 +379,7 @@ export const CadComponentTree: React.FC<CadComponentTreeProps> = ({
             )}
           </div>
 
-          {visibleAssemblyParts.map((comp) => {
+          {visibleAssemblyParts.map((comp, idx) => {
             const ov = partOverrides[comp.name] ?? {};
             const isHidden = ov.visible === false;
             const isGhost = Boolean(ov.ghost);
@@ -387,7 +387,7 @@ export const CadComponentTree: React.FC<CadComponentTreeProps> = ({
             const displayLabel = formatCadPartDisplayName(comp.name);
             return (
               <div
-                key={comp.name}
+                key={`${comp.name}::${idx}`}
                 data-testid={`cad-assembly-part-${comp.name}`}
                 style={{
                   display: "flex",

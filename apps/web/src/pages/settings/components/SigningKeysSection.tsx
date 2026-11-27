@@ -205,6 +205,7 @@ export interface PasteKeyRegistrationPayload {
   signature?: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function buildPasteKeyRegistrationPayload(params: {
   publicKeyOpenssh: string;
   label?: string;
@@ -233,6 +234,7 @@ export function buildPasteKeyRegistrationPayload(params: {
   };
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getPasteKeyRegistrationToast(trustLevel: string): { message: string; title: string } {
   if (trustLevel === "hardware_or_cli") {
     return {

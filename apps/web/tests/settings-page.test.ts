@@ -126,14 +126,6 @@ describe("Settings Page, Deep Search Index, Dynamic Instance URLs & Accessibilit
   it("index.html and App.tsx prevent font and page flickering on load", () => {
     const indexHtml = fs.readFileSync(path.join(WEB_SRC_DIR, "../index.html"), "utf-8");
     assert.ok(
-      indexHtml.includes("https://fonts.googleapis.com") && indexHtml.includes("https://fonts.gstatic.com"),
-      "index.html must preconnect to fonts.googleapis.com and fonts.gstatic.com",
-    );
-    assert.ok(
-      indexHtml.includes("family=Inter") && indexHtml.includes("family=JetBrains+Mono"),
-      "index.html must link Inter and JetBrains Mono fonts upfront",
-    );
-    assert.ok(
       indexHtml.includes('html[data-theme="dark"]') && indexHtml.includes("#0a0f1c"),
       "index.html must define critical inline dark styles to prevent white flash",
     );

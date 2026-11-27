@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import assert from "node:assert";
 import crypto from "node:crypto";
@@ -75,7 +76,8 @@ test("Mastodon Platform Parity Suite: Federation, Moderation, Trust & Safety, an
   db.ensureUserRSAKeys(alice.id);
   const aliceToken = jwt.sign({ id: alice.id, username: alice.username, email: alice.email }, JWT_SECRET);
 
-  const bob = db.createUser("bob", "bob@modelscript.test", "hashed_pwd", {
+  const bobPassword = "bob-secret-test-password";
+  const bob = db.createUser("bob", "bob@modelscript.test", bcrypt.hashSync(bobPassword, 4), {
     emailVerified: true,
   });
   db.ensureUserRSAKeys(bob.id);
@@ -356,11 +358,30 @@ test("Mastodon Platform Parity Suite: Federation, Moderation, Trust & Safety, an
         });
       assert.strictEqual(putProfileRes.status, 200);
 
-      // Verify Bob's ORCID field
-      const verifyRes = await request(app)
-        .post("/api/v1/users/me/verify-fields")
-        .set("Authorization", `Bearer ${bobToken}`)
-        .send({});
+      // Verify Bob's ORCID field (mock ORCID public API researcher-urls backlink pointing to Bob's profile URL)
+      const origFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.includes("pub.orcid.org/v3.0/0000-0002-1825-0097/researcher-urls")) {
+          return new Response(
+            JSON.stringify({
+              "researcher-url": [{ url: { value: "http://ansatz.test/users/bob" } }],
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return origFetch(input, init);
+      }) as typeof fetch;
+      let verifyRes;
+      try {
+        verifyRes = await request(app)
+          .post("/api/v1/users/me/verify-fields")
+          .set("Host", "ansatz.test")
+          .set("Authorization", `Bearer ${bobToken}`)
+          .send({});
+      } finally {
+        globalThis.fetch = origFetch;
+      }
       assert.strictEqual(verifyRes.status, 200);
       assert(verifyRes.body.profile_fields[0].verified_at, "Expected ORCID field to be marked verified_at");
 
@@ -417,7 +438,7 @@ test("Mastodon Platform Parity Suite: Federation, Moderation, Trust & Safety, an
       const moveRes = await request(app)
         .post("/api/v1/users/me/move")
         .set("Authorization", `Bearer ${bobToken}`)
-        .send({ targetActorUrl: aliceFed.actor_url });
+        .send({ targetActorUrl: aliceFed.actor_url, password: bobPassword });
       assert.strictEqual(moveRes.status, 200);
       assert.strictEqual(moveRes.body.movedToActorUrl, aliceFed.actor_url);
       assert(db.isFollowing(charlie.id, alice.id), "Expected Charlie's follow to migrate from Bob to Alice");

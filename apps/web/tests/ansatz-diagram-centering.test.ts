@@ -12,7 +12,19 @@ describe("Ansatz Diagram Coordinate Grid Centering on Load Completion", () => {
     "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
   );
   const ansatzPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/AnsatzEditor.tsx");
-  const diagramPkgPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
+  const diagramPkgDir = path.resolve(import.meta.dirname, "../../../packages/diagram/src");
+  const readDiagramPkg = () =>
+    [
+      "index.ts",
+      "graph-state.ts",
+      "canvas-init.ts",
+      "canvas-render.ts",
+      "canvas-render-normalize.ts",
+      "canvas-runtime.ts",
+      "canvas-state.ts",
+    ]
+      .map((f) => fs.readFileSync(path.join(diagramPkgDir, f), "utf-8"))
+      .join("\n");
 
   it("verifies Diagram.tsx measures parent element and resizes X6 graph before centering", () => {
     const src = fs.readFileSync(diagramEditorPath, "utf-8");
@@ -87,7 +99,7 @@ describe("Ansatz Diagram Coordinate Grid Centering on Load Completion", () => {
   });
 
   it("verifies packages/diagram/src/index.ts checks parent element and schedules follow-up recentering", () => {
-    const src = fs.readFileSync(diagramPkgPath, "utf-8");
+    const src = readDiagramPkg();
 
     // initGraph checks parentElement
     assert.ok(
@@ -157,7 +169,7 @@ describe("Ansatz Diagram Coordinate Grid Centering on Load Completion", () => {
   });
 
   it("verifies loading placeholders do not lock in zoomed-out viewports", () => {
-    const diagramSrc = fs.readFileSync(diagramPkgPath, "utf-8");
+    const diagramSrc = readDiagramPkg();
     const servicePath = path.resolve(import.meta.dirname, "../../../packages/lsp/src/services/diagram-service.ts");
     const serviceSrc = fs.readFileSync(servicePath, "utf-8");
 
@@ -176,7 +188,7 @@ describe("Ansatz Diagram Coordinate Grid Centering on Load Completion", () => {
   });
 
   it("verifies polyglot/SysML2 diagrams with hidden bounds/axes use zoomToFit(maxScale: 1) and wait for non-loading data", () => {
-    const diagramSrc = fs.readFileSync(diagramPkgPath, "utf-8");
+    const diagramSrc = readDiagramPkg();
     const editorSrc = fs.readFileSync(diagramEditorPath, "utf-8");
     const paneSrc = fs.readFileSync(visualizerPanePath, "utf-8");
 

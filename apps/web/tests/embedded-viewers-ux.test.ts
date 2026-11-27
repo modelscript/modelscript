@@ -220,13 +220,13 @@ Model {
 
   describe("3. Multi-Instance Isolation & Responsive Viewport Contracts", () => {
     it("isolates X6 Graph instances per container in @modelscript/diagram", () => {
-      const diagramSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts"),
-        "utf8",
-      );
+      const diagramDir = path.resolve(import.meta.dirname, "../../../packages/diagram/src");
+      const diagramSrc = ["index.ts", "canvas-state.ts", "canvas-init.ts"]
+        .map((f) => fs.readFileSync(path.join(diagramDir, f), "utf8"))
+        .join("\n");
       assert.ok(
         diagramSrc.includes("containerInstances = new Map<HTMLElement, ContainerDiagramInstance>()"),
-        "packages/diagram/src/index.ts must maintain a per-container Map<HTMLElement, ContainerDiagramInstance> instead of a global singleton",
+        "packages/diagram must maintain a per-container Map<HTMLElement, ContainerDiagramInstance> instead of a global singleton",
       );
     });
 
@@ -697,10 +697,10 @@ Model {
         "CadStepViewer must support localClippingEnabled section planes and 3D surface point coordinate probing",
       );
 
-      const ansatzCadSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx"),
-        "utf8",
-      );
+      const ansatzCadDir = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer");
+      const ansatzCadSrc = ["CadViewer.tsx", "CadCommandIsland.tsx"]
+        .map((f) => fs.readFileSync(path.join(ansatzCadDir, f), "utf8"))
+        .join("\n");
       assert.ok(
         ansatzCadSrc.includes("clipAxis") &&
           ansatzCadSrc.includes("explosionFactor") &&

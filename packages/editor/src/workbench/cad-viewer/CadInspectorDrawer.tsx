@@ -309,7 +309,7 @@ export const CadInspectorDrawer: React.FC<CadInspectorDrawerProps> = ({
           </button>
         )}
         {effectiveTab === "parts" &&
-          components.map((comp) => {
+          components.map((comp, idx) => {
             const ov = partOverrides[comp.name] ?? {};
             const isHidden = ov.visible === false;
             const isGhost = Boolean(ov.ghost);
@@ -319,7 +319,7 @@ export const CadInspectorDrawer: React.FC<CadInspectorDrawerProps> = ({
               rgba && rgba.length >= 3 ? `#${new THREE.Color(rgba[0], rgba[1], rgba[2]).getHexString()}` : "#4782b5";
             return (
               <div
-                key={comp.name}
+                key={`${comp.name}::${idx}`}
                 style={{
                   padding: "6px 8px",
                   borderRadius: 8,

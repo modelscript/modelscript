@@ -589,7 +589,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
         return;
       }
 
-      const postId = parseInt(postMatch[1], 10);
+      const postId = postMatch[1];
       try {
         const post = database.getPost(postId, req.user?.id);
         if (post) {

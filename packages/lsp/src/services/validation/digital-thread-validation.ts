@@ -388,7 +388,7 @@ export async function runLiveDigitalThreadValidationImpl(
     .map((f) => `${f.uri}:${f.content.length}:${f.content.slice(0, 64)}:${f.content.slice(-64)}`)
     .sort()
     .join("|");
-  if (fingerprint === ctx.getLastDigitalThreadFingerprint() && ctx.digitalThreadDiagnosticsByUri.size > 0) {
+  if (fingerprint === ctx.getLastDigitalThreadFingerprint() && fingerprint !== "") {
     return;
   }
 

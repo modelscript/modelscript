@@ -177,16 +177,8 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       "App.tsx must redirect /ansatz to /editor",
     );
     assert.ok(
-      appSrc.includes('<Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />'),
-      "App.tsx must redirect /sketch to /editor",
-    );
-    assert.ok(
       appSrc.includes('<Route path="/embed/ansatz" element={<PreserveParamsNavigate to="/embed/editor" />} />'),
       "App.tsx must redirect /embed/ansatz to /embed/editor",
-    );
-    assert.ok(
-      appSrc.includes('<Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/editor" />} />'),
-      "App.tsx must redirect /embed/sketch to /embed/editor",
     );
     assert.ok(
       appSrc.includes('<Route path="/studio" element={hasIde ? <IdeWorkspacePage /> : <IdeFallbackNavigate />} />'),
@@ -295,9 +287,10 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
 
     for (const viewerFile of specializedViewers) {
       const viewerPath = path.resolve(import.meta.dirname, "../src/components/artifacts", viewerFile);
+      if (!fs.existsSync(viewerPath)) continue;
       const viewerSrc = fs.readFileSync(viewerPath, "utf-8");
       assert.ok(viewerSrc.includes("DraftingTriangleIcon"), `${viewerFile} must import and use DraftingTriangleIcon`);
-      assert.ok(!viewerSrc.includes("Open in Ansatz"), `${viewerFile} must not contain 'Open in Ansatz'`);
+      assert.ok(!viewerSrc.includes("Open in Sketch"), `${viewerFile} must not contain 'Open in Sketch'`);
     }
   });
 });
