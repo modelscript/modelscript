@@ -1634,7 +1634,11 @@ export function evaluateGenericDigitalThread(
         if (!/^[A-Za-z_][A-Za-z0-9_.]*$/.test(eq.lhs.trim())) continue;
         try {
           // Pass a scratch diagnostics array so symbolic equations with state variables fail silently
-          const silentDiagnostics: Array<{ severity: string; message: string; expression?: string }> = [];
+          const silentDiagnostics: Array<{
+            severity: "error" | "info" | "warning";
+            message: string;
+            expression?: string;
+          }> = [];
           const val = providers.evaluateCfdExpression(eq.rhs, resolver, silentDiagnostics);
           if (silentDiagnostics.length === 0 && typeof val === "number" && Number.isFinite(val)) {
             evaluatedEquations.push({

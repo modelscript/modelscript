@@ -108,457 +108,467 @@ const LSP_SEMANTIC_TOKEN_TYPES = [
 ];
 const LSP_SEMANTIC_TOKEN_MODIFIERS = ["declaration", "readonly"];
 
-const HANDCRAFTED_CUSTOM_LANG_IDS = new Set([
-  "msx-modelica",
-  "msx-sysml",
-  "msx-spice",
-  "msx-modelscript",
-  "msx-ampl",
-  "msx-fortran",
-  "msx-scad",
-  "msx-fea",
-  "msx-cfd",
-  "msx-step",
-  "msx-qif",
-  "msx-polyglot",
-]);
-
-const GENERATED_CUSTOM_SLUGS = Object.keys(GENERATED_MONARCH_SPECS).filter(
-  (s) =>
-    !HANDCRAFTED_CUSTOM_LANG_IDS.has(`msx-${s}`) &&
-    s !== "sysml2" &&
-    !XML_DIALECTS.has(s) &&
-    !["c", "verilog-a", "cantera", "epanet", "swmm", "ibis", "plcopen"].includes(s),
-);
-
-const CUSTOM_LANG_IDS = [...HANDCRAFTED_CUSTOM_LANG_IDS, ...GENERATED_CUSTOM_SLUGS.map((s) => `msx-${s}`)];
-const ALL_PROVIDER_LANG_IDS = [...CUSTOM_LANG_IDS, "xml", "c", "yaml", "ini", "pascal"];
-
 let sandboxMonacoPromise: Promise<typeof import("monaco-editor")> | null = null;
-let languagesRegistered = false;
+let themesRegistered = false;
+const registeredLanguages = new Set<string>();
+let semanticEmitter: import("monaco-editor").Emitter<void> | null = null;
+let semanticLegend: import("monaco-editor").languages.SemanticTokensLegend | null = null;
 
 // Active diagnostics cache per URI for hover & code-action enrichment
 const diagnosticsCache = new Map<string, LspDiagnostic[]>();
 const semanticTokensRefreshers = new Set<() => void>();
 
-function registerLanguagesAndThemes(monaco: typeof import("monaco-editor")): void {
-  if (languagesRegistered) return;
-  languagesRegistered = true;
-
-  for (const id of CUSTOM_LANG_IDS) {
-    monaco.languages.register({ id });
+function registerMonarchForLang(monaco: typeof import("monaco-editor"), langId: string): void {
+  if (langId === "msx-modelica") {
+    monaco.languages.setMonarchTokensProvider("msx-modelica", {
+      keywords: [
+        "model",
+        "end",
+        "package",
+        "class",
+        "record",
+        "block",
+        "connector",
+        "function",
+        "type",
+        "partial",
+        "replaceable",
+        "redeclare",
+        "extends",
+        "import",
+        "parameter",
+        "constant",
+        "discrete",
+        "input",
+        "output",
+        "flow",
+        "stream",
+        "equation",
+        "initial",
+        "algorithm",
+        "public",
+        "protected",
+        "annotation",
+        "connect",
+        "if",
+        "then",
+        "else",
+        "elseif",
+        "for",
+        "loop",
+        "in",
+        "while",
+        "when",
+        "elsewhen",
+        "and",
+        "or",
+        "not",
+        "true",
+        "false",
+      ],
+      typeKeywords: ["Real", "Integer", "Boolean", "String", "Natural"],
+      builtins: [
+        "der",
+        "abs",
+        "sin",
+        "cos",
+        "tan",
+        "sqrt",
+        "exp",
+        "log",
+        "min",
+        "max",
+        "pre",
+        "edge",
+        "sample",
+        "time",
+      ],
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/"([^"\\]|\\.)*"/, "string"],
+          [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
+          [
+            /[a-zA-Z_]\w*/,
+            {
+              cases: {
+                "@keywords": "keyword",
+                "@typeKeywords": "type",
+                "@builtins": "function",
+                "@default": "identifier",
+              },
+            },
+          ],
+          [/[=+\-*/^<>!]=?|:=|\.\./, "operator"],
+          [/[{}()[\],.;:]/, "delimiter"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"],
+        ],
+      },
+    });
+    return;
   }
 
-  monaco.languages.setMonarchTokensProvider("msx-modelica", {
-    keywords: [
-      "model",
-      "end",
-      "package",
-      "class",
-      "record",
-      "block",
-      "connector",
-      "function",
-      "type",
-      "partial",
-      "replaceable",
-      "redeclare",
-      "extends",
-      "import",
-      "parameter",
-      "constant",
-      "discrete",
-      "input",
-      "output",
-      "flow",
-      "stream",
-      "equation",
-      "initial",
-      "algorithm",
-      "public",
-      "protected",
-      "annotation",
-      "connect",
-      "if",
-      "then",
-      "else",
-      "elseif",
-      "for",
-      "loop",
-      "in",
-      "while",
-      "when",
-      "elsewhen",
-      "and",
-      "or",
-      "not",
-      "true",
-      "false",
-    ],
-    typeKeywords: ["Real", "Integer", "Boolean", "String", "Natural"],
-    builtins: ["der", "abs", "sin", "cos", "tan", "sqrt", "exp", "log", "min", "max", "pre", "edge", "sample", "time"],
-    tokenizer: {
-      root: [
-        [/\/\/.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        [/"([^"\\]|\\.)*"/, "string"],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
-        [
-          /[a-zA-Z_]\w*/,
-          {
-            cases: {
-              "@keywords": "keyword",
-              "@typeKeywords": "type",
-              "@builtins": "function",
-              "@default": "identifier",
+  if (langId === "msx-sysml") {
+    monaco.languages.setMonarchTokensProvider("msx-sysml", {
+      keywords: [
+        "package",
+        "part",
+        "def",
+        "attribute",
+        "port",
+        "item",
+        "action",
+        "state",
+        "requirement",
+        "constraint",
+        "connection",
+        "connect",
+        "to",
+        "from",
+        "import",
+        "private",
+        "public",
+        "in",
+        "out",
+        "inout",
+        "ref",
+        "abstract",
+        "specializes",
+        "redefines",
+        "subsets",
+        "satisfy",
+        "verify",
+        "bind",
+        "flow",
+        "doc",
+        "comment",
+        "about",
+      ],
+      typeKeywords: ["Real", "Integer", "Boolean", "String", "ScalarValues"],
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/"([^"\\]|\\.)*"/, "string"],
+          [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
+          [
+            /[a-zA-Z_]\w*/,
+            {
+              cases: {
+                "@keywords": "keyword",
+                "@typeKeywords": "type",
+                "@default": "identifier",
+              },
             },
-          },
+          ],
+          [/::|:>|->|=|[=+\-*/<>!]+/, "operator"],
+          [/[{}()[\],.;:]/, "delimiter"],
         ],
-        [/[=+\-*/^<>!]=?|:=|\.\./, "operator"],
-        [/[{}()[\],.;:]/, "delimiter"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  });
-
-  monaco.languages.setMonarchTokensProvider("msx-sysml", {
-    keywords: [
-      "package",
-      "part",
-      "def",
-      "attribute",
-      "port",
-      "item",
-      "action",
-      "state",
-      "requirement",
-      "constraint",
-      "connection",
-      "connect",
-      "to",
-      "from",
-      "import",
-      "private",
-      "public",
-      "in",
-      "out",
-      "inout",
-      "ref",
-      "abstract",
-      "specializes",
-      "redefines",
-      "subsets",
-      "satisfy",
-      "verify",
-      "bind",
-      "flow",
-      "doc",
-      "comment",
-      "about",
-    ],
-    typeKeywords: ["Real", "Integer", "Boolean", "String", "ScalarValues"],
-    tokenizer: {
-      root: [
-        [/\/\/.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        [/"([^"\\]|\\.)*"/, "string"],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
-        [
-          /[a-zA-Z_]\w*/,
-          {
-            cases: {
-              "@keywords": "keyword",
-              "@typeKeywords": "type",
-              "@default": "identifier",
-            },
-          },
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"],
         ],
-        [/::|:>|->|=|[=+\-*/<>!]+/, "operator"],
-        [/[{}()[\],.;:]/, "delimiter"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  });
-
-  monaco.languages.setMonarchTokensProvider("msx-spice", {
-    ignoreCase: true,
-    keywords: [
-      ".param",
-      ".model",
-      ".subckt",
-      ".ends",
-      ".tran",
-      ".ac",
-      ".dc",
-      ".op",
-      ".include",
-      ".lib",
-      ".end",
-      ".ic",
-      ".nodeset",
-      ".meas",
-      ".measure",
-      ".step",
-      ".temp",
-      ".options",
-      ".plot",
-      ".print",
-    ],
-    tokenizer: {
-      root: [
-        [/^\s*\*.*$/, "comment"],
-        [/;.*$/, "comment"],
-        [/@\w+/, "annotation"],
-        [/\.[a-zA-Z_]\w*/, { cases: { "@keywords": "keyword", "@default": "keyword" } }],
-        [/"([^"\\]|\\.)*"/, "string"],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?(meg|mil|k|m|u|n|p|f|g|t)?\b/i, "number"],
-        [/^[VRCLMQDXJEBGHK]\w*/i, "type"],
-        [/[a-zA-Z_]\w*/, "identifier"],
-        [/[=+\-*/<>]/, "operator"],
-      ],
-    },
-  });
-
-  monaco.languages.setMonarchTokensProvider("msx-modelscript", {
-    keywords: [
-      "system",
-      "model",
-      "component",
-      "entity",
-      "port",
-      "signal",
-      "param",
-      "let",
-      "var",
-      "const",
-      "equation",
-      "constraint",
-      "contract",
-      "requires",
-      "ensures",
-      "invariant",
-      "connect",
-      "import",
-      "export",
-      "end",
-      "if",
-      "else",
-      "for",
-      "in",
-      "return",
-    ],
-    typeKeywords: ["Real", "Int", "Bool", "String", "Vec", "Mat"],
-    tokenizer: {
-      root: [
-        [/\/\/.*$/, "comment"],
-        [/#.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        [/"([^"\\]|\\.)*"/, "string"],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
-        [
-          /[a-zA-Z_]\w*/,
-          {
-            cases: {
-              "@keywords": "keyword",
-              "@typeKeywords": "type",
-              "@default": "identifier",
-            },
-          },
-        ],
-        [/[=+\-*/^<>!]=?|->|<->/, "operator"],
-        [/[{}()[\],.;:]/, "delimiter"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  });
-
-  monaco.languages.setMonarchTokensProvider("msx-ampl", {
-    keywords: [
-      "set",
-      "param",
-      "var",
-      "minimize",
-      "maximize",
-      "subject",
-      "to",
-      "s.t.",
-      "in",
-      "sum",
-      "prod",
-      "if",
-      "then",
-      "else",
-      "binary",
-      "integer",
-      "solve",
-      "data",
-      "model",
-      "let",
-      "display",
-    ],
-    tokenizer: {
-      root: [
-        [/#.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
-        [/[a-zA-Z_]\w*/, { cases: { "@keywords": "keyword", "@default": "identifier" } }],
-        [/[=+\-*/^<>!]=?|:=/, "operator"],
-        [/[{}()[\],.;:]/, "delimiter"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  });
-
-  monaco.languages.setMonarchTokensProvider("msx-polyglot", {
-    tokenizer: {
-      root: [
-        [/\/\/.*$|#.*$|%.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
-        [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
-        [
-          /\b(model|end|package|module|function|class|struct|param|parameter|var|let|const|if|else|for|while|return|import|export|connect|equation)\b/,
-          "keyword",
-        ],
-        [/\b(Real|Integer|Boolean|String|double|float|int|bool|void)\b/, "type"],
-        [/[a-zA-Z_]\w*/, "identifier"],
-        [/[=+\-*/^<>!]=?/, "operator"],
-        [/[{}()[\],.;:]/, "delimiter"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  });
-
-  monaco.languages.setMonarchTokensProvider("msx-fortran", {
-    ignoreCase: true,
-    tokenizer: {
-      root: [
-        [/!.*$/, "comment"],
-        [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
-        [/\d+(\.\d+)?([eEdD][+-]?\d+)?/, "number"],
-        [
-          /\b(program|end|subroutine|function|module|use|implicit|none|intent|in|out|inout|if|then|else|elseif|endif|do|enddo|while|call|return|contains|interface|parameter|allocatable|dimension|pure|elemental)\b/,
-          "keyword",
-        ],
-        [/\b(real|integer|double|precision|logical|character|complex)\b/, "type"],
-        [/[a-zA-Z_]\w*/, "identifier"],
-        [/\/\/|==|\/=|<=|>=|[=+\-*/<>]/, "operator"],
-        [/[{}()[\],.:;]/, "delimiter"],
-      ],
-    },
-  });
-
-  const cadCaeTokenizer: import("monaco-editor").languages.IMonarchLanguage = {
-    tokenizer: {
-      root: [
-        [/\/\/.*$|\*\*.*$|%.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        [/^\*[A-Z_][A-Z0-9_]*/, "keyword"],
-        [/#\d+/, "variable"],
-        [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
-        [/\d+(\.\d+)?([eEdD][+-]?\d+)?/, "number"],
-        [
-          /\b(ISO-10303-21|HEADER|DATA|ENDSEC|END-ISO-10303-21|module|function|union|difference|intersection|translate|rotate|cube|sphere|cylinder|if|else|for|let|true|false)\b/,
-          "keyword",
-        ],
-        [/\b[A-Z][A-Z0-9_]{2,}\b(?=\s*\()/, "type"],
-        [/[a-zA-Z_]\w*/, "identifier"],
-        [/[=+\-*/^<>!]=?/, "operator"],
-        [/[{}()[\],.;:]/, "delimiter"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  };
-  for (const id of ["msx-scad", "msx-fea", "msx-cfd", "msx-step"]) {
-    monaco.languages.setMonarchTokensProvider(id, cadCaeTokenizer);
+      },
+    });
+    return;
   }
 
-  monaco.languages.setMonarchTokensProvider("msx-qif", {
-    keywords: ["QIF", "FEATURE", "DATUM", "CHARACTERISTIC", "STEP", "ACTUAL", "RULE", "DEVICE", "DRF", "COMPOSITE"],
-    typeKeywords: [
-      "Plane",
-      "Cylinder",
-      "Circle",
-      "Cone",
-      "Sphere",
-      "Slot",
-      "Point",
-      "Position",
-      "Perpendicularity",
-      "Parallelism",
-      "Concentricity",
-      "Flatness",
-      "Cylindricity",
-      "Circularity",
-      "TotalRunout",
-      "CircularRunout",
-      "ProfileOfSurface",
-      "ProfileOfLine",
-      "MMC",
-      "LMC",
-      "RFS",
-      "PASS",
-      "FAIL",
-      "MARGINAL",
-      "CMM",
-    ],
-    tokenizer: {
-      root: [
-        [/\/\/.*$/, "comment"],
-        [/#.*$/, "comment"],
-        [/\/\*/, "comment", "@comment"],
-        [/"([^"\\]|\\.)*"/, "string"],
-        [/\b[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}\b/, "string"],
-        [/\b\d+(\.\d+)?([eEdD][+-]?\d+)?\b/, "number"],
-        [
-          /[A-Za-z_]\w*/,
-          {
-            cases: {
-              "@keywords": "keyword",
-              "@typeKeywords": "type",
-              "@default": "identifier",
-            },
-          },
+  if (langId === "msx-spice") {
+    monaco.languages.setMonarchTokensProvider("msx-spice", {
+      ignoreCase: true,
+      keywords: [
+        ".param",
+        ".model",
+        ".subckt",
+        ".ends",
+        ".tran",
+        ".ac",
+        ".dc",
+        ".op",
+        ".include",
+        ".lib",
+        ".end",
+        ".ic",
+        ".nodeset",
+        ".meas",
+        ".measure",
+        ".step",
+        ".temp",
+        ".options",
+        ".plot",
+        ".print",
+      ],
+      tokenizer: {
+        root: [
+          [/^\s*\*.*$/, "comment"],
+          [/;.*$/, "comment"],
+          [/@\w+/, "annotation"],
+          [/\.[a-zA-Z_]\w*/, { cases: { "@keywords": "keyword", "@default": "keyword" } }],
+          [/"([^"\\]|\\.)*"/, "string"],
+          [/\d+(\.\d+)?([eE][+-]?\d+)?(meg|mil|k|m|u|n|p|f|g|t)?\b/i, "number"],
+          [/^[VRCLMQDXJEBGHK]\w*/i, "type"],
+          [/[a-zA-Z_]\w*/, "identifier"],
+          [/[=+\-*/<>]/, "operator"],
         ],
-        [/[=+\-*/<>!]/, "operator"],
-        [/[{}()[\],.;:]/, "delimiter"],
-      ],
-      comment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  });
+      },
+    });
+    return;
+  }
 
-  for (const slug of GENERATED_CUSTOM_SLUGS) {
+  if (langId === "msx-modelscript") {
+    monaco.languages.setMonarchTokensProvider("msx-modelscript", {
+      keywords: [
+        "system",
+        "model",
+        "component",
+        "entity",
+        "port",
+        "signal",
+        "param",
+        "let",
+        "var",
+        "const",
+        "equation",
+        "constraint",
+        "contract",
+        "requires",
+        "ensures",
+        "invariant",
+        "connect",
+        "import",
+        "export",
+        "end",
+        "if",
+        "else",
+        "for",
+        "in",
+        "return",
+      ],
+      typeKeywords: ["Real", "Int", "Bool", "String", "Vec", "Mat"],
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [/#.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/"([^"\\]|\\.)*"/, "string"],
+          [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
+          [
+            /[a-zA-Z_]\w*/,
+            {
+              cases: {
+                "@keywords": "keyword",
+                "@typeKeywords": "type",
+                "@default": "identifier",
+              },
+            },
+          ],
+          [/[=+\-*/^<>!]=?|->|<->/, "operator"],
+          [/[{}()[\],.;:]/, "delimiter"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"],
+        ],
+      },
+    });
+    return;
+  }
+
+  if (langId === "msx-ampl") {
+    monaco.languages.setMonarchTokensProvider("msx-ampl", {
+      keywords: [
+        "set",
+        "param",
+        "var",
+        "minimize",
+        "maximize",
+        "subject",
+        "to",
+        "s.t.",
+        "in",
+        "sum",
+        "prod",
+        "if",
+        "then",
+        "else",
+        "binary",
+        "integer",
+        "solve",
+        "data",
+        "model",
+        "let",
+        "display",
+      ],
+      tokenizer: {
+        root: [
+          [/#.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
+          [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
+          [/[a-zA-Z_]\w*/, { cases: { "@keywords": "keyword", "@default": "identifier" } }],
+          [/[=+\-*/^<>!]=?|:=/, "operator"],
+          [/[{}()[\],.;:]/, "delimiter"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"],
+        ],
+      },
+    });
+    return;
+  }
+
+  if (langId === "msx-polyglot") {
+    monaco.languages.setMonarchTokensProvider("msx-polyglot", {
+      tokenizer: {
+        root: [
+          [/\/\/.*$|#.*$|%.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
+          [/\d+(\.\d+)?([eE][+-]?\d+)?/, "number"],
+          [
+            /\b(model|end|package|module|function|class|struct|param|parameter|var|let|const|if|else|for|while|return|import|export|connect|equation)\b/,
+            "keyword",
+          ],
+          [/\b(Real|Integer|Boolean|String|double|float|int|bool|void)\b/, "type"],
+          [/[a-zA-Z_]\w*/, "identifier"],
+          [/[=+\-*/^<>!]=?/, "operator"],
+          [/[{}()[\],.;:]/, "delimiter"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"],
+        ],
+      },
+    });
+    return;
+  }
+
+  if (langId === "msx-fortran") {
+    monaco.languages.setMonarchTokensProvider("msx-fortran", {
+      ignoreCase: true,
+      tokenizer: {
+        root: [
+          [/!.*$/, "comment"],
+          [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
+          [/\d+(\.\d+)?([eEdD][+-]?\d+)?/, "number"],
+          [
+            /\b(program|end|subroutine|function|module|use|implicit|none|intent|in|out|inout|if|then|else|elseif|endif|do|enddo|while|call|return|contains|interface|parameter|allocatable|dimension|pure|elemental)\b/,
+            "keyword",
+          ],
+          [/\b(real|integer|double|precision|logical|character|complex)\b/, "type"],
+          [/[a-zA-Z_]\w*/, "identifier"],
+          [/\/\/|==|\/=|<=|>=|[=+\-*/<>]/, "operator"],
+          [/[{}()[\],.:;]/, "delimiter"],
+        ],
+      },
+    });
+    return;
+  }
+
+  if (langId === "msx-scad" || langId === "msx-fea" || langId === "msx-cfd" || langId === "msx-step") {
+    monaco.languages.setMonarchTokensProvider(langId, {
+      tokenizer: {
+        root: [
+          [/\/\/.*$|\*\*.*$|%.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/^\*[A-Z_][A-Z0-9_]*/, "keyword"],
+          [/#\d+/, "variable"],
+          [/"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/, "string"],
+          [/\d+(\.\d+)?([eEdD][+-]?\d+)?/, "number"],
+          [
+            /\b(ISO-10303-21|HEADER|DATA|ENDSEC|END-ISO-10303-21|module|function|union|difference|intersection|translate|rotate|cube|sphere|cylinder|if|else|for|let|true|false)\b/,
+            "keyword",
+          ],
+          [/\b[A-Z][A-Z0-9_]{2,}\b(?=\s*\()/, "type"],
+          [/[a-zA-Z_]\w*/, "identifier"],
+          [/[=+\-*/^<>!]=?/, "operator"],
+          [/[{}()[\],.;:]/, "delimiter"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"],
+        ],
+      },
+    });
+    return;
+  }
+
+  if (langId === "msx-qif") {
+    monaco.languages.setMonarchTokensProvider("msx-qif", {
+      keywords: ["QIF", "FEATURE", "DATUM", "CHARACTERISTIC", "STEP", "ACTUAL", "RULE", "DEVICE", "DRF", "COMPOSITE"],
+      typeKeywords: [
+        "Plane",
+        "Cylinder",
+        "Circle",
+        "Cone",
+        "Sphere",
+        "Slot",
+        "Point",
+        "Position",
+        "Perpendicularity",
+        "Parallelism",
+        "Concentricity",
+        "Flatness",
+        "Cylindricity",
+        "Circularity",
+        "TotalRunout",
+        "CircularRunout",
+        "ProfileOfSurface",
+        "ProfileOfLine",
+        "MMC",
+        "LMC",
+        "RFS",
+        "PASS",
+        "FAIL",
+        "MARGINAL",
+        "CMM",
+      ],
+      tokenizer: {
+        root: [
+          [/\/\/.*$/, "comment"],
+          [/#.*$/, "comment"],
+          [/\/\*/, "comment", "@comment"],
+          [/"([^"\\]|\\.)*"/, "string"],
+          [/\b[0-9a-fA-F]{8}-[0-9a-fA-F-]{27}\b/, "string"],
+          [/\b\d+(\.\d+)?([eEdD][+-]?\d+)?\b/, "number"],
+          [
+            /[A-Za-z_]\w*/,
+            {
+              cases: {
+                "@keywords": "keyword",
+                "@typeKeywords": "type",
+                "@default": "identifier",
+              },
+            },
+          ],
+          [/[=+\-*/<>!]/, "operator"],
+          [/[{}()[\],.;:]/, "delimiter"],
+        ],
+        comment: [
+          [/[^/*]+/, "comment"],
+          [/\*\//, "comment", "@pop"],
+          [/[/*]/, "comment"],
+        ],
+      },
+    });
+    return;
+  }
+
+  if (langId.startsWith("msx-")) {
+    const slug = langId.slice(4);
     const spec = GENERATED_MONARCH_SPECS[slug];
-    if (!spec) continue;
+    if (!spec) return;
     const commentRules: import("monaco-editor").languages.IMonarchLanguageRule[] = [];
     for (const lc of spec.lineComments) {
       try {
@@ -570,7 +580,7 @@ function registerLanguagesAndThemes(monaco: typeof import("monaco-editor")): voi
     if (spec.blockComment?.[0] === "/*" && spec.blockComment?.[1] === "*/") {
       commentRules.push([/\/\*/, "comment", "@comment"]);
     }
-    monaco.languages.setMonarchTokensProvider(`msx-${slug}`, {
+    monaco.languages.setMonarchTokensProvider(langId, {
       keywords: spec.keywords,
       typeKeywords: spec.types,
       tokenizer: {
@@ -599,6 +609,11 @@ function registerLanguagesAndThemes(monaco: typeof import("monaco-editor")): voi
       },
     });
   }
+}
+
+function registerThemes(monaco: typeof import("monaco-editor")): void {
+  if (themesRegistered) return;
+  themesRegistered = true;
 
   monaco.editor.defineTheme("msx-sandbox-dark", {
     base: "vs-dark",
@@ -650,19 +665,29 @@ function registerLanguagesAndThemes(monaco: typeof import("monaco-editor")): voi
     },
   });
 
-  // Register LSP-backed providers across all supported Monaco languages
-  const semanticLegend: import("monaco-editor").languages.SemanticTokensLegend = {
+  semanticLegend = {
     tokenTypes: LSP_SEMANTIC_TOKEN_TYPES,
     tokenModifiers: LSP_SEMANTIC_TOKEN_MODIFIERS,
   };
+  semanticEmitter = new monaco.Emitter<void>();
+  semanticTokensRefreshers.add(() => semanticEmitter?.fire());
+}
 
-  const semanticEmitter = new monaco.Emitter<void>();
-  semanticTokensRefreshers.add(() => semanticEmitter.fire());
+function ensureLanguageRegistered(monaco: typeof import("monaco-editor"), langId: string): void {
+  if (registeredLanguages.has(langId)) return;
+  registeredLanguages.add(langId);
 
-  for (const langId of ALL_PROVIDER_LANG_IDS) {
+  if (langId.startsWith("msx-")) {
+    monaco.languages.register({ id: langId });
+    registerMonarchForLang(monaco, langId);
+  }
+
+  if (semanticLegend && semanticEmitter) {
+    const legend = semanticLegend;
+    const emitter = semanticEmitter;
     monaco.languages.registerDocumentSemanticTokensProvider(langId, {
-      getLegend: () => semanticLegend,
-      onDidChange: semanticEmitter.event,
+      getLegend: () => legend,
+      onDidChange: emitter.event,
       async provideDocumentSemanticTokens(model) {
         try {
           const res = await getSemanticTokensDocsLsp(model.uri.toString());
@@ -677,167 +702,167 @@ function registerLanguagesAndThemes(monaco: typeof import("monaco-editor")): voi
       },
       releaseDocumentSemanticTokens() {},
     });
+  }
 
-    monaco.languages.registerHoverProvider(langId, {
-      async provideHover(model, position) {
-        const uri = model.uri.toString();
-        const contents: import("monaco-editor").IMarkdownString[] = [];
+  monaco.languages.registerHoverProvider(langId, {
+    async provideHover(model, position) {
+      const uri = model.uri.toString();
+      const contents: import("monaco-editor").IMarkdownString[] = [];
 
-        const markers = monaco.editor
-          .getModelMarkers({ resource: model.uri })
-          .filter(
-            (m) =>
-              position.lineNumber >= m.startLineNumber &&
-              position.lineNumber <= m.endLineNumber &&
-              position.column >= m.startColumn &&
-              position.column <= m.endColumn,
-          );
-        for (const m of markers) {
-          const sev =
-            m.severity === monaco.MarkerSeverity.Error
-              ? "Error"
-              : m.severity === monaco.MarkerSeverity.Warning
-                ? "Warning"
-                : "Info";
-          const codeStr = m.code ? ` \`${typeof m.code === "object" ? m.code.value : m.code}\`` : "";
-          contents.push({ value: `**${sev}${codeStr}**: ${m.message}` });
-        }
+      const markers = monaco.editor
+        .getModelMarkers({ resource: model.uri })
+        .filter(
+          (m) =>
+            position.lineNumber >= m.startLineNumber &&
+            position.lineNumber <= m.endLineNumber &&
+            position.column >= m.startColumn &&
+            position.column <= m.endColumn,
+        );
+      for (const m of markers) {
+        const sev =
+          m.severity === monaco.MarkerSeverity.Error
+            ? "Error"
+            : m.severity === monaco.MarkerSeverity.Warning
+              ? "Warning"
+              : "Info";
+        const codeStr = m.code ? ` \`${typeof m.code === "object" ? m.code.value : m.code}\`` : "";
+        contents.push({ value: `**${sev}${codeStr}**: ${m.message}` });
+      }
 
-        try {
-          const lspHover = await getHoverDocsLsp(uri, position.lineNumber - 1, position.column - 1);
-          if (lspHover?.contents) {
-            const raw = lspHover.contents;
-            if (typeof raw === "string" && raw.trim()) {
-              contents.push({ value: raw });
-            } else if (raw?.value) {
-              contents.push({ value: String(raw.value) });
-            } else if (Array.isArray(raw)) {
-              for (const item of raw) {
-                const txt = typeof item === "string" ? item : item?.value;
-                if (txt) contents.push({ value: String(txt) });
-              }
+      try {
+        const lspHover = await getHoverDocsLsp(uri, position.lineNumber - 1, position.column - 1);
+        if (lspHover?.contents) {
+          const raw = lspHover.contents;
+          if (typeof raw === "string" && raw.trim()) {
+            contents.push({ value: raw });
+          } else if (raw?.value) {
+            contents.push({ value: String(raw.value) });
+          } else if (Array.isArray(raw)) {
+            for (const item of raw) {
+              const txt = typeof item === "string" ? item : item?.value;
+              if (txt) contents.push({ value: String(txt) });
             }
           }
-        } catch {
-          // Ignore transient hover errors
         }
+      } catch {
+        // Ignore transient hover errors
+      }
 
-        if (contents.length === 0) return null;
-        return { contents };
-      },
-    });
+      if (contents.length === 0) return null;
+      return { contents };
+    },
+  });
 
-    monaco.languages.registerCompletionItemProvider(langId, {
-      triggerCharacters: [".", ":", "$", "@"],
-      async provideCompletionItems(model, position) {
-        try {
-          const res = await getCompletionDocsLsp(model.uri.toString(), position.lineNumber - 1, position.column - 1);
-          const rawItems = Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : [];
-          if (rawItems.length === 0) return { suggestions: [] };
+  monaco.languages.registerCompletionItemProvider(langId, {
+    triggerCharacters: [".", ":", "$", "@"],
+    async provideCompletionItems(model, position) {
+      try {
+        const res = await getCompletionDocsLsp(model.uri.toString(), position.lineNumber - 1, position.column - 1);
+        const rawItems = Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : [];
+        if (rawItems.length === 0) return { suggestions: [] };
 
-          const word = model.getWordUntilPosition(position);
-          const defaultRange = new monaco.Range(
-            position.lineNumber,
-            word.startColumn,
-            position.lineNumber,
-            word.endColumn,
-          );
-
-          const suggestions: import("monaco-editor").languages.CompletionItem[] = rawItems.slice(0, 80).map((it) => ({
-            label: String(it.label ?? ""),
-            kind: typeof it.kind === "number" ? it.kind : monaco.languages.CompletionItemKind.Text,
-            detail: it.detail ? String(it.detail) : undefined,
-            documentation:
-              typeof it.documentation === "string"
-                ? it.documentation
-                : it.documentation?.value
-                  ? String(it.documentation.value)
-                  : undefined,
-            insertText: String(it.insertText ?? it.label ?? ""),
-            insertTextRules:
-              it.insertTextFormat === 2 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
-            range: defaultRange,
-          }));
-          return { suggestions };
-        } catch {
-          return { suggestions: [] };
-        }
-      },
-    });
-
-    monaco.languages.registerDefinitionProvider(langId, {
-      async provideDefinition(model, position) {
-        try {
-          const res = await getDefinitionDocsLsp(model.uri.toString(), position.lineNumber - 1, position.column - 1);
-          if (!res) return null;
-          const locs = Array.isArray(res) ? res : [res];
-          return locs
-            .filter((l) => l?.uri && l?.range)
-            .map((l) => ({
-              uri: monaco.Uri.parse(String(l.uri)),
-              range: new monaco.Range(
-                l.range.start.line + 1,
-                l.range.start.character + 1,
-                l.range.end.line + 1,
-                l.range.end.character + 1,
-              ),
-            }));
-        } catch {
-          return null;
-        }
-      },
-    });
-
-    monaco.languages.registerCodeActionProvider(langId, {
-      async provideCodeActions(model, range) {
-        const uri = model.uri.toString();
-        const diags = diagnosticsCache.get(uri) ?? [];
-        const overlapping = diags.filter(
-          (d) => d.range.end.line + 1 >= range.startLineNumber && d.range.start.line + 1 <= range.endLineNumber,
+        const word = model.getWordUntilPosition(position);
+        const defaultRange = new monaco.Range(
+          position.lineNumber,
+          word.startColumn,
+          position.lineNumber,
+          word.endColumn,
         );
-        if (overlapping.length === 0) return { actions: [], dispose: () => {} };
 
-        try {
-          const lspActions = await getCodeActionsDocsLsp(
-            uri,
-            {
-              start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
-              end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+        const suggestions: import("monaco-editor").languages.CompletionItem[] = rawItems.slice(0, 80).map((it) => ({
+          label: String(it.label ?? ""),
+          kind: typeof it.kind === "number" ? it.kind : monaco.languages.CompletionItemKind.Text,
+          detail: it.detail ? String(it.detail) : undefined,
+          documentation:
+            typeof it.documentation === "string"
+              ? it.documentation
+              : it.documentation?.value
+                ? String(it.documentation.value)
+                : undefined,
+          insertText: String(it.insertText ?? it.label ?? ""),
+          insertTextRules:
+            it.insertTextFormat === 2 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+          range: defaultRange,
+        }));
+        return { suggestions };
+      } catch {
+        return { suggestions: [] };
+      }
+    },
+  });
+
+  monaco.languages.registerDefinitionProvider(langId, {
+    async provideDefinition(model, position) {
+      try {
+        const res = await getDefinitionDocsLsp(model.uri.toString(), position.lineNumber - 1, position.column - 1);
+        if (!res) return null;
+        const locs = Array.isArray(res) ? res : [res];
+        return locs
+          .filter((l) => l?.uri && l?.range)
+          .map((l) => ({
+            uri: monaco.Uri.parse(String(l.uri)),
+            range: new monaco.Range(
+              l.range.start.line + 1,
+              l.range.start.character + 1,
+              l.range.end.line + 1,
+              l.range.end.character + 1,
+            ),
+          }));
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  monaco.languages.registerCodeActionProvider(langId, {
+    async provideCodeActions(model, range) {
+      const uri = model.uri.toString();
+      const diags = diagnosticsCache.get(uri) ?? [];
+      const overlapping = diags.filter(
+        (d) => d.range.end.line + 1 >= range.startLineNumber && d.range.start.line + 1 <= range.endLineNumber,
+      );
+      if (overlapping.length === 0) return { actions: [], dispose: () => {} };
+
+      try {
+        const lspActions = await getCodeActionsDocsLsp(
+          uri,
+          {
+            start: { line: range.startLineNumber - 1, character: range.startColumn - 1 },
+            end: { line: range.endLineNumber - 1, character: range.endColumn - 1 },
+          },
+          overlapping,
+        );
+        const actions: import("monaco-editor").languages.CodeAction[] = [];
+        for (const a of lspActions ?? []) {
+          const changes = a?.edit?.changes?.[uri];
+          if (!Array.isArray(changes)) continue;
+          actions.push({
+            title: String(a.title || "Apply QuickFix"),
+            kind: "quickfix",
+            isPreferred: true,
+            edit: {
+              edits: changes.map((te: any) => ({
+                resource: model.uri,
+                versionId: model.getVersionId(),
+                textEdit: {
+                  range: new monaco.Range(
+                    te.range.start.line + 1,
+                    te.range.start.character + 1,
+                    te.range.end.line + 1,
+                    te.range.end.character + 1,
+                  ),
+                  text: String(te.newText ?? ""),
+                },
+              })),
             },
-            overlapping,
-          );
-          const actions: import("monaco-editor").languages.CodeAction[] = [];
-          for (const a of lspActions ?? []) {
-            const changes = a?.edit?.changes?.[uri];
-            if (!Array.isArray(changes)) continue;
-            actions.push({
-              title: String(a.title || "Apply QuickFix"),
-              kind: "quickfix",
-              isPreferred: true,
-              edit: {
-                edits: changes.map((te: any) => ({
-                  resource: model.uri,
-                  versionId: model.getVersionId(),
-                  textEdit: {
-                    range: new monaco.Range(
-                      te.range.start.line + 1,
-                      te.range.start.character + 1,
-                      te.range.end.line + 1,
-                      te.range.end.character + 1,
-                    ),
-                    text: String(te.newText ?? ""),
-                  },
-                })),
-              },
-            });
-          }
-          return { actions, dispose: () => {} };
-        } catch {
-          return { actions: [], dispose: () => {} };
+          });
         }
-      },
-    });
-  }
+        return { actions, dispose: () => {} };
+      } catch {
+        return { actions: [], dispose: () => {} };
+      }
+    },
+  });
 }
 
 async function ensureMonacoLoaded(): Promise<typeof import("monaco-editor")> {
@@ -875,7 +900,7 @@ async function ensureMonacoLoaded(): Promise<typeof import("monaco-editor")> {
           }
         });
       }
-      registerLanguagesAndThemes(monaco);
+      registerThemes(monaco);
       return monaco;
     })();
   }
@@ -891,6 +916,7 @@ export async function mountSandboxMonaco(options: MountSandboxMonacoOptions): Pr
 
   function getOrCreateModel(uri: string, code: string, langSlug: string): import("monaco-editor").editor.ITextModel {
     const targetLang = mapSlugToMonacoLang(langSlug);
+    ensureLanguageRegistered(monaco, targetLang);
     const existing = models.get(uri) ?? monaco.editor.getModel(monaco.Uri.parse(uri));
     if (existing) {
       models.set(uri, existing);
@@ -1011,6 +1037,7 @@ export async function mountSandboxMonaco(options: MountSandboxMonacoOptions): Pr
       const model = editor.getModel();
       if (!model) return;
       const targetLang = mapSlugToMonacoLang(langSlug);
+      ensureLanguageRegistered(monaco, targetLang);
       if (modelLangs.get(activeUri) === targetLang) return;
       monaco.editor.setModelLanguage(model, targetLang);
       modelLangs.set(activeUri, targetLang);

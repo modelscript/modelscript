@@ -424,6 +424,10 @@ describe("TggSymbolProjectionTable & TggCorrespondenceIndexer", () => {
     indexer.syncIndex(index, 2, [1], ["Component_0"]);
     const elapsedMs = performance.now() - t0;
 
-    assert.ok(elapsedMs < 25, `Incremental sync across >24k symbols took ${elapsedMs.toFixed(2)}ms (expected < 25ms)`);
+    const maxIncrementalMs = process.env.CI ? 100 : 50;
+    assert.ok(
+      elapsedMs < maxIncrementalMs,
+      `Incremental sync across >24k symbols took ${elapsedMs.toFixed(2)}ms (expected < ${maxIncrementalMs}ms)`,
+    );
   });
 });

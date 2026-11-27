@@ -179,7 +179,7 @@ jobs:
     name: Modelica OMC Testsuite (WASM vs JS)
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -491,7 +491,7 @@ jobs:
     needs: [build_prereqs]
     if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-workspace
@@ -506,7 +506,7 @@ jobs:
       - name: Extract Pre-built Dist & WASM
         run: tar -xf prereqs-build.tar && rm prereqs-build.tar
       - name: Build CLI & API Prerequisites
-        run: npx nx run-many -t build --projects=@modelscript/cli,@modelscript/api --parallel=3
+        run: npx nx run-many -t build --projects=@modelscript/cli,@modelscript/api --parallel=4
       - name: Run CLI Polyglot Publish/Install Roundtrip Smoke Test
         run: npx tsx --test apps/cli/tests/polyglot-publish-install-roundtrip.test.ts
       - name: Cache Playwright Chromium

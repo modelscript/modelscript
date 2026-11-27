@@ -333,7 +333,13 @@ const stageSummary = computed(() => {
 });
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let diagramDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let quickFixTimer: ReturnType<typeof setTimeout> | null = null;
 let codeActionRefreshToken = 0;
+let lastDiagramKey = "";
+let diagramDirty = false;
+let updatingFromMonaco = false;
+let lastQuickFixSig = "";
 let stopDiagListening: (() => void) | null = null;
 let stopStatusListening: (() => void) | null = null;
 
@@ -368,8 +374,17 @@ async function initMonacoEditor(): Promise<void> {
 
 const activeExampleMeta = computed(() => examplesBySlug.value.get(activeTab.value.langSlug));
 
-async function refreshDiagramPreview(): Promise<void> {
+async function refreshDiagramPreview(force = false): Promise<void> {
+  if (rightPaneView.value === "diagnostics") {
+    diagramDirty = true;
+    return;
+  }
   const tab = activeTab.value;
+  const key = `${tab.uri}\0${tab.langSlug}\0${tab.code}`;
+  if (!force && key === lastDiagramKey && hasLiveDiagram.value && liveDiagramMeta.value) {
+    diagramDirty = false;
+    return;
+  }
   const token = ++diagramRequestToken;
   diagramLoading.value = true;
   try {
@@ -378,20 +393,32 @@ async function refreshDiagramPreview(): Promise<void> {
     if (!hasDiagramElements(data)) {
       hasLiveDiagram.value = false;
       liveDiagramMeta.value = null;
+      lastDiagramKey = key;
+      diagramDirty = false;
       return;
     }
     hasLiveDiagram.value = true;
     await nextTick();
     if (token !== diagramRequestToken) return;
-    if (!diagramContainerRef.value) return;
+    const container = diagramContainerRef.value;
+    if (!container || !container.isConnected) {
+      diagramDirty = true;
+      return;
+    }
+    if (diagramHandle && diagramHandle.container !== container) {
+      diagramHandle.dispose();
+      diagramHandle = null;
+    }
     if (!diagramHandle) {
       const { mountSandboxDiagram } = await import("../util/sandbox-diagram.js");
-      if (token !== diagramRequestToken || !diagramContainerRef.value) return;
-      diagramHandle = await mountSandboxDiagram(diagramContainerRef.value, isDark.value);
+      if (token !== diagramRequestToken || !diagramContainerRef.value || diagramContainerRef.value !== container) return;
+      diagramHandle = await mountSandboxDiagram(container, isDark.value);
     }
     liveDiagramMeta.value = diagramHandle.render(data, isDark.value, tab.langSlug);
-  } catch {
-    if (token === diagramRequestToken) {
+    lastDiagramKey = key;
+    diagramDirty = false;
+  } catch (err: any) {
+    if (token === diagramRequestToken && err?.message !== "SUPERSEDED") {
       hasLiveDiagram.value = false;
       liveDiagramMeta.value = null;
     }
@@ -402,13 +429,26 @@ async function refreshDiagramPreview(): Promise<void> {
   }
 }
 
+function scheduleDiagramRefresh(delayMs = 220): void {
+  if (rightPaneView.value === "diagnostics") {
+    diagramDirty = true;
+    return;
+  }
+  if (diagramDebounceTimer) clearTimeout(diagramDebounceTimer);
+  diagramDebounceTimer = setTimeout(() => {
+    diagramDebounceTimer = null;
+    void refreshDiagramPreview();
+  }, delayMs);
+}
+
 watch(
   () => [activeTab.value.id, activeTab.value.uri, activeTab.value.langSlug] as const,
   ([, nextUri, nextSlug]) => {
-    hasLiveDiagram.value = false;
+    lastDiagramKey = "";
+    diagramDirty = true;
     liveDiagramMeta.value = null;
     if (hasBooted) {
-      void refreshDiagramPreview();
+      void refreshDiagramPreview(true);
     }
     if (!monacoHandle) return;
     monacoHandle.switchTab(nextUri, activeTab.value.code, nextSlug);
@@ -420,7 +460,7 @@ watch(
 watch(
   () => activeTab.value.code,
   (nextCode) => {
-    if (!monacoHandle) return;
+    if (updatingFromMonaco || !monacoHandle) return;
     monacoHandle.setValue(nextCode);
   },
 );
@@ -430,10 +470,31 @@ watch(isDark, (dark) => {
   diagramHandle?.setTheme(dark);
 });
 
-watch(rightPaneView, async () => {
+watch(rightPaneView, async (nextView) => {
   await nextTick();
-  diagramHandle?.resize();
+  if (nextView !== "diagnostics") {
+    if (hasBooted && (diagramDirty || !liveDiagramMeta.value)) {
+      void refreshDiagramPreview(true);
+    } else {
+      diagramHandle?.resize();
+    }
+  }
 });
+
+function scheduleQuickFixesForUri(uri: string, diags: LspDiagnostic[]): void {
+  const sig = `${uri}|${diags.map((d) => diagnosticKey(uri, d)).join("|")}`;
+  if (sig === lastQuickFixSig) return;
+  lastQuickFixSig = sig;
+  if (quickFixTimer) clearTimeout(quickFixTimer);
+  if (diags.length === 0) {
+    void refreshQuickFixesForUri(uri, diags);
+    return;
+  }
+  quickFixTimer = setTimeout(() => {
+    quickFixTimer = null;
+    void refreshQuickFixesForUri(uri, diags);
+  }, 120);
+}
 
 async function refreshQuickFixesForUri(uri: string, diags: LspDiagnostic[]): Promise<void> {
   const token = ++codeActionRefreshToken;
@@ -446,7 +507,7 @@ async function refreshQuickFixesForUri(uri: string, diags: LspDiagnostic[]): Pro
     quickFixByDiagKey.value = nextFixes;
     return;
   }
-  for (const d of diags.slice(0, 8)) {
+  for (const d of diags.slice(0, 4)) {
     const actions = await getCodeActionsDocsLsp(uri, d.range, [d]).catch(() => []);
     if (token !== codeActionRefreshToken) return;
     const fix = actions.find((a) => a?.edit?.changes);
@@ -490,9 +551,8 @@ onMounted(() => {
       [uri]: diags,
     };
     monacoHandle?.setDiagnostics(uri, diags);
-    monacoHandle?.refreshSemanticTokens();
     if (uri === activeTab.value.uri) {
-      void refreshQuickFixesForUri(uri, diags);
+      scheduleQuickFixesForUri(uri, diags);
     }
   });
   stopStatusListening = onLspStatus((status) => {
@@ -505,6 +565,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (debounceTimer) clearTimeout(debounceTimer);
+  if (diagramDebounceTimer) clearTimeout(diagramDebounceTimer);
+  if (quickFixTimer) clearTimeout(quickFixTimer);
   stopDiagListening?.();
   stopStatusListening?.();
   monacoHandle?.dispose();
@@ -520,18 +582,22 @@ async function syncTabsAndLint(): Promise<void> {
     for (const tab of tabs.value) {
       await syncDocsLspBuffer(tab.uri, tab.langSlug, tab.code);
     }
-    monacoHandle?.refreshSemanticTokens();
     void refreshDiagramPreview();
   } catch (err: any) {
     workerError.value = err?.message || String(err);
   }
 }
 
-function scheduleLint(): void {
+function scheduleEditSync(): void {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
-    void syncTabsAndLint();
-  }, 300);
+    debounceTimer = null;
+    const tab = activeTab.value;
+    void syncDocsLspBuffer(tab.uri, tab.langSlug, tab.code).catch((err: any) => {
+      workerError.value = err?.message || String(err);
+    });
+  }, 60);
+  scheduleDiagramRefresh(220);
 }
 
 async function switchTabLanguage(tab: SandboxTab, newSlug: string, keepExistingCode: boolean): Promise<void> {
@@ -574,9 +640,11 @@ async function onLanguageChange(newSlug: string): Promise<void> {
 }
 
 function onCodeInput(val: string): void {
+  updatingFromMonaco = true;
   activeTab.value.code = val;
+  updatingFromMonaco = false;
   faultBanner.value = null;
-  scheduleLint();
+  scheduleEditSync();
 }
 
 function onEditorPaste(): void {
@@ -1200,7 +1268,7 @@ function severityLabel(sev?: number): string {
               </template>
 
               <div
-                v-if="rightPaneView === 'diagram' || (rightPaneView === 'both' && (hasLiveDiagram || diagramLoading))"
+                v-show="rightPaneView === 'diagram' || (rightPaneView === 'both' && (hasLiveDiagram || diagramLoading))"
                 class="sb-diagram-card"
                 :class="{ 'is-full': rightPaneView === 'diagram' }"
               >

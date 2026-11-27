@@ -7,6 +7,7 @@
  */
 
 export interface SandboxDiagramHandle {
+  readonly container: HTMLElement;
   render(data: any, isDark: boolean, language?: string): { nodeCount: number; edgeCount: number };
   setTheme(isDark: boolean): void;
   resize(): void;
@@ -23,29 +24,38 @@ export function hasDiagramElements(data: any): boolean {
 
 export async function mountSandboxDiagram(container: HTMLElement, initialDark: boolean): Promise<SandboxDiagramHandle> {
   const diagramMod = await import("@modelscript/diagram");
-  const { setDiagramOptions, initGraph, renderDiagram, disposeDiagram, getGraph } = diagramMod;
+  const { setDiagramOptions, initGraph, renderDiagram, disposeDiagram } = diagramMod;
 
   let lastData: any = null;
   let lastLanguage: string | undefined;
+  let graph: ReturnType<typeof initGraph> = null;
+  let fitRafId: number | null = null;
+  let lastMeasuredW = 0;
+  let lastMeasuredH = 0;
 
   const ensureInitialized = (isDark: boolean, language?: string) => {
     setDiagramOptions({
       container,
       isDark,
       language,
+      preferWebGpu: false,
     });
-    return initGraph(isDark, container);
+    graph = initGraph(isDark, container);
+    return graph;
   };
 
   ensureInitialized(initialDark);
 
   const fitGraph = () => {
-    const g = getGraph();
-    if (!g || g.disposed) return;
+    const g = graph;
+    if (!g || g.disposed || !container.isConnected) return;
     try {
       const w = container.clientWidth;
       const h = container.clientHeight;
-      if (w > 0 && h > 0) {
+      if (w <= 0 || h <= 0) return;
+      if (w !== lastMeasuredW || h !== lastMeasuredH) {
+        lastMeasuredW = w;
+        lastMeasuredH = h;
         g.resize(w, h);
       }
       if (g.getCells().length > 0) {
@@ -57,13 +67,42 @@ export async function mountSandboxDiagram(container: HTMLElement, initialDark: b
     }
   };
 
+  const scheduleFit = () => {
+    if (fitRafId !== null) cancelAnimationFrame(fitRafId);
+    fitRafId = requestAnimationFrame(() => {
+      fitRafId = null;
+      fitGraph();
+    });
+  };
+
+  let resizeObserver: ResizeObserver | null = null;
+  if (typeof ResizeObserver !== "undefined") {
+    resizeObserver = new ResizeObserver((entries) => {
+      const rect = entries[0]?.contentRect;
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+      if (Math.abs(rect.width - lastMeasuredW) < 2 && Math.abs(rect.height - lastMeasuredH) < 2) return;
+      scheduleFit();
+    });
+    resizeObserver.observe(container);
+  }
+
   return {
+    container,
     render(data: any, isDark: boolean, language?: string) {
       lastData = data;
       lastLanguage = language;
-      ensureInitialized(isDark, language);
+      const g = ensureInitialized(isDark, language);
+      if (g && !g.disposed) {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (w > 0 && h > 0 && (w !== lastMeasuredW || h !== lastMeasuredH)) {
+          lastMeasuredW = w;
+          lastMeasuredH = h;
+          g.resize(w, h);
+        }
+      }
       renderDiagram({ ...data, readOnly: true }, isDark);
-      requestAnimationFrame(() => fitGraph());
+      scheduleFit();
 
       const nodeCount = Array.isArray(data?.nodes)
         ? data.nodes.length
@@ -81,28 +120,27 @@ export async function mountSandboxDiagram(container: HTMLElement, initialDark: b
       if (lastData && hasDiagramElements(lastData)) {
         ensureInitialized(isDark, lastLanguage);
         renderDiagram({ ...lastData, readOnly: true }, isDark);
-        requestAnimationFrame(() => fitGraph());
+        scheduleFit();
       } else {
         ensureInitialized(isDark, lastLanguage);
       }
     },
     resize() {
-      const g = getGraph();
-      if (!g || g.disposed) return;
-      const w = container.clientWidth;
-      const h = container.clientHeight;
-      if (w > 0 && h > 0) {
-        g.resize(w, h);
-        if (g.getCells().length > 0) {
-          g.zoomToFit({ padding: 20, maxScale: 1 });
-          g.centerContent();
-        }
-      }
+      lastMeasuredW = 0;
+      lastMeasuredH = 0;
+      fitGraph();
     },
     zoomToFit() {
       fitGraph();
     },
     dispose() {
+      if (fitRafId !== null) {
+        cancelAnimationFrame(fitRafId);
+        fitRafId = null;
+      }
+      resizeObserver?.disconnect();
+      resizeObserver = null;
+      graph = null;
       try {
         disposeDiagram(container);
       } catch {
